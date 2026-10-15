@@ -52,3 +52,18 @@ Google Sheets / GAS、認証、夫婦間同期、IndexedDB、OCR、レシート�
 - 削除ポップアップでは赤い「日用品を削除」と通常の「キャンセル」を上から配置。削除は非表示処理であり、独立したバックアップファイルではありません。
 - ブラウザで `http://localhost:8000` を開くとPC確認ができます。iPhoneでは同一Wi-FiのWindows PCのIPv4アドレスとポート8000で接続できますが、Windows Defender Firewallで許可が必要な場合があります。ホーム画面へのPWAインストール・Service Workerの動作にはlocalhost以外では原則HTTPSが必要です。
 - いずれの端末も実機でのドラッグ挙動の検証は未実施。端末ごとにlocalStorageは独立しています。同期・認証は未実装です。
+
+## ブランチ別 HTTPS プレビュー（GitHub Pages）
+
+GitHub Actions の `.github/workflows/pages-previews.yml` がブランチへの push 時に、`main` と各作業ブランチの静的画面をまとめて公開します。追加のホスティング契約・APIキーは不要です。
+
+**GitHubで最初に1回だけ設定**：リポジトリの **Settings → Pages → Build and deployment → Source: GitHub Actions** を選択してください。ワークフローの実行を許可し、Actions の実行結果を確認します。Pagesの設定はチャットから自動変更できません。
+
+公開URL（公開設定とActions成功後）:
+- `main`: https://tokky0117.github.io/household-pwa/
+- 段階Aの作業ブランチ: https://tokky0117.github.io/household-pwa/previews/stage-a-ui-handoff-review/
+- その他: `https://tokky0117.github.io/household-pwa/previews/<branch-slug>/`
+
+ブランチ名のスラッシュなど英数字・ピリオド・アンダースコア・ハイフン以外はハイフンに置換してURLにします。新規ブランチにもworkflowファイルを含めてください（通常はmainから作れば自動的に含まれます）。プレビューは**パスごとに別画面**ですが、localStorageとブラウザのキャッシュは同一オリジンになる点に注意してください。試作用のデータ以外を入力しないでください。
+
+ブランチを削除した場合でも、最後に公開したプレビューURLが残る可能性があるため、後日クリーンアップ処理を追加するまで、不要なプレビューは公開されたままになり得ます。すべてのページは公開URLです。認証を作るまでは家計データを入力しないでください。
