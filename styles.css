@@ -159,3 +159,25 @@ button, a, input, label, select, textarea, [role="button"] {
 }
 .drag-ghost .itemname{font-weight:750}
 .drag-ghost .stock{pointer-events:none}
+
+/* Stage A: use the SAME item-row / stock control on list and detail. */
+.detail-main .detail-stock-row{
+  margin:0 0 8px;
+  min-height:53px;
+  padding:0 12px;
+}
+.detail-main .detail-stock-label{
+  display:block;
+  flex:1;
+  cursor:default;
+  min-height:48px;
+  padding:11px 0;
+  color:var(--ink);
+}
+.detail-main .detail-stock-row .stock{
+  min-height:44px;
+  min-width:70px;
+  padding:7px 11px;
+}
+/* Preserve natural vertical scroll; recognize horizontal detail gesture in JS. */
+.detail-main{touch-action:pan-y}
