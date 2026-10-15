@@ -1,0 +1,84 @@
+name: Preview all branches on GitHub Pages
+
+on:
+  push:
+    branches:
+      - '**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: github-pages-all-branches
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Checkout with history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Build isolated static previews
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --prune origin '+refs/heads/*:refs/remotes/origin/*'
+          mkdir -p _site/previews
+          files=(index.html app.js styles.css manifest.webmanifest icon.svg sw.js)
+
+          copy_site() {
+            local ref="$1"
+            local dest="$2"
+            mkdir -p "$dest"
+            for file in "${files[@]}"; do
+              if git cat-file -e "$ref:$file" 2>/dev/null; then
+                git show "$ref:$file" > "$dest/$file"
+              fi
+            done
+            [[ -f "$dest/index.html" ]]
+          }
+
+          # Keep the default branch at the normal project Pages URL.
+          copy_site refs/remotes/origin/main _site
+
+          while IFS= read -r remote_ref; do
+            branch="${remote_ref#origin/}"
+            [[ "$branch" == main || "$branch" == gh-pages || "$branch" == HEAD ]] && continue
+            # URL-safe branch name; original slashes become hyphens.
+            slug="$(printf '%s' "$branch" | sed -E 's/[^A-Za-z0-9._-]+/-/g')"
+            [[ -n "$slug" ]] || continue
+            dest="_site/previews/$slug"
+            if copy_site "refs/remotes/$remote_ref" "$dest"; then
+              # Scope the Service Worker cache per preview to avoid cross-branch conflicts.
+              if [[ -f "$dest/sw.js" ]]; then
+                sed -i "s/^const CACHE=.*;/const CACHE='household-preview-$slug';/" "$dest/sw.js"
+              fi
+              echo "Preview: /previews/$slug/"
+            else
+              rm -rf "$dest"
+            fi
+          done < <(git for-each-ref --format='%(refname:short)' refs/remotes/origin)
+
+          # GitHub Pages should serve the copied files as-is.
+          touch _site/.nojekyll
+
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload site
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+      - name: Deploy previews and main
+        id: deployment
+        uses: actions/deploy-pages@v4
