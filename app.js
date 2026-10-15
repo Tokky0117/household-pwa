@@ -52,7 +52,7 @@ function back(){
 }
 function renderDialogOnly(){
   document.querySelector('.dialog-back')?.remove();
-  if(dialog)app.insertAdjacentHTML('afterend',dialogView());
+  if(dialog)app.insertAdjacentHTML('beforeend',dialogView());
 }
 function saveItem(name,category,memo){const normalized=norm(name);const existing=items.find(i=>norm(i.name)===normalized&&i.id!==selected&&!i.hidden);if(existing){say('同じ名前の日用品が既に登録されています');return}const hidden=items.find(i=>norm(i.name)===normalized&&i.hidden);if(page==='add'&&hidden){dialog={title:'以前の日用品が見つかりました',message:'再表示すると以前の設定・商品紐付け・お気に入りを引き継ぎます。新規登録すると以前の商品紐付け・お気に入りを解除します（試作ではお気に入りのみ解除）。',buttons:[{id:'restore',label:'以前の日用品を再表示',primary:true},{id:'new',label:'新しい日用品として登録'},{id:'cancel',label:'キャンセル'}],pending:{name,category,memo,hiddenId:hidden.id}};render();return}commitItem(name,category,memo)}
 let scrollToId=null;
