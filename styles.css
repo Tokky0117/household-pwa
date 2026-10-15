@@ -83,3 +83,28 @@ body.reordering,body.reordering *{overscroll-behavior:contain;user-select:none!i
   .stock.off{background:#4f3922;border-color:#956b3c;color:#ffd6a0;box-shadow:none}
   .item{background:var(--card)}
 }
+
+/* Stage A list-density and Safari tap-feedback refinement (2026-10-15) */
+button, a, input, label, select, textarea, [role="button"] {
+  -webkit-tap-highlight-color: transparent;
+}
+.category{margin-bottom:8px}
+.cathead{min-height:44px;padding:7px 8px}
+.cathead strong{font-size:15px}
+.item{
+  min-height:53px;
+  margin-bottom:5px;
+  padding:0 12px;
+  gap:8px;
+}
+.itemname{
+  min-height:48px;
+  padding:9px 0;
+  font-size:17px;
+  font-weight:700;
+  line-height:1.35;
+}
+.stock{
+  min-height:44px;
+  padding:7px 11px;
+}
