@@ -504,3 +504,32 @@ html,body{background:#fff}
   border-left:1px solid var(--line);border-top:1px solid var(--line);
   transform:rotate(45deg);
 }
+
+/* Shared UI foundation: authoritative tokens and shared controls.
+   Use these classes/tokens in new pages instead of adding page-scoped overrides. */
+:root{
+  --ui-radius-card:12px;
+  --ui-radius-popup:12px;
+  --ui-radius-control:11px;
+  --ui-touch-size:44px;
+  --ui-popup-gap:6px;
+  --ui-input-font-size:16px;
+}
+.ui-menu,.info-popover.ui-menu{
+  border-radius:var(--ui-radius-popup);
+}
+.ui-menu .ui-menu-item{min-height:var(--ui-touch-size)}
+.formfield input,.formfield select,.formfield textarea{
+  font-size:var(--ui-input-font-size);
+}
+.stock,.detail-main .detail-stock-row .stock{
+  min-width:57px;min-height:34px;padding:6px 11px;
+  background:#f5f5f5;color:#666;border:1px solid #e4e4e4;
+  border-radius:18px;box-shadow:none;font-size:13px;font-weight:650;
+}
+.stock.off,.detail-main .detail-stock-row .stock.off{
+  background:#fff0dd;color:#995719;border-color:#f1cfaa;box-shadow:none;
+}
+.minimum-card{
+  padding:10px 12px;margin:0 0 6px;border-radius:var(--ui-radius-card);
+}
