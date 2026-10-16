@@ -5,6 +5,34 @@ const key='household_pwa_ui_v1';
 // 商品・チェーンは仮データ。今後はproducts / storesへの照会に置き換える。
 const SAMPLE_LINKS={'牛乳':{products:['おいしい牛乳 900mL'],chains:['スーパー青空']},'麦茶':{products:['麦茶ティーバッグ 54袋'],chains:['ドラッグひかり']},'キッチンペーパー':{products:['キッチンペーパー 4ロール'],chains:['スーパー青空']}};
 const UNIT_OPTIONS=['個','本','枚','g','kg','mL','L'];
+
+/* Local-only product and chain sample catalogue; no product disable field. */
+const catalogueKey='household_pwa_catalogue_v1';
+const sampleCatalogue=()=>({
+ products:[
+  {id:'p-milk-1',name:'おいしい牛乳',quantity:900,unit:'mL',itemGroupId:'demo-1',aliases:['ｵｲｼｲｷﾞｭｳﾆｭｳ']},
+  {id:'p-milk-2',name:'北海道牛乳',quantity:1,unit:'L',itemGroupId:'demo-1',aliases:[]},
+  {id:'p-milk-3',name:'低脂肪乳',quantity:1,unit:'L',itemGroupId:null,aliases:['低脂肪牛乳']},
+  {id:'p-tea-1',name:'麦茶ティーバッグ',quantity:54,unit:'個',itemGroupId:'demo-2',aliases:[]},
+  {id:'p-wash-1',name:'液体洗濯洗剤',quantity:900,unit:'mL',itemGroupId:'demo-11',aliases:[]}
+ ],
+ chains:[{id:'c-a',name:'スーパー青空'},{id:'c-b',name:'ドラッグひかり'},{id:'c-c',name:'スーパーみどり'}],
+ branches:[{id:'s-a1',chainId:'c-a',name:'駅前店'},{id:'s-a2',chainId:'c-a',name:'中央店'},{id:'s-b1',chainId:'c-b',name:'本町店'}]
+});
+function loadCatalogue(){try{const o=JSON.parse(localStorage.getItem(catalogueKey));if(o&&Array.isArray(o.products)&&Array.isArray(o.chains)&&Array.isArray(o.branches))return o}catch{}return sampleCatalogue()}
+let catalogue=loadCatalogue(),pickQuery='',pickKind='product',pickerAll=false;
+const persistCatalogue=()=>localStorage.setItem(catalogueKey,JSON.stringify(catalogue));
+const productTitle=p=>p.name+(p.quantity&&p.unit?' '+p.quantity+p.unit:'');
+const linkedItemName=p=>items.find(i=>i.id===p.itemGroupId)?.name||'未登録';
+const favoriteTitle=f=>{
+ if(f.targetId){
+  const t=f.type==='product'?catalogue.products.find(p=>p.id===f.targetId):catalogue.chains.find(c=>c.id===f.targetId);
+  if(t)return f.type==='product'?productTitle(t):t.name;
+ }
+ return f.name;
+};
+const productMatches=(p,q)=>[p.name,p.quantity?p.quantity+p.unit:'',...(p.aliases||[])].some(v=>norm(v).includes(norm(q)));
+
 function load(){try{const d=JSON.parse(localStorage.getItem(key));return Array.isArray(d)?d:makeSeed()}catch{return makeSeed()}}
 let items=load(),tab='items',page='list',selected=null,query='',onlyOut=false,collapsed=new Set(),menu=false,dialog=null,toast='',period='3m',priceScope='favorites',periodMenu=false;
 const app=document.getElementById('app');
@@ -59,7 +87,7 @@ function listView(){const options=[['add','日用品を追加','plus'],['copyLis
 function detailView(){
   const i=current();if(!i){page='list';return listView()}
   const menuButton=UI.headerMenu({items:[['edit','日用品を編集','pencil'],['hide','日用品を削除','trash'],['favorites','お気に入りの管理','star'],['products','登録商品の管理','package'],['otherSettings','その他の設定','ruler']].map(([action,label,icon])=>({action,label,icon})),label:'日用品の操作'});
-  const favoritePrices=i.favorites.length?i.favorites.map(f=>UI.priceCard({title:f.name,kind:f.type==='product'?'商品':'チェーン'})).join(''):'<div class="panel"><p class="hint">お気に入りは未登録です。「⋯」から登録できます。</p></div>';
+  const favoritePrices=i.favorites.length?i.favorites.map(f=>UI.priceCard({title:favoriteTitle(f),kind:f.type==='product'?'商品':'チェーン'})).join(''):'<div class="panel"><p class="hint">お気に入りは未登録です。「⋯」から登録できます。</p></div>';
   return `${head(i.name,CATS[i.category],true,menuButton)}<main class="detail-main"><div class="item detail-stock-row"><span class="itemname detail-stock-label">在庫</span>${UI.stock(i)}</div><div class="detail-section-heading price-heading"><h2 class="sectiontitle">最安値</h2>${UI.dropdown({id:"price-period",value:period,label:"集計期間",compact:true,open:periodMenu,options:[{value:"3m",label:"直近3か月"},{value:"all",label:"全期間"}]})}</div><div class="scope-switch" role="group" aria-label="最安値の対象"><button class="pill ${priceScope==='favorites'?'chosen':''}" data-scope="favorites" aria-pressed="${priceScope==='favorites'}">お気に入り</button><button class="pill ${priceScope==='all'?'chosen':''}" data-scope="all" aria-pressed="${priceScope==='all'}">全商品</button></div><p class="hint price-unit-label">比較単位：${esc(i.compareQuantity)} ${esc(i.compareUnit)} あたり</p>${priceScope==='favorites'?favoritePrices:`${UI.priceCard({title:"すべての登録商品",kind:"全商品"})}`}<h2 class="sectiontitle">メモ</h2><div class="panel"><div class="note ${i.memo?'':'muted'}">${esc(i.memo||'メモはありません')}</div></div></main>${nav()}`;
 }
 function formView(){
@@ -73,20 +101,47 @@ function formView(){
  return UI.sheet({title,body:`<form id="itemForm">${fields}<div class="formactions"><button type="submit" class="primary">${editing?'変更を保存':'登録する'}</button></div></form>`});
 }
 function otherSettingsView(){const i=current();return `${head('その他の設定',i.name,true)}<main class="settings-main unit-page"><form id="unitForm"><div class="setting-label-line"><h2 class="sectiontitle">比較単位の設定</h2>${UI.info({action:"unitInfo",expanded:unitInfoOpen,message:"最安値の比較計算に使用します",label:"比較単位の説明を表示"})}</div><div class="unit-fields">${UI.formField({id:"quantity",label:"数量",value:i.compareQuantity,required:true,extra:'inputmode="decimal" pattern="[0-9]+([.,][0-9]+)?"'})}${UI.formField({id:"unit",label:"単位",control:"select",value:i.compareUnit,options:UNIT_OPTIONS.map(x=>({label:x,value:x}))})}</div><div class="formactions"><button class="primary" type="submit">保存</button></div></form></main>`}
+
+function managementRow({name,sub,action,aria,details=''}) {
+ return `<div class="panel catalogue-row"><div class="catalogue-row-body"><strong>${esc(name)}</strong><div class="hint">${esc(sub)}</div>${details?`<div class="hint">${esc(details)}</div>`:''}</div><button class="fav-delete catalogue-remove" type="button" ${action} aria-label="${esc(aria)}">×</button></div>`;
+}
 function favoriteView(){
- const i=current();
- const rows=i.favorites.map((f,k)=>`<div class="panel row favorite-row" data-fav-id="${esc(f.id)}"><div><span class="tag">${f.type==='product'?'商品':'チェーン'}</span>${esc(f.name)}</div><button class="fav-delete" data-fdelete="${k}" aria-label="お気に入りを削除">×</button></div>`).join('');
- const fields=UI.formField({id:'favtype',name:'type',label:'種類',control:'select',value:'product',options:[{value:'product',label:'商品'},{value:'chain',label:'店舗チェーン'}]})+
-  UI.formField({id:'favname',name:'name',label:'表示名（仮登録）',value:'',required:true,maxlength:80,placeholder:'商品名・チェーン名'});
- return `${head('お気に入りの管理',i.name,true)}<main><div class="alert">お気に入りは商品または店舗チェーン単位で登録します。この試作では仮の名称を登録できます。</div>${rows}<form id="favoriteForm" class="panel">${fields}<button class="primary" type="submit">お気に入りを追加</button></form></main>`;
+ const i=current();if(!i)return listView();
+ const rows=(i.favorites||[]).map(f=>managementRow({name:favoriteTitle(f),sub:f.type==='product'?'商品':'店舗チェーン',action:`data-fremove="${esc(f.id)}"`,aria:`${favoriteTitle(f)}のお気に入りを解除`}));
+ return `${head('お気に入りの管理',i.name,true)}<main class="manage-main"><p class="hint">長押しで表示順を変更できます。</p><div class="catalogue-rows">${rows.join('')||'<div class="panel empty">お気に入りは未登録です</div>'}</div><button class="primary manage-add" data-act="favoritePick">＋ お気に入りを追加</button></main>`;
+}
+function productsView(){
+ const i=current();if(!i)return listView();
+ const rows=catalogue.products.filter(p=>p.itemGroupId===selected).map(p=>managementRow({name:p.name,sub:p.quantity&&p.unit?`${p.quantity} ${p.unit}`:'内容量未設定',action:`data-premove="${esc(p.id)}"`,aria:`${productTitle(p)}の登録を解除`}));
+ return `${head('登録商品の管理',i.name,true)}<main class="manage-main"><div class="catalogue-rows">${rows.join('')||'<div class="panel empty">登録商品はありません</div>'}</div><button class="primary manage-add" data-act="productPick">＋ 商品を追加</button></main>`;
+}
+function pickerResults(){
+ const i=current(),isProduct=page==='productPick',kind=isProduct?'product':pickKind;
+ const pool=kind==='product'?catalogue.products:catalogue.chains;
+ const rows=pool.filter(p=>(kind==='product'?productMatches(p,pickQuery):norm(p.name).includes(norm(pickQuery)))&&(pickerAll||!pickQuery||true));
+ return rows.map(p=>{
+  const existing=isProduct?p.itemGroupId===selected:i.favorites.some(f=>f.type===kind&&(f.targetId===p.id||!f.targetId&&norm(f.name)===norm(kind==='product'?productTitle(p):p.name)));
+  const sub=kind==='product'?`${p.quantity||'?'}${p.unit||''} ・ ${p.itemGroupId?'登録先：'+linkedItemName(p):'未登録'}`:'全支店が対象';
+  const restricted=(!isProduct&&kind==='product'&&p.itemGroupId!==selected);
+  return `<button type="button" class="catalogue-candidate" data-pick="${esc(p.id)}" ${existing||restricted?'disabled':''}><span class="catalogue-row-body"><strong>${esc(p.name)}</strong><span class="hint">${esc(sub)}</span></span><span class="catalogue-candidate-end">${existing?'登録済み':restricted?'登録先が異なります':'＋'}</span></button>`;
+ }).join('')||'<div class="panel empty">該当する候補はありません</div>';
+}
+function pickerView(){
+ const isProduct=page==='productPick',i=current(),kind=isProduct?'product':pickKind;
+ const typeChooser=isProduct?'':UI.dropdown({id:'pick-kind',label:'種類',value:pickKind,options:[{label:'商品',value:'product'},{label:'店舗チェーン',value:'chain'}]});
+ return `${head(isProduct?'商品を追加':'お気に入りを追加',i?.name||'',true)}<main class="manage-main">${typeChooser}<label class="formfield"><span class="catalogue-search-title">既存の${kind==='product'?'商品':'店舗チェーン'}を検索</span><input type="search" id="catalogue-search" value="${esc(pickQuery)}" placeholder="名称で検索" autocomplete="off"></label><div id="catalogue-results">${pickerResults()}</div><button class="secondary manage-add" data-act="catalogueList">登録一覧から選ぶ</button>${isProduct?'<button class="secondary manage-add" data-act="productCreate">＋ 新しい商品を作成</button>':''}<p class="hint">試作の候補と登録一覧は仮データです。実際のサーバー検索は未接続です。</p></main>`;
+}
+function productCreateView(){
+ const i=current();if(!i)return listView();
+ const fields=UI.formField({id:'new-product-name',name:'name',label:'商品名',required:true,maxlength:80,placeholder:'商品名を入力'})+
+ UI.formField({id:'new-product-quantity',name:'quantity',label:'内容量・数量',required:true,extra:'inputmode="decimal" pattern="[0-9]+([.,][0-9]+)?"'})+
+ UI.formField({id:'new-product-unit',name:'unit',label:'単位',control:'select',value:'mL',options:UNIT_OPTIONS.map(x=>({label:x,value:x}))});
+ return `${head('新しい商品を作成',i.name,true)}<main class="manage-main"><form id="productCreateForm">${fields}<button class="primary manage-add" type="submit">商品を登録</button></form><p class="hint">この日用品に登録します。商品情報の実データ更新は未接続です。</p></main>`;
 }
 function stub(title,icon,desc){return `${head(title,'くらしストック')}<main><div class="panel placeholder"><div class="bubble">${icon}</div><h2>${title}画面</h2><p>${desc}</p></div><div class="alert">この画面は共通UIの確認用です。データ処理や同期はまだ行いません。</div></main>${nav()}`}
 function settingsView(){return `${head('設定','くらしストック')}<main><div class="panel"><h2>データと同期</h2><div class="info-row row"><div><strong>同期状態</strong><div class="hint">Google Sheets 接続前</div></div><span class="tag">未設定</span></div><button class="secondary" data-act="sync" style="width:100%">手動同期</button></div><div class="panel"><h2>試作版の操作</h2><p class="hint">変更内容はこの端末の localStorage のみに保存され、夫婦間では共有されません。</p><button class="secondary danger" data-act="reset">仮データを初期状態に戻す</button></div><div class="panel"><h2>今後の実装</h2><p class="hint">商品・店舗管理、Google Apps Script 接続、認証、オフライン差分同期を追加予定です。</p></div></main>${nav()}`}
 function dialogView(){if(!dialog)return '';return `<div class="dialog-back"><div role="dialog" aria-modal="true" aria-labelledby="dialogTitle" class="dialog"><h2 id="dialogTitle">${esc(dialog.title)}</h2><p>${esc(dialog.message)}</p><div class="dialog-actions">${dialog.buttons.map(b=>`<button class="${b.primary?'primary':'secondary'}" data-dialog="${esc(b.id)}">${esc(b.label)}</button>`).join('')}</div></div></div>`}
 // One DOM routing table: screens define content, shell owns navigation and overlays.
-function productsView(){
- return `${head('登録商品の管理',current()?.name||'',true)}<main><div class="panel empty">登録商品はありません。商品管理・紐付けは後の段階で実装します。</div></main>`;
-}
 function mainTabView(){
  switch(tab){
   case 'receipt': return stub('レシート','▤','撮影・写真選択、OCR、明細確認・編集を実装予定です。');
@@ -103,6 +158,9 @@ function pageView(){
   case 'otherSettings': return otherSettingsView();
   case 'favorites': return favoriteView();
   case 'products': return productsView();
+  case 'productPick':
+  case 'favoritePick': return pickerView();
+  case 'productCreate': return productCreateView();
   default: return mainTabView();
  }
 }
@@ -110,7 +168,7 @@ function render(){
  const currentModal=page==='add'||page==='edit';
  const wasModal=previousPage==='add'||previousPage==='edit';
  const scrollReset=!currentModal&&!wasModal&&(page!==previousPage||(page==='detail'&&selected!==previousSelected));
- const focus=['add','edit','otherSettings','favorites','products'].includes(page);
+ const focus=['add','edit','otherSettings','favorites','products','productPick','favoritePick','productCreate'].includes(page);
  const modal=currentModal?formView():'';
  const overlay=dialogView();
  app.innerHTML=`<div class="shell ${focus?'focus':''}">${pageView()}</div>${modal}${overlay}${toast?`<div class="toast" role="status">${esc(toast)}</div>`:''}`;
@@ -142,6 +200,9 @@ function goBack(){
   }
   menu=false;
   if(page==='detail')page='list';
+  else if(page==='productCreate')page='productPick';
+  else if(page==='productPick')page='products';
+  else if(page==='favoritePick')page='favorites';
   else if(['edit','otherSettings','favorites','products'].includes(page))page='detail';
   else page='list';
   render();
