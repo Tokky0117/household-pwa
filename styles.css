@@ -1943,3 +1943,20 @@ html,body {
 .catalogue-edit{display:flex;flex-direction:column;align-items:flex-start;gap:3px;width:100%;text-align:left;background:transparent;color:var(--ink);border:0;padding:5px 0;min-height:44px}
 .catalogue-edit strong{font-size:15px;font-weight:650}
 .catalogue-edit .hint{font-size:12px;line-height:1.4}
+
+/* Canonical management rows: identical typography, padding, and remove affordance. */
+.catalogue-row{margin-bottom:8px}
+.catalogue-row-content{display:flex;flex-direction:column;align-items:flex-start;justify-content:center;gap:3px;min-height:44px;width:100%;text-align:left;color:var(--ink)}
+.catalogue-row-content .hint{display:block;margin:0;font-size:12px;line-height:1.4}
+.catalogue-row-content strong{font-size:15px;font-weight:650}
+.catalogue-row-content.catalogue-edit{border:0;background:transparent;padding:0;border-radius:8px;cursor:pointer}
+.catalogue-candidate-end{display:flex;align-items:center;justify-content:center;min-width:20px}
+.catalogue-candidate-end .ui-chevron{width:18px;height:18px;color:var(--accent)}
+.catalogue-list-heading{font-size:13px;font-weight:650;color:var(--muted);padding:2px 0 4px}
+.catalogue-picker .catalogue-candidate{cursor:pointer}
+.catalogue-picker .catalogue-candidate:disabled{cursor:default}
+/* Same dialog DOM for all operations: centered title, balanced left-aligned explanation. */
+.dialog h2{text-align:center}
+.dialog .dialog-description{width:100%;max-width:32ch;margin:0 auto 18px;text-align:left;line-height:1.65}
+.dialog .dialog-line{display:block}
+.dialog .dialog-line+.dialog-line{margin-top:5px}
