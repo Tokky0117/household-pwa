@@ -439,3 +439,68 @@ html,body{background:#fff}
 .unit-fields .formfield{min-width:0;margin:0 0 14px}
 .unit-fields input,.unit-fields select{width:100%;min-width:0;min-height:46px;font-size:16px}
 .unit-page .formactions{margin-top:4px}
+
+/* Shared popup menu component — action menu and period dropdown reuse it. */
+.ui-menu{
+  position:absolute;top:calc(100% + 6px);right:0;
+  width:max-content;min-width:220px;max-width:min(85vw,340px);
+  max-height:min(65dvh,420px);overflow:auto;
+  padding:4px 10px;
+  background:var(--card);
+  border:1px solid var(--line);
+  border-radius:12px;
+  box-shadow:0 9px 25px #00000018;
+  color:var(--ink);z-index:40;
+}
+.head-right>.ui-menu{right:0}
+.period-picker>.ui-menu{right:0;top:calc(100% + 6px)}
+.ui-menu.ui-menu-compact{width:160px;min-width:160px}
+.ui-menu .ui-menu-item{
+  display:flex;align-items:center;gap:11px;
+  width:100%;min-height:44px;padding:9px 5px;
+  background:transparent;border:0;border-radius:0;
+  color:var(--ink);text-align:left;
+  font-size:14px;font-weight:450;white-space:nowrap;
+}
+.ui-menu .ui-menu-item+.ui-menu-item{border-top:1px solid var(--line)}
+.ui-menu .ui-menu-item:active{background:var(--accent-soft)}
+.ui-menu .ui-menu-item.selected{color:var(--accent);font-weight:600}
+.ui-menu .ui-menu-icon{display:flex;flex:none;align-items:center;justify-content:center;color:var(--muted)}
+.ui-menu .ui-menu-icon svg{width:19px;height:19px}
+.ui-menu .ui-menu-label{flex:1}
+.ui-menu .ui-menu-selected{color:var(--accent);font-size:15px;margin-left:10px}
+.detail-main .minimum-card .favorite-price-title{
+  display:flex;align-items:center;justify-content:space-between;
+  gap:8px;min-height:20px;margin-bottom:8px;
+}
+.detail-main .minimum-card .favorite-price-title strong{
+  flex:1;min-width:0;font-size:14px;font-weight:600;overflow-wrap:anywhere;
+}
+.detail-main .minimum-card .favorite-price-title .tag{flex:none;margin-right:0}
+.setting-label-line .info-anchor{position:relative;display:inline-flex;align-items:center;justify-content:center}
+.setting-label-line .info-trigger{
+  position:relative;display:grid;place-items:center;
+  width:32px;height:32px;min-width:32px;
+  padding:0;border:0;background:transparent;
+  color:var(--muted);font-size:initial;
+}
+.setting-label-line .info-trigger:after{content:none}
+.setting-label-line .info-trigger svg{
+  display:block;width:19px;height:19px;
+  margin:0;stroke:currentColor;
+}
+.info-popover.ui-menu{
+  display:block;position:absolute;z-index:40;
+  top:calc(100% + 8px);right:auto;left:-12px;
+  width:max-content;min-width:0;max-width:min(270px,78vw);
+  overflow:visible;
+  padding:10px 12px;
+  font-size:13px;line-height:1.55;white-space:normal;
+}
+.info-popover.ui-menu[hidden]{display:none}
+.info-popover.ui-menu:before{
+  content:"";position:absolute;top:-6px;left:20px;
+  width:10px;height:10px;background:var(--card);
+  border-left:1px solid var(--line);border-top:1px solid var(--line);
+  transform:rotate(45deg);
+}
