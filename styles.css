@@ -297,3 +297,29 @@ html,body{background:#fff}
 .dialog-actions [data-dialog="confirmHide"]:active{background:var(--accent-soft)}
 .detail-main .detail-stock-row .stock{min-height:34px;min-width:57px}
 .detail-main .detail-stock-row .stock.off{box-shadow:none}
+
+/* Oct 16 shared header, sheet and search interaction refinements. */
+.headrow{grid-template-columns:44px minmax(0,1fr) 44px;gap:4px}
+.headrow .head-left{grid-column:1;grid-row:1;display:flex;justify-content:center;align-items:center;width:44px}
+.headrow .head-title{grid-column:2;grid-row:1;min-width:0;text-align:center}
+.headrow .head-right{grid-column:3;grid-row:1;display:flex;justify-content:center;align-items:center;width:44px}
+.headrow .iconbtn{
+  width:40px;height:40px;min-width:40px;min-height:40px;
+  color:var(--ink);border:1px solid #e2e5e9;
+  display:grid;place-items:center;font-size:22px;font-weight:400;
+}
+.headrow .iconbtn .ui-chevron{color:var(--ink);stroke:currentColor}
+.headrow .head-title h1{text-overflow:ellipsis;overflow:hidden;white-space:nowrap}
+.searchbar input{font-size:16px}
+.formfield input,.formfield select,.formfield textarea{font-size:16px}
+.half-sheet{animation:sheet-enter .24s cubic-bezier(.22,1,.36,1) both}
+.sheet-back{animation:sheet-back-enter .2s ease-out both}
+.sheet-back.closing{animation:sheet-back-exit .18s ease-in both}
+.sheet-back.closing .half-sheet{animation:sheet-exit .18s ease-in both}
+@keyframes sheet-enter{from{transform:translateY(105%)}to{transform:translateY(0)}}
+@keyframes sheet-exit{from{transform:translateY(0)}to{transform:translateY(105%)}}
+@keyframes sheet-back-enter{from{background:rgba(0,0,0,0)}to{background:rgba(0,0,0,.34)}}
+@keyframes sheet-back-exit{from{background:rgba(0,0,0,.34)}to{background:rgba(0,0,0,0)}}
+@media(prefers-reduced-motion:reduce){
+  .half-sheet,.sheet-back,.sheet-back.closing,.sheet-back.closing .half-sheet{animation:none}
+}
