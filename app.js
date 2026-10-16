@@ -245,7 +245,7 @@ app.addEventListener('change',e=>{if(e.target.id==='onlyOut'){const wasOut=onlyO
 app.addEventListener('submit',e=>{e.preventDefault();const form=e.target;const d=new FormData(form);if(form.id==='itemForm'){const i=page==='edit'?current():null;saveItem(String(d.get('name')??i?.name??'').trim(),Number(d.get('category')??i?.category??0),String(d.get('memo')??i?.memo??'').trim())}if(form.id==='unitForm'){const n=Number(String(d.get('quantity')).replace(',','.'));if(!Number.isFinite(n)||n<=0){say('0より大きい数量を入力してください');return}Object.assign(current(),{compareQuantity:n,compareUnit:d.get('unit'),version:(current().version||0)+1});persist();render();say('比較単位を保存しました')}if(form.id==='productCreateForm'){
  const name=String(d.get('name')||'').trim(),quantity=Number(String(d.get('quantity')||'').replace(',','.')),unit=String(d.get('unit')||'');
  if(!name||!Number.isFinite(quantity)||quantity<=0||!UNIT_OPTIONS.includes(unit)){say('商品名・内容量・単位を確認してください');return}
- if(catalogue.products.some(p=>p.id!==editingProductId&&norm(p.name)===norm(name)&&p.quantity===quantity&&p.unit===unit)){say('同じ名前・内容量の商品が既にあります。検索して選んでください');return}
+ if(catalogue.products.some(p=>(page!=='productEdit'||p.id!==editingProductId)&&norm(p.name)===norm(name)&&p.quantity===quantity&&p.unit===unit)){say('同じ名前・内容量の商品が既にあります。検索して選んでください');return}
  if(page==='productEdit'){const p=catalogue.products.find(x=>x.id===editingProductId&&x.itemGroupId===selected);if(!p){say('商品が見つかりません');return}Object.assign(p,{name,quantity,unit})}else{catalogue.products.push({id:id(),name,quantity,unit,itemGroupId:selected,aliases:[]})}
  persistCatalogue();page='products';render();say('商品情報を保存しました（試作データ）');
 }});
