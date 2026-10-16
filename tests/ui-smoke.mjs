@@ -59,6 +59,7 @@ const productsPage=ui.productsView();
 assert.ok(productsPage.includes('おいしい牛乳'),'Linked products appear in management');
 assert.ok(productsPage.includes('900 mL'),'Content quantity/unit appear');
 assert.ok(productsPage.includes('data-premove="p-milk-1"'),'Product registration can be removed');
+assert.ok(productsPage.includes('data-pedit="p-milk-1"'),'Registered product can be edited by tapping name');
 
 ui.setPage('productPick');
 const productPicker=ui.pickerView();
