@@ -102,8 +102,14 @@ function formView(){
 }
 function otherSettingsView(){const i=current();return `${head('その他の設定',i.name,true)}<main class="settings-main unit-page"><form id="unitForm"><div class="setting-label-line"><h2 class="sectiontitle">比較単位の設定</h2>${UI.info({action:"unitInfo",expanded:unitInfoOpen,message:"最安値の比較計算に使用します",label:"比較単位の説明を表示"})}</div><div class="unit-fields">${UI.formField({id:"quantity",label:"数量",value:i.compareQuantity,required:true,extra:'inputmode="decimal" pattern="[0-9]+([.,][0-9]+)?"'})}${UI.formField({id:"unit",label:"単位",control:"select",value:i.compareUnit,options:UNIT_OPTIONS.map(x=>({label:x,value:x}))})}</div><div class="formactions"><button class="primary" type="submit">保存</button></div></form></main>`}
 
+// Shared row markup for registered products and favorites.
+// Product text opens editing; favorite text stays static for long-press ordering.
 function managementRow({name,sub,action,aria,details='',favId=null,editId=null}) {
- return `<div class="panel catalogue-row ${favId?'favorite-row':''}" ${favId?`data-fav-id="${esc(favId)}"`:''}><div class="catalogue-row-body">${editId?`<button class="catalogue-edit" type="button" data-pedit="${esc(editId)}" aria-label="${esc(name)}の商品情報を編集"><strong>${esc(name)}</strong><span class="hint">${esc(sub)}</span></button>`:`<strong>${esc(name)}</strong><div class="hint">${esc(sub)}</div>`}${details?`<div class="hint">${esc(details)}</div>`:''}</div><button class="fav-delete catalogue-remove" type="button" ${action} aria-label="${esc(aria)}">×</button></div>`;
+ const content=`<strong>${esc(name)}</strong><span class="hint">${esc(sub)}</span>${details?`<span class="hint">${esc(details)}</span>`:''}`;
+ const main=editId
+   ?`<button class="catalogue-row-content catalogue-edit" type="button" data-pedit="${esc(editId)}" aria-label="${esc(name)}の商品情報を編集">${content}</button>`
+   :`<div class="catalogue-row-content">${content}</div>`;
+ return `<div class="panel catalogue-row ${favId?'favorite-row':''}" ${favId?`data-fav-id="${esc(favId)}"`:''}><div class="catalogue-row-body">${main}</div><button class="fav-delete catalogue-remove" type="button" ${action} aria-label="${esc(aria)}">×</button></div>`;
 }
 function favoriteView(){
  const i=current();if(!i)return listView();
@@ -113,23 +119,28 @@ function favoriteView(){
 function productsView(){
  const i=current();if(!i)return listView();
  const rows=catalogue.products.filter(p=>p.itemGroupId===selected).map(p=>managementRow({name:p.name,sub:p.quantity&&p.unit?`${p.quantity} ${p.unit}`:'内容量未設定',action:`data-premove="${esc(p.id)}"`,aria:`${productTitle(p)}の登録を解除`,editId:p.id}));
- return `${head('登録商品の管理',i.name,true)}<main class="manage-main"><div class="catalogue-rows">${rows.join('')||'<div class="panel empty">登録商品はありません</div>'}</div><button class="primary manage-add" data-act="productPick">＋ 商品を追加</button></main>`;
+ return `${head('登録商品の管理',i.name,true)}<main class="manage-main"><div class="catalogue-rows">${rows.join('')||'<div class="panel empty">登録商品はありません</div>'}</div><button class="primary manage-add" data-act="productPick">＋ 商品を登録</button></main>`;
 }
+
 function pickerResults(){
  const i=current(),isProduct=page==='productPick',kind=isProduct?'product':pickKind;
- const pool=kind==='product'?catalogue.products:catalogue.chains;
- const rows=pool.filter(p=>kind==='product'?productMatches(p,pickQuery):norm(p.name).includes(norm(pickQuery)));
+ const pool=(kind==='product'?catalogue.products:catalogue.chains)
+   .filter(p=>kind==='product'?productMatches(p,pickQuery):norm(p.name).includes(norm(pickQuery)))
+   .filter(p=>isProduct||kind!=='product'||p.itemGroupId===selected);
+ // Suggest a short list; the registered list shows all available matching records.
+ const rows=pickerAll?pool:pool.slice(0,3);
  return rows.map(p=>{
   const existing=isProduct?p.itemGroupId===selected:i.favorites.some(f=>f.type===kind&&(f.targetId===p.id||!f.targetId&&norm(f.name)===norm(kind==='product'?productTitle(p):p.name)));
-  const sub=kind==='product'?`${p.quantity||'?'}${p.unit||''} ・ ${p.itemGroupId?'登録先：'+linkedItemName(p):'未登録'}`:'全支店が対象';
-  const restricted=(!isProduct&&kind==='product'&&p.itemGroupId!==selected);
-  return `<button type="button" class="catalogue-candidate" data-pick="${esc(p.id)}" ${existing||restricted?'disabled':''}><span class="catalogue-row-body"><strong>${esc(p.name)}</strong><span class="hint">${esc(sub)}</span></span><span class="catalogue-candidate-end">${existing?'登録済み':restricted?'登録先が異なります':'＋'}</span></button>`;
+  const sub=kind==='product'
+    ?`${p.quantity||'?'}${p.unit||''} ・ ${p.itemGroupId?'登録先：'+linkedItemName(p):'未登録'}`
+    :'全支店が対象';
+  return `<button type="button" class="catalogue-candidate" data-pick="${esc(p.id)}" ${existing?'disabled':''} aria-label="${esc(p.name)}を選択"><span class="catalogue-row-body"><strong>${esc(p.name)}</strong><span class="hint">${esc(sub)}</span></span><span class="catalogue-candidate-end" aria-hidden="true">${existing?'登録済み':chevron('right')}</span></button>`;
  }).join('')||'<div class="panel empty">該当する候補はありません</div>';
 }
 function pickerView(){
  const isProduct=page==='productPick',i=current(),kind=isProduct?'product':pickKind;
  const typeChooser=isProduct?'':UI.dropdown({id:'pick-kind',label:'種類',value:pickKind,options:[{label:'商品',value:'product'},{label:'店舗チェーン',value:'chain'}]});
- return `${head(isProduct?'商品を追加':'お気に入りを追加',i?.name||'',true)}<main class="manage-main">${typeChooser}<label class="formfield"><span class="catalogue-search-title">既存の${kind==='product'?'商品':'店舗チェーン'}を検索</span><input type="search" id="catalogue-search" value="${esc(pickQuery)}" placeholder="名称で検索" autocomplete="off"></label><div id="catalogue-results">${pickerResults()}</div><button class="secondary manage-add" data-act="catalogueList">登録一覧から選ぶ</button>${isProduct?'<button class="secondary manage-add" data-act="productCreate">＋ 新しい商品を作成</button>':''}<p class="hint">試作の候補と登録一覧は仮データです。実際のサーバー検索は未接続です。</p></main>`;
+ return `${head(isProduct?'商品を登録':'お気に入りを追加',i?.name||'',true)}<main class="manage-main">${typeChooser}<label class="formfield"><span class="catalogue-search-title">既存の${kind==='product'?'商品':'店舗チェーン'}を検索</span><input type="search" id="catalogue-search" value="${esc(pickQuery)}" placeholder="名称で検索" autocomplete="off"></label><div class="catalogue-list-heading">${pickerAll?'登録一覧':'候補（最大3件）'}</div><div id="catalogue-results">${pickerResults()}</div><button class="secondary manage-add" data-act="catalogueList">${pickerAll?'候補に戻る':'登録一覧から選ぶ'}</button>${isProduct?'<button class="secondary manage-add" data-act="productCreate">＋ 新しい商品を登録</button>':''}<p class="hint">候補と登録一覧は仮データです。実際のサーバー検索は未接続です。</p></main>`;
 }
 function productCreateView(){
  const i=current();if(!i)return listView();const editing=page==='productEdit';const p=editing?catalogue.products.find(x=>x.id===editingProductId&&x.itemGroupId===selected):null;if(editing&&!p)return productsView();
@@ -140,7 +151,12 @@ function productCreateView(){
 }
 function stub(title,icon,desc){return `${head(title,'くらしストック')}<main><div class="panel placeholder"><div class="bubble">${icon}</div><h2>${title}画面</h2><p>${desc}</p></div><div class="alert">この画面は共通UIの確認用です。データ処理や同期はまだ行いません。</div></main>${nav()}`}
 function settingsView(){return `${head('設定','くらしストック')}<main><div class="panel"><h2>データと同期</h2><div class="info-row row"><div><strong>同期状態</strong><div class="hint">Google Sheets 接続前</div></div><span class="tag">未設定</span></div><button class="secondary" data-act="sync" style="width:100%">手動同期</button></div><div class="panel"><h2>試作版の操作</h2><p class="hint">変更内容はこの端末の localStorage のみに保存され、夫婦間では共有されません。</p><button class="secondary danger" data-act="reset">仮データを初期状態に戻す</button></div><div class="panel"><h2>今後の実装</h2><p class="hint">商品・店舗管理、Google Apps Script 接続、認証、オフライン差分同期を追加予定です。</p></div></main>${nav()}`}
-function dialogView(){if(!dialog)return '';return `<div class="dialog-back"><div role="dialog" aria-modal="true" aria-labelledby="dialogTitle" class="dialog"><h2 id="dialogTitle">${esc(dialog.title)}</h2><p>${esc(dialog.message)}</p><div class="dialog-actions">${dialog.buttons.map(b=>`<button class="${b.primary?'primary':'secondary'}" data-dialog="${esc(b.id)}">${esc(b.label)}</button>`).join('')}</div></div></div>`}
+// All confirmation dialogs share one DOM and CSS. A Japanese full stop ends a paragraph line.
+function dialogView(){
+ if(!dialog)return '';
+ const lines=String(dialog.message||'').replace(/。(?!$)/g,'。\\n').split(/\\n+/).filter(Boolean);
+ return `<div class="dialog-back"><div role="dialog" aria-modal="true" aria-labelledby="dialogTitle" class="dialog"><h2 id="dialogTitle">${esc(dialog.title)}</h2><p class="dialog-description">${lines.map(line=>`<span class="dialog-line">${esc(line)}</span>`).join('')}</p><div class="dialog-actions">${dialog.buttons.map(b=>`<button class="${b.primary?'primary':'secondary'}" data-dialog="${esc(b.id)}">${esc(b.label)}</button>`).join('')}</div></div></div>`;
+}
 // One DOM routing table: screens define content, shell owns navigation and overlays.
 function mainTabView(){
  switch(tab){
@@ -260,7 +276,7 @@ if(el.dataset.uiChoice!==undefined){
  const choice=el.dataset.uiChoice;
  if(wrapper.dataset.uiSelect==='price-period'){period=choice;periodMenu=false;render();return}
  const hidden=wrapper.querySelector('input[type="hidden"]');if(hidden){hidden.value=choice;hidden.dispatchEvent(new Event('change',{bubbles:true}))}
- if(wrapper.dataset.uiSelect==='pick-kind'){pickKind=choice;pickQuery='';render();return}
+ if(wrapper.dataset.uiSelect==='pick-kind'){pickKind=choice;pickQuery='';pickerAll=false;render();return}
  const label=wrapper.querySelector('.ui-select-label');if(label)label.textContent=el.querySelector('.ui-menu-label')?.textContent||'';
  wrapper.querySelectorAll('[data-ui-choice]').forEach(b=>{const selected=b===el;b.classList.toggle('selected',selected);b.setAttribute('aria-pressed',String(selected));const tick=b.querySelector('.ui-menu-selected');if(tick)tick.textContent=selected?'✓':''});
  closeAllDropdowns();wrapper.querySelector('.ui-select-trigger')?.focus();return;
@@ -281,7 +297,7 @@ if(el.dataset.pick){
   if(page==='productPick'){
    if(p.itemGroupId===selected){say('この商品は登録済みです');return}
    if(p.itemGroupId){dialog={title:'商品の登録先変更',message:'過去の最安値の集計先も変わります。',buttons:[{id:'cancel',label:'キャンセル'},{id:'confirmProductMove',label:'変更する',primary:true}],pending:{productId:p.id,fromId:p.itemGroupId}};renderDialogOnly();return}
-   p.itemGroupId=selected;persistCatalogue();page='products';render();say('商品を追加しました');return;
+   p.itemGroupId=selected;persistCatalogue();page='products';render();say('商品を登録しました');return;
   }
   if(p.itemGroupId!==selected){say('この日用品に登録されている商品を選んでください');return}
  }else if(!catalogue.chains.some(c=>c.id===el.dataset.pick))return;
@@ -295,9 +311,9 @@ if(action==='confirmFavoriteRemove'&&p){const i=current();i.favorites=i.favorite
 if(action==='confirmProductUnlink'&&p){const product=catalogue.products.find(x=>x.id===p.productId);if(product&&product.itemGroupId===selected){product.itemGroupId=null;current().favorites=current().favorites.filter(f=>!(f.type==='product'&&(f.targetId===product.id||!f.targetId&&norm(f.name)===norm(productTitle(product)))));persistCatalogue();persist()}render();say('商品の登録を解除しました');return}
 if(action==='confirmProductMove'&&p){const product=catalogue.products.find(x=>x.id===p.productId);if(product&&product.itemGroupId===p.fromId){const old=items.find(x=>x.id===p.fromId);if(old){old.favorites=old.favorites.filter(f=>!(f.type==='product'&&(f.targetId===product.id||!f.targetId&&norm(f.name)===norm(productTitle(product)))));persist()}product.itemGroupId=selected;persistCatalogue()}page='products';render();say('登録先を変更しました');return}
 if(action==='discardChanges'){goBack();return}if(action==='confirmHide'){current().hidden=true;current().version++;persist();page='list'}if(action==='resetYes'){items=makeSeed();catalogue=sampleCatalogue();persist();persistCatalogue();page='list';tab='items'}if(action==='restore'&&p){const i=items.find(x=>x.id===p.hiddenId);i.hidden=false;i.version++;selected=i.id;page='list';persist()}if(action==='new'&&p){const old=items.find(x=>x.id===p.hiddenId);old.favorites=[];catalogue.products.filter(x=>x.itemGroupId===old.id).forEach(x=>x.itemGroupId=null);persistCatalogue();selected=null;page='add';commitItem(p.name,p.category,p.memo)}render();return}const action=el.dataset.act;if(!action)return;if(action==='back'){unitInfoOpen=false;back();return}if(action==='unitInfo'){unitInfoOpen=!unitInfoOpen;const popup=document.querySelector('.info-popover');const trigger=document.querySelector('.info-trigger');if(popup)popup.hidden=!unitInfoOpen;trigger?.setAttribute('aria-expanded',String(unitInfoOpen));return}if(action==='clearSearch'){query='';const input=document.getElementById('search');if(input){input.value='';input.blur()}document.querySelector('.clear-search')?.setAttribute('hidden','');updateSearchResults();return}if(action==='add'){selected=null;menu=false;page='add'}if(action==='menu'){menu=!menu}if(['edit','otherSettings','favorites','products'].includes(action)){menu=false;unitInfoOpen=false;page=action}
-if(action==='productPick'||action==='favoritePick'){pickQuery='';pickKind='product';page=action}
+if(action==='productPick'||action==='favoritePick'){pickQuery='';pickKind='product';pickerAll=false;page=action}
 if(action==='productCreate')page='productCreate';
-if(action==='catalogueList'){pickQuery='';const input=document.getElementById('catalogue-search');if(input){input.value='';input.focus()}const target=document.getElementById('catalogue-results');if(target)target.innerHTML=pickerResults();say('登録一覧を表示しています（仮データ）');return}if(action==='hide'){menu=false;dialog={title:'日用品を削除',message:'日用品リストから削除します',buttons:[{id:'cancel',label:'キャンセル'},{id:'confirmHide',label:'削除',primary:true}]}}if(action==='copyList'){const txt=CATS.map((cat,idx)=>{const rows=visible().filter(i=>i.category===idx&&!i.inStock).sort((a,b)=>a.order-b.order);return rows.length?cat+'\n'+rows.map(i=>'- '+i.name).join('\n'):''}).filter(Boolean).join('\n\n');menu=false;render();if(!txt){say('在庫なしの日用品はありません');return}navigator.clipboard.writeText(txt).then(()=>say('在庫なしをコピーしました')).catch(()=>say('コピーできませんでした'));return}if(action==='sync'){say('同期は未接続です（試作版）');return}if(action==='reset'){dialog={title:'仮データを初期化しますか？',message:'この端末で行った変更がすべて消え、最初のサンプル状態に戻ります。',buttons:[{id:'cancel',label:'キャンセル'},{id:'resetYes',label:'初期化する',primary:true,danger:true}]}}render()});
+if(action==='catalogueList'){pickerAll=!pickerAll;const heading=document.querySelector('.catalogue-list-heading');if(heading)heading.textContent=pickerAll?'登録一覧':'候補（最大3件）';const target=document.getElementById('catalogue-results');if(target)target.innerHTML=pickerResults();el.textContent=pickerAll?'候補に戻る':'登録一覧から選ぶ';return}if(action==='hide'){menu=false;dialog={title:'日用品を削除',message:'日用品リストから削除します',buttons:[{id:'cancel',label:'キャンセル'},{id:'confirmHide',label:'削除',primary:true}]}}if(action==='copyList'){const txt=CATS.map((cat,idx)=>{const rows=visible().filter(i=>i.category===idx&&!i.inStock).sort((a,b)=>a.order-b.order);return rows.length?cat+'\n'+rows.map(i=>'- '+i.name).join('\n'):''}).filter(Boolean).join('\n\n');menu=false;render();if(!txt){say('在庫なしの日用品はありません');return}navigator.clipboard.writeText(txt).then(()=>say('在庫なしをコピーしました')).catch(()=>say('コピーできませんでした'));return}if(action==='sync'){say('同期は未接続です（試作版）');return}if(action==='reset'){dialog={title:'仮データを初期化しますか？',message:'この端末で行った変更がすべて消え、最初のサンプル状態に戻ります。',buttons:[{id:'cancel',label:'キャンセル'},{id:'resetYes',label:'初期化する',primary:true,danger:true}]}}render()});
 // Shared dismissal behavior: menus close when focus moves to the rest of the page.
 // Do not rerender the whole screen: that would discard form contents and search focus.
 function closeAllDropdowns(){
