@@ -177,7 +177,7 @@ function render(){
 }
 function say(s){toast=s;document.querySelector('.toast')?.remove();const t=document.createElement('div');t.className='toast';t.setAttribute('role','status');t.textContent=s;document.body.append(t);setTimeout(()=>{if(toast===s){toast='';t.remove()}},2800)}
 function hasUnsavedFormChanges(){
-  const form=document.getElementById('itemForm')||document.getElementById('unitForm');
+  const form=document.getElementById('itemForm')||document.getElementById('unitForm')||document.getElementById('productCreateForm');
   if(!form)return false;
   const data=new FormData(form);
   if(form.id==='itemForm'){
@@ -185,6 +185,7 @@ function hasUnsavedFormChanges(){
     if(page==='edit')return String(data.get('name')||'')!==(i?.name||'')||Number(data.get('category'))!==(i?.category??0)||String(data.get('memo')||'')!==(i?.memo||'');
     return String(data.get('name')||'')!==''||Number(data.get('category'))!==0||String(data.get('memo')||'')!=='';
   }
+  if(form.id==='productCreateForm')return Boolean(String(data.get('name')||'').trim()||String(data.get('quantity')||'').trim()||String(data.get('unit')||'mL')!=='mL');
   const i=current();
   return String(data.get('quantity')||'')!==String(i.compareQuantity)||
     String(data.get('unit')||'')!==String(i.compareUnit);
