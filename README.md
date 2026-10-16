@@ -1,5 +1,7 @@
 # くらしストック — 段階A UI試作
 
+> **共通UIの最新設計方針は [UI_GUIDELINES.md](./UI_GUIDELINES.md) を正本とします。** 以下には過去の検討・変更履歴も含まれています。新規画面での部品・配置・操作はガイドラインを優先してください。
+
 `household_pwa_requirements_basic_design(1).md`（2026-10-14 版）に沿った、依存パッケージ不要の静的PWAです。
 
 ## 起動
