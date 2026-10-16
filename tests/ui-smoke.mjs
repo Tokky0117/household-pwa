@@ -15,7 +15,7 @@ const ui=vm.runInNewContext(source+`
   setSelected(v){selected=v},setFavorites(v){items[0].favorites=v},
   productsView,pickerView,productCreateView,pickerResults,productMatches,
   getCatalogue(){return catalogue},setPickKind(v){pickKind=v},
-  setPickQuery(v){pickQuery=v}})
+  setPickQuery(v){pickQuery=v},setPickerAll(v){pickerAll=v},dialogView,setDialog(v){dialog=v}})
 
 `,context,{filename:'app.js'});
 
@@ -65,7 +65,9 @@ ui.setPage('productPick');
 const productPicker=ui.pickerView();
 assert.ok(productPicker.includes('低脂肪乳'),'Unlinked product appears in choices');
 assert.ok(productPicker.includes('未登録'),'Unlinked product status visible');
-assert.ok(productPicker.includes('登録先：麦茶'),'Products linked elsewhere are identifiable');
+ui.setPickQuery('麦茶');
+assert.ok(ui.pickerView().includes('登録先：麦茶'),'Products linked elsewhere are identifiable');
+ui.setPickQuery('');
 assert.ok(ui.productMatches(ui.getCatalogue().products.find(p=>p.id==='p-milk-3'),'低脂肪牛乳'),'Unlinked product remains OCR alias candidate');
 assert.ok(!Object.keys(ui.getCatalogue().products[0]).some(k=>/disabled|inactive|is_active/i.test(k)),'No product disabling state');
 
@@ -90,4 +92,23 @@ for(const selector of ['.ui-select-trigger','.ui-menu','.minimum-card','.detail-
   assert.ok(css.includes(selector),`CSS contains ${selector}`);
 }
 assert.ok(!css.includes('.period-picker {'),'Retired period selector removed');
+
+assert.ok(productsPage.includes('＋ 商品を登録'),'Product registration label is consistent');
+assert.ok(productsPage.includes('catalogue-row-content catalogue-edit'),'Product row uses shared management content');
+assert.ok(favorite.includes('catalogue-row-content'),'Favorite row uses shared management content');
+ui.setPage('productPick');
+ui.setPickQuery('');
+ui.setPickerAll(false);
+const suggested=ui.pickerView();
+assert.ok(suggested.includes('商品を登録'),'Existing product selection is labeled registration');
+assert.ok(suggested.includes('登録一覧から選ぶ'),'Full registered list has distinct entry');
+assert.ok(suggested.includes('新しい商品を作成'),'New product creation is separate');
+assert.equal((suggested.match(/class="catalogue-candidate"/g)||[]).length,3,'Suggested candidates limited to three');
+assert.ok(suggested.includes('data-pick="p-milk-3"'),'Whole candidate is a button');
+assert.ok(!suggested.includes('class="catalogue-candidate-end" aria-hidden="true">＋'),'No misleading standalone plus affordance');
+ui.setPickerAll(true);
+assert.equal((ui.pickerView().match(/class="catalogue-candidate"/g)||[]).length,5,'Registered list shows full catalog');
+ui.setDialog({title:'商品の登録解除',message:'商品を解除します。過去の最安値にも影響します。',buttons:[{id:'cancel',label:'キャンセル'},{id:'confirm',label:'解除する',primary:true}]});
+assert.equal((ui.dialogView().match(/class="dialog-line"/g)||[]).length,2,'Dialog renders each sentence on a new line');
+assert.ok(css.includes('.dialog .dialog-description'),'Dialog body shares left-aligned CSS');
 console.log('Shared UI smoke checks passed.');
