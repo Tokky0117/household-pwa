@@ -204,3 +204,5 @@ GitHub Actions の `.github/workflows/pages-previews.yml` がブランチへの 
 - 仮の商品・チェーン・支店は端末内 `localStorage` に保存。試作中の変更が実在商品や購入履歴に反映されることはない。候補・登録一覧の表示も仮データのみであり、サーバー取得は未実装。
 - 同名で旧非表示日用品を新規登録した場合、旧日用品の商品の登録先とお気に入りを解除する仮データ処理を追加（商品自体は残す）。
 - 基本設計書：[household_pwa_requirements_basic_design(1).md](./household_pwa_requirements_basic_design(1).md)、共通UI：[UI_GUIDELINES.md](./UI_GUIDELINES.md)。
+
+- 登録商品一覧では商品名をタップして商品名・内容量・単位を編集できる（仮データのみ）。×は登録解除で別操作。未保存の編集から戻る場合は確認を表示。
