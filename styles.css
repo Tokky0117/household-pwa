@@ -533,3 +533,32 @@ html,body{background:#fff}
 .minimum-card{
   padding:10px 12px;margin:0 0 6px;border-radius:var(--ui-radius-card);
 }
+
+/* Canonical dropdown: same trigger and menu on unit, category, favorite type, and period. */
+.ui-select{position:relative;min-width:0;width:100%;z-index:2}
+.ui-select:has(.ui-menu:not([hidden])){z-index:60}
+.ui-select-trigger{
+ display:flex;align-items:center;justify-content:space-between;
+ width:100%;min-height:46px;padding:10px 12px;gap:8px;
+ border:1px solid #b9c5d1;border-radius:var(--ui-radius-control);
+ background:var(--card);color:var(--ink);
+ font-size:var(--ui-input-font-size);line-height:1.3;text-align:left;
+}
+.ui-select-label{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ui-select-trigger .ui-chevron{width:16px;height:16px;flex:none;color:var(--muted)}
+.ui-select>.ui-menu{
+ position:absolute;right:0;left:0;top:calc(100% + var(--ui-popup-gap));
+ min-width:100%;width:max-content;max-width:min(85vw,340px);z-index:65;
+}
+.ui-select>.ui-menu[hidden]{display:none!important}
+.ui-select>.ui-menu.ui-menu-compact{width:160px;min-width:160px}
+.ui-select-compact{width:136px}
+.ui-select-compact .ui-select-trigger{
+ min-height:36px;height:36px;padding:0 10px;
+ background:#f6f7f8;border-color:#e4e6e9;border-radius:10px;
+ font-size:13px;
+}
+.ui-select-compact .ui-select-trigger .ui-chevron{width:15px;height:15px}
+.ui-menu .ui-menu-selected{min-width:16px;text-align:center}
+.ui-select .ui-menu{box-sizing:border-box}
+.formfield .ui-select{margin:0}
