@@ -83,7 +83,40 @@ function favoriteView(){
 function stub(title,icon,desc){return `${head(title,'くらしストック')}<main><div class="panel placeholder"><div class="bubble">${icon}</div><h2>${title}画面</h2><p>${desc}</p></div><div class="alert">この画面は共通UIの確認用です。データ処理や同期はまだ行いません。</div></main>${nav()}`}
 function settingsView(){return `${head('設定','くらしストック')}<main><div class="panel"><h2>データと同期</h2><div class="info-row row"><div><strong>同期状態</strong><div class="hint">Google Sheets 接続前</div></div><span class="tag">未設定</span></div><button class="secondary" data-act="sync" style="width:100%">手動同期</button></div><div class="panel"><h2>試作版の操作</h2><p class="hint">変更内容はこの端末の localStorage のみに保存され、夫婦間では共有されません。</p><button class="secondary danger" data-act="reset">仮データを初期状態に戻す</button></div><div class="panel"><h2>今後の実装</h2><p class="hint">商品・店舗管理、Google Apps Script 接続、認証、オフライン差分同期を追加予定です。</p></div></main>${nav()}`}
 function dialogView(){if(!dialog)return '';return `<div class="dialog-back"><div role="dialog" aria-modal="true" aria-labelledby="dialogTitle" class="dialog"><h2 id="dialogTitle">${esc(dialog.title)}</h2><p>${esc(dialog.message)}</p><div class="dialog-actions">${dialog.buttons.map(b=>`<button class="${b.primary?'primary':'secondary'}" data-dialog="${esc(b.id)}">${esc(b.label)}</button>`).join('')}</div></div></div>`}
-function render(){const modalNow=['add','edit'].includes(page),modalBefore=['add','edit'].includes(previousPage);const shouldResetScroll=!modalNow&&!modalBefore&&(page!==previousPage||(page==='detail'&&selected!==previousSelected));const content=page==='detail'?detailView():page==='add'?listView():page==='edit'?detailView():page==='otherSettings'?otherSettingsView():page==='favorites'?favoriteView():page==='products'?`${head('登録商品の管理',current()?.name||'',true)}<main><div class="panel empty">登録商品はありません。商品管理・紐付けは後の段階で実装します。</div></main>`:tab==='items'?listView():tab==='receipt'?stub('レシート','▤','撮影・写真選択、OCR、明細確認・編集を実装予定です。'):tab==='budget'?stub('家計簿','¥','月次の税込合計とカテゴリ内訳を実装予定です。'):settingsView();app.innerHTML=`<div class="shell ${['add','edit','otherSettings','favorites','products'].includes(page)?'focus':''}">${content}</div>${page==='add'||page==='edit'?formView():''}${dialogView()}${toast?`<div class="toast" role="status">${esc(toast)}</div>`:''}`; if(shouldResetScroll)window.scrollTo(0,page==='list'&&previousPage==='detail'?listScrollPosition:0);previousPage=page;previousSelected=selected;}
+// One DOM routing table: screens define content, shell owns navigation and overlays.
+function productsView(){
+ return `${head('登録商品の管理',current()?.name||'',true)}<main><div class="panel empty">登録商品はありません。商品管理・紐付けは後の段階で実装します。</div></main>`;
+}
+function mainTabView(){
+ switch(tab){
+  case 'receipt': return stub('レシート','▤','撮影・写真選択、OCR、明細確認・編集を実装予定です。');
+  case 'budget': return stub('家計簿','¥','月次の税込合計とカテゴリ内訳を実装予定です。');
+  case 'settings': return settingsView();
+  default: return listView();
+ }
+}
+function pageView(){
+ switch(page){
+  case 'detail':
+  case 'edit': return detailView();
+  case 'add': return listView();
+  case 'otherSettings': return otherSettingsView();
+  case 'favorites': return favoriteView();
+  case 'products': return productsView();
+  default: return mainTabView();
+ }
+}
+function render(){
+ const currentModal=page==='add'||page==='edit';
+ const wasModal=previousPage==='add'||previousPage==='edit';
+ const scrollReset=!currentModal&&!wasModal&&(page!==previousPage||(page==='detail'&&selected!==previousSelected));
+ const focus=['add','edit','otherSettings','favorites','products'].includes(page);
+ const modal=currentModal?formView():'';
+ const overlay=dialogView();
+ app.innerHTML=`<div class="shell ${focus?'focus':''}">${pageView()}</div>${modal}${overlay}${toast?`<div class="toast" role="status">${esc(toast)}</div>`:''}`;
+ if(scrollReset)window.scrollTo(0,page==='list'&&previousPage==='detail'?listScrollPosition:0);
+ previousPage=page;previousSelected=selected;
+}
 function say(s){toast=s;document.querySelector('.toast')?.remove();const t=document.createElement('div');t.className='toast';t.setAttribute('role','status');t.textContent=s;document.body.append(t);setTimeout(()=>{if(toast===s){toast='';t.remove()}},2800)}
 function hasUnsavedFormChanges(){
   const form=document.getElementById('itemForm')||document.getElementById('unitForm');
