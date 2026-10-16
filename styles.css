@@ -1938,3 +1938,8 @@ html,body {
 .catalogue-candidate-end{flex:none;font-size:12px;color:var(--muted);white-space:nowrap}
 .catalogue-candidate:not(:disabled) .catalogue-candidate-end{font-size:20px;color:var(--accent)}
 .catalogue-rows .favorite-row{user-select:none;-webkit-user-select:none}
+
+/* Tapping a registered product opens the shared product information edit form. */
+.catalogue-edit{display:flex;flex-direction:column;align-items:flex-start;gap:3px;width:100%;text-align:left;background:transparent;color:var(--ink);border:0;padding:5px 0;min-height:44px}
+.catalogue-edit strong{font-size:15px;font-weight:650}
+.catalogue-edit .hint{font-size:12px;line-height:1.4}
