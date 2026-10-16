@@ -323,3 +323,16 @@ html,body{background:#fff}
 @media(prefers-reduced-motion:reduce){
   .half-sheet,.sheet-back,.sheet-back.closing,.sheet-back.closing .half-sheet{animation:none}
 }
+
+/* Oct 16: minimum-price scope and nested miscellaneous settings */
+.scope-switch{display:flex;gap:7px;margin:7px 0 8px}
+.scope-switch .pill{flex:1;min-height:38px;padding:7px 11px;text-align:center;font-size:13px}
+.cathead[disabled]{cursor:default;opacity:1}
+.cathead[disabled] strong,.cathead[disabled] .count{opacity:1}
+.settings-main{padding:15px 16px}
+.setting-entry{display:flex;align-items:center;gap:10px;width:100%;min-height:54px;padding:9px 12px;text-align:left;background:var(--card);color:var(--ink);border:1px solid var(--line);border-radius:12px}
+.setting-entry>span:nth-child(2){flex:1;font-weight:550;font-size:15px}
+.setting-entry-icon{display:grid;place-items:center;color:var(--muted)}
+.setting-entry>.ui-chevron{color:var(--muted)}
+.unit-info{display:flex;gap:8px;align-items:center;margin:7px 0 13px;font-size:13px;color:var(--muted)}
+.info-mark{display:inline-grid;place-items:center;flex:none;width:18px;height:18px;border:1.5px solid var(--muted);border-radius:50%;font-weight:750;font-family:Arial,sans-serif;font-style:normal;font-size:12px}
