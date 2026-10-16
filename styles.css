@@ -336,3 +336,42 @@ html,body{background:#fff}
 .setting-entry>.ui-chevron{color:var(--muted)}
 .unit-info{display:flex;gap:8px;align-items:center;margin:7px 0 13px;font-size:13px;color:var(--muted)}
 .info-mark{display:inline-grid;place-items:center;flex:none;width:18px;height:18px;border:1.5px solid var(--muted);border-radius:50%;font-weight:750;font-family:Arial,sans-serif;font-style:normal;font-size:12px}
+
+/* Detail price layout: compact B-style switch with A-style favorite cards. */
+.cat-arrow-slot{display:grid;place-items:center;flex:none;width:20px;height:20px}
+.cat-arrow-slot .ui-chevron{display:block}
+.detail-main .price-heading{margin:11px 0 7px}
+.detail-main .price-heading .sectiontitle{margin:0}
+.price-period{
+  min-height:36px;
+  max-width:145px;
+  padding:6px 26px 6px 11px;
+  border:1px solid var(--line);
+  border-radius:9px;
+  background:var(--card);
+  color:var(--ink);
+  font-size:13px;
+  cursor:pointer;
+}
+.detail-main .scope-switch{margin:6px 0 8px}
+.detail-main .scope-switch .pill{font-weight:600}
+.detail-main .price-unit-label{margin:4px 0 8px;font-size:12px}
+.detail-main .favorite-price{padding:10px 12px;margin-bottom:6px}
+.favorite-price-title{display:flex;align-items:flex-start;justify-content:space-between;gap:8px;margin-bottom:8px}
+.favorite-price-title strong{flex:1;font-size:14px;font-weight:600;overflow-wrap:anywhere}
+.favorite-price-title .tag{margin-right:0;white-space:nowrap}
+.detail-main .favorite-price .pricebox,.detail-main .all-price .pricebox{padding:8px 10px}
+.detail-main .favorite-price .pricebox strong,.detail-main .all-price .pricebox strong{font-size:20px}
+.unit-page{padding-top:18px}
+.unit-page .formactions .primary{width:100%}
+.setting-label-line{display:flex;align-items:center;gap:7px;margin-bottom:7px}
+.setting-label-line label{margin-bottom:0}
+.info-trigger{
+  display:grid;place-items:center;
+  height:30px;width:30px;min-width:30px;padding:0;
+  border:0;background:transparent;color:var(--muted);
+  font-size:12px;font-weight:750;font-family:Arial,sans-serif;
+}
+.info-trigger::first-letter{border:0}
+.info-trigger{position:relative}
+.info-trigger:after{content:"";position:absolute;left:6px;top:6px;width:16px;height:16px;border:1.5px solid currentColor;border-radius:50%;pointer-events:none}
