@@ -19,7 +19,7 @@ const ctx={document:doc,localStorage:{getItem:k=>storage.get(k)??null,setItem:(k
 const ui=vm.runInNewContext(source+`
 ({listView,priceCompareView,pickerView,pickerResults,receiptView,budgetView,render,initializeCompare,
  setProductGroup,reorderProducts,registeredProducts,convertQuantity,setOpenSwipe,
- chainMinima,priceCandidates,budgetTotals,savePreviewRecord,
+ chainMinima,priceCandidates,budgetTotals,savePreviewRecord,periodStart,
  demoRecords,demoRecordItems,allPreviewRecords,allPreviewItems,
  setSelected(v){selected=v},setPage(v){page=v},setMode(v){priceScope=v},
  setPeriod(v){period=v},setQty(v){compareQuantity=v},setUnit(v){compareUnit=v},
@@ -39,6 +39,8 @@ assert.equal(first[0].price,298);
 assert.equal(first[1].price,320,'Receipt total divided by sales quantity');
 assert.equal(first[1].amount,640);
 assert.equal(ui.chainMinima('p-milk-1','3m').length,2,'Three-month period works');
+assert.equal(ui.periodStart('3m',new Date(2026,4,31)),'2026-02-28','Month-end three-month window clamps to February end');
+assert.equal(ui.periodStart('1y',new Date(2026,4,31)),'2025-05-31','One-year window preserves day when possible');
 assert.ok(!source.includes('discountStatus'),'No obsolete discount bucket');
 assert.ok(!source.includes('function bestPrice('),'Obsolete sample price aggregator removed');
 ui.setSelected('demo-1');ui.setPage('compare');ui.initializeCompare();
@@ -86,6 +88,9 @@ const noMatch=ui.budgetTotals([{record_id:'x',record_type:'receipt',record_date:
 assert.equal(noMatch.total,125,'Unmatched product counts toward budget');
 assert.equal(noMatch.byCategory.get('uncategorized'),125,'Null category maps to uncategorized without extra category');
 assert.ok(!ui.savePreviewRecord({type:'shelf',chainId:'c-life',date:month+'-01',quantity:1,amount:123,productId:''}),'Shelf needs product');
+assert.ok(!ui.savePreviewRecord({type:'receipt',chainId:'c-life',date:'2026-02-31',quantity:1,amount:123,productId:''}),'Invalid calendar date rejected');
+assert.ok(!ui.savePreviewRecord({type:'receipt',chainId:'c-life',date:month+'-01',quantity:1,amount:'',productId:''}),'Empty amount cannot silently become zero');
+assert.ok(!ui.savePreviewRecord({type:'receipt',chainId:'c-life',date:month+'-01',quantity:1,amount:123,productId:'',category:'99'}),'Invalid category rejected');
 assert.ok(!ui.savePreviewRecord({type:'receipt',chainId:'c-life',date:month+'-01',quantity:.35,amount:123,productId:''}),'Fractional weight not misread as count');
 assert.ok(ui.savePreviewRecord({type:'receipt',chainId:'c-life',date:ui.demoRecords[0].record_date,quantity:2,amount:476,productId:'',category:''}),'Unmatched receipt can be stored locally');
 assert.equal(ui.allPreviewRecords().length,ui.demoRecords.length+1,'Saved header in preview storage');
