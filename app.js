@@ -79,7 +79,7 @@ function savePreviewRecord(input){
  const amount=Number(input.amount),quantity=Number(input.quantity);
  if(!['receipt','shelf'].includes(input.type)||
     !catalogue.chains.some(c=>c.id===input.chainId)||
-    !/^\\d{4}-\\d{2}-\\d{2}$/.test(input.date)||!Number.isInteger(amount)||amount<0||
+    !/^\d{4}-\d{2}-\d{2}$/.test(input.date)||!Number.isInteger(amount)||amount<0||
     !Number.isInteger(quantity)||quantity<=0)return false;
  if(input.productId&&!catalogue.products.some(p=>p.id===input.productId))return false;
  if(input.type==='shelf'&&!input.productId)return false;
@@ -109,7 +109,7 @@ function priceCandidates(records,details,periodValue,today=new Date()){
   !!r.product_id && !!r.record.chain_id && r.price_eligible===true &&
   typeof r.amount_tax_included==='number'&&Number.isFinite(r.amount_tax_included)&&r.amount_tax_included>=0 &&
   typeof r.quantity==='number'&&Number.isFinite(r.quantity)&&r.quantity>0 &&
-  /^\\d{4}-\\d{2}-\\d{2}$/.test(r.record.record_date)&&
+  /^\d{4}-\d{2}-\d{2}$/.test(r.record.record_date)&&
   r.record.record_date>=start && r.record.record_date<=daysFromDate(today)
  );
 }
