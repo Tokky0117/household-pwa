@@ -1960,3 +1960,31 @@ html,body {
 .dialog .dialog-description{width:100%;max-width:32ch;margin:0 auto 18px;text-align:left;line-height:1.65}
 .dialog .dialog-line{display:block}
 .dialog .dialog-line+.dialog-line{margin-top:5px}
+
+/* Unified price comparison prototype (v22): style only new, previously undefined elements. */
+.itemname .item-title{display:block;font-weight:650;line-height:1.45}
+.itemname .list-prices{display:block;color:var(--muted);font-size:12px;line-height:1.5;margin-top:4px}
+.itemname .list-prices b{font-weight:650;color:var(--ink)}
+.comparison-main .detail-section-heading{align-items:center}
+.comparison-main .scope-switch{margin:11px 0 15px}
+.comparison-main .scope-switch .pill{min-height:44px}
+.comparison-product-title{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:10px}
+.comparison-product-title strong{font-size:15px}
+.comparison-product-title small{font-size:12px;color:var(--muted);text-align:right;line-height:1.45}
+.comparison-main .pricebox strong{font-size:21px}
+.comparison-main .pricebox{padding:11px;min-width:0}
+.comparison-main .pricebox .label{font-size:12px}
+.compare-form-row{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px}
+.compare-form-row .formfield{min-width:0}
+.compare-save{width:100%;min-height:44px;margin:5px 0 0}
+.shop-inputs{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.shop-inputs .formfield{min-width:0}
+.shop-inputs .formfield input{width:100%;min-width:0;box-sizing:border-box}
+.shop-inputs .formfield label{font-size:12px;min-height:34px;display:flex;align-items:flex-end}
+.shop-inputs .ui-select-trigger{min-height:46px}
+.shop-result{background:var(--bg);border-radius:var(--ui-radius-card);padding:12px;margin:10px 0;line-height:1.5}
+.shop-result strong{color:var(--ink)}
+.shop-result small{display:block;color:var(--muted)}
+.product-sort-row{touch-action:pan-y;user-select:none;-webkit-user-select:none}
+.product-sort-row.dragging{background:var(--accent-soft);box-shadow:0 8px 20px #162c4130,inset 0 0 0 2px var(--accent);position:relative;z-index:5;touch-action:none;opacity:.92;border-radius:12px}
+@media(max-width:380px){.shop-inputs{grid-template-columns:repeat(2,minmax(0,1fr))}.shop-inputs .formfield:last-child{grid-column:span 2}}
