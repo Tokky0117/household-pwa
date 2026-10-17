@@ -16,10 +16,10 @@ const sampleCatalogue=()=>({
   {id:'p-tea-1',name:'麦茶ティーバッグ',packageQuantity:54,packageUnit:'個',itemGroupId:'demo-2',itemGroupOrder:1,aliases:[]},
   {id:'p-wash-1',name:'液体洗濯洗剤',packageQuantity:900,packageUnit:'mL',itemGroupId:'demo-11',itemGroupOrder:1,aliases:[]}
  ],
- chains:[{id:'c-a',name:'スーパー青空'},{id:'c-b',name:'ドラッグひかり'},{id:'c-c',name:'スーパーみどり'}],
+ chains:[{id:'c-a',name:'スーパー青空'},{id:'c-b',name:'ドラッグひかり'},{id:'c-c',name:'スーパーみどり'},{id:'c-life',name:'ライフ'},{id:'c-konomiya',name:'コノミヤ'},{id:'c-mandai',name:'万代'},{id:'c-aeon',name:'イオン'},{id:'c-sugi',name:'スギ薬局'}],
  branches:[{id:'s-a1',chainId:'c-a',name:'駅前店'},{id:'s-a2',chainId:'c-a',name:'中央店'},{id:'s-b1',chainId:'c-b',name:'本町店'}]
 });
-function loadCatalogue(){try{const o=JSON.parse(localStorage.getItem(catalogueKey));if(o&&Array.isArray(o.products)&&Array.isArray(o.chains)&&Array.isArray(o.branches))return o}catch{}return sampleCatalogue()}
+function loadCatalogue(){try{const o=JSON.parse(localStorage.getItem(catalogueKey));if(o&&Array.isArray(o.products)&&Array.isArray(o.chains)&&Array.isArray(o.branches)){for(const c of sampleCatalogue().chains)if(!o.chains.some(x=>x.id===c.id))o.chains.push(c);return o}}catch{}return sampleCatalogue()}
 let catalogue=loadCatalogue(),pickQuery='',pickKind='product',pickerAll=false,editingProductId=null;
 const persistCatalogue=()=>localStorage.setItem(catalogueKey,JSON.stringify(catalogue));
 const productTitle=p=>p.name+(p.packageQuantity&&p.packageUnit?' '+p.packageQuantity+p.packageUnit:'');
@@ -36,39 +36,88 @@ function setProductGroup(p,toId){
  if(from===toId)return;
  p.itemGroupId=null;p.itemGroupOrder=null;
  if(from)registeredProducts(from).forEach((row,index)=>row.itemGroupOrder=index+1);
- if(toId){p.itemGroupId=toId;p.itemGroupOrder=registeredProducts(toId).length}
+ if(toId){p.itemGroupId=toId;p.itemGroupOrder=registeredProducts(toId).length+1}
  persistCatalogue();
 }
 const productMatches=(p,q)=>[p.name,p.packageQuantity?p.packageQuantity+p.packageUnit:'',...(p.aliases||[])].some(v=>norm(v).includes(norm(q)));
-// No simulated historical prices are inserted. Real receipt/tag records will supply these fields.
-// Preview-only example prices to verify store labels. Not receipts, backend records or user history.
-const daysAgo=n=>{const d=new Date();d.setDate(d.getDate()-n);return d.toISOString().slice(0,10)};
-const priceHistory=[
- {productId:'p-milk-1',discountStatus:'discount',price:298,store:'コノミヤ',date:daysAgo(6)},
- {productId:'p-milk-1',discountStatus:'normal',price:320,store:'ライフ',date:daysAgo(15)},
- {productId:'p-milk-2',discountStatus:'discount',price:278,store:'万代',date:daysAgo(8)},
- {productId:'p-milk-2',discountStatus:'normal',price:338,store:'イオン',date:daysAgo(12)},
- {productId:'p-tea-1',discountStatus:'discount',price:198,store:'スギ薬局',date:daysAgo(10)},
- {productId:'p-tea-1',discountStatus:'normal',price:238,store:'ライフ',date:daysAgo(21)},
- {productId:'p-wash-1',discountStatus:'discount',price:458,store:'コノミヤ',date:daysAgo(13)},
- {productId:'p-wash-1',discountStatus:'normal',price:498,store:'万代',date:daysAgo(23)}
+// v1.8 preview fixtures: receipt / shelf share records + record_items; NEVER user data.
+const daysAgo=n=>{const d=new Date();d.setHours(12,0,0,0);d.setDate(d.getDate()-n);return [d.getFullYear(),String(d.getMonth()+1).padStart(2,'0'),String(d.getDate()).padStart(2,'0')].join('-')};
+const priceFixtures=[
+ ['p-milk-1','c-konomiya',298,1,'shelf',6,0],
+ ['p-milk-1','c-life',640,2,'receipt',15,0],
+ ['p-milk-1','c-life',710,2,'receipt',180,0],
+ ['p-milk-2','c-mandai',278,1,'shelf',8,0],
+ ['p-milk-2','c-aeon',338,1,'receipt',12,0],
+ ['p-tea-1','c-sugi',198,1,'shelf',10,0],
+ ['p-tea-1','c-life',238,1,'receipt',21,0],
+ ['p-wash-1','c-konomiya',458,1,'shelf',13,3],
+ ['p-wash-1','c-mandai',498,1,'receipt',23,3]
 ];
-function bestPrice(productId,kind,periodValue){
- const now=new Date(),limit=new Date(now);
- limit.setMonth(limit.getMonth()-3);
- const matches=priceHistory.filter(r=>r.productId===productId&&r.discountStatus===kind&&Number.isFinite(r.price)&&r.price>=0&&r.date&&(periodValue==='all'||new Date(r.date)>=limit));
- matches.sort((a,b)=>a.price-b.price||String(b.date).localeCompare(String(a.date)));
- return matches[0]||null;
-}
-const priceSummary=(p,kind)=>{
- const record=bestPrice(p?.id,kind,'3m');
- if(!record)return '—（'+(kind==='discount'?'割引':'通常')+'）';
- return [yen(record.price)+(kind==='discount'?'（割引）':'（通常）'),p.name||'',record.store||''].filter(Boolean).join('／');
+const demoRecords=priceFixtures.map((r,n)=>({
+ record_id:'preview-r'+(n+1),household_id:'preview-only',record_type:r[4],
+ chain_id:r[1],branch_name:null,raw_store_name:null,record_date:daysAgo(r[5]),
+ created_at:null,updated_at:null,version:1,deleted_at:null
+}));
+const demoRecordItems=priceFixtures.map((r,n)=>({
+ record_item_id:'preview-i'+(n+1),record_id:'preview-r'+(n+1),line_order:1,
+ raw_name:'',product_id:r[0],quantity:r[3],amount_tax_included:r[2],
+ category_id:r[4]==='receipt'?r[6]:null,price_eligible:true,
+ created_at:null,updated_at:null,version:1,deleted_at:null
+}));
+const recordJoin=(records,detail)=>detail.flatMap(line=>{
+ const record=records.find(r=>r.record_id===line.record_id);
+ return record?[{...line,record}]:[];
+});
+const periodStart=(periodValue,today=new Date())=>{
+ const d=new Date(today.getFullYear(),today.getMonth(),today.getDate());
+ d.setMonth(d.getMonth()-(periodValue==='3m'?3:12));
+ return [d.getFullYear(),String(d.getMonth()+1).padStart(2,'0'),String(d.getDate()).padStart(2,'0')].join('-');
 };
+function priceCandidates(records,details,periodValue,today=new Date()){
+ const start=periodStart(periodValue,today);
+ return recordJoin(records,details).filter(r=>
+  !r.deleted_at&&!r.record.deleted_at &&
+  ['receipt','shelf'].includes(r.record.record_type) &&
+  !!r.product_id && !!r.record.chain_id && r.price_eligible===true &&
+  typeof r.amount_tax_included==='number'&&Number.isFinite(r.amount_tax_included)&&r.amount_tax_included>=0 &&
+  typeof r.quantity==='number'&&Number.isFinite(r.quantity)&&r.quantity>0 &&
+  /^\\d{4}-\\d{2}-\\d{2}$/.test(r.record.record_date)&&
+  r.record.record_date>=start && r.record.record_date<=daysFromDate(today)
+ );
+}
+const daysFromDate=d=>[d.getFullYear(),String(d.getMonth()+1).padStart(2,'0'),String(d.getDate()).padStart(2,'0')].join('-');
+function chainMinima(productId,periodValue,records=demoRecords,details=demoRecordItems,today=new Date()){
+ const candidates=priceCandidates(records,details,periodValue,today).filter(r=>r.product_id===productId);
+ const winners=new Map();
+ for(const r of candidates){
+  const prev=winners.get(r.record.chain_id);
+  // Cross multiplication avoids prematurely rounding a per-sale unit price.
+  const cheaper=!prev || r.amount_tax_included*prev.quantity<prev.amount_tax_included*r.quantity;
+  const tied=!!prev&&r.amount_tax_included*prev.quantity===prev.amount_tax_included*r.quantity;
+  if(cheaper||(tied&&(r.record.record_date>prev.record.record_date||
+    (r.record.record_date===prev.record.record_date&&r.record_item_id<prev.record_item_id))))winners.set(r.record.chain_id,r);
+ }
+ return [...winners.entries()].map(([chainId,r])=>({
+   chainId,price:r.amount_tax_included/r.quantity,
+   amount:r.amount_tax_included,quantity:r.quantity,recordId:r.record_id,
+   date:r.record.record_date,source:r.record.record_type
+ })).sort((a,b)=>a.price-b.price||a.chainId.localeCompare(b.chainId));
+}
+function budgetTotals(records,details,yearMonth){
+ const byCategory=new Map(),included=recordJoin(records,details).filter(r=>
+  r.record.record_type==='receipt'&&!r.record.deleted_at&&!r.deleted_at&&
+  r.record.record_date.startsWith(yearMonth)&&
+  typeof r.amount_tax_included==='number'&&Number.isFinite(r.amount_tax_included)&&r.amount_tax_included>=0
+ );
+ for(const r of included){const cat=r.category_id??'uncategorized';byCategory.set(cat,(byCategory.get(cat)||0)+r.amount_tax_included)}
+ return {total:included.reduce((sum,r)=>sum+r.amount_tax_included,0),byCategory};
+}
+const chainLabel=id=>catalogue.chains.find(c=>c.id===id)?.name||'チェーン未設定';
 const listPriceText=item=>{
  const first=registeredProducts(item.id)[0];
  if(!first)return '価格記録なし';
- return priceSummary(first,'discount')+'、'+priceSummary(first,'normal');
+ const best=chainMinima(first.id,'1y')[0];
+ return best?[yen(best.price),first.name,chainLabel(best.chainId)].join('／'):'価格記録なし';
 };
 function initializeCompare(){
  const first=registeredProducts(selected)[0];
@@ -95,7 +144,7 @@ function shopCompareValue(item){
 
 
 function load(){try{const d=JSON.parse(localStorage.getItem(key));return Array.isArray(d)?d:makeSeed()}catch{return makeSeed()}}
-let items=load(),tab='items',page='list',selected=null,query='',onlyOut=false,collapsed=new Set(),menu=false,dialog=null,toast='',period='3m',priceScope='product',periodMenu=false;
+let items=load(),tab='items',page='list',selected=null,query='',onlyOut=false,collapsed=new Set(),menu=false,dialog=null,toast='',period='1y',priceScope='product',periodMenu=false;
 const app=document.getElementById('app');
 let previousPage='list', previousSelected=null, listScrollPosition=0, shopPrice='',shopQuantity='',shopUnit='mL',compareQuantity=null,compareUnit='',shopExpanded=false,productActions=null,editReturnPage='list',openSwipeId=null;
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -177,24 +226,24 @@ function priceCompareView(){
   const conversion=convertQuantity(p.packageQuantity,p.packageUnit,compareUnit);
   const compatible=!!(compareQuantity&&compareUnit&&conversion);
   const sub=p.packageQuantity&&p.packageUnit?`${p.packageQuantity}${p.packageUnit}`:'内容量未設定';
-  const cells=['normal','discount'].map(kind=>{
-   const r=bestPrice(p.id,kind,period),value=priceScope==='unit'?(compatible&&r?yen(r.price*compareQuantity/conversion):'—'):r?yen(r.price):'—';
-   const reason=priceScope==='unit'&&!compareQuantity?'—':priceScope==='unit'&&!compatible?'比較不可':'価格記録なし';
-   return `<div class="pricebox"><span class="label">${kind==='normal'?'最安値':'割引時'}${priceScope==='unit'&&unitLabel?` · ${esc(unitLabel)}`:''}</span><strong>${esc(value)}</strong><small>${esc(r?(r.store||'店舗未設定')+(r.date?' ／ '+r.date:''):reason)}</small></div>`;
-  }).join('');
+  const chains=chainMinima(p.id,period);
+  const priceRows=chains.map(r=>{
+   const value=priceScope==='unit'?(compatible?yen(r.price*compareQuantity/conversion):'—'):yen(r.price);
+   return `<div class="chain-price-row"><span class="chain-name">${esc(chainLabel(r.chainId))}</span><span class="chain-price-value">${esc(value)}</span><span class="chain-price-date">${esc(r.date)}</span></div>`;
+  }).join('')||'<div class="chain-price-empty">—</div>';
   return `<article class="comparison-product product-sort-row swipe-item ${openSwipeId===p.id?'swipe-open':''}" data-product-id="${esc(p.id)}">
 <div class="swipe-actions">
 <button type="button" class="swipe-edit" data-pedit="${esc(p.id)}" tabindex="${openSwipeId===p.id?0:-1}" aria-label="${esc(p.name||'商品')}を編集">${miniIcon('pencil')}<span>編集</span></button>
 <button type="button" class="swipe-delete" data-premove="${esc(p.id)}" tabindex="${openSwipeId===p.id?0:-1}" aria-label="${esc(p.name||'商品')}の登録解除">${miniIcon('trash')}<span>解除</span></button>
 </div><div class="swipe-front comparison-product-front">
 <div class="comparison-product-content"><div class="comparison-product-title"><div class="comparison-name"><strong>${esc(p.name||'商品名未設定')}</strong><small>${esc(sub)}</small></div></div>
-<div class="pricegrid">${cells}</div></div><span class="swipe-peek" aria-hidden="true"></span></div></article>`;
+<div class="chain-price-list">${priceRows}</div></div><span class="swipe-peek" aria-hidden="true"></span></div></article>`;
  }).join('')||'<div class="panel empty">登録商品はありません</div>';
  const unitControls=priceScope==='unit'? `<div class="compare-form compact-compare-form"><div class="compare-form-row">
 ${UI.formField({id:'compare-quantity',name:'quantity',label:'数量',value:compareQuantity??'',extra:'inputmode="decimal" placeholder="店頭商品の数量"'})}
 ${UI.formField({id:'compare-unit',name:'unit',label:'単位',control:'select',value:compareUnit||UNIT_OPTIONS[0],options:UNIT_OPTIONS.map(x=>({label:x,value:x}))})}
 </div></div>`:'';
- return `${head('価格情報',i.name,true)}<main class="detail-main comparison-main">${modeBtns}${unitControls}<div class="detail-section-heading price-heading"><div class="price-heading-copy"><h2 class="sectiontitle">商品ごとの最安値${priceScope==='unit'&&unitLabel?` <small class="compare-heading-unit">（${esc(unitLabel)}）</small>`:''}</h2><span class="price-heading-sub">全店舗から集計</span></div>${UI.dropdown({id:'price-period',value:period,label:'期間',compact:true,open:periodMenu,options:[{value:'3m',label:'直近3か月'},{value:'all',label:'全期間'}]})}</div><div class="comparison-list">${productRows}</div><button type="button" class="tertiary manage-add product-register-action" data-act="productPick">${miniIcon('plus')}<span>商品を登録</span></button><p class="sample-price-notice">※ 価格・店舗はサンプル</p></main>`;
+ return `${head('価格情報',i.name,true)}<main class="detail-main comparison-main">${modeBtns}${unitControls}<div class="detail-section-heading price-heading"><div class="price-heading-copy"><h2 class="sectiontitle">チェーン別最安値${priceScope==='unit'&&unitLabel?` <small class="compare-heading-unit">（${esc(unitLabel)}）</small>`:''}</h2><span class="price-heading-sub">商品ごと・記録済みチェーン別の税込価格</span></div>${UI.dropdown({id:'price-period',value:period,label:'期間',compact:true,open:periodMenu,options:[{value:'3m',label:'直近3か月'},{value:'1y',label:'直近1年'}]})}</div><div class="comparison-list">${productRows}</div><button type="button" class="tertiary manage-add product-register-action" data-act="productPick">${miniIcon('plus')}<span>商品を登録</span></button><p class="sample-price-notice">※ 価格・店舗はサンプル（レシート／値札・同期未接続）</p></main>`;
 }
 function formView(){
  const editing=page==='edit',i=editing?current():null;
@@ -398,7 +447,7 @@ if(el.dataset.uiChoice!==undefined){
  closeAllDropdowns();wrapper.querySelector('.ui-select-trigger')?.focus();return;
 }
 if(el.dataset.listEdit){selected=el.dataset.listEdit;editReturnPage='list';openSwipeId=null;page='edit';render();return}if(el.dataset.listHide){selected=el.dataset.listHide;setOpenSwipe(null);dialog={title:'日用品を削除',message:'日用品リストから削除します。商品や価格履歴は保持します。',buttons:[{id:'cancel',label:'キャンセル'},{id:'confirmHide',label:'削除',primary:true}]};render();return}
-if(el.dataset.tab){tab=el.dataset.tab;page='list';openSwipeId=null;menu=false;render();return}if(el.dataset.cat!==undefined){if(onlyOut)return;const c=Number(el.dataset.cat);collapsed.has(c)?collapsed.delete(c):collapsed.add(c);render();return}if(el.dataset.stock){const i=items.find(x=>x.id===el.dataset.stock);i.inStock=!i.inStock;i.version++;persist();render();return}if(el.dataset.open){if(openSwipeId){setOpenSwipe(null);return}listScrollPosition=window.scrollY;selected=el.dataset.open;page='compare';period='3m';priceScope='product';initializeCompare();periodMenu=false;menu=false;openSwipeId=null;render();return}if(el.dataset.period){period=el.dataset.period;periodMenu=false;render();return}if(el.dataset.scope){priceScope=el.dataset.scope;openSwipeId=null;periodMenu=false;render();return}if(el.dataset.move){const i=items.find(x=>x.id===el.dataset.move);const siblings=visible().filter(x=>x.category===i.category).sort((a,b)=>a.order-b.order);const index=siblings.findIndex(x=>x.id===i.id),other=siblings[index+Number(el.dataset.dir)];if(other){const o=i.order;i.order=other.order;other.order=o;persist()}render();return}if(el.dataset.pedit){openSwipeId=null;const p=catalogue.products.find(x=>x.id===el.dataset.pedit);if(p&&p.itemGroupId===selected){editingProductId=p.id;page='productEdit';render()}return}
+if(el.dataset.tab){tab=el.dataset.tab;page='list';openSwipeId=null;menu=false;render();return}if(el.dataset.cat!==undefined){if(onlyOut)return;const c=Number(el.dataset.cat);collapsed.has(c)?collapsed.delete(c):collapsed.add(c);render();return}if(el.dataset.stock){const i=items.find(x=>x.id===el.dataset.stock);i.inStock=!i.inStock;i.version++;persist();render();return}if(el.dataset.open){if(openSwipeId){setOpenSwipe(null);return}listScrollPosition=window.scrollY;selected=el.dataset.open;page='compare';period='1y';priceScope='product';initializeCompare();periodMenu=false;menu=false;openSwipeId=null;render();return}if(el.dataset.period){period=el.dataset.period;periodMenu=false;render();return}if(el.dataset.scope){priceScope=el.dataset.scope;openSwipeId=null;periodMenu=false;render();return}if(el.dataset.move){const i=items.find(x=>x.id===el.dataset.move);const siblings=visible().filter(x=>x.category===i.category).sort((a,b)=>a.order-b.order);const index=siblings.findIndex(x=>x.id===i.id),other=siblings[index+Number(el.dataset.dir)];if(other){const o=i.order;i.order=other.order;other.order=o;persist()}render();return}if(el.dataset.pedit){openSwipeId=null;const p=catalogue.products.find(x=>x.id===el.dataset.pedit);if(p&&p.itemGroupId===selected){editingProductId=p.id;page='productEdit';render()}return}
 if(el.dataset.premove){openSwipeId=null;
  const p=catalogue.products.find(x=>x.id===el.dataset.premove);
  if(p&&p.itemGroupId===selected){dialog={title:'商品の登録解除',message:`「${productTitle(p)}」の登録を解除します。過去の最安値集計対象からも外れます。`,buttons:[{id:'cancel',label:'キャンセル'},{id:'confirmProductUnlink',label:'解除する',primary:true}],pending:{productId:p.id}};renderDialogOnly()}return;
