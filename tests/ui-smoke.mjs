@@ -3,12 +3,13 @@ import {readFileSync} from 'node:fs';
 import vm from 'node:vm';
 const source=readFileSync(new URL('../app.js',import.meta.url),'utf8');
 const css=readFileSync(new URL('../styles.css',import.meta.url),'utf8');
-const app={innerHTML:'',addEventListener(){},insertAdjacentHTML(){}};
+const handlers={};
+const app={innerHTML:'',addEventListener(type,cb){(handlers[type]??=[]).push(cb)},insertAdjacentHTML(){}};
 const doc={getElementById:k=>k==='app'?app:null,querySelector(){return null},querySelectorAll(){return []},body:{append(){}}};
 const context={document:doc,localStorage:{getItem(){return null},setItem(){}},navigator:{},window:{scrollTo(){},scrollY:0},location:{protocol:'file:'},crypto:{randomUUID:()=> 'test-uid'},setTimeout:()=>0};
 const ui=vm.runInNewContext(source+`
 ({listResults,listView,priceCompareView,formView,pickerView,productCreateView,convertQuantity,shopCompareValue,registeredProducts,setProductGroup,reorderProducts,render,
- setSelected(v){selected=v},setPage(v){page=v},setMode(v){priceScope=v},setPeriod(v){period=v},setUnit(q,u){compareQuantity=q;compareUnit=u},setShop(a,b,u){shopPrice=a;shopQuantity=b;shopUnit=u},setShopExpanded(v){shopExpanded=v},setProductActions(v){productActions=v},getCompare(){return [compareQuantity,compareUnit]},initCompare:initializeCompare,items:()=>items,catalogue:()=>catalogue})
+ setSelected(v){selected=v},setPage(v){page=v},setMode(v){priceScope=v},setPeriod(v){period=v},setUnit(q,u){compareQuantity=q;compareUnit=u},setShop(a,b,u){shopPrice=a;shopQuantity=b;shopUnit=u},setShopExpanded(v){shopExpanded=v},setProductActions(v){productActions=v},getCompare(){return [compareQuantity,compareUnit]},initCompare:initializeCompare,getOpenSwipe(){return openSwipeId},items:()=>items,catalogue:()=>catalogue})
 `,context,{filename:'app.js'});
 const list=ui.listView();
 assert.ok(list.includes('data-act="copyList"')&&list.includes('data-act="add"'),'Header exposes copy and add');
@@ -27,6 +28,15 @@ assert.ok(source.includes('household_pwa_ui_v3')&&source.includes('household_pwa
 assert.ok(css.includes('.swipe-item .item-stock-area{flex:0 0 78px'),'Inventory is a fixed independent column');
 assert.ok(css.includes('.swipe-item .list-prices{display:block;width:100%'),'Price summary remains within left column');
 assert.ok(css.includes('.swipe-peek')&&css.includes('translateX(-132px)'),'Swipe action design available');
+// Exercise actual pointer handlers, not only DOM and CSS expectations.
+ui.setPage('list');
+const row={dataset:{itemId:'demo-1',categoryId:'0'}};
+const target={closest(selector){return selector.includes('.swipe-item')||selector==='[data-item-id]'?row:null}};
+function pointer(type,x,y){const ev={pointerId:12,pointerType:'touch',button:0,clientX:x,clientY:y,target,preventDefault(){}};for(const cb of handlers[type]||[])cb(ev)}
+pointer('pointerdown',210,75);pointer('pointermove',120,76);pointer('pointerup',120,76);
+assert.equal(ui.getOpenSwipe(),'demo-1','Left swipe reveals item actions');
+pointer('pointerdown',110,75);pointer('pointermove',185,76);pointer('pointerup',185,76);
+assert.equal(ui.getOpenSwipe(),null,'Right swipe closes item actions');
 ui.setSelected('demo-1');ui.setPage('compare');ui.initCompare();
 assert.equal(ui.getCompare()[0],900,'First registered product sets initial quantity');
 assert.equal(ui.getCompare()[1],'mL','First registered product sets initial unit');
