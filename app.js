@@ -1,13 +1,13 @@
 const CATS=['飲食','キッチン','洗面・風呂','洗濯・掃除','その他'];
 const SEED=[['牛乳',0,true],['麦茶',0,false],['コーヒー',0,true],['卵',0,false],['キッチンペーパー',1,false],['ラップ',1,true],['食器用洗剤',1,true],['シャンプー',2,false],['歯磨き粉',2,true],['ハンドソープ',2,false],['洗濯洗剤',3,false],['柔軟剤',3,true],['トイレットペーパー',3,false],['乾電池',4,true],['ティッシュ',4,true]];
-const makeSeed=()=>SEED.map(([name,category,inStock],i)=>({id:`demo-${i+1}`,name,category,inStock,hidden:false,order:i,compareQuantity:1,compareUnit:'個',version:1}));
-const key='household_pwa_ui_v2';
+const makeSeed=()=>SEED.map(([name,category,inStock],i)=>({id:`demo-${i+1}`,name,category,inStock,hidden:false,order:i,version:1}));
+const key='household_pwa_ui_v3';
 // 商品・チェーンは仮データ。今後はproducts / storesへの照会に置き換える。
 
 const UNIT_OPTIONS=['個','本','枚','g','kg','mL','L'];
 
 /* Local-only product and chain sample catalogue; no product disable field. */
-const catalogueKey='household_pwa_catalogue_v3';
+const catalogueKey='household_pwa_catalogue_v4';
 const sampleCatalogue=()=>({
  products:[
   {id:'p-milk-1',name:'おいしい牛乳',packageQuantity:900,packageUnit:'mL',itemGroupId:'demo-1',itemGroupOrder:1,aliases:['ｵｲｼｲｷﾞｭｳﾆｭｳ']},
@@ -40,7 +40,33 @@ function setProductGroup(p,toId){
  persistCatalogue();
 }
 const productMatches=(p,q)=>[p.name,p.packageQuantity?p.packageQuantity+p.packageUnit:'',...(p.aliases||[])].some(v=>norm(v).includes(norm(q)));
-const demoPrice=(p,status,window)=>null; // History/receipt/tag integrations are not implemented in this UI prototype.
+// No simulated historical prices are inserted. Real receipt/tag records will supply these fields.
+const priceHistory=[];
+function bestPrice(productId,kind,periodValue){
+ const now=new Date(),limit=new Date(now);
+ limit.setMonth(limit.getMonth()-3);
+ const matches=priceHistory.filter(r=>r.productId===productId&&r.discountStatus===kind&&Number.isFinite(r.price)&&r.price>=0&&r.date&&(periodValue==='all'||new Date(r.date)>=limit));
+ matches.sort((a,b)=>a.price-b.price||String(b.date).localeCompare(String(a.date)));
+ return matches[0]||null;
+}
+const priceSummary=(p,kind)=>{
+ const record=bestPrice(p?.id,kind,'3m');
+ if(!record)return '—（'+(kind==='discount'?'割引':'通常')+'）';
+ return [yen(record.price)+(kind==='discount'?'（割引）':'（通常）'),p.name||'',record.store||''].filter(Boolean).join('／');
+};
+const listPriceText=item=>{
+ const first=registeredProducts(item.id)[0];
+ if(!first)return '価格記録なし';
+ return priceSummary(first,'discount')+'、'+priceSummary(first,'normal');
+};
+function initializeCompare(){
+ const first=registeredProducts(selected)[0];
+ compareQuantity=Number.isFinite(first?.packageQuantity)&&first.packageQuantity>0?first.packageQuantity:null;
+ compareUnit=first?.packageUnit||'';
+ shopPrice='';shopQuantity='';shopUnit=compareUnit||'mL';
+ shopExpanded=false;productActions=null;
+}
+
 const yen=v=>v===null?'—':Number(v).toLocaleString('ja-JP',{maximumFractionDigits:2})+'円';
 function convertQuantity(amount,from,to){
  if(!Number.isFinite(amount)||amount<=0)return null;
@@ -52,15 +78,15 @@ function convertQuantity(amount,from,to){
 function shopCompareValue(item){
  const q=Number(String(shopQuantity).replace(',','.')),price=Number(String(shopPrice).replace(',','.'));
  if(!shopPrice||!shopQuantity||!Number.isFinite(price)||price<0||!Number.isFinite(q)||q<=0)return null;
- const content=convertQuantity(q,shopUnit,item.compareUnit);
- return content?price*item.compareQuantity/content:null;
+ const content=convertQuantity(q,shopUnit,compareUnit);
+ return content&&compareQuantity?price*compareQuantity/content:null;
 }
 
 
 function load(){try{const d=JSON.parse(localStorage.getItem(key));return Array.isArray(d)?d:makeSeed()}catch{return makeSeed()}}
-let items=load(),tab='items',page='list',selected=null,query='',onlyOut=false,collapsed=new Set(),menu=false,dialog=null,toast='',period='3m',priceScope='purchase',periodMenu=false;
+let items=load(),tab='items',page='list',selected=null,query='',onlyOut=false,collapsed=new Set(),menu=false,dialog=null,toast='',period='3m',priceScope='product',periodMenu=false;
 const app=document.getElementById('app');
-let previousPage='list', previousSelected=null, listScrollPosition=0, shopPrice='',shopQuantity='',shopUnit='mL';
+let previousPage='list', previousSelected=null, listScrollPosition=0, shopPrice='',shopQuantity='',shopUnit='mL',compareQuantity=null,compareUnit='',shopExpanded=false,productActions=null,editReturnPage='list',openSwipeId=null;
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const norm=s=>String(s).normalize('NFKC').trim().replace(/\s+/g,' ').toLocaleLowerCase('ja');
 const id=()=>crypto.randomUUID?.()||`id-${Date.now()}-${Math.random()}`;
@@ -101,45 +127,55 @@ const UI={
 
 };
 const svg=k=>`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${icons[k]}</svg>`;
-function head(title,sub='',back=false,right=''){return `<header class="top"><div class="headrow"><div class="head-left">${back?`<button class="iconbtn" data-act="back" aria-label="戻る">${chevron('left')}</button>`:''}</div><div class="head-title">${sub?`<p class="eyebrow">${esc(sub)}</p>`:''}<h1>${esc(title)}</h1></div><div class="head-right">${right}</div></div></header>`}
+function head(title,sub='',back=false,right='',left=''){return `<header class="top"><div class="headrow"><div class="head-left">${back?`<button class="iconbtn" data-act="back" aria-label="戻る">${chevron('left')}</button>`:left}</div><div class="head-title">${sub?`<p class="eyebrow">${esc(sub)}</p>`:''}<h1>${esc(title)}</h1></div><div class="head-right">${right}</div></div></header>`}
 function nav(){return `<nav class="bottom" aria-label="メインメニュー"><div class="tabs">${[['items','日用品'],['receipt','レシート'],['budget','家計簿'],['settings','設定']].map(([k,v])=>`<button class="tab ${tab===k?'active':''}" data-tab="${k}" ${tab===k?'aria-current="page"':''}>${svg(k)}<span>${v}</span></button>`).join('')}</div></nav>`}
-function listResults(){const q=norm(query);const matches=i=>{const searchable=[i.name];return (!q||searchable.some(v=>norm(v).includes(q)))&&(!onlyOut||!i.inStock)};return CATS.map((cat,idx)=>{const all=visible().filter(i=>i.category===idx).sort((a,b)=>a.order-b.order);const filtered=all.filter(matches);if(q&&!filtered.length)return '';if(onlyOut&&!filtered.length)return '';const closed=!q&&!onlyOut&&collapsed.has(idx);return `<section class="category"><button class="cathead" data-cat="${idx}" aria-expanded="${!closed}" ${onlyOut?'disabled aria-disabled="true"':''}><strong>${cat}</strong><span class="count">${filtered.length}点</span><span class="cat-arrow-slot" aria-hidden="true">${onlyOut?'':chevron(closed?'down':'up')}</span></button>${closed?'':filtered.length?filtered.map(i=>`<div class="item" data-item-id="${esc(i.id)}" data-category-id="${idx}"><button class="itemname" data-open="${esc(i.id)}"><span class="item-title">${esc(i.name)}</span><span class="list-prices">通常 <b>—</b>　割引 <b>—</b></span></button>${UI.stock(i)}</div>`).join(''):'<div class="empty">該当する日用品はありません</div>'}</section>`}).join('')||'<div class="empty">一致する日用品はありません</div>'}
-function listView(){const options=[['add','日用品を追加','plus'],['copyList','在庫なしをコピー','copy']];
-  const menuButton=UI.headerMenu({items:options.map(([action,label,icon])=>({action,label,icon})),label:'日用品一覧の操作'});
-  return `${head('日用品','くらしストック',false,menuButton)}<main><div class="searchbar">${miniIcon('search')}<input id="search" type="search" placeholder="日用品名を検索" value="${esc(query)}" autocomplete="off" aria-label="日用品を検索"><button type="button" class="clear-search" data-act="clearSearch" aria-label="検索をクリア" ${query?"":"hidden"}>${miniIcon("close")}</button></div><div class="filterrow"><label class="switchlabel"><input type="checkbox" id="onlyOut" ${onlyOut?'checked':''}>在庫なしのみ表示</label></div><div id="item-results">${listResults()}</div><p class="hint">在庫をタップすると「あり／なし」を切り替えられます。絞り込みを解除した状態で日用品名の行を長押しすると、カテゴリ内で並び替えできます。<br>日用品の追加・在庫なしのコピーは右上の「⋯」から操作できます。<br>この試作の変更は、この端末のブラウザにのみ保存されます。</p></main>${nav()}`}
-
+function listResults(){
+ const q=norm(query),matches=i=>(!q||norm(i.name).includes(q))&&(!onlyOut||!i.inStock);
+ return CATS.map((cat,idx)=>{
+  const all=visible().filter(i=>i.category===idx).sort((a,b)=>a.order-b.order),filtered=all.filter(matches);
+  if((q||onlyOut)&&!filtered.length)return '';
+  const closed=!q&&!onlyOut&&collapsed.has(idx);
+  return `<section class="category"><button class="cathead" data-cat="${idx}" aria-expanded="${!closed}" ${onlyOut?'disabled aria-disabled="true"':''}><strong>${cat}</strong><span class="count">${filtered.length}点</span><span class="cat-arrow-slot" aria-hidden="true">${onlyOut?'':chevron(closed?'down':'up')}</span></button>${closed?'':filtered.length?filtered.map(i=>`
+    <div class="item swipe-item ${openSwipeId===i.id?'swipe-open':''}" data-item-id="${esc(i.id)}" data-category-id="${idx}">
+      <div class="swipe-actions">
+       <button type="button" class="swipe-edit" data-list-edit="${esc(i.id)}" aria-label="${esc(i.name)}を編集">${miniIcon('pencil')}<span>編集</span></button>
+       <button type="button" class="swipe-delete" data-list-hide="${esc(i.id)}" aria-label="${esc(i.name)}を削除">${miniIcon('trash')}<span>削除</span></button>
+      </div>
+      <div class="swipe-front">
+       <button type="button" class="itemname" data-open="${esc(i.id)}" aria-label="${esc(i.name)}の価格情報を開く">
+        <span class="item-title">${esc(i.name)}</span>
+        <span class="list-prices">${esc(listPriceText(i))}</span>
+       </button>
+       <div class="item-stock-area">${UI.stock(i)}</div>
+       <span class="swipe-peek" aria-hidden="true"></span>
+      </div>
+    </div>`).join(''):'<div class="empty">該当する日用品はありません</div>'}</section>`
+ }).join('')||'<div class="empty">一致する日用品はありません</div>';
+}
+function listView(){
+ const copy='<button class="iconbtn" type="button" data-act="copyList" aria-label="在庫なしをコピー" title="在庫なしをコピー">'+miniIcon('copy')+'</button>';
+ const add='<button class="iconbtn" type="button" data-act="add" aria-label="日用品を追加" title="日用品を追加">'+miniIcon('plus')+'</button>';
+ return `${head('日用品','くらしストック',false,add,copy)}<main><div class="searchbar">${miniIcon('search')}<input id="search" type="search" placeholder="日用品名を検索" value="${esc(query)}" autocomplete="off" aria-label="日用品を検索"><button type="button" class="clear-search" data-act="clearSearch" aria-label="検索をクリア" ${query?"":"hidden"}>${miniIcon("close")}</button></div><div class="filterrow"><label class="switchlabel"><input type="checkbox" id="onlyOut" ${onlyOut?'checked':''}>在庫なしのみ表示</label></div><div id="item-results">${listResults()}</div><p class="hint">日用品をタップすると価格情報を開きます。在庫は右側から切替できます。長押しで並び替え、左スワイプで編集・削除できます。<br>価格は先頭登録商品の直近3か月の税込最安値。購入履歴・値札価格は未接続です。</p></main>${nav()}`;
+}
 function priceCompareView(){
  const i=current();if(!i){page='list';return listView()}
- const menuButton=UI.headerMenu({items:[['edit','日用品を編集','pencil'],['hide','日用品を削除','trash'],['products','登録商品の管理','package']].map(([action,label,icon])=>({action,label,icon})),label:'価格比較の操作'});
- const modeBtns=`<div class="scope-switch" role="group" aria-label="価格の表示モード"><button class="pill ${priceScope==='purchase'?'chosen':''}" data-scope="purchase" aria-pressed="${priceScope==='purchase'}">購入価格</button><button class="pill ${priceScope==='unit'?'chosen':''}" data-scope="unit" aria-pressed="${priceScope==='unit'}">単価比較</button></div>`;
+ const modeBtns=`<div class="scope-switch" role="group" aria-label="価格表示"><button class="pill ${priceScope==='product'?'chosen':''}" data-scope="product" aria-pressed="${priceScope==='product'}">商品価格</button><button class="pill ${priceScope==='unit'?'chosen':''}" data-scope="unit" aria-pressed="${priceScope==='unit'}">単位価格</button></div>`;
  const products=registeredProducts(selected);
- const unitLabel=`${i.compareQuantity}${i.compareUnit}あたり`;
+ const unitLabel=compareQuantity&&compareUnit?`${compareQuantity}${compareUnit}あたり`:'数量・単位を設定してください';
  const productRows=products.map(p=>{
-  const converted=convertQuantity(p.packageQuantity,p.packageUnit,i.compareUnit);
-  const comparable=!!(p.packageQuantity&&p.packageUnit&&converted);
-  const help=priceScope==='unit'?comparable?unitLabel:'比較不可：内容量不明または単位が異なります':(p.packageQuantity&&p.packageUnit?`${p.packageQuantity}${p.packageUnit}／商品1点`:'商品1点');
-  return `<div class="panel minimum-card comparison-product"><div class="comparison-product-title"><strong>${esc(p.name)}</strong><small>${esc(help)}</small></div>${UI.priceCells()}</div>`;
- }).join('')||'<div class="panel empty"><p>登録商品はありません</p><button class="secondary" data-act="products">登録商品の管理</button></div>';
- const unitControls=priceScope==='unit'?`
- <form id="compareForm" class="panel">
-  <h2 class="sectiontitle">比較単位</h2>
-  <div class="compare-form-row">
-   ${UI.formField({id:'compare-quantity',name:'quantity',label:'数量',value:i.compareQuantity,required:true,extra:'inputmode="decimal" pattern="[0-9]+([.,][0-9]+)?"'})}
-   ${UI.formField({id:'compare-unit',name:'unit',label:'単位',control:'select',value:i.compareUnit,options:UNIT_OPTIONS.map(x=>({label:x,value:x}))})}
-  </div>
-  <button type="submit" class="secondary compare-save">比較単位を保存</button>
- </form>`:''; 
- const shop=priceScope==='unit'?`<section class="panel shop-compare">
- <h2 class="sectiontitle">店頭商品と比較</h2>
- <div class="shop-inputs">
-  ${UI.formField({id:'shop-price',label:'税込価格（円）',value:shopPrice,extra:'inputmode="decimal"'})}
-  ${UI.formField({id:'shop-quantity',label:'内容量',value:shopQuantity,extra:'inputmode="decimal"'})}
-  <div class="formfield"><label>単位</label>${UI.dropdown({id:'shop-unit',value:shopUnit,label:'店頭商品の単位',options:UNIT_OPTIONS.map(x=>({label:x,value:x}))})}</div>
- </div>
- <div class="shop-result" aria-live="polite">店頭商品の比較単価：<strong id="shop-computed">${shopPrice&&shopQuantity?(shopCompareValue(i)===null?'比較不可':yen(shopCompareValue(i))):'—'}</strong> <small>${esc(unitLabel)}</small></div>
- <p class="hint">この入力内容は保存されません。値札価格の記録とは別です。</p>
- </section>`:''; 
- return `${head(i.name,'価格比較',true,menuButton)}<main class="detail-main comparison-main"><div class="detail-section-heading price-heading"><h2 class="sectiontitle">登録商品の最安値</h2>${UI.dropdown({id:'price-period',value:period,label:'集計期間',compact:true,open:periodMenu,options:[{value:'3m',label:'直近3か月'},{value:'all',label:'全期間'}]})}</div>${modeBtns}${unitControls}<div class="comparison-list">${productRows}</div>${shop}<p class="hint">価格・購入履歴・値札履歴は未接続のため、最安値は「—」で表示しています。</p></main>`;
+  const conversion=convertQuantity(p.packageQuantity,p.packageUnit,compareUnit);
+  const compatible=!!(compareQuantity&&compareUnit&&conversion);
+  const sub=p.packageQuantity&&p.packageUnit?`${p.packageQuantity}${p.packageUnit}`:'内容量未設定';
+  const cells=['normal','discount'].map(kind=>{
+   const r=bestPrice(p.id,kind,period),value=priceScope==='unit'?(compatible&&r?yen(r.price*compareQuantity/conversion):'—'):r?yen(r.price):'—';
+   const reason=priceScope==='unit'&&!compatible?'比較不可':'価格記録なし';
+   return `<div class="pricebox"><span class="label">${kind==='normal'?'通常':'割引'}</span><strong>${esc(value)}</strong><small>${esc(r?.store||reason)}</small></div>`;
+  }).join('');
+  return `<article class="comparison-product" data-product-id="${esc(p.id)}"><div class="comparison-product-title"><div class="comparison-name"><strong>${esc(p.name||'商品名未設定')}</strong><small>${esc(sub)}</small></div><button type="button" class="comparison-more iconbtn" data-product-menu="${esc(p.id)}" aria-label="${esc(p.name||'商品')}の操作" aria-expanded="${productActions===p.id}">⋯</button></div>${productActions===p.id?`<div class="comparison-product-actions"><button type="button" class="secondary" data-pedit="${esc(p.id)}">編集</button><button type="button" class="secondary" data-premove="${esc(p.id)}">登録解除</button></div>`:''}<div class="pricegrid">${cells}</div></article>`;
+ }).join('')||'<div class="panel empty">登録商品はありません</div>';
+ const unitControls=priceScope==='unit'?`<form id="compareForm" class="compare-form"><div class="compare-form-row">${UI.formField({id:'compare-quantity',name:'quantity',label:'比較数量',value:compareQuantity??'',required:true,extra:'inputmode="decimal" pattern="[0-9]+([.,][0-9]+)?" placeholder="数量"'})}${UI.formField({id:'compare-unit',name:'unit',label:'単位',control:'select',value:compareUnit||UNIT_OPTIONS[0],options:UNIT_OPTIONS.map(x=>({label:x,value:x}))})}</div><button type="submit" class="secondary compare-save">適用</button></form>`:'';
+ const shop=priceScope==='unit'?`<section class="shop-compare"><button type="button" class="shop-toggle" data-act="shopToggle" aria-expanded="${shopExpanded}">店頭と比較 ${chevron(shopExpanded?'up':'down')}</button>${shopExpanded?`<div class="shop-fields"><div class="shop-inputs">${UI.formField({id:'shop-price',label:'税込価格（円）',value:shopPrice,extra:'inputmode="decimal"'})}${UI.formField({id:'shop-quantity',label:'内容量',value:shopQuantity,extra:'inputmode="decimal"'})}${UI.formField({id:'shop-unit',label:'単位',control:'select',value:shopUnit,options:UNIT_OPTIONS.map(x=>({label:x,value:x}))})}</div><div class="shop-result" aria-live="polite">店頭の単位価格：<strong id="shop-computed">${shopPrice&&shopQuantity?(shopCompareValue(i)===null?'比較不可':yen(shopCompareValue(i))):'—'}</strong> <small>${esc(unitLabel)}</small></div><p class="hint">店頭比較の入力は保存しません。</p></div>`:''}</section>`:'';
+ return `${head('価格情報',i.name,true)}<main class="detail-main comparison-main">${modeBtns}<div class="detail-section-heading price-heading"><h2 class="sectiontitle">最安値</h2>${UI.dropdown({id:'price-period',value:period,label:'期間',compact:true,open:periodMenu,options:[{value:'3m',label:'直近3か月'},{value:'all',label:'全期間'}]})}</div>${unitControls}<div class="comparison-list">${productRows}</div><button type="button" class="secondary manage-add" data-act="productPick">＋ 商品を登録</button>${shop}<p class="hint">直近3か月／全期間は両モード共通です。実際の価格履歴はまだ接続されていません。</p></main>`;
 }
 function formView(){
  const editing=page==='edit',i=editing?current():null;
@@ -180,7 +216,7 @@ function pickerView(){
 function productCreateView(){
  const i=current();if(!i)return listView();const editing=page==='productEdit';const p=editing?catalogue.products.find(x=>x.id===editingProductId&&x.itemGroupId===selected):null;if(editing&&!p)return productsView();
  const fields=UI.formField({id:'new-product-name',name:'name',label:'商品名',value:p?.name||'',required:true,maxlength:80,placeholder:'商品名を入力'})+
- UI.formField({id:'new-product-quantity',name:'quantity',label:'内容量・数量',value:p?.quantity??'',required:true,extra:'inputmode="decimal" pattern="[0-9]+([.,][0-9]+)?"'})+
+ UI.formField({id:'new-product-quantity',name:'quantity',label:'内容量・数量',value:p?.packageQuantity??'',required:true,extra:'inputmode="decimal" pattern="[0-9]+([.,][0-9]+)?"'})+
  UI.formField({id:'new-product-unit',name:'unit',label:'単位',control:'select',value:p?.unit||'mL',options:UNIT_OPTIONS.map(x=>({label:x,value:x}))});
  return `${head(editing?'商品情報を編集':'新しい商品を作成',i.name,true)}<main class="manage-main"><form id="productCreateForm">${fields}<button class="primary manage-add" type="submit">${editing?'変更を保存':'商品を登録'}</button></form><p class="hint">商品名・内容量・単位を登録します。実データへの更新は未接続です。</p></main>`;
 }
