@@ -33,7 +33,13 @@ assert.equal(ui.getCompare()[1],'mL','unit initially first registered product un
 let view=ui.priceCompareView();
 assert.ok(view.includes('商品価格')&&view.includes('店頭商品と比較'),'parallel tabs');
 assert.ok(!view.includes('自動反映')&&!view.includes('長押しで')&&!view.includes('画面を離れるとリセット'),'No redundant gesture/instruction prose');
-assert.ok(view.includes('最安値')&&view.includes('直近3か月')&&view.includes('全期間'),'best-price heading and common period');
+assert.ok(view.includes('商品ごとの最安値')&&view.includes('全店舗から集計'),'Section heading explains each product and cross-store minimum');
+assert.ok(view.includes('直近3か月')&&view.includes('全期間'),'Shared period retained');
+assert.equal((view.match(/>最安値</g)||[]).length,2,'Each product normal-price column is minimum');
+assert.equal((view.match(/>割引時</g)||[]).length,2,'Each product discounted-price column is marked discount-time');
+assert.ok(view.includes('ライフ')&&view.includes('コノミヤ'),'Independent winning stores are displayed');
+assert.ok(view.includes('class="tertiary manage-add product-register-action"'),'Add product uses tertiary appearance');
+assert.ok(css.includes('.comparison-main .product-register-action{')&&css.includes('border:0;')&&css.includes('min-height:44px'),'Tertiary is borderless and tappable');
 assert.ok(view.includes('コノミヤ')&&view.includes('ライフ'),'stores kept');
 assert.ok(view.includes('data-product-id="p-milk-1"')&&view.includes('data-pedit="p-milk-1"')&&view.includes('data-premove="p-milk-1"'),'products have inline swipe actions');
 assert.ok(!view.includes('data-product-menu='),'product menu removed');
@@ -46,7 +52,7 @@ assert.ok(!view.includes('data-act="shopToggle"')&&!view.includes('id="shop-pric
 assert.ok(view.indexOf('id="compare-quantity"')<view.indexOf('>最安値</h2>'),'quantity above best price and period');
 ui.setQty(900);view=ui.priceCompareView();
 assert.ok(view.includes('298円'),'compare amount can be calculated for matching 900mL');
-assert.ok(view.includes('（900mLあたり）')&&view.includes('割引 · 900mLあたり'),'Heading and result labels make conversion explicit');
+assert.ok(view.includes('（900mLあたり）')&&view.includes('割引時 · 900mLあたり'),'Heading and result labels make conversion explicit');
 ui.setMode('product');ui.setPeriod('all');assert.ok(ui.priceCompareView().includes('全期間'),'common period retained');
 assert.equal(ui.convertQuantity(1,'L','mL'),1000,'L conversion');
 assert.equal(ui.convertQuantity(2,'個','本'),null,'no guessing other units');
