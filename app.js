@@ -239,8 +239,8 @@ function mainTabView(){
 }
 function pageView(){
  switch(page){
-  case 'compare':
-  case 'edit': return priceCompareView();
+  case 'compare': return priceCompareView();
+  case 'edit': return editReturnPage==='list'?listView():priceCompareView();
   case 'add': return listView();
   case 'products': return productsView();
   case 'productPick': return pickerView();
