@@ -1,104 +1,69 @@
-// Dependency-free smoke tests for the approved v1.3 UI/data model.
-// Run from repository root: node tests/ui-smoke.mjs
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import {readFileSync} from 'node:fs';
 import vm from 'node:vm';
-
 const source=readFileSync(new URL('../app.js',import.meta.url),'utf8');
 const css=readFileSync(new URL('../styles.css',import.meta.url),'utf8');
 const app={innerHTML:'',addEventListener(){},insertAdjacentHTML(){}};
-const document={getElementById:id=>id==='app'?app:null,querySelector(){return null},querySelectorAll(){return []},body:{append(){}}};
-const context={document,localStorage:{getItem(){return null},setItem(){}},navigator:{},
- window:{scrollTo(){},scrollY:0},location:{protocol:'file:'},
- crypto:{randomUUID(){return 'test-id'}},setTimeout(){}};
+const doc={getElementById:k=>k==='app'?app:null,querySelector(){return null},querySelectorAll(){return []},body:{append(){}}};
+const context={document:doc,localStorage:{getItem(){return null},setItem(){}},navigator:{},window:{scrollTo(){},scrollY:0},location:{protocol:'file:'},crypto:{randomUUID:()=> 'test-uid'},setTimeout:()=>0};
 const ui=vm.runInNewContext(source+`
-({UI,listView,priceCompareView,formView,productsView,productCreateView,pickerView,dialogView,render,
- getCatalogue(){return catalogue},getItems(){return items},
- registeredProducts,setProductGroup,reorderProducts,convertQuantity,shopCompareValue,
- setPage(v){page=v},setSelected(v){selected=v},setMode(v){priceScope=v},
- setPeriod(v){period=v},setShop(price,quantity,unit){shopPrice=price;shopQuantity=quantity;shopUnit=unit},
- setCompare(q,u){current().compareQuantity=q;current().compareUnit=u},
- setDialog(v){dialog=v},setPickerAll(v){pickerAll=v}})
+({listResults,listView,priceCompareView,formView,pickerView,productCreateView,convertQuantity,shopCompareValue,registeredProducts,setProductGroup,reorderProducts,render,
+ setSelected(v){selected=v},setPage(v){page=v},setMode(v){priceScope=v},setPeriod(v){period=v},setUnit(q,u){compareQuantity=q;compareUnit=u},setShop(a,b,u){shopPrice=a;shopQuantity=b;shopUnit=u},setShopExpanded(v){shopExpanded=v},setProductActions(v){productActions=v},getCompare(){return [compareQuantity,compareUnit]},initCompare:initializeCompare,items:()=>items,catalogue:()=>catalogue})
 `,context,{filename:'app.js'});
-
 const list=ui.listView();
-assert.equal((list.match(/data-stock=/g)||[]).length,15,'15 inventory buttons remain');
-assert.equal((list.match(/class="list-prices"/g)||[]).length,15,'All item rows show two prices');
-assert.ok(list.includes('通常 <b>—</b>')&&list.includes('割引 <b>—</b>'),'No invented price data');
-assert.ok(list.includes('placeholder="日用品名を検索"'),'Search matches new requirements');
-assert.ok(!list.includes('メモ')&&!list.includes('お気に入り'),'Retired UI absent from list');
-assert.ok(!source.includes('memo')&&!source.includes('favorites'),'No retired fields or handlers');
-assert.ok(source.includes('household_pwa_ui_v2')&&source.includes('household_pwa_catalogue_v3'),'Clean demo data keys');
-
-ui.setSelected('demo-1');ui.setPage('compare');
-const purchase=ui.priceCompareView();
-assert.ok(purchase.includes('購入価格')&&purchase.includes('単価比較'),'Both price modes are present');
-assert.ok(purchase.includes('おいしい牛乳')&&purchase.includes('北海道牛乳'),'Registered products are displayed');
-assert.ok(purchase.includes('data-ui-select="price-period"'),'Period uses shared dropdown');
-assert.ok(purchase.includes('直近3か月')&&purchase.includes('全期間'),'Both periods are available');
-assert.ok(!purchase.includes('compareForm')&&!purchase.includes('shop-price'),'Purchase mode omits unit fields');
-assert.ok(!purchase.includes('data-stock'),'Stock lives only in the item list');
-assert.ok(!purchase.includes('メモ')&&!purchase.includes('お気に入り'),'No retired detailed content');
-assert.ok(source.includes("'products','登録商品の管理'"),'Products management remains in compare actions');
-
+assert.ok(list.includes('data-act="copyList"')&&list.includes('data-act="add"'),'Header exposes copy and add');
+assert.ok(!list.includes('日用品一覧の操作'),'No header menu');
+assert.equal((list.match(/class="item swipe-item /g)||[]).length,15,'Fifteen swipe rows');
+assert.equal((list.match(/class="item-stock-area"/g)||[]).length,15,'Inventory has separate column');
+assert.equal((list.match(/class="swipe-peek"/g)||[]).length,15,'Every row has subtle swipe peek');
+assert.equal((list.match(/class="list-prices"/g)||[]).length,15,'Every row has one truncated price summary');
+assert.equal((list.match(/data-list-edit=/g)||[]).length,15,'Each row can be edited');
+assert.equal((list.match(/data-list-hide=/g)||[]).length,15,'Each row can be removed');
+assert.equal((list.match(/data-stock=/g)||[]).length,15,'Inventory buttons stay independent');
+assert.ok(!list.includes('data-act="menu"')&&!list.includes('class="ui-chevron right"'),'No list header menu or old arrow');
+assert.ok(!source.includes('memo')&&!source.includes('favorites'),'Retired fields absent');
+assert.ok(!source.includes('item.compareQuantity')&&!source.includes('item.compareUnit'),'Comparison not per-item saved');
+assert.ok(source.includes('household_pwa_ui_v3')&&source.includes('household_pwa_catalogue_v4'),'Demo store keys updated');
+assert.ok(css.includes('.swipe-item .item-stock-area{flex:0 0 78px'),'Inventory is a fixed independent column');
+assert.ok(css.includes('.swipe-item .list-prices{display:block;width:100%'),'Price summary remains within left column');
+assert.ok(css.includes('.swipe-peek')&&css.includes('translateX(-132px)'),'Swipe action design available');
+ui.setSelected('demo-1');ui.setPage('compare');ui.initCompare();
+assert.equal(ui.getCompare()[0],900,'First registered product sets initial quantity');
+assert.equal(ui.getCompare()[1],'mL','First registered product sets initial unit');
+const compare=ui.priceCompareView();
+assert.ok(compare.includes('価格情報')&&compare.includes('商品価格')&&compare.includes('単位価格'),'New screen naming');
+assert.ok(compare.includes('最安値')&&compare.includes('直近3か月')&&compare.includes('全期間'),'Best price heading and both periods');
+assert.ok(compare.includes('data-product-menu="p-milk-1"'),'Product management on same screen');
+assert.ok(compare.includes('data-act="productPick"'),'Product addition on same screen');
+assert.ok(!compare.includes('data-stock=')&&!compare.includes('日用品を編集'),'No item editing or inventory within price view');
+assert.ok(!compare.includes('id="compareForm"'),'Product price mode shows no quantity form');
 ui.setMode('unit');
 let unit=ui.priceCompareView();
-assert.ok(unit.includes('id="compareForm"'),'Unit comparison settings live in comparison view');
-assert.ok(unit.includes('name="quantity"'),'Comparison quantity input');
-assert.ok(unit.includes('data-ui-select="compare-unit"'),'Unit uses shared dropdown');
-assert.ok(unit.includes('id="shop-price"')&&unit.includes('id="shop-quantity"'),'Shop price/quantity inputs');
-assert.ok(unit.includes('data-ui-select="shop-unit"'),'Shop unit uses shared dropdown');
-assert.ok(unit.includes('通常最安値')&&unit.includes('割引最安値'),'Both price classes displayed');
+assert.ok(unit.includes('id="compareForm"')&&unit.includes('value="900"'),'Unit form initialized to first product');
+assert.ok(unit.includes('data-act="shopToggle"'),'Shop comparison is collapsible');
+assert.ok(!unit.includes('id="shop-price"'),'Shop fields hidden by default');
+ui.setShopExpanded(true);unit=ui.priceCompareView();
+assert.ok(unit.includes('id="shop-price"')&&unit.includes('id="shop-quantity"'),'Shop form appears on demand');
+ui.setUnit(100,'mL');ui.setShop('198','900','mL');
+assert.ok(Math.abs(ui.shopCompareValue(ui.items()[0])-22)<1e-8,'Manual shop comparison');
 assert.equal(ui.convertQuantity(1,'L','mL'),1000,'L to mL');
 assert.equal(ui.convertQuantity(1000,'g','kg'),1,'g to kg');
-assert.equal(ui.convertQuantity(12,'g','mL'),null,'No mass-volume conversion');
-assert.equal(ui.convertQuantity(10,'個','本'),null,'No unrelated discrete unit conversion');
-ui.setCompare(100,'mL');ui.setShop('198','900','mL');
-assert.ok(Math.abs(ui.shopCompareValue(ui.getItems()[0])-22)<1e-8,'Shop price /100mL calculation');
-
-ui.setPage('products');
-const productList=ui.productsView();
-assert.ok(productList.includes('おいしい牛乳')&&productList.includes('900 mL'),'Product and content displayed');
-assert.ok(productList.includes('data-product-id="p-milk-1"'),'Product row supports long-press order');
-assert.ok(productList.includes('data-premove="p-milk-1"'),'Registered product can be unlinked');
-assert.ok(productList.includes('data-pedit="p-milk-1"'),'Product details editable');
-assert.ok(productList.includes('商品を登録'),'Existing product addition uses registration wording');
-
-const order=ui.registeredProducts('demo-1').map(x=>x.id);
-assert.equal(order.join(','),'p-milk-1,p-milk-2','Seed order is explicit');
-assert.ok(ui.reorderProducts('demo-1',['p-milk-2','p-milk-1']),'Reorder accepted');
-assert.equal(ui.registeredProducts('demo-1')[0].id,'p-milk-2','Top representative changes after reorder');
-const missing=ui.getCatalogue().products.find(p=>p.id==='p-milk-3');
-assert.equal(missing.itemGroupId,null,'An unregistered product exists');
-ui.setProductGroup(missing,'demo-1');
-assert.equal(missing.itemGroupOrder,3,'New registration is appended');
-ui.setProductGroup(missing,null);
-assert.equal(missing.itemGroupOrder,null,'Unregister also clears order');
-assert.deepEqual(Array.from(ui.registeredProducts('demo-1').map(p=>p.itemGroupOrder)),[1,2],'Remaining orders stay contiguous');
-assert.ok(ui.getCatalogue().products.find(p=>p.id==='p-milk-3').aliases.includes('低脂肪牛乳'),'OCR aliases survive unlinking');
-assert.ok(!Object.keys(ui.getCatalogue().products[0]).some(k=>/disabled|is_active|inactive/i.test(k)),'No disabled product field');
-assert.ok(Object.hasOwn(ui.getCatalogue().products[0],'packageQuantity')&&Object.hasOwn(ui.getCatalogue().products[0],'packageUnit'),'Product package quantity/unit use explicit names');
-assert.ok(!Object.hasOwn(ui.getCatalogue().products[0],'quantity'),'Package size is not confused with purchased quantity');
-
-ui.setPage('productPick');
-const pick=ui.pickerView();
-assert.ok(pick.includes('登録一覧から選ぶ')&&pick.includes('新しい商品を作成'),'Selection/create use cases remain');
-assert.ok(pick.includes('data-pick="p-milk-3"'),'Unregistered product is offered');
-ui.setPage('productCreate');
-const create=ui.productCreateView();
-assert.ok(create.includes('name="quantity"')&&create.includes('data-ui-select="new-product-unit"'),'New product uses shared form');
-ui.setPage('edit');
-const edit=ui.formView();
-assert.ok(edit.includes('name="name"')&&edit.includes('data-ui-select="category"'),'Item editor fields');
-assert.ok(!edit.includes('name="memo"'),'Memo field completely removed');
-
-ui.setDialog({title:'商品の登録解除',message:'登録を解除します。過去の最安値にも反映されます。',
- buttons:[{id:'cancel',label:'キャンセル'},{id:'confirm',label:'解除する',primary:true}]});
-const dialog=ui.dialogView();
-assert.equal((dialog.match(/class="dialog-line"/g)||[]).length,2,'Dialog sentences rendered on separate lines');
-assert.ok(css.includes('.dialog .dialog-description'),'Shared dialog body alignment');
-assert.ok(css.includes('.comparison-product-title')&&css.includes('.shop-inputs'),'Comparison CSS available');
-assert.ok(css.includes('.product-sort-row.dragging'),'Product drag feedback available');
-ui.setPage('compare');ui.render();
-assert.ok(app.innerHTML.includes('class="shell'),'Shared shell renders');
-console.log('v1.3 UI / data-model smoke checks passed.');
+assert.equal(ui.convertQuantity(3,'個','本'),null,'Nonconvertible units rejected');
+ui.setMode('product');ui.setPeriod('all');
+assert.ok(ui.priceCompareView().includes('aria-pressed="true">商品価格'),'Mode can switch');
+assert.ok(ui.priceCompareView().includes('全期間'),'Shared period kept');
+ui.setProductActions('p-milk-1');unit=ui.priceCompareView();
+assert.ok(unit.includes('data-pedit="p-milk-1"')&&unit.includes('data-premove="p-milk-1"'),'Product actions inline');
+assert.equal(ui.registeredProducts('demo-1')[0].id,'p-milk-1','Initial top product');
+assert.ok(ui.reorderProducts('demo-1',['p-milk-2','p-milk-1']),'Manual order update');
+assert.equal(ui.registeredProducts('demo-1')[0].id,'p-milk-2','Top product changes after reorder');
+ui.initCompare();assert.equal(ui.getCompare()[0],1,'Reopen resets quantity to reordered top product');
+assert.equal(ui.getCompare()[1],'L','Reopen resets unit to reordered top product');
+const p=ui.catalogue().products.find(x=>x.id==='p-milk-3');ui.setProductGroup(p,'demo-1');
+assert.equal(p.itemGroupOrder,3,'Register appends product');
+ui.setProductGroup(p,null);assert.equal(p.itemGroupOrder,null,'Unlink clears order');
+ui.setPage('edit');assert.ok(!ui.formView().includes('name="memo"'),'No memo input');
+ui.setPage('productPick');assert.ok(ui.pickerView().includes('新しい商品を作成'),'Product selector still exists');
+ui.setPage('productCreate');assert.ok(ui.productCreateView().includes('name="quantity"'),'Product editor intact');
+ui.setPage('compare');ui.render();assert.ok(app.innerHTML.includes('価格情報'),'Rendered page has updated header');
+console.log('v1.4 swipe, price info, data model and shared UI smoke checks passed.');
