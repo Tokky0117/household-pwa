@@ -169,7 +169,7 @@ function priceCompareView(){
   const cells=['normal','discount'].map(kind=>{
    const r=bestPrice(p.id,kind,period),value=priceScope==='unit'?(compatible&&r?yen(r.price*compareQuantity/conversion):'—'):r?yen(r.price):'—';
    const reason=priceScope==='unit'&&!compatible?'比較不可':'価格記録なし';
-   return `<div class="pricebox"><span class="label">${kind==='normal'?'通常':'割引'}</span><strong>${esc(value)}</strong><small>${esc(r?.store||reason)}</small></div>`;
+   return `<div class="pricebox"><span class="label">${kind==='normal'?'通常':'割引'}</span><strong>${esc(value)}</strong><small>${esc(r?(r.store||'店舗未設定')+(r.date?' ／ '+r.date:''):reason)}</small></div>`;
   }).join('');
   return `<article class="comparison-product product-sort-row" data-product-id="${esc(p.id)}"><div class="comparison-product-title"><div class="comparison-name"><strong>${esc(p.name||'商品名未設定')}</strong><small>${esc(sub)}</small></div><button type="button" class="comparison-more iconbtn" data-product-menu="${esc(p.id)}" aria-label="${esc(p.name||'商品')}の操作" aria-expanded="${productActions===p.id}">⋯</button></div>${productActions===p.id?`<div class="comparison-product-actions"><button type="button" class="secondary" data-pedit="${esc(p.id)}">編集</button><button type="button" class="secondary" data-premove="${esc(p.id)}">登録解除</button></div>`:''}<div class="pricegrid">${cells}</div></article>`;
  }).join('')||'<div class="panel empty">登録商品はありません</div>';
@@ -288,8 +288,8 @@ function goBack(){
   menu=false;
   if(page==='compare'){page='list';compareQuantity=null;compareUnit='';shopExpanded=false;productActions=null;}
   else if(page==='productCreate')page='productPick';
-  else if(page==='productEdit')page='compare';
-  else if(page==='productPick')page='compare';
+  else if(page==='productEdit'){page='compare';initializeCompare();}
+  else if(page==='productPick'){page='compare';initializeCompare();}
   else if(page==='edit')page=editReturnPage;
   else if(page==='products')page='compare';
   else page='list';
@@ -352,7 +352,7 @@ if(form.id==='productCreateForm'){
  if(!name||!Number.isFinite(quantity)||quantity<=0||!UNIT_OPTIONS.includes(unit)){say('商品名・内容量・単位を確認してください');return}
  if(catalogue.products.some(p=>(page!=='productEdit'||p.id!==editingProductId)&&norm(p.name)===norm(name)&&p.packageQuantity===quantity&&p.packageUnit===unit)){say('同じ名前・内容量の商品が既にあります。検索して選んでください');return}
  if(page==='productEdit'){const p=catalogue.products.find(x=>x.id===editingProductId&&x.itemGroupId===selected);if(!p){say('商品が見つかりません');return}Object.assign(p,{name,packageQuantity:quantity,packageUnit:unit})}else{catalogue.products.push({id:id(),name,packageQuantity:quantity,packageUnit:unit,itemGroupId:selected,itemGroupOrder:registeredProducts(selected).length+1,aliases:[]})}
- persistCatalogue();page='compare';productActions=null;render();say('商品情報を保存しました（試作データ）');
+ persistCatalogue();page='compare';initializeCompare();render();say('商品情報を保存しました（試作データ）');
 }});
 app.addEventListener('click',e=>{if(e.target.classList?.contains('sheet-back')&&['add','edit'].includes(page)){back();return}if(suppressClick){e.preventDefault();e.stopPropagation();suppressClick=false;return}const el=e.target.closest('[data-tab],[data-cat],[data-stock],[data-open],[data-act],[data-period],[data-ui-toggle],[data-ui-choice],[data-scope],[data-move],[data-dialog],[data-premove],[data-pedit],[data-pick],[data-product-menu],[data-list-edit],[data-list-hide]');if(!el)return;if(el.hasAttribute('data-ui-toggle')){
  const wrapper=el.closest('.ui-select'),open=el.getAttribute('aria-expanded')==='true';
@@ -384,7 +384,7 @@ if(el.dataset.pick){
   dialog={title:'商品の登録先変更',message:'過去の最安値の集計先も変わります。',buttons:[{id:'cancel',label:'キャンセル'},{id:'confirmProductMove',label:'変更する',primary:true}],pending:{productId:p.id,fromId:p.itemGroupId}};
   renderDialogOnly();return;
  }
- setProductGroup(p,selected);page='compare';productActions=null;render();say('商品を登録しました');return;
+ setProductGroup(p,selected);page='compare';initializeCompare();render();say('商品を登録しました');return;
 }
 if(el.dataset.dialog){if(el.dataset.dialog==='cancel'&&(dialog?.title==='変更を破棄しますか？'||dialog?.title==='比較単位について')){dialog=null;document.querySelector('.dialog-back')?.remove();return}const action=el.dataset.dialog,p=dialog?.pending;dialog=null;
 
@@ -396,7 +396,7 @@ if(action==='confirmProductUnlink'&&p){
 if(action==='confirmProductMove'&&p){
  const product=catalogue.products.find(x=>x.id===p.productId);
  if(product&&product.itemGroupId===p.fromId)setProductGroup(product,selected);
- page='compare';productActions=null;render();say('登録先を変更しました');return;
+ page='compare';initializeCompare();render();say('登録先を変更しました');return;
 }
 if(action==='discardChanges'){goBack();return}if(action==='confirmHide'){current().hidden=true;current().version++;persist();page='list';openSwipeId=null}if(action==='resetYes'){items=makeSeed();catalogue=sampleCatalogue();persist();persistCatalogue();page='list';tab='items'}if(action==='restore'&&p){const i=items.find(x=>x.id===p.hiddenId);i.hidden=false;i.version++;selected=i.id;page='list';persist()}if(action==='new'&&p){registeredProducts(p.hiddenId).forEach(x=>setProductGroup(x,null));selected=null;page='add';commitItem(p.name,p.category)}render();return}const action=el.dataset.act;if(!action)return;if(action==='back'){back();return}if(action==='clearSearch'){query='';const input=document.getElementById('search');if(input){input.value='';input.blur()}document.querySelector('.clear-search')?.setAttribute('hidden','');updateSearchResults();return}if(action==='add'){selected=null;menu=false;openSwipeId=null;page='add'}if(action==='menu'){menu=!menu}if(['edit','products'].includes(action)){menu=false;editReturnPage=page;page=action}
 if(action==='productPick'){pickQuery='';pickerAll=true;page=action}
