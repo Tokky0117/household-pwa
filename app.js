@@ -77,10 +77,18 @@ const allPreviewRecords=()=>demoRecords.concat(previewRecords.records);
 const allPreviewItems=()=>demoRecordItems.concat(previewRecords.record_items);
 function savePreviewRecord(input){
  const amount=Number(input.amount),quantity=Number(input.quantity);
+ const date=String(input.date||'');
+ const [yy,mm,dd]=date.split('-').map(Number);
+ const validDate=/^\d{4}-\d{2}-\d{2}$/.test(date)&&
+  Number.isInteger(yy)&&Number.isInteger(mm)&&Number.isInteger(dd)&&
+  new Date(yy,mm-1,dd).getFullYear()===yy&&
+  new Date(yy,mm-1,dd).getMonth()===mm-1&&
+  new Date(yy,mm-1,dd).getDate()===dd;
  if(!['receipt','shelf'].includes(input.type)||
-    !catalogue.chains.some(c=>c.id===input.chainId)||
-    !/^\d{4}-\d{2}-\d{2}$/.test(input.date)||!Number.isInteger(amount)||amount<0||
-    !Number.isInteger(quantity)||quantity<=0)return false;
+    !catalogue.chains.some(c=>c.id===input.chainId)||!validDate||
+    String(input.amount??'').trim()===''||!Number.isInteger(amount)||amount<0||
+    !Number.isInteger(quantity)||quantity<=0||
+    (input.type==='receipt'&&input.category!==''&&!CATS[Number(input.category)]))return false;
  if(input.productId&&!catalogue.products.some(p=>p.id===input.productId))return false;
  if(input.type==='shelf'&&!input.productId)return false;
  const idValue=id(),now=new Date().toISOString();
@@ -325,7 +333,7 @@ function recordAddView(){
  const fields=[
   UI.formField({id:'record-chain',name:'chain',label:'チェーン',control:'select',value:catalogue.chains[0]?.id||'',options:catalogue.chains.map(c=>({value:c.id,label:c.name}))}),
   UI.formField({id:'record-date',name:'date',label:type==='receipt'?'購入日':'値札確認日',type:'date',value:today,required:true}),
-  UI.formField({id:'record-product',name:'product',label:'商品',control:'select',value:type==='receipt'?'':catalogue.products[0]?.id,options:optsProduct}),
+  UI.formField({id:'record-product',name:'product',label:'商品',control:'select',value:'',options:optsProduct}),
   UI.formField({id:'record-raw',name:'raw',label:'明細の商品名',value:'',placeholder:'例：牛乳'}),
   UI.formField({id:'record-quantity',name:'quantity',label:'購入数・販売個数',type:'number',value:1,required:true,extra:'min="1" step="1" inputmode="numeric"'}),
   UI.formField({id:'record-amount',name:'amount',label:'明細の税込合計（円）',type:'number',value:'',required:true,extra:'min="0" step="1" inputmode="numeric"'}),
