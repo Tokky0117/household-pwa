@@ -62,7 +62,7 @@ assert.equal(ui.getCompare()[1],'L','Reopen resets unit to reordered top product
 const p=ui.catalogue().products.find(x=>x.id==='p-milk-3');ui.setProductGroup(p,'demo-1');
 assert.equal(p.itemGroupOrder,3,'Register appends product');
 ui.setProductGroup(p,null);assert.equal(p.itemGroupOrder,null,'Unlink clears order');
-ui.setPage('edit');assert.ok(!ui.formView().includes('name="memo"'),'No memo input');
+ui.setPage('edit');assert.ok(!ui.formView().includes('name="memo"'),'No memo input');ui.render();assert.ok(app.innerHTML.includes('data-item-id="demo-1"'),'Swipe edit retains the item list underneath');
 ui.setPage('productPick');assert.ok(ui.pickerView().includes('新しい商品を作成'),'Product selector still exists');
 ui.setPage('productCreate');assert.ok(ui.productCreateView().includes('name="quantity"'),'Product editor intact');
 ui.setPage('compare');ui.render();assert.ok(app.innerHTML.includes('価格情報'),'Rendered page has updated header');
