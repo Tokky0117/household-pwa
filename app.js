@@ -41,7 +41,18 @@ function setProductGroup(p,toId){
 }
 const productMatches=(p,q)=>[p.name,p.packageQuantity?p.packageQuantity+p.packageUnit:'',...(p.aliases||[])].some(v=>norm(v).includes(norm(q)));
 // No simulated historical prices are inserted. Real receipt/tag records will supply these fields.
-const priceHistory=[];
+// Preview-only example prices to verify store labels. Not receipts, backend records or user history.
+const daysAgo=n=>{const d=new Date();d.setDate(d.getDate()-n);return d.toISOString().slice(0,10)};
+const priceHistory=[
+ {productId:'p-milk-1',discountStatus:'discount',price:298,store:'コノミヤ',date:daysAgo(6)},
+ {productId:'p-milk-1',discountStatus:'normal',price:320,store:'ライフ',date:daysAgo(15)},
+ {productId:'p-milk-2',discountStatus:'discount',price:278,store:'万代',date:daysAgo(8)},
+ {productId:'p-milk-2',discountStatus:'normal',price:338,store:'イオン',date:daysAgo(12)},
+ {productId:'p-tea-1',discountStatus:'discount',price:198,store:'スギ薬局',date:daysAgo(10)},
+ {productId:'p-tea-1',discountStatus:'normal',price:238,store:'ライフ',date:daysAgo(21)},
+ {productId:'p-wash-1',discountStatus:'discount',price:458,store:'コノミヤ',date:daysAgo(13)},
+ {productId:'p-wash-1',discountStatus:'normal',price:498,store:'万代',date:daysAgo(23)}
+];
 function bestPrice(productId,kind,periodValue){
  const now=new Date(),limit=new Date(now);
  limit.setMonth(limit.getMonth()-3);
@@ -155,7 +166,7 @@ function listResults(){
 function listView(){
  const copy='<button class="iconbtn" type="button" data-act="copyList" aria-label="在庫なしをコピー" title="在庫なしをコピー">'+miniIcon('copy')+'</button>';
  const add='<button class="iconbtn" type="button" data-act="add" aria-label="日用品を追加" title="日用品を追加">'+miniIcon('plus')+'</button>';
- return `${head('日用品','くらしストック',false,add,copy)}<main><div class="searchbar">${miniIcon('search')}<input id="search" type="search" placeholder="日用品名を検索" value="${esc(query)}" autocomplete="off" aria-label="日用品を検索"><button type="button" class="clear-search" data-act="clearSearch" aria-label="検索をクリア" ${query?"":"hidden"}>${miniIcon("close")}</button></div><div class="filterrow"><label class="switchlabel"><input type="checkbox" id="onlyOut" ${onlyOut?'checked':''}>在庫なしのみ表示</label></div><div id="item-results">${listResults()}</div><p class="hint">日用品をタップすると価格情報を開きます。在庫は右側から切替できます。長押しで並び替え、左スワイプで編集・削除できます。<br>価格は先頭登録商品の直近3か月の税込最安値。購入履歴・値札価格は未接続です。</p></main>${nav()}`;
+ return `${head('日用品','くらしストック',false,add,copy)}<main><div class="searchbar">${miniIcon('search')}<input id="search" type="search" placeholder="日用品名を検索" value="${esc(query)}" autocomplete="off" aria-label="日用品を検索"><button type="button" class="clear-search" data-act="clearSearch" aria-label="検索をクリア" ${query?"":"hidden"}>${miniIcon("close")}</button></div><div class="filterrow"><label class="switchlabel"><input type="checkbox" id="onlyOut" ${onlyOut?'checked':''}>在庫なしのみ表示</label></div><div id="item-results">${listResults()}</div><p class="hint">日用品をタップすると価格情報を開きます。在庫は右側から切替できます。長押しで並び替え、左スワイプで編集・削除できます。<br>価格は先頭登録商品の直近3か月の税込最安値。価格・店舗はサンプル表示です。購入履歴・値札は未接続です。</p></main>${nav()}`;
 }
 function priceCompareView(){
  const i=current();if(!i){page='list';return listView()}
@@ -175,7 +186,7 @@ function priceCompareView(){
  }).join('')||'<div class="panel empty">登録商品はありません</div>';
  const unitControls=priceScope==='unit'?`<form id="compareForm" class="compare-form"><div class="compare-form-row">${UI.formField({id:'compare-quantity',name:'quantity',label:'比較数量',value:compareQuantity??'',required:true,extra:'inputmode="decimal" pattern="[0-9]+([.,][0-9]+)?" placeholder="数量"'})}${UI.formField({id:'compare-unit',name:'unit',label:'単位',control:'select',value:compareUnit||UNIT_OPTIONS[0],options:UNIT_OPTIONS.map(x=>({label:x,value:x}))})}</div><button type="submit" class="secondary compare-save">適用</button></form>`:'';
  const shop=priceScope==='unit'?`<section class="shop-compare"><button type="button" class="shop-toggle" data-act="shopToggle" aria-expanded="${shopExpanded}">店頭と比較 ${chevron(shopExpanded?'up':'down')}</button>${shopExpanded?`<div class="shop-fields"><div class="shop-inputs">${UI.formField({id:'shop-price',label:'税込価格（円）',value:shopPrice,extra:'inputmode="decimal"'})}${UI.formField({id:'shop-quantity',label:'内容量',value:shopQuantity,extra:'inputmode="decimal"'})}${UI.formField({id:'shop-unit',label:'単位',control:'select',value:shopUnit,options:UNIT_OPTIONS.map(x=>({label:x,value:x}))})}</div><div class="shop-result" aria-live="polite">店頭の単位価格：<strong id="shop-computed">${shopPrice&&shopQuantity?(shopCompareValue(i)===null?'比較不可':yen(shopCompareValue(i))):'—'}</strong> <small>${esc(unitLabel)}</small></div><p class="hint">店頭比較の入力は保存しません。</p></div>`:''}</section>`:'';
- return `${head('価格情報',i.name,true)}<main class="detail-main comparison-main">${modeBtns}<div class="detail-section-heading price-heading"><h2 class="sectiontitle">最安値</h2>${UI.dropdown({id:'price-period',value:period,label:'期間',compact:true,open:periodMenu,options:[{value:'3m',label:'直近3か月'},{value:'all',label:'全期間'}]})}</div>${unitControls}<div class="comparison-list">${productRows}</div><button type="button" class="secondary manage-add" data-act="productPick">＋ 商品を登録</button>${shop}<p class="hint">直近3か月／全期間は両モード共通です。実際の価格履歴はまだ接続されていません。</p></main>`;
+ return `${head('価格情報',i.name,true)}<main class="detail-main comparison-main">${modeBtns}<div class="detail-section-heading price-heading"><h2 class="sectiontitle">最安値</h2>${UI.dropdown({id:'price-period',value:period,label:'期間',compact:true,open:periodMenu,options:[{value:'3m',label:'直近3か月'},{value:'all',label:'全期間'}]})}</div>${unitControls}<div class="comparison-list">${productRows}</div><button type="button" class="secondary manage-add" data-act="productPick">＋ 商品を登録</button>${shop}<p class="hint">直近3か月／全期間は両モード共通です。価格・店舗は操作確認用のサンプルです（実データ未接続）。</p></main>`;
 }
 function formView(){
  const editing=page==='edit',i=editing?current():null;
@@ -446,7 +457,7 @@ function startDrag(p){
 }
 function startPending(row,e,inputType){
  const p={row,pointerId:e.pointerId,x:e.clientX,y:e.clientY,category:row.dataset.categoryId,
- kind:page==='compare'||page==='compare'||page==='compare'||page==='products'?'product':'item',inputType};
+ kind:page==='compare'||page==='products'?'product':'item',inputType};
  p.timer=setTimeout(()=>startDrag(p),420);pendingDrag=p;
 }
 function dragRowSelector(kind){return kind==='product'?'[data-product-id]':'[data-item-id]'}
@@ -454,7 +465,7 @@ app.addEventListener('pointerdown',e=>{
  if(e.pointerType==='touch'||e.button!==0||dialog||!['list','products','compare'].includes(page))return;
  if(page==='list'&&(query||onlyOut))return;
  if(e.target.closest('input,textarea,select,[data-stock],[data-premove],[data-product-menu],[data-pedit],[data-cat]'))return;
- const row=e.target.closest(dragRowSelector(page==='products'?'product':'item'));
+ const row=e.target.closest(dragRowSelector(page==='compare'||page==='products'?'product':'item'));
  if(row)startPending(row,{pointerId:e.pointerId,clientX:e.clientX,clientY:e.clientY},'mouse');
 });
 function moveDrag(e){
@@ -492,8 +503,8 @@ app.addEventListener('pointercancel',e=>endDrag(e,true));
 app.addEventListener('contextmenu',e=>{if(activeDrag||pendingDrag&&e.target.closest('[data-item-id],[data-product-id]'))e.preventDefault()});
 app.addEventListener('touchstart',e=>{
  if(e.touches.length!==1||dialog||!['list','products','compare'].includes(page)||page==='list'&&(query||onlyOut))return;
- if(e.target.closest('input,textarea,select,[data-stock],[data-premove],[data-cat]'))return;
- const row=e.target.closest(dragRowSelector(page==='products'?'product':'item'));
+ if(e.target.closest('input,textarea,select,[data-stock],[data-premove],[data-product-menu],[data-pedit],[data-cat]'))return;
+ const row=e.target.closest(dragRowSelector(page==='compare'||page==='products'?'product':'item'));
  if(!row)return;
  const t=e.touches[0];startPending(row,{pointerId:t.identifier,clientX:t.clientX,clientY:t.clientY},'touch');
 },{passive:true});
@@ -518,7 +529,7 @@ function setOpenSwipe(id){
 }
 app.addEventListener('pointerdown',e=>{
  if(page!=='list'||dialog||activeDrag)return;
- if(e.pointerType==='mouse'&&e.button!==0)return;
+ if(e.pointerType!=='mouse'||e.button!==0)return;
  if(e.target.closest('[data-stock],[data-list-edit],[data-list-hide]'))return;
  const row=e.target.closest('.swipe-item');
  if(!row)return;
@@ -543,6 +554,42 @@ app.addEventListener('pointerup',e=>{
  suppressClick=true;setTimeout(()=>{suppressClick=false},250);
 });
 app.addEventListener('pointercancel',e=>{if(swipeGesture?.id===e.pointerId)swipeGesture=null});
+
+// Safari touch gestures use TouchEvent, not pointerup (which may be cancelled on pan).
+let listTouchSwipe=null;
+app.addEventListener('touchstart',e=>{
+ if(page!=='list'||dialog||e.touches.length!==1||activeDrag)return;
+ if(e.target.closest('[data-stock],[data-list-edit],[data-list-hide]'))return;
+ const row=e.target.closest('.swipe-item');if(!row)return;
+ const t=e.touches[0];
+ listTouchSwipe={id:t.identifier,row,x:t.clientX,y:t.clientY,lastX:t.clientX,lastY:t.clientY,axis:null};
+},{passive:true});
+app.addEventListener('touchmove',e=>{
+ const g=listTouchSwipe;if(!g||activeDrag)return;
+ const t=[...e.changedTouches].find(x=>x.identifier===g.id);if(!t)return;
+ g.lastX=t.clientX;g.lastY=t.clientY;
+ const dx=t.clientX-g.x,dy=t.clientY-g.y;
+ if(!g.axis&&Math.hypot(dx,dy)>=12)g.axis=Math.abs(dx)>Math.abs(dy)*1.3?'horizontal':'vertical';
+ if(g.axis==='horizontal'){
+  clearPending();
+  e.preventDefault();
+  const offset=Math.max(-132,Math.min(0,dx+(openSwipeId===g.row.dataset.itemId?-132:0)));
+  g.row.querySelector('.swipe-front')?.style.setProperty('transform','translateX('+offset+'px)');
+ }
+},{passive:false});
+app.addEventListener('touchend',e=>{
+ const g=listTouchSwipe;if(!g)return;
+ const t=[...e.changedTouches].find(x=>x.identifier===g.id);if(!t)return;
+ listTouchSwipe=null;if(activeDrag)return;
+ const dx=t.clientX-g.x;
+ if(g.axis==='horizontal'){
+  const next=(openSwipeId===g.row.dataset.itemId?dx<48:dx< -48)?g.row.dataset.itemId:null;
+  g.row.querySelector('.swipe-front')?.style.removeProperty('transform');
+  setOpenSwipe(next);
+  suppressClick=true;setTimeout(()=>{suppressClick=false},300);
+ }
+},{passive:true});
+app.addEventListener('touchcancel',()=>{if(listTouchSwipe){listTouchSwipe.row.querySelector('.swipe-front')?.style.removeProperty('transform');listTouchSwipe=null}});
 
 // Comparison screen gesture: swipe right anywhere in non-interactive content.
 // Do not require the leftmost 36px: Safari can take over its own edge gesture.
