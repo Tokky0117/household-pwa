@@ -36,7 +36,7 @@ function setProductGroup(p,toId){
  if(from===toId)return;
  p.itemGroupId=null;p.itemGroupOrder=null;
  if(from)registeredProducts(from).forEach((row,index)=>row.itemGroupOrder=index+1);
- if(toId){p.itemGroupId=toId;p.itemGroupOrder=registeredProducts(toId).length+1}
+ if(toId){const nextOrder=registeredProducts(toId).length+1;p.itemGroupId=toId;p.itemGroupOrder=nextOrder}
  persistCatalogue();
 }
 const productMatches=(p,q)=>[p.name,p.packageQuantity?p.packageQuantity+p.packageUnit:'',...(p.aliases||[])].some(v=>norm(v).includes(norm(q)));
