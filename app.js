@@ -171,7 +171,7 @@ function priceCompareView(){
    const reason=priceScope==='unit'&&!compatible?'比較不可':'価格記録なし';
    return `<div class="pricebox"><span class="label">${kind==='normal'?'通常':'割引'}</span><strong>${esc(value)}</strong><small>${esc(r?.store||reason)}</small></div>`;
   }).join('');
-  return `<article class="comparison-product" data-product-id="${esc(p.id)}"><div class="comparison-product-title"><div class="comparison-name"><strong>${esc(p.name||'商品名未設定')}</strong><small>${esc(sub)}</small></div><button type="button" class="comparison-more iconbtn" data-product-menu="${esc(p.id)}" aria-label="${esc(p.name||'商品')}の操作" aria-expanded="${productActions===p.id}">⋯</button></div>${productActions===p.id?`<div class="comparison-product-actions"><button type="button" class="secondary" data-pedit="${esc(p.id)}">編集</button><button type="button" class="secondary" data-premove="${esc(p.id)}">登録解除</button></div>`:''}<div class="pricegrid">${cells}</div></article>`;
+  return `<article class="comparison-product product-sort-row" data-product-id="${esc(p.id)}"><div class="comparison-product-title"><div class="comparison-name"><strong>${esc(p.name||'商品名未設定')}</strong><small>${esc(sub)}</small></div><button type="button" class="comparison-more iconbtn" data-product-menu="${esc(p.id)}" aria-label="${esc(p.name||'商品')}の操作" aria-expanded="${productActions===p.id}">⋯</button></div>${productActions===p.id?`<div class="comparison-product-actions"><button type="button" class="secondary" data-pedit="${esc(p.id)}">編集</button><button type="button" class="secondary" data-premove="${esc(p.id)}">登録解除</button></div>`:''}<div class="pricegrid">${cells}</div></article>`;
  }).join('')||'<div class="panel empty">登録商品はありません</div>';
  const unitControls=priceScope==='unit'?`<form id="compareForm" class="compare-form"><div class="compare-form-row">${UI.formField({id:'compare-quantity',name:'quantity',label:'比較数量',value:compareQuantity??'',required:true,extra:'inputmode="decimal" pattern="[0-9]+([.,][0-9]+)?" placeholder="数量"'})}${UI.formField({id:'compare-unit',name:'unit',label:'単位',control:'select',value:compareUnit||UNIT_OPTIONS[0],options:UNIT_OPTIONS.map(x=>({label:x,value:x}))})}</div><button type="submit" class="secondary compare-save">適用</button></form>`:'';
  const shop=priceScope==='unit'?`<section class="shop-compare"><button type="button" class="shop-toggle" data-act="shopToggle" aria-expanded="${shopExpanded}">店頭と比較 ${chevron(shopExpanded?'up':'down')}</button>${shopExpanded?`<div class="shop-fields"><div class="shop-inputs">${UI.formField({id:'shop-price',label:'税込価格（円）',value:shopPrice,extra:'inputmode="decimal"'})}${UI.formField({id:'shop-quantity',label:'内容量',value:shopQuantity,extra:'inputmode="decimal"'})}${UI.formField({id:'shop-unit',label:'単位',control:'select',value:shopUnit,options:UNIT_OPTIONS.map(x=>({label:x,value:x}))})}</div><div class="shop-result" aria-live="polite">店頭の単位価格：<strong id="shop-computed">${shopPrice&&shopQuantity?(shopCompareValue(i)===null?'比較不可':yen(shopCompareValue(i))):'—'}</strong> <small>${esc(unitLabel)}</small></div><p class="hint">店頭比較の入力は保存しません。</p></div>`:''}</section>`:'';
@@ -446,14 +446,14 @@ function startDrag(p){
 }
 function startPending(row,e,inputType){
  const p={row,pointerId:e.pointerId,x:e.clientX,y:e.clientY,category:row.dataset.categoryId,
- kind:page==='products'?'product':'item',inputType};
+ kind:page==='compare'||page==='compare'||page==='compare'||page==='products'?'product':'item',inputType};
  p.timer=setTimeout(()=>startDrag(p),420);pendingDrag=p;
 }
 function dragRowSelector(kind){return kind==='product'?'[data-product-id]':'[data-item-id]'}
 app.addEventListener('pointerdown',e=>{
- if(e.pointerType==='touch'||e.button!==0||dialog||!['list','products'].includes(page))return;
+ if(e.pointerType==='touch'||e.button!==0||dialog||!['list','products','compare'].includes(page))return;
  if(page==='list'&&(query||onlyOut))return;
- if(e.target.closest('input,textarea,select,[data-stock],[data-premove],[data-cat]'))return;
+ if(e.target.closest('input,textarea,select,[data-stock],[data-premove],[data-product-menu],[data-pedit],[data-cat]'))return;
  const row=e.target.closest(dragRowSelector(page==='products'?'product':'item'));
  if(row)startPending(row,{pointerId:e.pointerId,clientX:e.clientX,clientY:e.clientY},'mouse');
 });
@@ -491,7 +491,7 @@ app.addEventListener('pointerup',e=>endDrag(e));
 app.addEventListener('pointercancel',e=>endDrag(e,true));
 app.addEventListener('contextmenu',e=>{if(activeDrag||pendingDrag&&e.target.closest('[data-item-id],[data-product-id]'))e.preventDefault()});
 app.addEventListener('touchstart',e=>{
- if(e.touches.length!==1||dialog||!['list','products'].includes(page)||page==='list'&&(query||onlyOut))return;
+ if(e.touches.length!==1||dialog||!['list','products','compare'].includes(page)||page==='list'&&(query||onlyOut))return;
  if(e.target.closest('input,textarea,select,[data-stock],[data-premove],[data-cat]'))return;
  const row=e.target.closest(dragRowSelector(page==='products'?'product':'item'));
  if(!row)return;
