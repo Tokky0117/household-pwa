@@ -64,6 +64,34 @@ const demoRecordItems=priceFixtures.map((r,n)=>({
  category_id:r[4]==='receipt'?r[6]:null,price_eligible:true,
  created_at:null,updated_at:null,version:1,deleted_at:null
 }));
+// Manual preview records remain only on this browser; never sent to a server.
+const previewRecordsKey='household_pwa_records_preview_v1';
+function loadPreviewRecords(){
+ try{const v=JSON.parse(localStorage.getItem(previewRecordsKey));
+ if(v&&Array.isArray(v.records)&&Array.isArray(v.record_items))return v;
+ }catch{}
+ return {records:[],record_items:[]};
+}
+let previewRecords=loadPreviewRecords();
+const allPreviewRecords=()=>demoRecords.concat(previewRecords.records);
+const allPreviewItems=()=>demoRecordItems.concat(previewRecords.record_items);
+function savePreviewRecord(input){
+ const amount=Number(input.amount),quantity=Number(input.quantity);
+ if(!['receipt','shelf'].includes(input.type)||
+    !catalogue.chains.some(c=>c.id===input.chainId)||
+    !/^\\d{4}-\\d{2}-\\d{2}$/.test(input.date)||!Number.isInteger(amount)||amount<0||
+    !Number.isInteger(quantity)||quantity<=0)return false;
+ if(input.productId&&!catalogue.products.some(p=>p.id===input.productId))return false;
+ if(input.type==='shelf'&&!input.productId)return false;
+ const idValue=id(),now=new Date().toISOString();
+ const header={record_id:idValue,household_id:'preview-only',record_type:input.type,chain_id:input.chainId,branch_name:null,raw_store_name:null,record_date:input.date,created_at:now,updated_at:now,version:1,deleted_at:null};
+ const detail={record_item_id:id(),record_id:idValue,line_order:1,raw_name:input.rawName||'',
+ product_id:input.productId||null,quantity,amount_tax_included:amount,
+ category_id:input.type==='receipt'?(input.category===''?null:Number(input.category)):null,
+ price_eligible:Boolean(input.productId),created_at:now,updated_at:now,version:1,deleted_at:null};
+ previewRecords.records.push(header);previewRecords.record_items.push(detail);
+ localStorage.setItem(previewRecordsKey,JSON.stringify(previewRecords));return true;
+}
 const recordJoin=(records,detail)=>detail.flatMap(line=>{
  const record=records.find(r=>r.record_id===line.record_id);
  return record?[{...line,record}]:[];
@@ -86,7 +114,7 @@ function priceCandidates(records,details,periodValue,today=new Date()){
  );
 }
 const daysFromDate=d=>[d.getFullYear(),String(d.getMonth()+1).padStart(2,'0'),String(d.getDate()).padStart(2,'0')].join('-');
-function chainMinima(productId,periodValue,records=demoRecords,details=demoRecordItems,today=new Date()){
+function chainMinima(productId,periodValue,records=allPreviewRecords(),details=allPreviewItems(),today=new Date()){
  const candidates=priceCandidates(records,details,periodValue,today).filter(r=>r.product_id===productId);
  const winners=new Map();
  for(const r of candidates){
@@ -146,6 +174,7 @@ function shopCompareValue(item){
 function load(){try{const d=JSON.parse(localStorage.getItem(key));return Array.isArray(d)?d:makeSeed()}catch{return makeSeed()}}
 let items=load(),tab='items',page='list',selected=null,query='',onlyOut=false,collapsed=new Set(),menu=false,dialog=null,toast='',period='1y',priceScope='product',periodMenu=false;
 const app=document.getElementById('app');
+let budgetMonth=daysFromDate(new Date()).slice(0,7);let newRecordType='receipt';
 let previousPage='list', previousSelected=null, listScrollPosition=0, shopPrice='',shopQuantity='',shopUnit='mL',compareQuantity=null,compareUnit='',shopExpanded=false,productActions=null,editReturnPage='list',openSwipeId=null;
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const norm=s=>String(s).normalize('NFKC').trim().replace(/\s+/g,' ').toLocaleLowerCase('ja');
@@ -288,6 +317,35 @@ function productCreateView(){
  UI.formField({id:'new-product-unit',name:'unit',label:'単位',control:'select',value:p?.unit||'mL',options:UNIT_OPTIONS.map(x=>({label:x,value:x}))});
  return `${head(editing?'商品情報を編集':'新しい商品を作成',i.name,true)}<main class="manage-main"><form id="productCreateForm">${fields}<button class="primary manage-add" type="submit">${editing?'変更を保存':'商品を登録'}</button></form><p class="hint">商品名・内容量・単位を登録します。実データへの更新は未接続です。</p></main>`;
 }
+function recordAddView(){
+ const type=newRecordType;
+ const optsProduct=[{value:'',label:'商品未照合'},...catalogue.products.map(p=>({value:p.id,label:productTitle(p)}))];
+ const optsCategory=[{value:'',label:'未分類'},...CATS.map((label,index)=>({label,value:String(index)}))];
+ const today=daysFromDate(new Date());
+ const fields=[
+  UI.formField({id:'record-chain',name:'chain',label:'チェーン',control:'select',value:catalogue.chains[0]?.id||'',options:catalogue.chains.map(c=>({value:c.id,label:c.name}))}),
+  UI.formField({id:'record-date',name:'date',label:type==='receipt'?'購入日':'値札確認日',type:'date',value:today,required:true}),
+  UI.formField({id:'record-product',name:'product',label:'商品',control:'select',value:type==='receipt'?'':catalogue.products[0]?.id,options:optsProduct}),
+  UI.formField({id:'record-raw',name:'raw',label:'明細の商品名',value:'',placeholder:'例：牛乳'}),
+  UI.formField({id:'record-quantity',name:'quantity',label:'購入数・販売個数',type:'number',value:1,required:true,extra:'min="1" step="1" inputmode="numeric"'}),
+  UI.formField({id:'record-amount',name:'amount',label:'明細の税込合計（円）',type:'number',value:'',required:true,extra:'min="0" step="1" inputmode="numeric"'}),
+  ...(type==='receipt'?[UI.formField({id:'record-category',name:'category',label:'家計簿カテゴリ',control:'select',value:'',options:optsCategory})]:[])
+ ].join('');
+ return UI.sheet({title:type==='receipt'?'レシート明細を記録':'値札を記録',variant:'product-picker-modal',body:`<form id="recordForm" class="record-entry-form">${fields}<button class="primary" type="submit">この端末に試作保存</button><p class="sample-price-notice">※ OCR・Sheets・夫婦間同期は未接続。1回につき1明細の試作入力です。</p></form>`});
+}
+function receiptView(){
+ const rows=previewRecords.records.slice().reverse().map(r=>{
+ const item=previewRecords.record_items.find(x=>x.record_id===r.record_id);
+ const p=catalogue.products.find(x=>x.id===item?.product_id);
+ return `<div class="panel preview-record-row"><strong>${esc(r.record_type==='receipt'?'レシート':'値札')} · ${esc(r.record_date)}</strong><span>${esc(chainLabel(r.chain_id))}／${esc(p?.name||item?.raw_name||'未照合')}</span><span>${yen(item?.amount_tax_included??null)} · ${esc(item?.quantity??'—')}個</span></div>`;
+ }).join('')||'<div class="empty">この端末の記録はまだありません</div>';
+ return `${head('レシート','くらしストック')}<main class="preview-record-page"><p class="sample-price-notice">※ 手入力の試作機能。OCR・Sheets・夫婦間同期は未接続です。</p><div class="record-entry-actions"><button class="secondary" data-act="newReceipt">${miniIcon('plus')}<span>レシート明細</span></button><button class="secondary" data-act="newShelf">${miniIcon('plus')}<span>値札</span></button></div><h2 class="sectiontitle">この端末の記録</h2>${rows}</main>${nav()}`;
+}
+function budgetView(){
+ const {total,byCategory}=budgetTotals(allPreviewRecords(),allPreviewItems(),budgetMonth);
+ const categoryRows=[...CATS.map((name,i)=>[name,byCategory.get(i)||0]),['未分類',byCategory.get('uncategorized')||0]];
+ return `${head('家計簿','くらしストック')}<main class="preview-budget-page"><p class="sample-price-notice">※ サンプルと端末内の試作記録。値札は集計対象外です。</p><div class="budget-month"><button type="button" class="iconbtn" data-act="prevMonth" aria-label="前月">${chevron('left')}</button><strong>${esc(budgetMonth.replace('-', '年'))}月</strong><button type="button" class="iconbtn" data-act="nextMonth" aria-label="翌月">${chevron('right')}</button></div><div class="budget-total"><span>税込合計</span><strong>${yen(total)}</strong></div><div class="budget-category-list">${categoryRows.map(([name,value])=>`<div class="budget-category-row"><span>${esc(name)}</span><strong>${yen(value)}</strong></div>`).join('')}</div></main>${nav()}`;
+}
 function stub(title,icon,desc){return `${head(title,'くらしストック')}<main><div class="panel placeholder"><div class="bubble">${icon}</div><h2>${title}画面</h2><p>${desc}</p></div><div class="alert">この画面は共通UIの確認用です。データ処理や同期はまだ行いません。</div></main>${nav()}`}
 function settingsView(){return `${head('設定','くらしストック')}<main><div class="panel"><h2>データと同期</h2><div class="info-row row"><div><strong>同期状態</strong><div class="hint">Google Sheets 接続前</div></div><span class="tag">未設定</span></div><button class="secondary" data-act="sync" style="width:100%">手動同期</button></div><div class="panel"><h2>試作版の操作</h2><p class="hint">変更内容はこの端末の localStorage のみに保存され、夫婦間では共有されません。</p><button class="secondary danger" data-act="reset">仮データを初期状態に戻す</button></div><div class="panel"><h2>今後の実装</h2><p class="hint">商品・店舗管理、Google Apps Script 接続、認証、オフライン差分同期を追加予定です。</p></div></main>${nav()}`}
 // All confirmation dialogs share one DOM and CSS. A Japanese full stop ends a paragraph line.
@@ -299,8 +357,8 @@ function dialogView(){
 // One DOM routing table: screens define content, shell owns navigation and overlays.
 function mainTabView(){
  switch(tab){
-  case 'receipt': return stub('レシート','▤','撮影・写真選択、OCR、明細確認・編集を実装予定です。');
-  case 'budget': return stub('家計簿','¥','月次の税込合計とカテゴリ内訳を実装予定です。');
+  case 'receipt': return receiptView();
+  case 'budget': return budgetView();
   case 'settings': return settingsView();
   default: return listView();
  }
@@ -312,17 +370,18 @@ function pageView(){
   case 'add': return listView();
   case 'products': return productsView();
   case 'productPick': return priceCompareView();
+  case 'recordAdd': return receiptView();
   case 'productCreate':
   case 'productEdit': return productCreateView();
   default: return mainTabView();
  }
 }
 function render(){
- const currentModal=page==='add'||page==='edit'||page==='productPick';
- const wasModal=previousPage==='add'||previousPage==='edit'||previousPage==='productPick';
+ const currentModal=page==='add'||page==='edit'||page==='productPick'||page==='recordAdd';
+ const wasModal=previousPage==='add'||previousPage==='edit'||previousPage==='productPick'||previousPage==='recordAdd';
  const scrollReset=!currentModal&&!wasModal&&(page!==previousPage||(page==='compare'&&selected!==previousSelected));
  const focus=['add','edit','products','productPick','productCreate','productEdit'].includes(page);
- const modal=page==='productPick'?pickerView():currentModal?formView():'';
+ const modal=page==='productPick'?pickerView():page==='recordAdd'?recordAddView():currentModal?formView():'';
  const overlay=dialogView();
  app.innerHTML=`<div class="shell ${focus?'focus':''}">${pageView()}</div>${modal}${overlay}${toast?`<div class="toast" role="status">${esc(toast)}</div>`:''}`;
  if(scrollReset)window.scrollTo(0,page==='list'&&previousPage==='compare'?listScrollPosition:0);
@@ -346,7 +405,7 @@ function hasUnsavedFormChanges(){
 }
 function goBack(){
   const sheet=document.querySelector('.sheet-back');
-  if(['add','edit','productPick'].includes(page)&&sheet&&!sheet.classList.contains('closing')){
+  if(['add','edit','productPick','recordAdd'].includes(page)&&sheet&&!sheet.classList.contains('closing')){
     sheet.classList.add('closing');
     sheet.style.pointerEvents='none';
     const destination=page==='add'?'list':page==='productPick'?'compare':editReturnPage;
@@ -358,6 +417,7 @@ function goBack(){
   else if(page==='productCreate')page='productPick';
   else if(page==='productEdit'){page='compare';initializeCompare();}
   else if(page==='productPick'){page='compare';initializeCompare();}
+  else if(page==='recordAdd'){page='list';tab='receipt';}
   else if(page==='edit')page=editReturnPage;
   else if(page==='products')page='compare';
   else page='list';
@@ -418,7 +478,11 @@ function updateComparisonPrices(){
  }
 }
 app.addEventListener('change',e=>{if(e.target.id==='onlyOut'){const wasOut=onlyOut;onlyOut=e.target.checked;if(wasOut&&!onlyOut)collapsed.clear();render()}});
-app.addEventListener('submit',e=>{e.preventDefault();const form=e.target;const d=new FormData(form);if(form.id==='itemForm'){const i=page==='edit'?current():null;saveItem(String(d.get('name')??i?.name??'').trim(),Number(d.get('category')??i?.category??0))}if(form.id==='compareForm'){
+app.addEventListener('submit',e=>{e.preventDefault();const form=e.target;const d=new FormData(form);if(form.id==='recordForm'){
+ const input={type:newRecordType,chainId:String(d.get('chain')||''),date:String(d.get('date')||''),productId:String(d.get('product')||''),rawName:String(d.get('raw')||''),quantity:String(d.get('quantity')||''),amount:String(d.get('amount')||''),category:String(d.get('category')||'')};
+ if(!savePreviewRecord(input)){say('記録の金額・個数・商品・チェーンを確認してください');return}
+ page='list';tab='receipt';render();say('この端末に試作保存しました');return;
+ }if(form.id==='itemForm'){const i=page==='edit'?current():null;saveItem(String(d.get('name')??i?.name??'').trim(),Number(d.get('category')??i?.category??0))}if(form.id==='compareForm'){
  const quantity=Number(String(d.get('quantity')||'').replace(',','.')),unit=String(d.get('unit')||'');
  if(!Number.isFinite(quantity)||quantity<=0||!UNIT_OPTIONS.includes(unit)){say('比較単位の数量と単位を確認してください');return}
  compareQuantity=quantity;compareUnit=unit;render();say('比較単位を適用しました');return;
@@ -474,10 +538,15 @@ if(action==='confirmProductMove'&&p){
  if(product&&product.itemGroupId===p.fromId)setProductGroup(product,selected);
  page='compare';initializeCompare();render();say('登録先を変更しました');return;
 }
-if(action==='discardChanges'){goBack();return}if(action==='confirmHide'){current().hidden=true;current().version++;persist();page='list';openSwipeId=null}if(action==='resetYes'){items=makeSeed();catalogue=sampleCatalogue();persist();persistCatalogue();page='list';tab='items'}if(action==='restore'&&p){const i=items.find(x=>x.id===p.hiddenId);i.hidden=false;i.version++;selected=i.id;page='list';persist()}if(action==='new'&&p){registeredProducts(p.hiddenId).forEach(x=>setProductGroup(x,null));selected=null;page='add';commitItem(p.name,p.category)}render();return}const action=el.dataset.act;if(!action)return;if(action==='back'){back();return}if(action==='clearSearch'){query='';const input=document.getElementById('search');if(input){input.value='';input.blur()}document.querySelector('.clear-search')?.setAttribute('hidden','');updateSearchResults();return}if(action==='add'){selected=null;menu=false;openSwipeId=null;page='add'}if(action==='menu'){menu=!menu}if(['edit','products'].includes(action)){menu=false;editReturnPage=page;page=action}
+if(action==='discardChanges'){goBack();return}if(action==='confirmHide'){current().hidden=true;current().version++;persist();page='list';openSwipeId=null}if(action==='resetYes'){items=makeSeed();catalogue=sampleCatalogue();previewRecords={records:[],record_items:[]};localStorage.removeItem(previewRecordsKey);persist();persistCatalogue();page='list';tab='items'}if(action==='restore'&&p){const i=items.find(x=>x.id===p.hiddenId);i.hidden=false;i.version++;selected=i.id;page='list';persist()}if(action==='new'&&p){registeredProducts(p.hiddenId).forEach(x=>setProductGroup(x,null));selected=null;page='add';commitItem(p.name,p.category)}render();return}const action=el.dataset.act;if(!action)return;if(action==='back'){back();return}if(action==='clearSearch'){query='';const input=document.getElementById('search');if(input){input.value='';input.blur()}document.querySelector('.clear-search')?.setAttribute('hidden','');updateSearchResults();return}if(action==='add'){selected=null;menu=false;openSwipeId=null;page='add'}if(action==='menu'){menu=!menu}if(['edit','products'].includes(action)){menu=false;editReturnPage=page;page=action}
 if(action==='productPick'){pickQuery='';pickerAll=true;openSwipeId=null;page=action}
 if(action==='productCreate')page='productCreate';if(action==='shopToggle'){shopPrice=document.getElementById('shop-price')?.value??shopPrice;shopQuantity=document.getElementById('shop-quantity')?.value??shopQuantity;shopExpanded=!shopExpanded;render();return}
-if(action==='catalogueList'){pickerAll=!pickerAll;const heading=document.querySelector('.catalogue-list-heading');if(heading)heading.textContent=pickerAll?'登録一覧':'候補（最大3件）';const target=document.getElementById('catalogue-results');if(target)target.innerHTML=pickerResults();el.textContent=pickerAll?'候補に戻る':'登録一覧から選ぶ';return}if(action==='hide'){menu=false;dialog={title:'日用品を削除',message:'日用品リストから削除します',buttons:[{id:'cancel',label:'キャンセル'},{id:'confirmHide',label:'削除',primary:true}]}}if(action==='copyList'){const txt=CATS.map((cat,idx)=>{const rows=visible().filter(i=>i.category===idx&&!i.inStock).sort((a,b)=>a.order-b.order);return rows.length?cat+'\n'+rows.map(i=>'- '+i.name).join('\n'):''}).filter(Boolean).join('\n\n');menu=false;render();if(!txt){say('在庫なしの日用品はありません');return}navigator.clipboard.writeText(txt).then(()=>say('在庫なしをコピーしました')).catch(()=>say('コピーできませんでした'));return}if(action==='sync'){say('同期は未接続です（試作版）');return}if(action==='reset'){dialog={title:'仮データを初期化しますか？',message:'この端末で行った変更がすべて消え、最初のサンプル状態に戻ります。',buttons:[{id:'cancel',label:'キャンセル'},{id:'resetYes',label:'初期化する',primary:true,danger:true}]}}render()});
+if(action==='catalogueList'){pickerAll=!pickerAll;const heading=document.querySelector('.catalogue-list-heading');if(heading)heading.textContent=pickerAll?'登録一覧':'候補（最大3件）';const target=document.getElementById('catalogue-results');if(target)target.innerHTML=pickerResults();el.textContent=pickerAll?'候補に戻る':'登録一覧から選ぶ';return}if(action==='hide'){menu=false;dialog={title:'日用品を削除',message:'日用品リストから削除します',buttons:[{id:'cancel',label:'キャンセル'},{id:'confirmHide',label:'削除',primary:true}]}}if(action==='copyList'){const txt=CATS.map((cat,idx)=>{const rows=visible().filter(i=>i.category===idx&&!i.inStock).sort((a,b)=>a.order-b.order);return rows.length?cat+'\n'+rows.map(i=>'- '+i.name).join('\n'):''}).filter(Boolean).join('\n\n');menu=false;render();if(!txt){say('在庫なしの日用品はありません');return}navigator.clipboard.writeText(txt).then(()=>say('在庫なしをコピーしました')).catch(()=>say('コピーできませんでした'));return}if(action==='newReceipt'||action==='newShelf'){newRecordType=action==='newReceipt'?'receipt':'shelf';page='recordAdd';render();return}
+if(action==='prevMonth'||action==='nextMonth'){
+ const [year,month]=budgetMonth.split('-').map(Number);const d=new Date(year,month-1+(action==='prevMonth'?-1:1),1);
+ budgetMonth=[d.getFullYear(),String(d.getMonth()+1).padStart(2,'0')].join('-');render();return;
+}
+if(action==='sync'){say('同期は未接続です（試作版）');return}if(action==='reset'){dialog={title:'仮データを初期化しますか？',message:'この端末で行った変更がすべて消え、最初のサンプル状態に戻ります。',buttons:[{id:'cancel',label:'キャンセル'},{id:'resetYes',label:'初期化する',primary:true,danger:true}]}}render()});
 // Shared dismissal behavior: menus close when focus moves to the rest of the page.
 // Do not rerender the whole screen: that would discard form contents and search focus.
 function closeAllDropdowns(){
