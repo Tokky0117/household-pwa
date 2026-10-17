@@ -16,7 +16,7 @@
 | users | user_id → households | household_id, display_name, auth_subject (後工程) | 最初は仮ユーザー |
 | categories | category_id | name, fixed_order | 5カテゴリ固定、未分類は家計簿専用区分 |
 | stores | store_id / chain_id | chain_id, chain_name, branch_name(nullable), household_id | チェーンと支店を区別。支店不明を許容。チェーンIDだけを持つ価格記録も可 |
-| item_groups | item_group_id → households/categories | household_id, category_id, name, normalized_name, in_stock, list_order, **compare_quantity, compare_unit**, is_hidden, version, updated_at | **memo無し**。比較設定は初回1個。期間・モードは持たない |
+| item_groups | item_group_id → households/categories | household_id, category_id, name, normalized_name, in_stock, list_order, is_hidden, version, updated_at | **memo／compare_quantity／compare_unit無し**。比較値と期間・モードは画面内の一時状態 |
 | products | product_id → households/item_groups | household_id, item_group_id(nullable), **item_group_order(nullable)**, name, package_quantity(nullable), package_unit(nullable), version, updated_at | 登録先NULLなら順序NULL。容量の値と単位は両方NULLか両方設定。無効化無し |
 | product_aliases | alias_id → products | product_id, normalized_alias, chain_id(nullable) | OCR照合用。曖昧一致を自動確定しない |
 | receipts | receipt_id → households/stores | household_id, store_id(nullable), chain_id(nullable), purchased_on, version, updated_at | 家計簿用の購入実績。合計金額は正本保存しない |
@@ -35,8 +35,8 @@
 - 商品順序の変更は最安値履歴を書き換えない。日用品一覧で表示する対象商品のみ変わる。
 
 ## 価格比較・集計
-- UI起動時：モード購入価格、期間直近3か月。**モードと期間を正本に保存しない**。
-- `item_groups.compare_quantity > 0`、`compare_unit` は入力対応単位。初回 **1個**。単価比較画面で有効値への変更を確定したとき保存し、同期対象とする。
+- 価格情報を開くたび：モード商品価格、期間直近3か月。**モードと期間を正本に保存しない**。
+- 比較数量・単位は先頭登録商品の `package_quantity/package_unit` を初期値とし、画面を離れると破棄する。**正本・localStorage・同期対象にはしない**。未設定なら入力を促す。
 - 購入単位最安値はレシートの税込明細額 ÷ 購入数量と、値札の税込商品単位価格を統合した候補から通常／割引別に集計する。期間の日付は購入日／値札観測日を使う。
 - 単価比較：商品内容量が設定されている場合に限り購入単位最安値を比較数量・単位へ換算。同一単位／mL↔L／g↔kgのみ可。非互換・内容量不明は比較不可。
 - 単価比較画面で手入力する値札相当の試算（税込価格・数量・単位）は**一時画面状態**。レシート明細・値札履歴・商品正本には保存しない。
@@ -51,6 +51,11 @@
 - GAS LockServiceとversion／operation_idで商品順序・付け替え・同名再登録を整合的に更新。SheetsにリレーショナルDBの制約がないため、サーバーで整合性検査を行う。
 
 ## 既存試作との関係
-- 旧 `household_pwa_ui_v1` は `memo` と `favorites`、旧 `household_pwa_catalogue_v1` は順序なし商品を含む。新試作の保存先は `household_pwa_ui_v2`／`household_pwa_catalogue_v3`。商品内容量はアプリ内部でも `packageQuantity`／`packageUnit` として保持し、購入数量とは別フィールドとする。**本番正本として流用しない**。
+- 旧 `household_pwa_ui_v1` は `memo` と `favorites`、旧 `household_pwa_catalogue_v1` は順序なし商品を含む。新試作の保存先は `household_pwa_ui_v3`／`household_pwa_catalogue_v4`。商品内容量はアプリ内部でも `packageQuantity`／`packageUnit` として保持し、購入数量とは別フィールドとする。**本番正本として流用しない**。
 - 本番データが無い今の段階では、試作リセット／新バージョンの仮データに切り替え、廃止した項目を新スキーマへ持ち込まない方針。
 - 試作コードの画面切替・日用品一覧の空価格表示・長押し順序はこの定義に基づき更新済み。実価格履歴の集計、値札OCR／レシート保存は後工程。
+
+## v1.4画面・データ整合性
+- 日用品一覧の表示は、先頭登録商品に紐づく割引・通常の最安値を順に「価格／商品名／店舗名」として要約。存在しない情報は捏造しない。
+- 日用品の編集・削除は一覧行の左スワイプから行う。価格情報で登録商品の管理を完結させるため別管理画面は将来仕様に残さない。
+- 保存列から比較数量・単位を削除し、画面を開くたび先頭商品の内容量・単位から算出する。
