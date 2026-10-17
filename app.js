@@ -179,7 +179,7 @@ function priceCompareView(){
   const sub=p.packageQuantity&&p.packageUnit?`${p.packageQuantity}${p.packageUnit}`:'内容量未設定';
   const cells=['normal','discount'].map(kind=>{
    const r=bestPrice(p.id,kind,period),value=priceScope==='unit'?(compatible&&r?yen(r.price*compareQuantity/conversion):'—'):r?yen(r.price):'—';
-   const reason=priceScope==='unit'&&!compatible?'比較不可':'価格記録なし';
+   const reason=priceScope==='unit'&&!compareQuantity?'数量を入力':priceScope==='unit'&&!compatible?'比較不可':'価格記録なし';
    return `<div class="pricebox"><span class="label">${kind==='normal'?'通常':'割引'}</span><strong>${esc(value)}</strong><small>${esc(r?(r.store||'店舗未設定')+(r.date?' ／ '+r.date:''):reason)}</small></div>`;
   }).join('');
   return `<article class="comparison-product product-sort-row swipe-item ${openSwipeId===p.id?'swipe-open':''}" data-product-id="${esc(p.id)}">
@@ -391,7 +391,7 @@ if(el.dataset.uiChoice!==undefined){
  const choice=el.dataset.uiChoice;
  if(wrapper.dataset.uiSelect==='price-period'){period=choice;periodMenu=false;render();return}
  const hidden=wrapper.querySelector('input[type="hidden"]');if(hidden){hidden.value=choice;hidden.dispatchEvent(new Event('change',{bubbles:true}))}
- if(wrapper.dataset.uiSelect==='compare-unit'){compareUnit=choice;updateComparisonPrices();closeAllDropdowns();return}
+ if(wrapper.dataset.uiSelect==='compare-unit'){compareUnit=choice;const label=wrapper.querySelector('.ui-select-label');if(label)label.textContent=el.querySelector('.ui-menu-label')?.textContent||choice;wrapper.querySelectorAll('[data-ui-choice]').forEach(b=>{const chosen=b===el;b.classList.toggle('selected',chosen);b.setAttribute('aria-pressed',String(chosen));const tick=b.querySelector('.ui-menu-selected');if(tick)tick.textContent=chosen?'✓':''});updateComparisonPrices();closeAllDropdowns();return}
  const label=wrapper.querySelector('.ui-select-label');if(label)label.textContent=el.querySelector('.ui-menu-label')?.textContent||'';
  wrapper.querySelectorAll('[data-ui-choice]').forEach(b=>{const selected=b===el;b.classList.toggle('selected',selected);b.setAttribute('aria-pressed',String(selected));const tick=b.querySelector('.ui-menu-selected');if(tick)tick.textContent=selected?'✓':''});
  closeAllDropdowns();wrapper.querySelector('.ui-select-trigger')?.focus();return;
@@ -505,16 +505,16 @@ function endDrag(e,cancel=false){
  document.body.classList.remove('reordering');
  suppressClick=true;setTimeout(()=>{suppressClick=false},200);
  if(cancel){render();return}
- if(!d.moved)return;
+ if(!d.moved){render();return}
  if(d.kind==='item'){
-  const rows=[...document.querySelectorAll('[data-item-id]')].filter(row=>row.dataset.categoryId===d.category);
+  const rows=[...document.querySelectorAll('.swipe-item[data-item-id]:not(.drag-ghost)')].filter(row=>row.dataset.categoryId===d.category);
   rows.forEach((row,index)=>{const i=items.find(x=>x.id===row.dataset.itemId);if(i){i.order=index+1;i.version=(i.version||0)+1}});
   persist();
  }else{
-  const ids=[...document.querySelectorAll('[data-product-id]')].map(row=>row.dataset.productId);
+  const ids=[...document.querySelectorAll('.comparison-product[data-product-id]:not(.drag-ghost),.catalogue-row[data-product-id]:not(.drag-ghost)')].map(row=>row.dataset.productId);
   if(!reorderProducts(selected,ids)){render();say('並び順を保存できませんでした');return}
  }
- say('表示順を保存しました');
+ render();say('表示順を保存しました');
 }
 app.addEventListener('pointermove',moveDrag);
 app.addEventListener('pointerup',e=>endDrag(e));
@@ -618,7 +618,7 @@ app.addEventListener('touchcancel',()=>{if(listTouchSwipe){listTouchSwipe.row.qu
 let detailSwipe=null;
 app.addEventListener('touchstart',e=>{
   if(page!=='compare'||menu||dialog||e.touches.length!==1)return;
-  if(!e.target.closest('.detail-main')||e.target.closest('button,input,textarea,select,a'))return;
+  if(!e.target.closest('.detail-main')||e.target.closest('.swipe-item,button,input,textarea,select,a'))return;
   const t=e.touches[0];
   detailSwipe={identifier:t.identifier,startX:t.clientX,startY:t.clientY,
     lastX:t.clientX,lastY:t.clientY,direction:null};
