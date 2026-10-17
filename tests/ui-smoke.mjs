@@ -25,9 +25,15 @@ assert.ok(!list.includes('data-act="menu"')&&!list.includes('class="ui-chevron r
 assert.ok(!source.includes('memo')&&!source.includes('favorites'),'Retired fields absent');
 assert.ok(!source.includes('item.compareQuantity')&&!source.includes('item.compareUnit'),'Comparison not per-item saved');
 assert.ok(source.includes('household_pwa_ui_v3')&&source.includes('household_pwa_catalogue_v4'),'Demo store keys updated');
-assert.ok(css.includes('.swipe-item .item-stock-area{flex:0 0 78px'),'Inventory is a fixed independent column');
+assert.ok(css.includes('.swipe-item .item-stock-area{flex:0 0 60px'),'Inventory is a compact, fixed independent column');
+assert.ok(css.includes('width:48px;min-height:32px'),'Stock label shrunk without collapsing click target in surrounding area');
 assert.ok(css.includes('.swipe-item .list-prices{display:block;width:100%'),'Price summary remains within left column');
 assert.ok(css.includes('.swipe-peek')&&css.includes('translateX(-132px)'),'Swipe action design available');
+assert.ok(source.includes("kind:page==='compare'||page==='products'?'product':'item'"),'Product gestures target products');
+assert.ok(source.includes("dragRowSelector(page==='compare'||page==='products'?'product':'item')"),'Touch and mouse both target price-information product rows');
+assert.ok(source.includes("listTouchSwipe={id:t.identifier"),'iPhone touch listeners support swipe');
+assert.ok(list.includes('298円（割引）／おいしい牛乳／コノミヤ'),'Preview discounted price includes product/store');
+assert.ok(list.includes('320円（通常）／おいしい牛乳／ライフ'),'Preview normal price includes product/store');
 // Exercise actual pointer handlers, not only DOM and CSS expectations.
 ui.setPage('list');
 const row={dataset:{itemId:'demo-1',categoryId:'0'}};
@@ -37,6 +43,14 @@ pointer('pointerdown',210,75);pointer('pointermove',120,76);pointer('pointerup',
 assert.equal(ui.getOpenSwipe(),'demo-1','Left swipe reveals item actions');
 pointer('pointerdown',110,75);pointer('pointermove',185,76);pointer('pointerup',185,76);
 assert.equal(ui.getOpenSwipe(),null,'Right swipe closes item actions');
+// iPhone sends touchmove/touchend even when pointerup is cancelled by the browser.
+const touchTarget={closest(selector){return selector==='.swipe-item'?row:null}};
+function touch(type,x,y){const t={identifier:5,clientX:x,clientY:y},ev={touches:type==='touchstart'?[t]:[],changedTouches:[t],target:touchTarget,preventDefault(){}};for(const cb of handlers[type]||[])cb(ev)}
+row.querySelector=()=>({style:{setProperty(){},removeProperty(){}}});
+touch('touchstart',200,70);touch('touchmove',108,71);touch('touchend',108,71);
+assert.equal(ui.getOpenSwipe(),'demo-1','iPhone touch swipe reveals actions');
+touch('touchstart',110,70);touch('touchmove',205,70);touch('touchend',205,70);
+assert.equal(ui.getOpenSwipe(),null,'iPhone right swipe closes actions');
 ui.setSelected('demo-1');ui.setPage('compare');ui.initCompare();
 assert.equal(ui.getCompare()[0],900,'First registered product sets initial quantity');
 assert.equal(ui.getCompare()[1],'mL','First registered product sets initial unit');
@@ -44,6 +58,8 @@ const compare=ui.priceCompareView();
 assert.ok(compare.includes('価格情報')&&compare.includes('商品価格')&&compare.includes('単位価格'),'New screen naming');
 assert.ok(compare.includes('最安値')&&compare.includes('直近3か月')&&compare.includes('全期間'),'Best price heading and both periods');
 assert.ok(compare.includes('data-product-menu="p-milk-1"'),'Product management on same screen');
+assert.ok(compare.includes('コノミヤ')&&compare.includes('ライフ'),'Price information displays store names');
+assert.ok(compare.includes('サンプル'),'Example data clearly labeled');
 assert.ok(compare.includes('data-act="productPick"'),'Product addition on same screen');
 assert.ok(!compare.includes('data-stock=')&&!compare.includes('日用品を編集'),'No item editing or inventory within price view');
 assert.ok(!compare.includes('id="compareForm"'),'Product price mode shows no quantity form');
