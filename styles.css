@@ -2174,3 +2174,47 @@ html,body {
 .budget-total strong{font-size:24px;color:var(--ink)}
 .budget-category-row{display:flex;justify-content:space-between;gap:14px;border-bottom:1px solid var(--line);padding:14px 2px;font-size:14px}
 .budget-category-row strong{font-variant-numeric:tabular-nums}
+
+/* v30 price information only: grouped swipeable products and compact aligned chain rows. */
+.comparison-main .comparison-list{gap:10px}
+.comparison-main .comparison-product.swipe-item{
+ margin:0!important;
+ border:1px solid var(--line);
+ border-radius:11px;
+ background:var(--card);
+ overflow:hidden;
+}
+.comparison-main .comparison-product-front{border-radius:inherit;background:var(--card)}
+.comparison-main .comparison-product-content{padding:10px 10px 11px 12px}
+.comparison-main .comparison-product .comparison-product-title{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:7px}
+.comparison-main .comparison-name{padding-bottom:0;min-width:0}
+.comparison-main .product-drag-hint{
+ display:flex;align-items:center;justify-content:center;flex:0 0 28px;
+ min-height:30px;color:var(--muted);opacity:.75;pointer-events:none;
+}
+.comparison-main .chain-price-list{border-top:1px solid var(--line);padding-top:3px}
+.comparison-main .chain-price-row{
+ display:grid;grid-template-columns:minmax(0,1fr) minmax(78px,auto) 58px;
+ grid-template-areas:"name value date";
+ align-items:center;column-gap:8px;row-gap:0;
+ min-height:30px;padding:3px 0;border:0;
+}
+.comparison-main .chain-name{grid-area:name;font-size:13px;line-height:1.3;overflow-wrap:anywhere}
+.comparison-main .chain-price-value{
+ grid-area:value;justify-self:end;font-size:16px;font-weight:650;
+ line-height:1.3;white-space:nowrap;font-variant-numeric:tabular-nums;
+}
+.comparison-main .chain-price-unavailable{font-size:12px;font-weight:500;color:var(--muted)}
+.comparison-main .chain-price-date{
+ grid-area:date;justify-self:end;font-size:11px;line-height:1.3;
+ white-space:nowrap;font-variant-numeric:tabular-nums;color:var(--muted);
+}
+.comparison-main .chain-price-empty{padding:8px 0 2px;border:0}
+.comparison-main .comparison-product-front .swipe-peek{
+ background:var(--line);opacity:.75;flex:0 0 5px;
+}
+@media(max-width:360px){
+ .comparison-main .chain-price-row{grid-template-columns:minmax(0,1fr) minmax(70px,auto) 53px;column-gap:5px}
+ .comparison-main .chain-price-value{font-size:15px}
+ .comparison-main .chain-price-date{font-size:10.5px}
+}
