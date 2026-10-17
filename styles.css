@@ -2141,3 +2141,36 @@ html,body {
 .comparison-main .product-register-action svg{width:18px;height:18px;flex:none}
 .comparison-main .product-register-action:active{background:#e8ebf0}
 .comparison-main .product-register-action:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+/* v1.8 uses shared typography/tokens. Chain rows are within each swipeable product. */
+.comparison-main .chain-price-list{display:flex;flex-direction:column;gap:0}
+.comparison-main .chain-price-row{
+ display:grid;grid-template-columns:minmax(0,1fr) auto;
+ grid-template-areas:"name value" "name date";
+ align-items:center;column-gap:12px;row-gap:2px;
+ border-top:1px solid var(--line);padding:9px 0;
+}
+.comparison-main .chain-name{grid-area:name;min-width:0;overflow-wrap:anywhere;font-size:14px;color:var(--ink)}
+.comparison-main .chain-price-value{grid-area:value;justify-self:end;font-size:19px;font-weight:700;color:var(--ink);font-variant-numeric:tabular-nums}
+.comparison-main .chain-price-date{grid-area:date;justify-self:end;font-size:11px;color:var(--muted)}
+.comparison-main .chain-price-empty{color:var(--muted);font-size:15px;border-top:1px solid var(--line);padding:9px 0}
+.comparison-main .comparison-product-content{padding-top:6px;padding-bottom:7px}
+.comparison-main .comparison-name{padding-bottom:5px}
+.preview-record-page,.preview-budget-page{padding:15px 16px 110px}
+.record-entry-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px;margin:14px 0 22px}
+.record-entry-actions button{display:flex;align-items:center;justify-content:center;gap:5px;min-height:44px;font-size:13px}
+.record-entry-actions svg{width:18px;height:18px}
+.record-entry-form{overflow-y:auto;min-height:0;padding:0 4px 16px;overscroll-behavior:contain}
+.record-entry-form .formfield{margin-bottom:14px}
+.record-entry-form input{font-size:16px}
+.record-entry-form>.primary{width:100%;min-height:44px}
+.preview-record-row{display:flex;flex-direction:column;gap:4px;margin:8px 0}
+.preview-record-row strong{font-size:14px}
+.preview-record-row span{font-size:13px;color:var(--muted)}
+.budget-month{display:flex;align-items:center;justify-content:space-between;margin:8px 0 20px}
+.budget-month .iconbtn{min-width:44px;min-height:44px}
+.budget-total{padding:16px 14px;margin-bottom:12px;border:1px solid var(--line);border-radius:var(--ui-radius-card);display:flex;flex-direction:column;gap:5px}
+.budget-total span{font-size:13px;color:var(--muted)}
+.budget-total strong{font-size:24px;color:var(--ink)}
+.budget-category-row{display:flex;justify-content:space-between;gap:14px;border-bottom:1px solid var(--line);padding:14px 2px;font-size:14px}
+.budget-category-row strong{font-variant-numeric:tabular-nums}
