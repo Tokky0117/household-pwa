@@ -496,6 +496,9 @@ function updateComparisonPrices(){
   const next=document.createElement('div');next.innerHTML=priceCompareView();
   const replacement=next.querySelector('.comparison-list');
   if(replacement)main.replaceWith(replacement);
+  const heading=document.querySelector('.price-heading-copy .sectiontitle');
+  const updatedHeading=next.querySelector('.price-heading-copy .sectiontitle');
+  if(heading&&updatedHeading)heading.innerHTML=updatedHeading.innerHTML;
  }
 }
 app.addEventListener('change',e=>{if(e.target.id==='onlyOut'){const wasOut=onlyOut;onlyOut=e.target.checked;if(wasOut&&!onlyOut)collapsed.clear();render()}});
