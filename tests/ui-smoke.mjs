@@ -25,9 +25,20 @@ const ui=vm.runInNewContext(source+`
  setPeriod(v){period=v},setQty(v){compareQuantity=v},setUnit(v){compareUnit=v},
  setNewRecordType(v){newRecordType=v},recordAddView,
  getCompare(){return [compareQuantity,compareUnit]},getSwipe(){return openSwipeId},
- getPeriod(){return period},catalogue:()=>catalogue})
+ getPeriod(){return period},getListHelpOpen(){return listHelpOpen},listHelpView,readListHelpOpen,catalogue:()=>catalogue})
 `,ctx,{filename:'app.js'});
 assert.ok(ui.listView().includes('data-stock=')&&ui.listView().includes('data-list-edit='),'Stock and swipe list preserved');
+assert.equal(ui.getListHelpOpen(),true,'Guide is initially expanded on an unset device');
+let listWithHelp=ui.listView();
+assert.ok(listWithHelp.indexOf('class="list-help"')>listWithHelp.indexOf('id="item-results"'),'Usage guide follows category list');
+assert.ok(listWithHelp.includes('aria-expanded="true"')&&listWithHelp.includes('id="list-help-content"'),'Guide accessible expanded state');
+assert.ok(listWithHelp.includes('日用品名を押して価格情報を確認')&&listWithHelp.includes('左スワイプで編集・削除')&&listWithHelp.includes('長押しして上下に並び替え'),'Guide covers non-obvious actions');
+assert.ok(listWithHelp.includes('右上の＋で日用品を追加')&&listWithHelp.includes('在庫なしをコピー'),'Guide covers add and copy actions');
+assert.ok(css.includes('.list-help-toggle{')&&css.includes('min-height:44px'),'Accordion has shared accessible tap target');
+storage.set('household_pwa_list_help_open_v1','false');
+assert.equal(ui.readListHelpOpen(),false,'Collapsed state is restored from device storage');
+storage.set('household_pwa_list_help_open_v1','true');
+assert.equal(ui.readListHelpOpen(),true,'Expanded state is restored from device storage');
 assert.equal((ui.listView().match(/class="item swipe-item /g)||[]).length,15,'Five fixed categories, 15 demo items');
 assert.ok(ui.listView().includes('298円／おいしい牛乳／コノミヤ'),'List shows first product cheapest chain');
 assert.ok(!ui.listView().includes('（割引）'),'No normal/discount labels in list');
