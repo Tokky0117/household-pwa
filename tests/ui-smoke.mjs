@@ -28,7 +28,7 @@ assert.ok(list.includes('通常 <b>—</b>')&&list.includes('割引 <b>—</b>')
 assert.ok(list.includes('placeholder="日用品名を検索"'),'Search matches new requirements');
 assert.ok(!list.includes('メモ')&&!list.includes('お気に入り'),'Retired UI absent from list');
 assert.ok(!source.includes('memo')&&!source.includes('favorites'),'No retired fields or handlers');
-assert.ok(source.includes('household_pwa_ui_v2')&&source.includes('household_pwa_catalogue_v2'),'Clean demo data keys');
+assert.ok(source.includes('household_pwa_ui_v2')&&source.includes('household_pwa_catalogue_v3'),'Clean demo data keys');
 
 ui.setSelected('demo-1');ui.setPage('compare');
 const purchase=ui.priceCompareView();
@@ -77,6 +77,8 @@ assert.equal(missing.itemGroupOrder,null,'Unregister also clears order');
 assert.deepEqual(Array.from(ui.registeredProducts('demo-1').map(p=>p.itemGroupOrder)),[1,2],'Remaining orders stay contiguous');
 assert.ok(ui.getCatalogue().products.find(p=>p.id==='p-milk-3').aliases.includes('低脂肪牛乳'),'OCR aliases survive unlinking');
 assert.ok(!Object.keys(ui.getCatalogue().products[0]).some(k=>/disabled|is_active|inactive/i.test(k)),'No disabled product field');
+assert.ok(Object.hasOwn(ui.getCatalogue().products[0],'packageQuantity')&&Object.hasOwn(ui.getCatalogue().products[0],'packageUnit'),'Product package quantity/unit use explicit names');
+assert.ok(!Object.hasOwn(ui.getCatalogue().products[0],'quantity'),'Package size is not confused with purchased quantity');
 
 ui.setPage('productPick');
 const pick=ui.pickerView();
