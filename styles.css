@@ -2066,3 +2066,53 @@ html,body {
 .compact-compare-form{padding:4px 0 8px}
 .compact-compare-form .compare-form-row{align-items:end}
 .compact-compare-form .hint{margin:4px 0 0}
+
+/* v27: stable product picker sheet; search is a shared formField control */
+.half-sheet.product-picker-modal{
+ height:min(72dvh,620px);
+ min-height:0;
+ max-height:calc(100dvh - env(safe-area-inset-top) - 18px);
+ display:flex;
+ flex-direction:column;
+ overflow:hidden;
+ box-sizing:border-box;
+}
+.product-picker-modal .sheet-head{flex:0 0 auto}
+.product-picker-modal .sheet-grip{flex:0 0 auto}
+.product-picker-modal .product-picker-sheet{
+ flex:1 1 auto;
+ min-height:0;
+ max-height:none;
+ padding:0 0 calc(8px + env(safe-area-inset-bottom));
+ display:flex;
+ flex-direction:column;
+ overflow:hidden;
+}
+.product-picker-search{flex:0 0 auto;padding:0 3px 12px;position:relative;z-index:1;background:var(--card)}
+.product-picker-search .formfield{margin:0}
+.product-picker-search .formfield label{display:block;margin:0 0 7px;min-height:auto}
+.product-picker-search .formfield input[type="search"]{display:block;width:100%;max-width:100%;box-sizing:border-box;min-height:46px;font-size:16px}
+.product-picker-results{flex:1 1 auto;min-height:0;overflow-y:auto;overscroll-behavior:contain;padding:4px 3px 8px}
+.product-picker-footer{flex:0 0 auto;padding:9px 4px 3px;font-size:12px;color:var(--muted);border-top:1px solid var(--line)}
+/* Drag ghost must preserve the *same* card layout, radius, and typography. */
+.swipe-item.drag-ghost,
+.comparison-product.swipe-item.drag-ghost{
+ display:block!important;
+ padding:0!important;
+ gap:0!important;
+ align-items:stretch!important;
+ box-sizing:border-box;
+ border:1px solid var(--line)!important;
+ border-radius:11px!important;
+ box-shadow:0 9px 24px #0002;
+ background:var(--card);
+ opacity:1;
+ overflow:hidden!important;
+}
+.swipe-item.drag-ghost .swipe-front{width:100%;border-radius:inherit}
+.swipe-item.drag-ghost .itemname{font-weight:inherit}
+.swipe-item.drag-ghost .item-title{font-weight:650}
+.swipe-item.drag-placeholder{border-radius:11px!important}
+.comparison-main .comparison-product.swipe-item.drag-placeholder{border-radius:11px!important}
+.compare-heading-unit{font-weight:500;font-size:12px;color:var(--muted)}
+.comparison-main .pricebox .label{display:block;font-size:12px;line-height:1.45}
