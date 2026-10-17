@@ -130,7 +130,7 @@ const UI={
     else input=`<input ${attr} type="${esc(type)}" value="${esc(value)}" ${placeholder?`placeholder="${esc(placeholder)}"`:''} ${maxlength!==null?`maxlength="${Number(maxlength)}"`:''} ${required?'required':''} ${extra}>`;
     return `<div class="formfield"><label for="${esc(id)}">${esc(label)}</label>${input}</div>`;
   },
-  sheet({title,body}){return `<div class="sheet-back" data-sheet-backdrop="true"><section class="half-sheet" role="dialog" aria-modal="true" aria-label="${esc(title)}"><div class="sheet-grip"></div><header class="sheet-head"><h2>${esc(title)}</h2><button class="sheet-close" type="button" data-act="back" aria-label="閉じる">${miniIcon('close')}</button></header>${body}</section></div>`},
+  sheet({title,body,variant=''}){return `<div class="sheet-back" data-sheet-backdrop="true"><section class="half-sheet ${esc(variant)}" role="dialog" aria-modal="true" aria-label="${esc(title)}"><div class="sheet-grip"></div><header class="sheet-head"><h2>${esc(title)}</h2><button class="sheet-close" type="button" data-act="back" aria-label="閉じる">${miniIcon('close')}</button></header>${body}</section></div>`},
   priceCells(){return `<div class="pricegrid"><div class="pricebox"><span class="label">通常最安値</span><strong>—</strong><small>価格記録なし</small></div><div class="pricebox"><span class="label">割引最安値</span><strong>—</strong><small>価格記録なし</small></div></div>`},
   info({action,expanded,message,label}){return `<div class="info-anchor"><button type="button" class="info-trigger" data-act="${esc(action)}" aria-expanded="${!!expanded}" aria-label="${esc(label)}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v6"/><circle cx="12" cy="7.5" r=".8" fill="currentColor" stroke="none"/></svg></button><div class="info-popover ui-menu" role="tooltip" ${expanded?'':'hidden'}>${esc(message)}</div></div>`},
   actions({items,label,compact=false,hidden=false}){return commonMenu(items,{label,compact,hidden})},
@@ -166,21 +166,21 @@ function listResults(){
 function listView(){
  const copy='<button class="iconbtn" type="button" data-act="copyList" aria-label="在庫なしをコピー" title="在庫なしをコピー">'+miniIcon('copy')+'</button>';
  const add='<button class="iconbtn" type="button" data-act="add" aria-label="日用品を追加" title="日用品を追加">'+miniIcon('plus')+'</button>';
- return `${head('日用品','くらしストック',false,add,copy)}<main><div class="searchbar">${miniIcon('search')}<input id="search" type="search" placeholder="日用品名を検索" value="${esc(query)}" autocomplete="off" aria-label="日用品を検索"><button type="button" class="clear-search" data-act="clearSearch" aria-label="検索をクリア" ${query?"":"hidden"}>${miniIcon("close")}</button></div><div class="filterrow"><label class="switchlabel"><input type="checkbox" id="onlyOut" ${onlyOut?'checked':''}>在庫なしのみ表示</label></div><p class="sample-price-notice">※ 価格・店舗はサンプル</p><div id="item-results">${listResults()}</div><p class="hint">日用品をタップすると価格情報を開きます。在庫は右側から切替できます。長押しで並び替え、左スワイプで編集・削除できます。<br>価格は先頭登録商品の直近3か月の税込最安値。価格・店舗はサンプル表示です。購入履歴・値札は未接続です。</p></main>${nav()}`;
+ return `${head('日用品','くらしストック',false,add,copy)}<main><div class="searchbar">${miniIcon('search')}<input id="search" type="search" placeholder="日用品名を検索" value="${esc(query)}" autocomplete="off" aria-label="日用品を検索"><button type="button" class="clear-search" data-act="clearSearch" aria-label="検索をクリア" ${query?"":"hidden"}>${miniIcon("close")}</button></div><div class="filterrow"><label class="switchlabel"><input type="checkbox" id="onlyOut" ${onlyOut?'checked':''}>在庫なしのみ表示</label></div><p class="sample-price-notice">※ 価格・店舗はサンプル</p><div id="item-results">${listResults()}</div></main>${nav()}`;
 }
 function priceCompareView(){
  const i=current();if(!i){page='list';return listView()}
  const modeBtns=`<div class="scope-switch" role="group" aria-label="価格表示"><button class="pill ${priceScope==='product'?'chosen':''}" data-scope="product" aria-pressed="${priceScope==='product'}">商品価格</button><button class="pill ${priceScope==='unit'?'chosen':''}" data-scope="unit" aria-pressed="${priceScope==='unit'}">店頭商品と比較</button></div>`;
  const products=registeredProducts(selected);
- const unitLabel=compareQuantity&&compareUnit?`${compareQuantity}${compareUnit}あたり`:'数量・単位を設定してください';
+ const unitLabel=compareQuantity&&compareUnit?`${compareQuantity}${compareUnit}あたり`:'';
  const productRows=products.map(p=>{
   const conversion=convertQuantity(p.packageQuantity,p.packageUnit,compareUnit);
   const compatible=!!(compareQuantity&&compareUnit&&conversion);
   const sub=p.packageQuantity&&p.packageUnit?`${p.packageQuantity}${p.packageUnit}`:'内容量未設定';
   const cells=['normal','discount'].map(kind=>{
    const r=bestPrice(p.id,kind,period),value=priceScope==='unit'?(compatible&&r?yen(r.price*compareQuantity/conversion):'—'):r?yen(r.price):'—';
-   const reason=priceScope==='unit'&&!compareQuantity?'数量を入力':priceScope==='unit'&&!compatible?'比較不可':'価格記録なし';
-   return `<div class="pricebox"><span class="label">${kind==='normal'?'通常':'割引'}</span><strong>${esc(value)}</strong><small>${esc(r?(r.store||'店舗未設定')+(r.date?' ／ '+r.date:''):reason)}</small></div>`;
+   const reason=priceScope==='unit'&&!compareQuantity?'—':priceScope==='unit'&&!compatible?'比較不可':'価格記録なし';
+   return `<div class="pricebox"><span class="label">${kind==='normal'?'通常':'割引'}${priceScope==='unit'&&unitLabel?` · ${esc(unitLabel)}`:''}</span><strong>${esc(value)}</strong><small>${esc(r?(r.store||'店舗未設定')+(r.date?' ／ '+r.date:''):reason)}</small></div>`;
   }).join('');
   return `<article class="comparison-product product-sort-row swipe-item ${openSwipeId===p.id?'swipe-open':''}" data-product-id="${esc(p.id)}">
 <div class="swipe-actions">
@@ -193,8 +193,8 @@ function priceCompareView(){
  const unitControls=priceScope==='unit'? `<div class="compare-form compact-compare-form"><div class="compare-form-row">
 ${UI.formField({id:'compare-quantity',name:'quantity',label:'数量',value:compareQuantity??'',extra:'inputmode="decimal" placeholder="店頭商品の数量"'})}
 ${UI.formField({id:'compare-unit',name:'unit',label:'単位',control:'select',value:compareUnit||UNIT_OPTIONS[0],options:UNIT_OPTIONS.map(x=>({label:x,value:x}))})}
-</div><p class="hint" id="compare-hint">数量・単位は入力すると自動反映されます。</p></div>`:'';
- return `${head('価格情報',i.name,true)}<main class="detail-main comparison-main">${modeBtns}${unitControls}<div class="detail-section-heading price-heading"><h2 class="sectiontitle">最安値</h2>${UI.dropdown({id:'price-period',value:period,label:'期間',compact:true,open:periodMenu,options:[{value:'3m',label:'直近3か月'},{value:'all',label:'全期間'}]})}</div><div class="comparison-list">${productRows}</div><button type="button" class="secondary manage-add" data-act="productPick">＋ 商品を登録</button><p class="hint">直近3か月／全期間は両モード共通です。価格・店舗は操作確認用のサンプルです（実データ未接続）。</p></main>`;
+</div></div>`:'';
+ return `${head('価格情報',i.name,true)}<main class="detail-main comparison-main">${modeBtns}${unitControls}<div class="detail-section-heading price-heading"><h2 class="sectiontitle">最安値${priceScope==='unit'&&unitLabel?` <small class="compare-heading-unit">（${esc(unitLabel)}）</small>`:''}</h2>${UI.dropdown({id:'price-period',value:period,label:'期間',compact:true,open:periodMenu,options:[{value:'3m',label:'直近3か月'},{value:'all',label:'全期間'}]})}</div><div class="comparison-list">${productRows}</div><button type="button" class="secondary manage-add" data-act="productPick">＋ 商品を登録</button><p class="sample-price-notice">※ 価格・店舗はサンプル</p></main>`;
 }
 function formView(){
  const editing=page==='edit',i=editing?current():null;
@@ -221,7 +221,7 @@ function productsView(){
 
 
 function pickerResults(){
- const pool=catalogue.products.filter(p=>productMatches(p,pickQuery));
+ const pool=catalogue.products.filter(p=>productMatches(p,pickQuery)).sort((a,b)=>Number(Boolean(a.itemGroupId))-Number(Boolean(b.itemGroupId)) || (a.name||'').localeCompare(b.name||'','ja'));
  return pool.map(p=>{
   const existing=p.itemGroupId===selected;
   const sub=`${p.packageQuantity||'?'}${p.packageUnit||''} ・ ${p.itemGroupId?'登録先：'+linkedItemName(p):'未登録'}`;
@@ -229,7 +229,8 @@ function pickerResults(){
  }).join('')||'<div class="panel empty">該当する候補はありません</div>';
 }
 function pickerView(){
- return UI.sheet({title:'商品を登録',body:`<div class="product-picker-sheet"><label class="formfield"><span class="catalogue-search-title">商品を検索</span><input type="search" id="catalogue-search" value="${esc(pickQuery)}" placeholder="名称で検索" autocomplete="off"></label><div id="catalogue-results">${pickerResults()}</div><p class="hint">登録先：${esc(current()?.name||'日用品')}。候補は試作データです。</p></div>`});
+ const search=UI.formField({id:'catalogue-search',label:'商品を検索',type:'search',value:pickQuery,placeholder:'名称で検索',extra:'autocomplete="off"'});
+ return UI.sheet({title:'商品を登録',variant:'product-picker-modal',body:`<div class="product-picker-sheet"><div class="product-picker-search">${search}</div><div id="catalogue-results" class="product-picker-results">${pickerResults()}</div><div class="product-picker-footer">${esc(current()?.name||'日用品')}に登録</div></div>`});
 }
 function productCreateView(){
  const i=current();if(!i)return listView();const editing=page==='productEdit';const p=editing?catalogue.products.find(x=>x.id===editingProductId&&x.itemGroupId===selected):null;if(editing&&!p)return productsView();
@@ -538,10 +539,11 @@ app.addEventListener('touchcancel',e=>{for(const t of e.changedTouches)endDrag({
 
 // List row swipe, separate from long-press reordering. No one-time tutorial is required.
 let swipeGesture=null;
+const swipeRowId=row=>row?.dataset?.itemId||row?.dataset?.productId||null;
 function setOpenSwipe(id){
- openSwipeId=id;
+ openSwipeId=id??null;
  document.querySelectorAll('.swipe-item:not(.drag-ghost)').forEach(row=>{
-  const opened=row.dataset.itemId===id;
+  const opened=Boolean(openSwipeId)&&swipeRowId(row)===openSwipeId;
   row.classList.toggle('swipe-open',opened);
   row.querySelectorAll('.swipe-actions button').forEach(b=>b.tabIndex=opened?0:-1);
  });
@@ -567,7 +569,7 @@ app.addEventListener('pointerup',e=>{
  const g=swipeGesture;if(!g||g.id!==e.pointerId)return;
  swipeGesture=null;if(activeDrag||g.axis!=='horizontal'||!g.swiped)return;
  const dx=e.clientX-g.x;
- if(dx < -48){setOpenSwipe(g.row.dataset.itemId)}
+ if(dx < -48){setOpenSwipe(swipeRowId(g.row))}
  else if(dx > 45){setOpenSwipe(null)}
  else return;
  suppressClick=true;setTimeout(()=>{suppressClick=false},250);
@@ -593,7 +595,7 @@ app.addEventListener('touchmove',e=>{
   clearPending();
   e.preventDefault();
   g.row.classList.add('swiping');
-  const offset=Math.max(-132,Math.min(0,dx+(openSwipeId===g.row.dataset.itemId?-132:0)));
+  const offset=Math.max(-132,Math.min(0,dx+(openSwipeId===swipeRowId(g.row)?-132:0)));
   g.row.querySelector('.swipe-front')?.style.setProperty('transform','translateX('+offset+'px)');
  }
 },{passive:false});
@@ -603,7 +605,8 @@ app.addEventListener('touchend',e=>{
  listTouchSwipe=null;if(activeDrag)return;
  const dx=t.clientX-g.x;
  if(g.axis==='horizontal'){
-  const next=(openSwipeId===g.row.dataset.itemId?dx<48:dx< -48)?g.row.dataset.itemId:null;
+  const rowId=swipeRowId(g.row);
+  const next=(openSwipeId===rowId?dx<48:dx< -48)?rowId:null;
   setOpenSwipe(next);
   g.row.querySelector('.swipe-front')?.style.removeProperty('transform');
   g.row.classList.remove('swiping');
