@@ -51,6 +51,6 @@
 - GAS LockServiceとversion／operation_idで商品順序・付け替え・同名再登録を整合的に更新。SheetsにリレーショナルDBの制約がないため、サーバーで整合性検査を行う。
 
 ## 既存試作との関係
-- 旧 `household_pwa_ui_v1` は `memo` と `favorites`、旧 `household_pwa_catalogue_v1` は順序なし商品を含む。**本番正本として流用しない**。
+- 旧 `household_pwa_ui_v1` は `memo` と `favorites`、旧 `household_pwa_catalogue_v1` は順序なし商品を含む。新試作の保存先は `household_pwa_ui_v2`／`household_pwa_catalogue_v3`。商品内容量はアプリ内部でも `packageQuantity`／`packageUnit` として保持し、購入数量とは別フィールドとする。**本番正本として流用しない**。
 - 本番データが無い今の段階では、試作リセット／新バージョンの仮データに切り替え、廃止した項目を新スキーマへ持ち込まない方針。
-- 実装コードは別工程。画面切替・日用品一覧の価格表示・長押し順序・価格計算はこの定義に基づいて変更する。
+- 試作コードの画面切替・日用品一覧の空価格表示・長押し順序はこの定義に基づき更新済み。実価格履歴の集計、値札OCR／レシート保存は後工程。
