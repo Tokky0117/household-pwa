@@ -105,8 +105,10 @@ const recordJoin=(records,detail)=>detail.flatMap(line=>{
  return record?[{...line,record}]:[];
 });
 const periodStart=(periodValue,today=new Date())=>{
- const d=new Date(today.getFullYear(),today.getMonth(),today.getDate());
- d.setMonth(d.getMonth()-(periodValue==='3m'?3:12));
+ const monthOffset=periodValue==='3m'?3:12;
+ const first=new Date(today.getFullYear(),today.getMonth()-monthOffset,1);
+ const lastDay=new Date(first.getFullYear(),first.getMonth()+1,0).getDate();
+ const d=new Date(first.getFullYear(),first.getMonth(),Math.min(today.getDate(),lastDay));
  return [d.getFullYear(),String(d.getMonth()+1).padStart(2,'0'),String(d.getDate()).padStart(2,'0')].join('-');
 };
 function priceCandidates(records,details,periodValue,today=new Date()){
@@ -355,7 +357,7 @@ function budgetView(){
  return `${head('家計簿','くらしストック')}<main class="preview-budget-page"><p class="sample-price-notice">※ サンプルと端末内の試作記録。値札は集計対象外です。</p><div class="budget-month"><button type="button" class="iconbtn" data-act="prevMonth" aria-label="前月">${chevron('left')}</button><strong>${esc(budgetMonth.replace('-', '年'))}月</strong><button type="button" class="iconbtn" data-act="nextMonth" aria-label="翌月">${chevron('right')}</button></div><div class="budget-total"><span>税込合計</span><strong>${yen(total)}</strong></div><div class="budget-category-list">${categoryRows.map(([name,value])=>`<div class="budget-category-row"><span>${esc(name)}</span><strong>${yen(value)}</strong></div>`).join('')}</div></main>${nav()}`;
 }
 function stub(title,icon,desc){return `${head(title,'くらしストック')}<main><div class="panel placeholder"><div class="bubble">${icon}</div><h2>${title}画面</h2><p>${desc}</p></div><div class="alert">この画面は共通UIの確認用です。データ処理や同期はまだ行いません。</div></main>${nav()}`}
-function settingsView(){return `${head('設定','くらしストック')}<main><div class="panel"><h2>データと同期</h2><div class="info-row row"><div><strong>同期状態</strong><div class="hint">Google Sheets 接続前</div></div><span class="tag">未設定</span></div><button class="secondary" data-act="sync" style="width:100%">手動同期</button></div><div class="panel"><h2>試作版の操作</h2><p class="hint">変更内容はこの端末の localStorage のみに保存され、夫婦間では共有されません。</p><button class="secondary danger" data-act="reset">仮データを初期状態に戻す</button></div><div class="panel"><h2>今後の実装</h2><p class="hint">商品・店舗管理、Google Apps Script 接続、認証、オフライン差分同期を追加予定です。</p></div></main>${nav()}`}
+function settingsView(){return `${head('設定','くらしストック')}<main><div class="panel"><h2>データと同期</h2><div class="info-row row"><div><strong>同期状態</strong><div class="hint">Google Sheets 接続前</div></div><span class="tag">未設定</span></div><button class="secondary" data-act="sync" style="width:100%">手動同期</button></div><div class="panel"><h2>試作版の操作</h2><p class="hint">変更内容はこの端末の localStorage のみに保存され、夫婦間では共有されません。</p><button class="secondary danger" data-act="reset">仮データを初期状態に戻す</button></div><div class="panel"><h2>今後の実装</h2><p class="hint">レシート／値札のチェーン照合、Google Apps Script 接続、認証、オフライン差分同期を追加予定です。</p></div></main>${nav()}`}
 // All confirmation dialogs share one DOM and CSS. A Japanese full stop ends a paragraph line.
 function dialogView(){
  if(!dialog)return '';
@@ -397,6 +399,17 @@ function render(){
 }
 function say(s){toast=s;document.querySelector('.toast')?.remove();const t=document.createElement('div');t.className='toast';t.setAttribute('role','status');t.textContent=s;document.body.append(t);setTimeout(()=>{if(toast===s){toast='';t.remove()}},2800)}
 function hasUnsavedFormChanges(){
+  const pendingRecord=document.getElementById('recordForm');
+  if(pendingRecord){
+    const data=new FormData(pendingRecord);
+    return String(data.get('amount')||'').trim()!=='' ||
+     String(data.get('raw')||'').trim()!=='' ||
+     String(data.get('quantity')||'1')!=='1' ||
+     String(data.get('date')||'')!==daysFromDate(new Date()) ||
+     String(data.get('chain')||'')!==(catalogue.chains[0]?.id||'') ||
+     String(data.get('product')||'')!=='' ||
+     String(data.get('category')||'')!=='';
+  }
   const form=document.getElementById('itemForm')||document.getElementById('productCreateForm');
   if(!form)return false;
   const data=new FormData(form);
