@@ -138,8 +138,8 @@ function listResults(){
   return `<section class="category"><button class="cathead" data-cat="${idx}" aria-expanded="${!closed}" ${onlyOut?'disabled aria-disabled="true"':''}><strong>${cat}</strong><span class="count">${filtered.length}点</span><span class="cat-arrow-slot" aria-hidden="true">${onlyOut?'':chevron(closed?'down':'up')}</span></button>${closed?'':filtered.length?filtered.map(i=>`
     <div class="item swipe-item ${openSwipeId===i.id?'swipe-open':''}" data-item-id="${esc(i.id)}" data-category-id="${idx}">
       <div class="swipe-actions">
-       <button type="button" class="swipe-edit" data-list-edit="${esc(i.id)}" aria-label="${esc(i.name)}を編集">${miniIcon('pencil')}<span>編集</span></button>
-       <button type="button" class="swipe-delete" data-list-hide="${esc(i.id)}" aria-label="${esc(i.name)}を削除">${miniIcon('trash')}<span>削除</span></button>
+       <button type="button" class="swipe-edit" data-list-edit="${esc(i.id)}" tabindex="${openSwipeId===i.id?0:-1}" aria-label="${esc(i.name)}を編集">${miniIcon('pencil')}<span>編集</span></button>
+       <button type="button" class="swipe-delete" data-list-hide="${esc(i.id)}" tabindex="${openSwipeId===i.id?0:-1}" aria-label="${esc(i.name)}を削除">${miniIcon('trash')}<span>削除</span></button>
       </div>
       <div class="swipe-front">
        <button type="button" class="itemname" data-open="${esc(i.id)}" aria-label="${esc(i.name)}の価格情報を開く">
@@ -286,7 +286,7 @@ function goBack(){
     return;
   }
   menu=false;
-  if(page==='compare')page='list';
+  if(page==='compare'){page='list';compareQuantity=null;compareUnit='';shopExpanded=false;productActions=null;}
   else if(page==='productCreate')page='productPick';
   else if(page==='productEdit')page='compare';
   else if(page==='productPick')page='compare';
@@ -370,8 +370,8 @@ if(el.dataset.uiChoice!==undefined){
  wrapper.querySelectorAll('[data-ui-choice]').forEach(b=>{const selected=b===el;b.classList.toggle('selected',selected);b.setAttribute('aria-pressed',String(selected));const tick=b.querySelector('.ui-menu-selected');if(tick)tick.textContent=selected?'✓':''});
  closeAllDropdowns();wrapper.querySelector('.ui-select-trigger')?.focus();return;
 }
-if(el.dataset.listEdit){selected=el.dataset.listEdit;editReturnPage='list';openSwipeId=null;page='edit';render();return}if(el.dataset.listHide){selected=el.dataset.listHide;openSwipeId=null;dialog={title:'日用品を削除',message:'日用品リストから削除します。商品や価格履歴は保持します。',buttons:[{id:'cancel',label:'キャンセル'},{id:'confirmHide',label:'削除',primary:true}]};render();return}if(el.dataset.productMenu){productActions=productActions===el.dataset.productMenu?null:el.dataset.productMenu;render();return}
-if(el.dataset.tab){tab=el.dataset.tab;page='list';openSwipeId=null;menu=false;render();return}if(el.dataset.cat!==undefined){if(onlyOut)return;const c=Number(el.dataset.cat);collapsed.has(c)?collapsed.delete(c):collapsed.add(c);render();return}if(el.dataset.stock){const i=items.find(x=>x.id===el.dataset.stock);i.inStock=!i.inStock;i.version++;persist();render();return}if(el.dataset.open){listScrollPosition=window.scrollY;selected=el.dataset.open;page='compare';period='3m';priceScope='product';initializeCompare();periodMenu=false;menu=false;openSwipeId=null;render();return}if(el.dataset.period){period=el.dataset.period;periodMenu=false;render();return}if(el.dataset.scope){priceScope=el.dataset.scope;periodMenu=false;render();return}if(el.dataset.move){const i=items.find(x=>x.id===el.dataset.move);const siblings=visible().filter(x=>x.category===i.category).sort((a,b)=>a.order-b.order);const index=siblings.findIndex(x=>x.id===i.id),other=siblings[index+Number(el.dataset.dir)];if(other){const o=i.order;i.order=other.order;other.order=o;persist()}render();return}if(el.dataset.pedit){const p=catalogue.products.find(x=>x.id===el.dataset.pedit);if(p&&p.itemGroupId===selected){editingProductId=p.id;page='productEdit';render()}return}
+if(el.dataset.listEdit){selected=el.dataset.listEdit;editReturnPage='list';openSwipeId=null;page='edit';render();return}if(el.dataset.listHide){selected=el.dataset.listHide;setOpenSwipe(null);dialog={title:'日用品を削除',message:'日用品リストから削除します。商品や価格履歴は保持します。',buttons:[{id:'cancel',label:'キャンセル'},{id:'confirmHide',label:'削除',primary:true}]};render();return}if(el.dataset.productMenu){productActions=productActions===el.dataset.productMenu?null:el.dataset.productMenu;render();return}
+if(el.dataset.tab){tab=el.dataset.tab;page='list';openSwipeId=null;menu=false;render();return}if(el.dataset.cat!==undefined){if(onlyOut)return;const c=Number(el.dataset.cat);collapsed.has(c)?collapsed.delete(c):collapsed.add(c);render();return}if(el.dataset.stock){const i=items.find(x=>x.id===el.dataset.stock);i.inStock=!i.inStock;i.version++;persist();render();return}if(el.dataset.open){if(openSwipeId){setOpenSwipe(null);return}listScrollPosition=window.scrollY;selected=el.dataset.open;page='compare';period='3m';priceScope='product';initializeCompare();periodMenu=false;menu=false;openSwipeId=null;render();return}if(el.dataset.period){period=el.dataset.period;periodMenu=false;render();return}if(el.dataset.scope){priceScope=el.dataset.scope;periodMenu=false;render();return}if(el.dataset.move){const i=items.find(x=>x.id===el.dataset.move);const siblings=visible().filter(x=>x.category===i.category).sort((a,b)=>a.order-b.order);const index=siblings.findIndex(x=>x.id===i.id),other=siblings[index+Number(el.dataset.dir)];if(other){const o=i.order;i.order=other.order;other.order=o;persist()}render();return}if(el.dataset.pedit){const p=catalogue.products.find(x=>x.id===el.dataset.pedit);if(p&&p.itemGroupId===selected){editingProductId=p.id;page='productEdit';render()}return}
 if(el.dataset.premove){
  const p=catalogue.products.find(x=>x.id===el.dataset.premove);
  if(p&&p.itemGroupId===selected){dialog={title:'商品の登録解除',message:`「${productTitle(p)}」の登録を解除します。過去の最安値集計対象からも外れます。`,buttons:[{id:'cancel',label:'キャンセル'},{id:'confirmProductUnlink',label:'解除する',primary:true}],pending:{productId:p.id}};renderDialogOnly()}return;
@@ -505,6 +505,44 @@ app.addEventListener('touchmove',e=>{
 },{passive:false});
 app.addEventListener('touchend',e=>{for(const t of e.changedTouches)endDrag({pointerId:t.identifier})});
 app.addEventListener('touchcancel',e=>{for(const t of e.changedTouches)endDrag({pointerId:t.identifier},true)});
+
+// List row swipe, separate from long-press reordering. No one-time tutorial is required.
+let swipeGesture=null;
+function setOpenSwipe(id){
+ openSwipeId=id;
+ document.querySelectorAll('.swipe-item').forEach(row=>{
+  const opened=row.dataset.itemId===id;
+  row.classList.toggle('swipe-open',opened);
+  row.querySelectorAll('.swipe-actions button').forEach(b=>b.tabIndex=opened?0:-1);
+ });
+}
+app.addEventListener('pointerdown',e=>{
+ if(page!=='list'||dialog||activeDrag)return;
+ if(e.pointerType==='mouse'&&e.button!==0)return;
+ if(e.target.closest('[data-stock],[data-list-edit],[data-list-hide]'))return;
+ const row=e.target.closest('.swipe-item');
+ if(!row)return;
+ swipeGesture={row,id:e.pointerId,x:e.clientX,y:e.clientY,axis:null,swiped:false};
+});
+app.addEventListener('pointermove',e=>{
+ const g=swipeGesture;if(!g||g.id!==e.pointerId||activeDrag)return;
+ const dx=e.clientX-g.x,dy=e.clientY-g.y;
+ if(!g.axis&&Math.hypot(dx,dy)>12)g.axis=Math.abs(dx)>Math.abs(dy)*1.25?'horizontal':'vertical';
+ if(g.axis==='horizontal'){
+  if(pendingDrag)clearPending();
+  g.swiped=Math.abs(dx)>18;
+ }
+});
+app.addEventListener('pointerup',e=>{
+ const g=swipeGesture;if(!g||g.id!==e.pointerId)return;
+ swipeGesture=null;if(activeDrag||g.axis!=='horizontal'||!g.swiped)return;
+ const dx=e.clientX-g.x;
+ if(dx < -48){setOpenSwipe(g.row.dataset.itemId)}
+ else if(dx > 45){setOpenSwipe(null)}
+ else return;
+ suppressClick=true;setTimeout(()=>{suppressClick=false},250);
+});
+app.addEventListener('pointercancel',e=>{if(swipeGesture?.id===e.pointerId)swipeGesture=null});
 
 // Comparison screen gesture: swipe right anywhere in non-interactive content.
 // Do not require the leftmost 36px: Safari can take over its own edge gesture.
