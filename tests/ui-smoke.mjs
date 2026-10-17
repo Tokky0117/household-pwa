@@ -60,7 +60,7 @@ assert.ok(view.includes('（900mLあたり）'));
 assert.ok(view.includes('298円'),'Compatible same-unit conversion');
 assert.equal(ui.convertQuantity(1,'L','mL'),1000);
 assert.equal(ui.convertQuantity(2,'個','本'),null);
-assert.ok(!view.includes('inputmode="decimal" placeholder="店頭商品の数量"')===false,'Comparison uses numeric keyboard');
+assert.ok(view.includes('inputmode="decimal" placeholder="店頭商品の数量"'),'Comparison uses numeric keyboard');
 const picker=ui.pickerView();
 assert.ok(picker.includes('class="half-sheet product-picker-modal"')&&picker.includes('id="catalogue-search"'));
 assert.ok(ui.pickerResults().indexOf('低脂肪乳')<ui.pickerResults().indexOf('おいしい牛乳'));
