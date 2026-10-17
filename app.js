@@ -461,9 +461,13 @@ let pendingDrag=null,activeDrag=null,suppressClick=false;
 function clearPending(){if(pendingDrag){clearTimeout(pendingDrag.timer);pendingDrag=null}}
 function startDrag(p){
  if(pendingDrag!==p||!p.row.isConnected)return;
+ if(listTouchSwipe){listTouchSwipe.row.classList.remove('swiping');listTouchSwipe=null}
+ if(swipeGesture)swipeGesture=null;
+ if(openSwipeId)setOpenSwipe(null);
  const rect=p.row.getBoundingClientRect(),ghost=p.row.cloneNode(true);
  ghost.classList.add('drag-ghost');ghost.classList.remove('drag-placeholder','dragging');
  ghost.style.width=rect.width+'px';ghost.style.left=rect.left+'px';ghost.style.top=rect.top+'px';
+ ghost.style.position='fixed';
  document.body.appendChild(ghost);
  activeDrag={...p,ghost,offsetY:p.y-rect.top,offsetX:p.x-rect.left,moved:false};
  pendingDrag=null;p.row.classList.add('drag-placeholder');
@@ -536,16 +540,16 @@ app.addEventListener('touchcancel',e=>{for(const t of e.changedTouches)endDrag({
 let swipeGesture=null;
 function setOpenSwipe(id){
  openSwipeId=id;
- document.querySelectorAll('.swipe-item').forEach(row=>{
+ document.querySelectorAll('.swipe-item:not(.drag-ghost)').forEach(row=>{
   const opened=row.dataset.itemId===id;
   row.classList.toggle('swipe-open',opened);
   row.querySelectorAll('.swipe-actions button').forEach(b=>b.tabIndex=opened?0:-1);
  });
 }
 app.addEventListener('pointerdown',e=>{
- if(page!=='list'||dialog||activeDrag)return;
+ if(!['list','compare'].includes(page)||dialog||activeDrag)return;
  if(e.pointerType!=='mouse'||e.button!==0)return;
- if(e.target.closest('[data-stock],[data-list-edit],[data-list-hide]'))return;
+ if(e.target.closest('[data-stock],[data-list-edit],[data-list-hide],[data-pedit],[data-premove]'))return;
  const row=e.target.closest('.swipe-item');
  if(!row)return;
  swipeGesture={row,id:e.pointerId,x:e.clientX,y:e.clientY,axis:null,swiped:false};
@@ -573,8 +577,8 @@ app.addEventListener('pointercancel',e=>{if(swipeGesture?.id===e.pointerId)swipe
 // Safari touch gestures use TouchEvent, not pointerup (which may be cancelled on pan).
 let listTouchSwipe=null;
 app.addEventListener('touchstart',e=>{
- if(page!=='list'||dialog||e.touches.length!==1||activeDrag)return;
- if(e.target.closest('[data-stock],[data-list-edit],[data-list-hide]'))return;
+ if(!['list','compare'].includes(page)||dialog||e.touches.length!==1||activeDrag)return;
+ if(e.target.closest('[data-stock],[data-list-edit],[data-list-hide],[data-pedit],[data-premove]'))return;
  const row=e.target.closest('.swipe-item');if(!row)return;
  const t=e.touches[0];
  listTouchSwipe={id:t.identifier,row,x:t.clientX,y:t.clientY,lastX:t.clientX,lastY:t.clientY,axis:null};
@@ -588,6 +592,7 @@ app.addEventListener('touchmove',e=>{
  if(g.axis==='horizontal'){
   clearPending();
   e.preventDefault();
+  g.row.classList.add('swiping');
   const offset=Math.max(-132,Math.min(0,dx+(openSwipeId===g.row.dataset.itemId?-132:0)));
   g.row.querySelector('.swipe-front')?.style.setProperty('transform','translateX('+offset+'px)');
  }
@@ -599,12 +604,13 @@ app.addEventListener('touchend',e=>{
  const dx=t.clientX-g.x;
  if(g.axis==='horizontal'){
   const next=(openSwipeId===g.row.dataset.itemId?dx<48:dx< -48)?g.row.dataset.itemId:null;
-  g.row.querySelector('.swipe-front')?.style.removeProperty('transform');
   setOpenSwipe(next);
+  g.row.querySelector('.swipe-front')?.style.removeProperty('transform');
+  g.row.classList.remove('swiping');
   suppressClick=true;setTimeout(()=>{suppressClick=false},300);
  }
 },{passive:true});
-app.addEventListener('touchcancel',()=>{if(listTouchSwipe){listTouchSwipe.row.querySelector('.swipe-front')?.style.removeProperty('transform');listTouchSwipe=null}});
+app.addEventListener('touchcancel',()=>{if(listTouchSwipe){listTouchSwipe.row.querySelector('.swipe-front')?.style.removeProperty('transform');listTouchSwipe.row.classList.remove('swiping');listTouchSwipe=null}});
 
 // Comparison screen gesture: swipe right anywhere in non-interactive content.
 // Do not require the leftmost 36px: Safari can take over its own edge gesture.
