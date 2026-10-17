@@ -267,22 +267,24 @@ function priceCompareView(){
   const sub=p.packageQuantity&&p.packageUnit?`${p.packageQuantity}${p.packageUnit}`:'内容量未設定';
   const chains=chainMinima(p.id,period);
   const priceRows=chains.map(r=>{
-   const value=priceScope==='unit'?(compatible?yen(r.price*compareQuantity/conversion):'—'):yen(r.price);
-   return `<div class="chain-price-row"><span class="chain-name">${esc(chainLabel(r.chainId))}</span><span class="chain-price-value">${esc(value)}</span><span class="chain-price-date">${esc(r.date)}</span></div>`;
+   const noQuantity=priceScope==='unit'&&!compareQuantity;
+   const incompatible=priceScope==='unit'&&!conversion;
+   const value=noQuantity?'数量を入力':incompatible?'比較不可':priceScope==='unit'?yen(r.price*compareQuantity/conversion):yen(r.price);
+   return `<div class="chain-price-row"><span class="chain-name">${esc(chainLabel(r.chainId))}</span><strong class="chain-price-value ${noQuantity||incompatible?'chain-price-unavailable':''}">${esc(value)}</strong><time class="chain-price-date" datetime="${esc(r.date)}">${esc(r.date.slice(2).replace(/-/g,'/'))}</time></div>`;
   }).join('')||'<div class="chain-price-empty">—</div>';
   return `<article class="comparison-product product-sort-row swipe-item ${openSwipeId===p.id?'swipe-open':''}" data-product-id="${esc(p.id)}">
 <div class="swipe-actions">
 <button type="button" class="swipe-edit" data-pedit="${esc(p.id)}" tabindex="${openSwipeId===p.id?0:-1}" aria-label="${esc(p.name||'商品')}を編集">${miniIcon('pencil')}<span>編集</span></button>
 <button type="button" class="swipe-delete" data-premove="${esc(p.id)}" tabindex="${openSwipeId===p.id?0:-1}" aria-label="${esc(p.name||'商品')}の登録解除">${miniIcon('trash')}<span>解除</span></button>
 </div><div class="swipe-front comparison-product-front">
-<div class="comparison-product-content"><div class="comparison-product-title"><div class="comparison-name"><strong>${esc(p.name||'商品名未設定')}</strong><small>${esc(sub)}</small></div></div>
+<div class="comparison-product-content"><div class="comparison-product-title"><div class="comparison-name"><strong>${esc(p.name||'商品名未設定')}</strong><small>${esc(sub)}</small></div><span class="product-drag-hint" aria-hidden="true"><svg viewBox="0 0 16 22" width="16" height="22" fill="currentColor"><circle cx="4" cy="4" r="1.5"/><circle cx="12" cy="4" r="1.5"/><circle cx="4" cy="11" r="1.5"/><circle cx="12" cy="11" r="1.5"/><circle cx="4" cy="18" r="1.5"/><circle cx="12" cy="18" r="1.5"/></svg></span></div>
 <div class="chain-price-list">${priceRows}</div></div><span class="swipe-peek" aria-hidden="true"></span></div></article>`;
  }).join('')||'<div class="panel empty">登録商品はありません</div>';
  const unitControls=priceScope==='unit'? `<div class="compare-form compact-compare-form"><div class="compare-form-row">
 ${UI.formField({id:'compare-quantity',name:'quantity',label:'数量',value:compareQuantity??'',extra:'inputmode="decimal" placeholder="店頭商品の数量"'})}
 ${UI.formField({id:'compare-unit',name:'unit',label:'単位',control:'select',value:compareUnit||UNIT_OPTIONS[0],options:UNIT_OPTIONS.map(x=>({label:x,value:x}))})}
 </div></div>`:'';
- return `${head('価格情報',i.name,true)}<main class="detail-main comparison-main">${modeBtns}${unitControls}<div class="detail-section-heading price-heading"><div class="price-heading-copy"><h2 class="sectiontitle">チェーン別最安値${priceScope==='unit'&&unitLabel?` <small class="compare-heading-unit">（${esc(unitLabel)}）</small>`:''}</h2><span class="price-heading-sub">商品ごと・記録済みチェーン別の税込価格</span></div>${UI.dropdown({id:'price-period',value:period,label:'期間',compact:true,open:periodMenu,options:[{value:'3m',label:'直近3か月'},{value:'1y',label:'直近1年'}]})}</div><div class="comparison-list">${productRows}</div><button type="button" class="tertiary manage-add product-register-action" data-act="productPick">${miniIcon('plus')}<span>商品を登録</span></button><p class="sample-price-notice">※ 価格・店舗はサンプル（レシート／値札・同期未接続）</p></main>`;
+ return `${head('価格情報',i.name,true)}<main class="detail-main comparison-main">${modeBtns}${unitControls}<div class="detail-section-heading price-heading"><div class="price-heading-copy"><h2 class="sectiontitle">チェーン別最安値${priceScope==='unit'&&unitLabel?` <small class="compare-heading-unit">（${esc(unitLabel)}）</small>`:''}</h2><span class="price-heading-sub">税込・安い順</span></div>${UI.dropdown({id:'price-period',value:period,label:'期間',compact:true,open:periodMenu,options:[{value:'3m',label:'直近3か月'},{value:'1y',label:'直近1年'}]})}</div><div class="comparison-list">${productRows}</div><button type="button" class="tertiary manage-add product-register-action" data-act="productPick">${miniIcon('plus')}<span>商品を登録</span></button><p class="sample-price-notice">※ 価格・店舗はサンプル（レシート／値札・同期未接続）</p></main>`;
 }
 function formView(){
  const editing=page==='edit',i=editing?current():null;
