@@ -4,11 +4,12 @@ import vm from 'node:vm';
 const source=readFileSync(new URL('../app.js',import.meta.url),'utf8');
 const css=readFileSync(new URL('../styles.css',import.meta.url),'utf8');
 const handlers={};
+let mockSwipeRows=[];
 const app={innerHTML:'',addEventListener(type,fn){(handlers[type]??=[]).push(fn)},insertAdjacentHTML(){}};
-const doc={getElementById:k=>k==='app'?app:null,querySelector(){return null},querySelectorAll(){return []},createElement:()=>({innerHTML:'',querySelector:()=>null}),body:{append(){}}};
+const doc={getElementById:k=>k==='app'?app:null,querySelector(){return null},querySelectorAll(selector){return selector.includes('.swipe-item:not(.drag-ghost)')?mockSwipeRows:[]},createElement:()=>({innerHTML:'',querySelector:()=>null}),body:{append(){}}};
 const context={document:doc,localStorage:{getItem(){return null},setItem(){}},navigator:{},window:{scrollTo(){},scrollY:0},crypto:{randomUUID:()=> 'test-uid'},setTimeout:()=>0};
 const ui=vm.runInNewContext(source+`
-({listView,priceCompareView,pickerView,render,initializeCompare,setProductGroup,reorderProducts,registeredProducts,convertQuantity,
+({listView,priceCompareView,pickerView,pickerResults,render,initializeCompare,setProductGroup,reorderProducts,registeredProducts,convertQuantity,setOpenSwipe,
  setSelected(v){selected=v},setPage(v){page=v},setMode(v){priceScope=v},setPeriod(v){period=v},setQty(v){compareQuantity=v},setUnit(v){compareUnit=v},
  getCompare(){return [compareQuantity,compareUnit]},getSwipe(){return openSwipeId},catalogue:()=>catalogue})
 `,context,{filename:'app.js'});
@@ -21,6 +22,7 @@ assert.ok(list.includes('298円（割引）／おいしい牛乳／コノミヤ'
 assert.ok(css.includes('.swipe-item .itemname{padding:5px'),'compact two-line bar');
 assert.ok(css.includes('.swipe-item .item-stock-area{flex:0 0 60px'),'compact dedicated stock zone');
 assert.ok(css.includes('.swipe-item.drag-ghost,.comparison-product.swipe-item.drag-ghost{position:fixed!important'),'drag clone fixed above row CSS');
+assert.ok(css.includes('.swipe-item.drag-ghost,')&&css.includes('border-radius:11px!important')&&css.includes('font-weight:650'),'Dragging preserves rounded corners and title typography');
 assert.ok(css.includes('.swipe-item.swiping .swipe-actions button{visibility:visible}'),'underlying actions visible while swiping');
 assert.ok(css.includes('.swipe-item.swiping .swipe-front{transition:none!important}'),'finger follows swipe with no easing');
 assert.ok(source.includes("dragRowSelector(page==='compare'||page==='products'?'product':'item')"),'product and item drag target correctly');
@@ -30,6 +32,7 @@ assert.equal(ui.getCompare()[0],null,'quantity starts blank');
 assert.equal(ui.getCompare()[1],'mL','unit initially first registered product unit');
 let view=ui.priceCompareView();
 assert.ok(view.includes('商品価格')&&view.includes('店頭商品と比較'),'parallel tabs');
+assert.ok(!view.includes('自動反映')&&!view.includes('長押しで')&&!view.includes('画面を離れるとリセット'),'No redundant gesture/instruction prose');
 assert.ok(view.includes('最安値')&&view.includes('直近3か月')&&view.includes('全期間'),'best-price heading and common period');
 assert.ok(view.includes('コノミヤ')&&view.includes('ライフ'),'stores kept');
 assert.ok(view.includes('data-product-id="p-milk-1"')&&view.includes('data-pedit="p-milk-1"')&&view.includes('data-premove="p-milk-1"'),'products have inline swipe actions');
@@ -37,17 +40,25 @@ assert.ok(!view.includes('data-product-menu='),'product menu removed');
 assert.ok(!view.includes('id="compare-quantity"'),'product price needs no comparison quantity');
 ui.setMode('unit');view=ui.priceCompareView();
 assert.ok(view.includes('id="compare-quantity"')&&view.includes('label for="compare-quantity">数量'),'quantity form with short label');
+assert.ok(!view.includes('自動反映されます'),'No unneeded automatic update instructions');
 assert.ok(!view.includes('id="compareForm"')&&!view.includes('compare-save'),'no save button; updates on input');
 assert.ok(!view.includes('data-act="shopToggle"')&&!view.includes('id="shop-price"'),'redundant shop comparison form removed');
 assert.ok(view.indexOf('id="compare-quantity"')<view.indexOf('>最安値</h2>'),'quantity above best price and period');
 ui.setQty(900);view=ui.priceCompareView();
 assert.ok(view.includes('298円'),'compare amount can be calculated for matching 900mL');
+assert.ok(view.includes('（900mLあたり）')&&view.includes('割引 · 900mLあたり'),'Heading and result labels make conversion explicit');
 ui.setMode('product');ui.setPeriod('all');assert.ok(ui.priceCompareView().includes('全期間'),'common period retained');
 assert.equal(ui.convertQuantity(1,'L','mL'),1000,'L conversion');
 assert.equal(ui.convertQuantity(2,'個','本'),null,'no guessing other units');
 const picker=ui.pickerView();
-assert.ok(picker.includes('class="sheet-back"')&&picker.includes('class="half-sheet"'),'picker in half-modal shared UI');
+assert.ok(picker.includes('class="sheet-back"')&&picker.includes('class="half-sheet product-picker-modal"'),'picker in fixed-size shared half-modal');
+assert.ok(picker.includes('class="formfield"')&&picker.includes('type="search"')&&picker.includes('id="catalogue-search"'),'Picker uses shared search formField');
+assert.ok(picker.includes('class="product-picker-search"')&&picker.includes('class="product-picker-results"'),'Separated search and scroll area');
+assert.ok(css.includes('.half-sheet.product-picker-modal{')&&css.includes('height:min(72dvh,620px)'), 'Stable picker height independent of result count');
+assert.ok(css.includes('.product-picker-results{flex:1 1 auto;min-height:0;overflow-y:auto'), 'Scrollable results area avoids overlapping search');
 assert.ok(!picker.includes('新しい商品を作成')&&!picker.includes('data-act="productCreate"'),'new product creation removed from picker');
+const pickerHtml=ui.pickerResults();
+assert.ok(pickerHtml.indexOf('低脂肪乳')<pickerHtml.indexOf('おいしい牛乳'),'Unregistered products appear above registered products');
 ui.setPage('productPick');ui.render();assert.ok(app.innerHTML.includes('価格情報')&&app.innerHTML.includes('class="half-sheet"'),'picker overlays price information');
 ui.setPage('compare');
 assert.equal(ui.registeredProducts('demo-1')[0].id,'p-milk-1');
@@ -64,4 +75,19 @@ function touch(type,x,y){const t={identifier:5,clientX:x,clientY:y},e={touches:t
 ui.setPage('list');touch('touchstart',230,50);touch('touchmove',100,50);
 assert.ok(classes.has('swiping'),'actions revealed during gesture, not only on release');
 touch('touchend',100,50);assert.equal(ui.getSwipe(),'demo-1','left swipe settles open');
+// Product swipe must open ONE row, never all products sharing undefined itemId.
+const makeProductRow=id=>{
+ const classSet=new Set();
+ return {dataset:{productId:id},classList:{toggle(k,on){on?classSet.add(k):classSet.delete(k)},contains(k){return classSet.has(k)}},
+ querySelectorAll(){return [{tabIndex:-1}]},_classes:classSet};
+};
+const productA=makeProductRow('p-milk-1'),productB=makeProductRow('p-milk-2');
+mockSwipeRows=[productA,productB];
+ui.setOpenSwipe('p-milk-1');
+assert.ok(productA._classes.has('swipe-open'),'Target product opened');
+assert.ok(!productB._classes.has('swipe-open'),'Other product stayed closed');
+ui.setOpenSwipe('p-milk-2');
+assert.ok(!productA._classes.has('swipe-open'),'Previous product closed');
+assert.ok(productB._classes.has('swipe-open'),'Only second product opened');
+
 console.log('v26 core list/product/store/picker/compare/gesture tests passed');
