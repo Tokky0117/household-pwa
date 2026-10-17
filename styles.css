@@ -2036,3 +2036,6 @@ html,body {
 .swipe-item .swipe-peek{flex-basis:7px}
 .swipe-item.drag-placeholder{opacity:.36!important}
 .comparison-product.product-sort-row{touch-action:pan-y;-webkit-touch-callout:none}
+
+.swipe-item{-webkit-touch-callout:none}
+.sample-price-notice{font-size:11px;color:var(--muted);margin:1px 6px 7px;line-height:1.3}
