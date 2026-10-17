@@ -60,7 +60,7 @@ function shopCompareValue(item){
 function load(){try{const d=JSON.parse(localStorage.getItem(key));return Array.isArray(d)?d:makeSeed()}catch{return makeSeed()}}
 let items=load(),tab='items',page='list',selected=null,query='',onlyOut=false,collapsed=new Set(),menu=false,dialog=null,toast='',period='3m',priceScope='purchase',periodMenu=false;
 const app=document.getElementById('app');
-let previousPage='list', previousSelected=null, listScrollPosition=0, unitInfoOpen=false,shopPrice='',shopQuantity='',shopUnit='mL';
+let previousPage='list', previousSelected=null, listScrollPosition=0, shopPrice='',shopQuantity='',shopUnit='mL';
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const norm=s=>String(s).normalize('NFKC').trim().replace(/\s+/g,' ').toLocaleLowerCase('ja');
 const id=()=>crypto.randomUUID?.()||`id-${Date.now()}-${Math.random()}`;
@@ -95,7 +95,6 @@ const UI={
   },
   sheet({title,body}){return `<div class="sheet-back" data-sheet-backdrop="true"><section class="half-sheet" role="dialog" aria-modal="true" aria-label="${esc(title)}"><div class="sheet-grip"></div><header class="sheet-head"><h2>${esc(title)}</h2><button class="sheet-close" type="button" data-act="back" aria-label="閉じる">${miniIcon('close')}</button></header>${body}</section></div>`},
   priceCells(){return `<div class="pricegrid"><div class="pricebox"><span class="label">通常最安値</span><strong>—</strong><small>価格記録なし</small></div><div class="pricebox"><span class="label">割引最安値</span><strong>—</strong><small>価格記録なし</small></div></div>`},
-  priceCard({title,kind}){return `<div class="panel minimum-card"><div class="favorite-price-title"><strong>${esc(title)}</strong><span class="tag">${esc(kind)}</span></div>${UI.priceCells()}</div>`},
   info({action,expanded,message,label}){return `<div class="info-anchor"><button type="button" class="info-trigger" data-act="${esc(action)}" aria-expanded="${!!expanded}" aria-label="${esc(label)}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v6"/><circle cx="12" cy="7.5" r=".8" fill="currentColor" stroke="none"/></svg></button><div class="info-popover ui-menu" role="tooltip" ${expanded?'':'hidden'}>${esc(message)}</div></div>`},
   actions({items,label,compact=false,hidden=false}){return commonMenu(items,{label,compact,hidden})},
   headerMenu({items,label}){return `<button class="iconbtn" data-act="menu" aria-label="${esc(label)}" aria-haspopup="true" aria-expanded="${menu}">⋯</button>${menu?UI.actions({items,label}):''}`}
@@ -204,7 +203,7 @@ function mainTabView(){
 }
 function pageView(){
  switch(page){
-  case 'detail':
+  case 'compare':
   case 'edit': return priceCompareView();
   case 'add': return listView();
   case 'products': return productsView();
@@ -217,12 +216,12 @@ function pageView(){
 function render(){
  const currentModal=page==='add'||page==='edit';
  const wasModal=previousPage==='add'||previousPage==='edit';
- const scrollReset=!currentModal&&!wasModal&&(page!==previousPage||(page==='detail'&&selected!==previousSelected));
+ const scrollReset=!currentModal&&!wasModal&&(page!==previousPage||(page==='compare'&&selected!==previousSelected));
  const focus=['add','edit','products','productPick','productCreate','productEdit'].includes(page);
  const modal=currentModal?formView():'';
  const overlay=dialogView();
  app.innerHTML=`<div class="shell ${focus?'focus':''}">${pageView()}</div>${modal}${overlay}${toast?`<div class="toast" role="status">${esc(toast)}</div>`:''}`;
- if(scrollReset)window.scrollTo(0,page==='list'&&previousPage==='detail'?listScrollPosition:0);
+ if(scrollReset)window.scrollTo(0,page==='list'&&previousPage==='compare'?listScrollPosition:0);
  previousPage=page;previousSelected=selected;
 }
 function say(s){toast=s;document.querySelector('.toast')?.remove();const t=document.createElement('div');t.className='toast';t.setAttribute('role','status');t.textContent=s;document.body.append(t);setTimeout(()=>{if(toast===s){toast='';t.remove()}},2800)}
@@ -246,16 +245,16 @@ function goBack(){
   if(['add','edit'].includes(page)&&sheet&&!sheet.classList.contains('closing')){
     sheet.classList.add('closing');
     sheet.style.pointerEvents='none';
-    const destination=page==='add'?'list':'detail';
+    const destination=page==='add'?'list':'compare';
     setTimeout(()=>{menu=false;page=destination;render()},190);
     return;
   }
   menu=false;
-  if(page==='detail')page='list';
+  if(page==='compare')page='list';
   else if(page==='productCreate')page='productPick';
   else if(page==='productEdit')page='products';
   else if(page==='productPick')page='products';
-  else if(['edit','products'].includes(page))page='detail';
+  else if(['edit','products'].includes(page))page='compare';
   else page='list';
   render();
 }
@@ -295,7 +294,7 @@ function commitItem(name,category){
   const newId=id();scrollToId=newId;collapsed.delete(category);query='';onlyOut=false;
   items.push({id:newId,name,category,inStock:false,hidden:false,order:Math.max(0,...items.filter(i=>i.category===category).map(i=>i.order))+1,compareQuantity:1,compareUnit:'個',version:1});
  }
- persist();page=page==='edit'?'detail':'list';render();
+ persist();page=page==='edit'?'compare':'list';render();
  if(scrollToId){const el=[...document.querySelectorAll('[data-item-id]')].find(e=>e.dataset.itemId===scrollToId);el?.scrollIntoView({behavior:'smooth',block:'center'});el?.classList.add('just-added');scrollToId=null}
  say('保存しました');
 }
@@ -335,7 +334,7 @@ if(el.dataset.uiChoice!==undefined){
  wrapper.querySelectorAll('[data-ui-choice]').forEach(b=>{const selected=b===el;b.classList.toggle('selected',selected);b.setAttribute('aria-pressed',String(selected));const tick=b.querySelector('.ui-menu-selected');if(tick)tick.textContent=selected?'✓':''});
  closeAllDropdowns();wrapper.querySelector('.ui-select-trigger')?.focus();return;
 }
-if(el.dataset.tab){tab=el.dataset.tab;page='list';menu=false;render();return}if(el.dataset.cat!==undefined){if(onlyOut)return;const c=Number(el.dataset.cat);collapsed.has(c)?collapsed.delete(c):collapsed.add(c);render();return}if(el.dataset.stock){const i=items.find(x=>x.id===el.dataset.stock);i.inStock=!i.inStock;i.version++;persist();render();return}if(el.dataset.open){listScrollPosition=window.scrollY;selected=el.dataset.open;page='detail';period='3m';priceScope='purchase';shopPrice='';shopQuantity='';shopUnit='mL';periodMenu=false;menu=false;render();return}if(el.dataset.period){period=el.dataset.period;periodMenu=false;render();return}if(el.dataset.scope){priceScope=el.dataset.scope;periodMenu=false;render();return}if(el.dataset.move){const i=items.find(x=>x.id===el.dataset.move);const siblings=visible().filter(x=>x.category===i.category).sort((a,b)=>a.order-b.order);const index=siblings.findIndex(x=>x.id===i.id),other=siblings[index+Number(el.dataset.dir)];if(other){const o=i.order;i.order=other.order;other.order=o;persist()}render();return}if(el.dataset.pedit){const p=catalogue.products.find(x=>x.id===el.dataset.pedit);if(p&&p.itemGroupId===selected){editingProductId=p.id;page='productEdit';render()}return}
+if(el.dataset.tab){tab=el.dataset.tab;page='list';menu=false;render();return}if(el.dataset.cat!==undefined){if(onlyOut)return;const c=Number(el.dataset.cat);collapsed.has(c)?collapsed.delete(c):collapsed.add(c);render();return}if(el.dataset.stock){const i=items.find(x=>x.id===el.dataset.stock);i.inStock=!i.inStock;i.version++;persist();render();return}if(el.dataset.open){listScrollPosition=window.scrollY;selected=el.dataset.open;page='compare';period='3m';priceScope='purchase';shopPrice='';shopQuantity='';shopUnit='mL';periodMenu=false;menu=false;render();return}if(el.dataset.period){period=el.dataset.period;periodMenu=false;render();return}if(el.dataset.scope){priceScope=el.dataset.scope;periodMenu=false;render();return}if(el.dataset.move){const i=items.find(x=>x.id===el.dataset.move);const siblings=visible().filter(x=>x.category===i.category).sort((a,b)=>a.order-b.order);const index=siblings.findIndex(x=>x.id===i.id),other=siblings[index+Number(el.dataset.dir)];if(other){const o=i.order;i.order=other.order;other.order=o;persist()}render();return}if(el.dataset.pedit){const p=catalogue.products.find(x=>x.id===el.dataset.pedit);if(p&&p.itemGroupId===selected){editingProductId=p.id;page='productEdit';render()}return}
 if(el.dataset.premove){
  const p=catalogue.products.find(x=>x.id===el.dataset.premove);
  if(p&&p.itemGroupId===selected){dialog={title:'商品の登録解除',message:`「${productTitle(p)}」の登録を解除します。過去の最安値集計対象からも外れます。`,buttons:[{id:'cancel',label:'キャンセル'},{id:'confirmProductUnlink',label:'解除する',primary:true}],pending:{productId:p.id}};renderDialogOnly()}return;
@@ -362,7 +361,7 @@ if(action==='confirmProductMove'&&p){
  if(product&&product.itemGroupId===p.fromId)setProductGroup(product,selected);
  page='products';render();say('登録先を変更しました');return;
 }
-if(action==='discardChanges'){goBack();return}if(action==='confirmHide'){current().hidden=true;current().version++;persist();page='list'}if(action==='resetYes'){items=makeSeed();catalogue=sampleCatalogue();persist();persistCatalogue();page='list';tab='items'}if(action==='restore'&&p){const i=items.find(x=>x.id===p.hiddenId);i.hidden=false;i.version++;selected=i.id;page='list';persist()}if(action==='new'&&p){registeredProducts(p.hiddenId).forEach(x=>setProductGroup(x,null));selected=null;page='add';commitItem(p.name,p.category)}render();return}const action=el.dataset.act;if(!action)return;if(action==='back'){unitInfoOpen=false;back();return}if(action==='clearSearch'){query='';const input=document.getElementById('search');if(input){input.value='';input.blur()}document.querySelector('.clear-search')?.setAttribute('hidden','');updateSearchResults();return}if(action==='add'){selected=null;menu=false;page='add'}if(action==='menu'){menu=!menu}if(['edit','products'].includes(action)){menu=false;page=action}
+if(action==='discardChanges'){goBack();return}if(action==='confirmHide'){current().hidden=true;current().version++;persist();page='list'}if(action==='resetYes'){items=makeSeed();catalogue=sampleCatalogue();persist();persistCatalogue();page='list';tab='items'}if(action==='restore'&&p){const i=items.find(x=>x.id===p.hiddenId);i.hidden=false;i.version++;selected=i.id;page='list';persist()}if(action==='new'&&p){registeredProducts(p.hiddenId).forEach(x=>setProductGroup(x,null));selected=null;page='add';commitItem(p.name,p.category)}render();return}const action=el.dataset.act;if(!action)return;if(action==='back'){back();return}if(action==='clearSearch'){query='';const input=document.getElementById('search');if(input){input.value='';input.blur()}document.querySelector('.clear-search')?.setAttribute('hidden','');updateSearchResults();return}if(action==='add'){selected=null;menu=false;page='add'}if(action==='menu'){menu=!menu}if(['edit','products'].includes(action)){menu=false;page=action}
 if(action==='productPick'){pickQuery='';pickerAll=false;page=action}
 if(action==='productCreate')page='productCreate';
 if(action==='catalogueList'){pickerAll=!pickerAll;const heading=document.querySelector('.catalogue-list-heading');if(heading)heading.textContent=pickerAll?'登録一覧':'候補（最大3件）';const target=document.getElementById('catalogue-results');if(target)target.innerHTML=pickerResults();el.textContent=pickerAll?'候補に戻る':'登録一覧から選ぶ';return}if(action==='hide'){menu=false;dialog={title:'日用品を削除',message:'日用品リストから削除します',buttons:[{id:'cancel',label:'キャンセル'},{id:'confirmHide',label:'削除',primary:true}]}}if(action==='copyList'){const txt=CATS.map((cat,idx)=>{const rows=visible().filter(i=>i.category===idx&&!i.inStock).sort((a,b)=>a.order-b.order);return rows.length?cat+'\n'+rows.map(i=>'- '+i.name).join('\n'):''}).filter(Boolean).join('\n\n');menu=false;render();if(!txt){say('在庫なしの日用品はありません');return}navigator.clipboard.writeText(txt).then(()=>say('在庫なしをコピーしました')).catch(()=>say('コピーできませんでした'));return}if(action==='sync'){say('同期は未接続です（試作版）');return}if(action==='reset'){dialog={title:'仮データを初期化しますか？',message:'この端末で行った変更がすべて消え、最初のサンプル状態に戻ります。',buttons:[{id:'cancel',label:'キャンセル'},{id:'resetYes',label:'初期化する',primary:true,danger:true}]}}render()});
@@ -390,14 +389,7 @@ function dismissMenusOutside(target){
   }
 
 }
-app.addEventListener('click',e=>{
-  dismissMenusOutside(e.target);
-  if(!unitInfoOpen||e.target.closest('.info-anchor'))return;
-  unitInfoOpen=false;
-  const tip=document.querySelector('.info-popover');
-  if(tip)tip.hidden=true;
-  document.querySelector('.info-trigger')?.setAttribute('aria-expanded','false');
-});
+app.addEventListener('click',e=>dismissMenusOutside(e.target));
 render();
 if('serviceWorker'in navigator&&location.protocol.startsWith('http'))navigator.serviceWorker.register('./sw.js').catch(()=>{});
 
@@ -477,19 +469,19 @@ app.addEventListener('touchmove',e=>{
 app.addEventListener('touchend',e=>{for(const t of e.changedTouches)endDrag({pointerId:t.identifier})});
 app.addEventListener('touchcancel',e=>{for(const t of e.changedTouches)endDrag({pointerId:t.identifier},true)});
 
-// Detail gesture: swipe right anywhere in the non-interactive detail content.
+// Comparison screen gesture: swipe right anywhere in non-interactive content.
 // Do not require the leftmost 36px: Safari can take over its own edge gesture.
 // A vertical-first gesture is ignored so scrolling remains natural.
 let detailSwipe=null;
 app.addEventListener('touchstart',e=>{
-  if(page!=='detail'||menu||dialog||e.touches.length!==1)return;
+  if(page!=='compare'||menu||dialog||e.touches.length!==1)return;
   if(!e.target.closest('.detail-main')||e.target.closest('button,input,textarea,select,a'))return;
   const t=e.touches[0];
   detailSwipe={identifier:t.identifier,startX:t.clientX,startY:t.clientY,
     lastX:t.clientX,lastY:t.clientY,direction:null};
 },{passive:true});
 app.addEventListener('touchmove',e=>{
-  if(!detailSwipe||page!=='detail')return;
+  if(!detailSwipe||page!=='compare')return;
   const t=[...e.changedTouches].find(t=>t.identifier===detailSwipe.identifier);
   if(!t)return;
   const d=detailSwipe;
@@ -504,7 +496,7 @@ app.addEventListener('touchend',e=>{
   if(!t)return;
   const d=detailSwipe;
   detailSwipe=null;
-  if(page!=='detail'||menu||dialog||d.direction!=='horizontal')return;
+  if(page!=='compare'||menu||dialog||d.direction!=='horizontal')return;
   const dx=t.clientX-d.startX,dy=t.clientY-d.startY;
   if(dx>=75&&Math.abs(dx)>=Math.abs(dy)*1.35){
     // Prevent a synthetic tap from hitting the newly displayed list.
