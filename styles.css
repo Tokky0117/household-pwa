@@ -1996,8 +1996,8 @@ html,body {
 .swipe-item .itemname{display:flex;flex:1 1 0;min-width:0;flex-direction:column;justify-content:center;gap:3px;align-items:flex-start;padding:9px 8px 9px 16px;overflow:hidden}
 .swipe-item .item-title{display:block;width:100%;font-size:15px;line-height:1.35;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .swipe-item .list-prices{display:block;width:100%;margin:0;font-size:12px;line-height:1.5;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.swipe-item .item-stock-area{flex:0 0 78px;display:flex;align-items:center;justify-content:center;padding:0 5px}
-.swipe-item .stock{min-width:52px;min-height:44px}
+.swipe-item .item-stock-area{flex:0 0 60px;display:flex;align-items:center;justify-content:center;padding:0 3px}
+.swipe-item .stock{min-width:0;width:48px;min-height:32px;padding:5px 4px;font-size:12px;line-height:1.3;border-radius:20px}
 .swipe-peek{flex:0 0 8px;background:var(--line);opacity:.42}
 .swipe-actions{position:absolute;inset:0 0 0 auto;width:132px;display:flex;z-index:0}
 .swipe-actions button{width:66px;border:0;border-left:1px solid var(--line);color:var(--ink);background:var(--bg);display:flex;flex-direction:column;gap:4px;align-items:center;justify-content:center;font-size:12px;visibility:hidden}
@@ -2029,3 +2029,10 @@ html,body {
 .shop-toggle{width:100%;min-height:48px;background:transparent;border:0;color:var(--ink);display:flex;justify-content:space-between;align-items:center;font-size:15px;font-weight:650;padding:8px 0}
 .shop-toggle .ui-chevron{width:17px;height:17px}
 .shop-fields{padding:2px 0 10px}
+
+/* v25 touch: keep iOS vertical scrolling and press feedback, reserve stock tap width */
+.swipe-item .swipe-front{will-change:transform}
+.swipe-item .itemname:active{background:var(--bg)}
+.swipe-item .swipe-peek{flex-basis:7px}
+.swipe-item.drag-placeholder{opacity:.36!important}
+.comparison-product.product-sort-row{touch-action:pan-y;-webkit-touch-callout:none}
