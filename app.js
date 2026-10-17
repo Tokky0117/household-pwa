@@ -35,7 +35,7 @@ function setProductGroup(p,toId){
  const from=p.itemGroupId;
  if(from===toId)return;
  p.itemGroupId=null;p.itemGroupOrder=null;
- registeredProducts(from).forEach((row,index)=>row.itemGroupOrder=index+1);
+ if(from)registeredProducts(from).forEach((row,index)=>row.itemGroupOrder=index+1);
  if(toId){p.itemGroupId=toId;p.itemGroupOrder=registeredProducts(toId).length}
  persistCatalogue();
 }
@@ -94,7 +94,7 @@ const UI={
     return `<div class="formfield"><label for="${esc(id)}">${esc(label)}</label>${input}</div>`;
   },
   sheet({title,body}){return `<div class="sheet-back" data-sheet-backdrop="true"><section class="half-sheet" role="dialog" aria-modal="true" aria-label="${esc(title)}"><div class="sheet-grip"></div><header class="sheet-head"><h2>${esc(title)}</h2><button class="sheet-close" type="button" data-act="back" aria-label="閉じる">${miniIcon('close')}</button></header>${body}</section></div>`},
-  priceCells(){return `<div class="pricegrid"><div class="pricebox"><span class="label">通常時の最安値</span><strong>—</strong><small>購入履歴なし</small></div><div class="pricebox"><span class="label">割引時の最安値</span><strong>—</strong><small>購入履歴なし</small></div></div>`},
+  priceCells(){return `<div class="pricegrid"><div class="pricebox"><span class="label">通常最安値</span><strong>—</strong><small>価格記録なし</small></div><div class="pricebox"><span class="label">割引最安値</span><strong>—</strong><small>価格記録なし</small></div></div>`},
   priceCard({title,kind}){return `<div class="panel minimum-card"><div class="favorite-price-title"><strong>${esc(title)}</strong><span class="tag">${esc(kind)}</span></div>${UI.priceCells()}</div>`},
   info({action,expanded,message,label}){return `<div class="info-anchor"><button type="button" class="info-trigger" data-act="${esc(action)}" aria-expanded="${!!expanded}" aria-label="${esc(label)}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v6"/><circle cx="12" cy="7.5" r=".8" fill="currentColor" stroke="none"/></svg></button><div class="info-popover ui-menu" role="tooltip" ${expanded?'':'hidden'}>${esc(message)}</div></div>`},
   actions({items,label,compact=false,hidden=false}){return commonMenu(items,{label,compact,hidden})},
@@ -151,9 +151,8 @@ function formView(){
  ].join('');
  return UI.sheet({title,body:`<form id="itemForm">${fields}<div class="formactions"><button type="submit" class="primary">${editing?'変更を保存':'登録する'}</button></div></form>`});
 }
-// Shared row markup for registered products and favorites.
-// Product text opens editing; favorite text stays static for long-press ordering.
-function managementRow({name,sub,action,aria,details='',favId=null,editId=null,productId=null}) {
+// Shared registered-product row: name opens editing; long press changes display order.
+function managementRow({name,sub,action,aria,details='',editId=null,productId=null}) {
  const content=`<strong>${esc(name)}</strong><span class="hint">${esc(sub)}</span>${details?`<span class="hint">${esc(details)}</span>`:''}`;
  const main=editId
    ?`<button class="catalogue-row-content catalogue-edit" type="button" data-pedit="${esc(editId)}" aria-label="${esc(name)}の商品情報を編集">${content}</button>`
@@ -402,89 +401,78 @@ app.addEventListener('click',e=>{
 render();
 if('serviceWorker'in navigator&&location.protocol.startsWith('http'))navigator.serviceWorker.register('./sw.js').catch(()=>{});
 
-// Long-press reorder with a finger-following floating row and live DOM reordering.
-// The original row becomes a placeholder; only release persists the new order.
+// Long-press ordering applies to item groups and registered products.
 let pendingDrag=null,activeDrag=null,suppressClick=false;
 function clearPending(){if(pendingDrag){clearTimeout(pendingDrag.timer);pendingDrag=null}}
 function startDrag(p){
-  if(pendingDrag!==p||!p.row.isConnected)return;
-  const rect=p.row.getBoundingClientRect();
-  const ghost=p.row.cloneNode(true);
-  ghost.classList.add('drag-ghost');
-  ghost.classList.remove('drag-placeholder','dragging');
-  ghost.style.width=rect.width+'px';
-  ghost.style.left=rect.left+'px';
-  ghost.style.top=rect.top+'px';
-  document.body.appendChild(ghost);
-  activeDrag={...p,ghost,offsetY:p.y-rect.top,offsetX:p.x-rect.left,moved:false,scrollStart:window.scrollY};
-  pendingDrag=null;
-  p.row.classList.add('drag-placeholder');
-  if(p.inputType!=='touch')p.row.setPointerCapture?.(p.pointerId);
-  document.body.classList.add('reordering');
+ if(pendingDrag!==p||!p.row.isConnected)return;
+ const rect=p.row.getBoundingClientRect(),ghost=p.row.cloneNode(true);
+ ghost.classList.add('drag-ghost');ghost.classList.remove('drag-placeholder','dragging');
+ ghost.style.width=rect.width+'px';ghost.style.left=rect.left+'px';ghost.style.top=rect.top+'px';
+ document.body.appendChild(ghost);
+ activeDrag={...p,ghost,offsetY:p.y-rect.top,offsetX:p.x-rect.left,moved:false};
+ pendingDrag=null;p.row.classList.add('drag-placeholder');
+ if(p.inputType!=='touch')p.row.setPointerCapture?.(p.pointerId);
+ document.body.classList.add('reordering');
 }
 function startPending(row,e,inputType){
-  const p={row,pointerId:e.pointerId,x:e.clientX,y:e.clientY,
-    category:row.dataset.categoryId,kind:page==='favorites'?'fav':'item',inputType};
-  p.timer=setTimeout(()=>startDrag(p),420);
-  pendingDrag=p;
+ const p={row,pointerId:e.pointerId,x:e.clientX,y:e.clientY,category:row.dataset.categoryId,
+ kind:page==='products'?'product':'item',inputType};
+ p.timer=setTimeout(()=>startDrag(p),420);pendingDrag=p;
 }
+function dragRowSelector(kind){return kind==='product'?'[data-product-id]':'[data-item-id]'}
 app.addEventListener('pointerdown',e=>{
-  if(e.pointerType==='touch'||e.button!==0||dialog||(page!=='list'&&page!=='favorites'))return;
-  if(page==='list'&&(query||onlyOut))return;
-  if(e.target.closest('input,textarea,select,[data-stock],[data-fdelete],[data-fremove],[data-cat]'))return;
-  const row=e.target.closest(page==='favorites'?'[data-fav-id]':'[data-item-id]');
-  if(row)startPending(row,{pointerId:e.pointerId,clientX:e.clientX,clientY:e.clientY},'mouse');
+ if(e.pointerType==='touch'||e.button!==0||dialog||!['list','products'].includes(page))return;
+ if(page==='list'&&(query||onlyOut))return;
+ if(e.target.closest('input,textarea,select,[data-stock],[data-premove],[data-cat]'))return;
+ const row=e.target.closest(dragRowSelector(page==='products'?'product':'item'));
+ if(row)startPending(row,{pointerId:e.pointerId,clientX:e.clientX,clientY:e.clientY},'mouse');
 });
 function moveDrag(e){
-  if(pendingDrag&&e.pointerId===pendingDrag.pointerId&&Math.hypot(e.clientX-pendingDrag.x,e.clientY-pendingDrag.y)>9)clearPending();
-  const d=activeDrag;
-  if(!d||e.pointerId!==d.pointerId)return;
-  e.preventDefault();
-  d.ghost.style.top=(e.clientY-d.offsetY)+'px';
-  d.ghost.style.left=(e.clientX-d.offsetX)+'px';
-  const target=document.elementFromPoint(e.clientX,e.clientY)?.closest(d.kind==='fav'?'[data-fav-id]':'[data-item-id]');
-  if(!target||target===d.row||(d.kind==='item'&&target.dataset.categoryId!==d.category))return;
-  const rect=target.getBoundingClientRect();
-  target.parentNode.insertBefore(d.row,e.clientY<rect.top+rect.height/2?target:target.nextSibling);
-  d.moved=true;
+ if(pendingDrag&&e.pointerId===pendingDrag.pointerId&&Math.hypot(e.clientX-pendingDrag.x,e.clientY-pendingDrag.y)>9)clearPending();
+ const d=activeDrag;if(!d||e.pointerId!==d.pointerId)return;
+ e.preventDefault();
+ d.ghost.style.top=(e.clientY-d.offsetY)+'px';d.ghost.style.left=(e.clientX-d.offsetX)+'px';
+ const target=document.elementFromPoint(e.clientX,e.clientY)?.closest(dragRowSelector(d.kind));
+ if(!target||target===d.row||(d.kind==='item'&&target.dataset.categoryId!==d.category))return;
+ const rect=target.getBoundingClientRect();
+ target.parentNode.insertBefore(d.row,e.clientY<rect.top+rect.height/2?target:target.nextSibling);
+ d.moved=true;
 }
 function endDrag(e,cancel=false){
-  if(pendingDrag&&e.pointerId===pendingDrag.pointerId)clearPending();
-  const d=activeDrag;if(!d||e.pointerId!==d.pointerId)return;
-  activeDrag=null;
-  d.ghost.remove();
-  d.row.classList.remove('drag-placeholder');
-  document.body.classList.remove('reordering');
-  suppressClick=true;setTimeout(()=>{suppressClick=false},200);
-  if(cancel){render();return}
-  if(!d.moved)return;
-  if(d.kind==='item'){
-    const rows=[...document.querySelectorAll('[data-category-id]')].filter(row=>row.dataset.categoryId===d.category);
-    rows.forEach((row,index)=>{const i=items.find(x=>x.id===row.dataset.itemId);if(i){i.order=index+1;i.version=(i.version||0)+1}});
-  }else{
-    const byId=new Map(current().favorites.map(f=>[f.id,f]));
-    current().favorites=[...document.querySelectorAll('[data-fav-id]')].map(row=>byId.get(row.dataset.favId));
-    current().version=(current().version||0)+1;
-  }
-  persist();say('表示順を保存しました');
+ if(pendingDrag&&e.pointerId===pendingDrag.pointerId)clearPending();
+ const d=activeDrag;if(!d||e.pointerId!==d.pointerId)return;
+ activeDrag=null;d.ghost.remove();d.row.classList.remove('drag-placeholder');
+ document.body.classList.remove('reordering');
+ suppressClick=true;setTimeout(()=>{suppressClick=false},200);
+ if(cancel){render();return}
+ if(!d.moved)return;
+ if(d.kind==='item'){
+  const rows=[...document.querySelectorAll('[data-item-id]')].filter(row=>row.dataset.categoryId===d.category);
+  rows.forEach((row,index)=>{const i=items.find(x=>x.id===row.dataset.itemId);if(i){i.order=index+1;i.version=(i.version||0)+1}});
+  persist();
+ }else{
+  const ids=[...document.querySelectorAll('[data-product-id]')].map(row=>row.dataset.productId);
+  if(!reorderProducts(selected,ids)){render();say('並び順を保存できませんでした');return}
+ }
+ say('表示順を保存しました');
 }
 app.addEventListener('pointermove',moveDrag);
 app.addEventListener('pointerup',e=>endDrag(e));
 app.addEventListener('pointercancel',e=>endDrag(e,true));
-app.addEventListener('contextmenu',e=>{if(activeDrag||pendingDrag&&e.target.closest('[data-item-id],[data-fav-id]'))e.preventDefault()});
+app.addEventListener('contextmenu',e=>{if(activeDrag||pendingDrag&&e.target.closest('[data-item-id],[data-product-id]'))e.preventDefault()});
 app.addEventListener('touchstart',e=>{
-  if(e.touches.length!==1||dialog||(page!=='list'&&page!=='favorites')||page==='list'&&(query||onlyOut))return;
-  if(e.target.closest('input,textarea,select,[data-stock],[data-fdelete],[data-fremove],[data-cat]'))return;
-  const row=e.target.closest(page==='favorites'?'[data-fav-id]':'[data-item-id]');if(!row)return;
-  const t=e.touches[0];
-  startPending(row,{pointerId:t.identifier,clientX:t.clientX,clientY:t.clientY},'touch');
+ if(e.touches.length!==1||dialog||!['list','products'].includes(page)||page==='list'&&(query||onlyOut))return;
+ if(e.target.closest('input,textarea,select,[data-stock],[data-premove],[data-cat]'))return;
+ const row=e.target.closest(dragRowSelector(page==='products'?'product':'item'));
+ if(!row)return;
+ const t=e.touches[0];startPending(row,{pointerId:t.identifier,clientX:t.clientX,clientY:t.clientY},'touch');
 },{passive:true});
 app.addEventListener('touchmove',e=>{
-  const t=e.changedTouches[0];if(!t)return;
-  if(activeDrag&&activeDrag.pointerId===t.identifier){
-    e.preventDefault();
-    moveDrag({pointerId:t.identifier,clientX:t.clientX,clientY:t.clientY,preventDefault(){}});
-  }else if(pendingDrag&&pendingDrag.pointerId===t.identifier&&Math.hypot(t.clientX-pendingDrag.x,t.clientY-pendingDrag.y)>9)clearPending();
+ const t=e.changedTouches[0];if(!t)return;
+ if(activeDrag&&activeDrag.pointerId===t.identifier){
+  e.preventDefault();moveDrag({pointerId:t.identifier,clientX:t.clientX,clientY:t.clientY,preventDefault(){}});
+ }else if(pendingDrag&&pendingDrag.pointerId===t.identifier&&Math.hypot(t.clientX-pendingDrag.x,t.clientY-pendingDrag.y)>9)clearPending();
 },{passive:false});
 app.addEventListener('touchend',e=>{for(const t of e.changedTouches)endDrag({pointerId:t.identifier})});
 app.addEventListener('touchcancel',e=>{for(const t of e.changedTouches)endDrag({pointerId:t.identifier},true)});
