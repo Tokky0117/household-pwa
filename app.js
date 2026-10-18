@@ -660,7 +660,7 @@ function startPending(row,e,inputType){
  kind:page==='compare'||page==='products'?'product':'item',inputType};
  p.timer=setTimeout(()=>startDrag(p),420);pendingDrag=p;
 }
-function dragRowSelector(kind){return kind==='product'?'[data-product-id]':'[data-item-id]'}
+function dragRowSelector(kind){return kind==='product'?'.comparison-product[data-product-id],.catalogue-row[data-product-id]':'[data-item-id]'}
 app.addEventListener('pointerdown',e=>{
  if(e.pointerType==='touch'||e.button!==0||dialog||!['list','products','compare'].includes(page))return;
  if(page==='list'&&(query||onlyOut))return;
