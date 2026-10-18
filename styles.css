@@ -2158,22 +2158,29 @@ html,body {
 .budget-category-row{display:flex;justify-content:space-between;gap:14px;border-bottom:1px solid var(--line);padding:14px 2px;font-size:14px}
 .budget-category-row strong{font-variant-numeric:tabular-nums}
 
-/* v30 price information only: grouped swipeable products and compact aligned chain rows. */
-.comparison-main .comparison-product.swipe-item{
- display:block;
- margin:0!important;
- border:1px solid var(--line);
- border-radius:11px;
- background:var(--card);
- overflow:hidden;
+/* Product information is a static card; only its header is swipeable. */
+.comparison-main .comparison-product{
+ display:block;margin:0;border:1px solid var(--line);
+ border-radius:11px;background:var(--card);overflow:hidden;
 }
-.comparison-main .comparison-product-front{border-radius:inherit;background:var(--card)}
-.comparison-main .comparison-product .comparison-product-title{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:7px}
-.comparison-main .product-drag-hint{
- display:flex;align-items:center;justify-content:center;flex:0 0 28px;
- min-height:30px;color:var(--muted);opacity:.75;pointer-events:none;
+.comparison-main .comparison-product-header.swipe-item{
+ margin:0;min-height:44px;border:0;border-radius:0;overflow:hidden;
 }
-.comparison-main .chain-price-list{display:flex;flex-direction:column;gap:0;border-top:1px solid var(--line);padding-top:3px}
+.comparison-main .comparison-product-front{
+ display:flex;align-items:center;justify-content:space-between;
+ min-height:44px;border-radius:0;background:var(--card);
+}
+.comparison-main .comparison-product .comparison-product-title{
+ display:flex;align-items:center;min-width:0;gap:10px;margin:0;
+}
+.comparison-main .chain-price-list{
+ display:flex;flex-direction:column;gap:0;
+ border-top:1px solid var(--line);padding:3px 12px 7px;
+}
+.product-picker-create{width:100%;min-height:44px;margin-top:8px}
+.product-picker-create-help{margin:5px 4px 8px;text-align:center}
+.half-sheet.product-editor-sheet{height:min(480px,calc(100dvh - 18px));max-height:calc(100dvh - 18px)}
+.half-sheet.product-editor-sheet .sheet-body{overflow-y:auto}
 .comparison-main .chain-price-row{
  display:grid;grid-template-columns:minmax(0,1fr) minmax(78px,auto) 58px;
  grid-template-areas:"name value date";
