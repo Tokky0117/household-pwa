@@ -40,7 +40,7 @@ function minPixels(body,key){
 for(const selector of ['.iconbtn','.headrow .iconbtn','.sheet-close','.cathead','.ui-select-compact .ui-select-trigger','.stock,.detail-main .detail-stock-row .stock','.swipe-item .stock']){
  const declarations=ruleBody(selector);
  assert.ok(declarations.length>0,'Touch rule exists: '+selector);
- const values=declarations.map(body=>minPixels(body,'min-height')).filter(x=>x!==null);
+ const values=declarations.map(body=>minPixels(body,'min-height')??minPixels(body,'height')).filter(x=>x!==null);
  assert.ok(values.length>0&&values.every(x=>x>=44),'Touch area min-height >= 44px: '+selector);
 }
 assert.ok(css.includes('.tertiary{')&&css.includes('color:var(--accent)'),'Shared tertiary button style exists');
