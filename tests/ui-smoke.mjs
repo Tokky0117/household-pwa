@@ -59,7 +59,7 @@ assert.ok(ui.listView().includes('class="stock-pill"'),'Stock labels are visuall
 assert.ok(css.includes('.stock .stock-pill{')&&css.includes('min-height:32px'),'Visible stock pill uses compact height');
 assert.ok(css.includes('.swipe-item .stock{')&&css.includes('min-height:44px'),'Stock button keeps accessible hit target');
 assert.ok(css.includes('.swipe-item .stock.off{background:transparent'),'Off state has transparent outer hit target');
-for(const selector of ['.comparison-main .comparison-list','.comparison-main .comparison-product.swipe-item','.comparison-main .comparison-name','.comparison-product-content','.swipe-item .stock']){
+for(const selector of ['.comparison-main .comparison-list','.comparison-main .comparison-product','.comparison-main .comparison-name','.comparison-product-content','.swipe-item .stock']){
  assert.equal(ruleBody(selector).length,1,'Canonical one-place CSS declaration: '+selector);
 }
 
@@ -93,37 +93,38 @@ ui.setSelected('demo-1');ui.setPage('compare');ui.initializeCompare();
 assert.equal(ui.getCompare()[0],null,'Empty initial compare quantity');
 assert.equal(ui.getCompare()[1],'mL','First product unit preselected');
 let view=ui.priceCompareView();
-assert.ok(view.includes('チェーン別最安値')&&view.includes('税込・安い順'));
+assert.ok(view.includes('登録商品')&&view.includes('税込・安い順'));
 assert.ok(view.includes('直近3か月')&&view.includes('直近1年')&&!view.includes('全期間'));
 assert.ok(view.includes('ライフ')&&view.includes('コノミヤ'));
 assert.ok(view.includes('298円')&&view.includes('320円'));
-assert.ok(view.includes('class="product-drag-hint"'),'Grip shown on product, not on each chain');
-assert.equal((view.match(/class="product-drag-hint"/g)||[]).length,2,'Each registered product has one drag hint');
-assert.ok(view.includes('class="swipe-peek"'),'Swipe affordance preserved on entire product');
+assert.ok(!view.includes('product-drag-hint'),'No drag grip shown');
+assert.ok(view.includes('class="comparison-product-header swipe-item'),'Product header is swipeable');
+assert.ok(view.includes('class="swipe-peek"'),'Swipe affordance preserved on product header');
 assert.ok(view.includes('class="chain-price-row"'),'Chain price is a horizontal row');
 assert.ok(view.includes('class="chain-price-date" datetime="'),'Accessible full date remains available');
 assert.ok(css.includes('grid-template-areas:"name value date"'),'Store, price and date share one line');
-assert.ok(css.includes('border-radius:11px;')&&css.includes('.comparison-main .comparison-product.swipe-item{'),'Grouped product cards have clear swipe surface');
+assert.ok(css.includes('border-radius:11px;')&&css.includes('.comparison-main .comparison-product{'),'Grouped product cards have clear swipe surface');
 assert.ok(!view.includes('商品ごと・記録済みチェーン別の税込価格'),'Old verbose subtitle removed');
 assert.ok(!view.includes('割引時')&&!view.includes('>最安値</span>'),'Old two-column UI removed');
 assert.ok(view.includes('data-product-id="p-milk-1"')&&view.includes('data-pedit="p-milk-1"')&&view.includes('data-premove="p-milk-1"'),'Product swipe preserved');
 assert.ok(view.includes('class="tertiary manage-add product-register-action"'),'Tertiary add action preserved');
 ui.setMode('unit');view=ui.priceCompareView();
 assert.ok(view.includes('id="compare-quantity"')&&view.includes('id="compare-unit"'),'Common comparison form retained');
-assert.ok(view.includes('数量を入力'),'Without quantity, show input-needed state instead of generic dash');
-assert.ok(view.indexOf('id="compare-quantity"')<view.indexOf('チェーン別最安値'),'Quantity above price heading');
+assert.ok(view.includes('内容量を入力'),'Without quantity, show input-needed state instead of generic dash');
+assert.ok(view.indexOf('id="compare-quantity"')<view.indexOf('登録商品'),'Quantity above price heading');
 ui.setQty(900);view=ui.priceCompareView();
 assert.ok(view.includes('（900mLあたり）'));
 assert.ok(view.includes('298円'),'Compatible same-unit conversion');
-assert.ok(!view.includes('数量を入力'),'Entering quantity removes the input-needed state');
+assert.ok(!view.includes('内容量を入力'),'Entering quantity removes the input-needed state');
 assert.equal(ui.convertQuantity(1,'L','mL'),1000);
 assert.equal(ui.convertQuantity(2,'個','本'),null);
-assert.ok(view.includes('inputmode="decimal" placeholder="店頭商品の数量"'),'Comparison uses numeric keyboard');
+assert.ok(view.includes('inputmode="decimal" placeholder="店頭商品の内容量"'),'Comparison uses numeric keyboard');
 ui.setUnit('g');view=ui.priceCompareView();
 assert.ok(view.includes('比較不可'),'Incompatible units show explicit comparison-unavailable state');
 ui.setUnit('mL');view=ui.priceCompareView();
 const picker=ui.pickerView();
 assert.ok(picker.includes('class="half-sheet product-picker-modal"')&&picker.includes('id="catalogue-search"'));
+assert.ok(picker.includes('data-act="productCreate"')&&picker.includes('まだ買っていない商品も登録できます'),'Picker supports new product creation');
 assert.ok(ui.pickerResults().indexOf('低脂肪乳')<ui.pickerResults().indexOf('おいしい牛乳'));
 assert.ok(css.includes('height:min(72dvh,620px)'),'Stable picker height');
 assert.ok(css.includes('.comparison-main .chain-price-row{'),'Chain rows share visual hierarchy');
@@ -160,4 +161,4 @@ const cls=(id)=>{const c=new Set();return {dataset:{productId:id},classList:{tog
 const a=cls('p-milk-1'),b=cls('p-milk-2');mockSwipeRows=[a,b];
 ui.setOpenSwipe('p-milk-1');assert.ok(a.state.has('swipe-open')&&!b.state.has('swipe-open'));
 ui.setOpenSwipe('p-milk-2');assert.ok(!a.state.has('swipe-open')&&b.state.has('swipe-open'));
-console.log('v1.8 preview: price by chain, period, conversion, budget, common UI, reorder and swipe passed');
+console.log('v36 preview: price by chain, period, conversion, budget, common UI, reorder and swipe passed');
