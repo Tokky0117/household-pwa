@@ -27,6 +27,25 @@ const ui=vm.runInNewContext(source+`
  getCompare(){return [compareQuantity,compareUnit]},getSwipe(){return openSwipeId},
  getPeriod(){return period},getListHelpOpen(){return listHelpOpen},listHelpView,readListHelpOpen,catalogue:()=>catalogue})
 `,ctx,{filename:'app.js'});
+
+function ruleBody(selector){
+ const escaped=selector.replace(/[.*+?^${}()|[\]\\]/g,'\\assert.ok(ui.listView().includes('data-stock=')&&ui.listView().includes('data-list-edit='),'Stock and swipe list preserved');');
+ const matches=[...css.matchAll(new RegExp(escaped+'\\s*\\{([^{}]*)\\}','g'))];
+ return matches.map(m=>m[1]);
+}
+function minPixels(body,key){
+ const m=body.match(new RegExp(key+'\\s*:\\s*(\\d+)px'));
+ return m?Number(m[1]):null;
+}
+for(const selector of ['.iconbtn','.headrow .iconbtn','.sheet-close','.cathead','.ui-select-compact .ui-select-trigger','.stock,.detail-main .detail-stock-row .stock','.swipe-item .stock']){
+ const declarations=ruleBody(selector);
+ assert.ok(declarations.length>0,'Touch rule exists: '+selector);
+ const values=declarations.map(body=>minPixels(body,'min-height')).filter(x=>x!==null);
+ assert.ok(values.length>0&&values.every(x=>x>=44),'Touch area min-height >= 44px: '+selector);
+}
+assert.ok(css.includes('.tertiary{')&&css.includes('color:var(--accent)'),'Shared tertiary button style exists');
+assert.ok(!source.includes('priceCells(){'),'Obsolete normal/discount UI component removed');
+assert.ok(!css.includes('grid-template-areas:"name value" "name date"'),'Obsolete two-row price CSS removed');
 assert.ok(ui.listView().includes('data-stock=')&&ui.listView().includes('data-list-edit='),'Stock and swipe list preserved');
 assert.equal(ui.getListHelpOpen(),true,'Guide is initially expanded on an unset device');
 let listWithHelp=ui.listView();
