@@ -204,7 +204,7 @@ function commonMenu(items,{label='',compact=false,hidden=false}={}){
 // Shared UI components. Views supply content and behavior; these functions own markup.
 // Keep identifiers escaped and preserve existing delegated data-* events.
 const UI={
-  stock(item){return `<button class="stock ${item.inStock?'':'off'}" data-stock="${esc(item.id)}" aria-label="${esc(item.name)}の在庫を切り替える" aria-pressed="${item.inStock}">${item.inStock?'あり':'なし'}</button>`},
+  stock(item){return `<button class="stock ${item.inStock?'':'off'}" data-stock="${esc(item.id)}" aria-label="${esc(item.name)}の在庫を切り替える" aria-pressed="${item.inStock}"><span class="stock-pill" aria-hidden="true">${item.inStock?'あり':'なし'}</span></button>`},
   dropdown({id,name=null,value,options,label='',compact=false,open=false}){
     const active=options.find(x=>String(x.value)===String(value))||options[0];
     const choices=options.map(o=>({choice:String(o.value),label:o.label,selected:String(o.value)===String(active?.value)}));
