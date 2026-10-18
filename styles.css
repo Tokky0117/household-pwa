@@ -1990,14 +1990,19 @@ html,body {
 @media(max-width:380px){.shop-inputs{grid-template-columns:repeat(2,minmax(0,1fr))}.shop-inputs .formfield:last-child{grid-column:span 2}}
 
 /* v24: compact two-line item row, inventory-only right column, subtle swipe affordance */
-.swipe-item{position:relative;display:block;overflow:hidden;min-width:0;touch-action:pan-y}
+.swipe-item{position:relative;display:block;overflow:hidden;min-width:0;touch-action:pan-y;-webkit-touch-callout:none}
 .swipe-front{display:flex;align-items:stretch;width:100%;min-height:67px;position:relative;z-index:1;background:var(--card);transition:transform .18s ease;touch-action:pan-y}
 .swipe-item.swipe-open .swipe-front{transform:translateX(-132px)}
 .swipe-item .itemname{display:flex;flex:1 1 0;min-width:0;flex-direction:column;justify-content:center;gap:3px;align-items:flex-start;padding:9px 8px 9px 16px;overflow:hidden}
 .swipe-item .item-title{display:block;width:100%;font-size:15px;line-height:1.35;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .swipe-item .list-prices{display:block;width:100%;margin:0;font-size:12px;line-height:1.5;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .swipe-item .item-stock-area{flex:0 0 60px;display:flex;align-items:center;justify-content:center;padding:0 3px}
-.swipe-item .stock{min-width:0;width:48px;min-height:44px;padding:5px 4px;font-size:12px;line-height:1.3;border-radius:20px}
+.swipe-item .stock{
+ min-width:0;width:48px;min-height:44px;padding:0;
+ display:grid;place-items:center;
+ border:0;background:transparent;box-shadow:none;
+ color:inherit;border-radius:20px;
+}
 .swipe-peek{flex:0 0 8px;background:var(--line);opacity:.42}
 .swipe-actions{position:absolute;inset:0 0 0 auto;width:132px;display:flex;z-index:0}
 .swipe-actions button{width:66px;border:0;border-left:1px solid var(--line);color:var(--ink);background:var(--bg);display:flex;flex-direction:column;gap:4px;align-items:center;justify-content:center;font-size:12px;visibility:hidden}
@@ -2006,10 +2011,9 @@ html,body {
 .swipe-actions button svg{width:18px;height:18px}
 @media(prefers-reduced-motion:reduce){.swipe-front{transition:none}}
 /* v24: unified, less card-heavy price information view */
-.comparison-main .comparison-list{display:flex;flex-direction:column;gap:0}
-.comparison-main .comparison-product{padding:12px 2px;border-top:1px solid var(--line);margin:0;user-select:none}
-.comparison-main .comparison-product-title{display:flex;align-items:center;justify-content:space-between;margin:0 0 6px;gap:8px}
-.comparison-main .comparison-name{min-width:0;display:flex;flex-direction:column;gap:2px}
+.comparison-main .comparison-list{display:flex;flex-direction:column;gap:10px}
+.comparison-main .comparison-product{user-select:none}
+.comparison-main .comparison-name{min-width:0;display:flex;flex-direction:column;gap:2px;padding-bottom:0}
 .comparison-main .comparison-name strong{font-size:15px;overflow-wrap:anywhere}
 .comparison-main .comparison-name small{font-size:12px;text-align:left;color:var(--muted)}
 .comparison-main .comparison-more{flex:none;width:44px;min-height:44px;min-width:44px;font-size:21px;border:0;background:transparent}
@@ -2033,11 +2037,9 @@ html,body {
 /* v25 touch: keep iOS vertical scrolling and press feedback, reserve stock tap width */
 .swipe-item .swipe-front{will-change:transform}
 .swipe-item .itemname:active{background:var(--bg)}
-.swipe-item .swipe-peek{flex-basis:7px}
 .swipe-item.drag-placeholder{opacity:.36!important}
 .comparison-product.product-sort-row{touch-action:pan-y;-webkit-touch-callout:none}
 
-.swipe-item{-webkit-touch-callout:none}
 .sample-price-notice{font-size:11px;color:var(--muted);margin:1px 6px 7px;line-height:1.3}
 
 /* v26 compact gesture rows; position:fixed must win over .swipe-item on dragged clones */
@@ -2046,20 +2048,14 @@ html,body {
 .swipe-item.drag-placeholder .swipe-front{opacity:.25}
 .swipe-item.swiping .swipe-front{transition:none!important}
 .swipe-item.swiping .swipe-actions button{visibility:visible}
-.swipe-item.swipe-open .swipe-actions button{visibility:visible}
 .swipe-item{min-height:0!important;padding:0!important;margin-bottom:3px!important}
 .swipe-item .swipe-front{min-height:52px}
 .swipe-item .itemname{padding:5px 7px 5px 12px;gap:1px;min-height:0}
 .swipe-item .item-title{line-height:1.25;font-size:15px}
 .swipe-item .list-prices{line-height:1.25;font-size:11.5px;margin:0}
-.swipe-item .item-stock-area{flex-basis:60px}
 .swipe-item .swipe-peek{flex:0 0 6px;align-self:stretch;background:var(--line);opacity:.40}
-.swipe-item .stock{width:48px;min-height:44px}
-.comparison-main .comparison-product.swipe-item{display:block;border-top:1px solid var(--line);overflow:hidden}
 .comparison-product-front{min-height:0!important;align-items:stretch}
-.comparison-product-content{flex:1;min-width:0;padding:8px 8px 9px 3px}
-.comparison-product-front .swipe-peek{flex:0 0 6px;margin-left:auto}
-.comparison-main .comparison-product .comparison-product-title{margin-bottom:2px}
+.comparison-product-content{flex:1;min-width:0;padding:10px 10px 11px 12px}
 .comparison-main .comparison-product .pricebox{padding:2px 0 4px}
 .product-picker-sheet{padding:6px 16px 22px;max-height:60vh;overflow:auto}
 .product-picker-sheet .catalogue-candidate{width:100%}
@@ -2165,8 +2161,8 @@ html,body {
 .budget-category-row strong{font-variant-numeric:tabular-nums}
 
 /* v30 price information only: grouped swipeable products and compact aligned chain rows. */
-.comparison-main .comparison-list{gap:10px}
 .comparison-main .comparison-product.swipe-item{
+ display:block;
  margin:0!important;
  border:1px solid var(--line);
  border-radius:11px;
@@ -2174,9 +2170,7 @@ html,body {
  overflow:hidden;
 }
 .comparison-main .comparison-product-front{border-radius:inherit;background:var(--card)}
-.comparison-main .comparison-product-content{padding:10px 10px 11px 12px}
 .comparison-main .comparison-product .comparison-product-title{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:7px}
-.comparison-main .comparison-name{padding-bottom:0;min-width:0}
 .comparison-main .product-drag-hint{
  display:flex;align-items:center;justify-content:center;flex:0 0 28px;
  min-height:30px;color:var(--muted);opacity:.75;pointer-events:none;
@@ -2200,13 +2194,28 @@ html,body {
 }
 .comparison-main .chain-price-empty{padding:8px 0 2px;border:0;color:var(--muted);font-size:15px}
 .comparison-main .comparison-product-front .swipe-peek{
- background:var(--line);opacity:.75;flex:0 0 5px;
+ margin-left:auto;background:var(--line);opacity:.75;flex:0 0 5px;
 }
 @media(max-width:360px){
  .comparison-main .chain-price-row{grid-template-columns:minmax(0,1fr) minmax(70px,auto) 53px;column-gap:5px}
  .comparison-main .chain-price-value{font-size:15px}
  .comparison-main .chain-price-date{font-size:10.5px}
 }
+
+/* Compact visual state: the button remains a 44px hit target, while its label is 32px high. */
+.stock .stock-pill{
+ display:flex;align-items:center;justify-content:center;
+ width:48px;min-height:32px;padding:5px 4px;
+ border-radius:20px;border:1px solid #e4e4e4;
+ background:#f5f5f5;color:#666;
+ font-size:12px;font-weight:650;line-height:1.3;
+ pointer-events:none;
+}
+.stock.off .stock-pill{background:#fff0dd;color:#995719;border-color:#f1cfaa}
+.swipe-item .stock.off{background:transparent;border:0;box-shadow:none}
+.swipe-item .stock:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+/* Other locations using the shared stock control keep a full-size hit target. */
+.detail-main .detail-stock-row .stock .stock-pill{width:auto;min-width:48px;min-height:32px;padding:5px 10px}
 
 /* v32: unobtrusive footer help; still a full-width 44px touch target. */
 .list-help{margin:17px 14px 12px;border-top:1px solid var(--line);color:var(--muted)}
