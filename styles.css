@@ -933,10 +933,10 @@ html,body {
   border: 1px solid #e2e5e9;
   border-radius: 50%;
   background: #fff;
-  min-width: 40px;
-  min-height: 40px;
-  width: 40px;
-  height: 40px;
+  min-width: 44px;
+  min-height: 44px;
+  width: 44px;
+  height: 44px;
   font-size: 22px;
 }
 
@@ -1003,7 +1003,7 @@ html,body {
 
 .cathead {
   padding: 6px 6px;
-  min-height: 40px;
+  min-height: 44px;
 }
 
 .cathead strong {
@@ -1119,8 +1119,8 @@ html,body {
 .sheet-close {
   grid-column: 3;
   grid-row: 1;
-  width: 40px;
-  height: 40px;
+  width: 44px;
+  height: 44px;
   border: 1px solid #e7e7e7;
   background: #fff;
   border-radius: 50%;
@@ -1231,10 +1231,10 @@ html,body {
 }
 
 .headrow .iconbtn {
-  width: 40px;
-  height: 40px;
-  min-width: 40px;
-  min-height: 40px;
+  width: 44px;
+  height: 44px;
+  min-width: 44px;
+  min-height: 44px;
   color: var(--ink);
   border: 1px solid #e2e5e9;
   display: grid;
@@ -1792,7 +1792,7 @@ html,body {
 
 .stock,.detail-main .detail-stock-row .stock {
   min-width: 57px;
-  min-height: 34px;
+  min-height: 44px;
   padding: 6px 11px;
   background: #f5f5f5;
   color: #666;
@@ -1884,8 +1884,8 @@ html,body {
 }
 
 .ui-select-compact .ui-select-trigger {
-  min-height: 36px;
-  height: 36px;
+  min-height: 44px;
+  height: 44px;
   padding: 0 10px;
   background: var(--card);
   border-color: #e4e6e9;
@@ -1997,7 +1997,7 @@ html,body {
 .swipe-item .item-title{display:block;width:100%;font-size:15px;line-height:1.35;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .swipe-item .list-prices{display:block;width:100%;margin:0;font-size:12px;line-height:1.5;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .swipe-item .item-stock-area{flex:0 0 60px;display:flex;align-items:center;justify-content:center;padding:0 3px}
-.swipe-item .stock{min-width:0;width:48px;min-height:32px;padding:5px 4px;font-size:12px;line-height:1.3;border-radius:20px}
+.swipe-item .stock{min-width:0;width:48px;min-height:44px;padding:5px 4px;font-size:12px;line-height:1.3;border-radius:20px}
 .swipe-peek{flex:0 0 8px;background:var(--line);opacity:.42}
 .swipe-actions{position:absolute;inset:0 0 0 auto;width:132px;display:flex;z-index:0}
 .swipe-actions button{width:66px;border:0;border-left:1px solid var(--line);color:var(--ink);background:var(--bg);display:flex;flex-direction:column;gap:4px;align-items:center;justify-content:center;font-size:12px;visibility:hidden}
@@ -2054,7 +2054,7 @@ html,body {
 .swipe-item .list-prices{line-height:1.25;font-size:11.5px;margin:0}
 .swipe-item .item-stock-area{flex-basis:60px}
 .swipe-item .swipe-peek{flex:0 0 6px;align-self:stretch;background:var(--line);opacity:.40}
-.swipe-item .stock{width:48px;min-height:32px}
+.swipe-item .stock{width:48px;min-height:44px}
 .comparison-main .comparison-product.swipe-item{display:block;border-top:1px solid var(--line);overflow:hidden}
 .comparison-product-front{min-height:0!important;align-items:stretch}
 .comparison-product-content{flex:1;min-width:0;padding:8px 8px 9px 3px}
@@ -2122,40 +2122,29 @@ html,body {
 .comparison-main .price-heading-copy{min-width:0;display:flex;flex-direction:column;gap:3px}
 .comparison-main .price-heading-copy .sectiontitle{margin:0;line-height:1.3;font-size:16px}
 .comparison-main .price-heading-sub{display:block;color:var(--muted);font-size:12px;line-height:1.35}
-.comparison-main .product-register-action{
- display:flex;
- align-items:center;
- justify-content:center;
- gap:6px;
+.tertiary{
  background:color-mix(in srgb,var(--bg) 86%,var(--line));
  color:var(--accent);
  border:0;
  border-radius:10px;
  min-height:44px;
- width:100%;
  padding:10px 14px;
  font-size:14px;
  font-weight:650;
  box-shadow:none;
 }
-.comparison-main .product-register-action svg{width:18px;height:18px;flex:none}
-.comparison-main .product-register-action:active{background:color-mix(in srgb,var(--bg) 70%,var(--line))}
-.comparison-main .product-register-action:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
-
-/* v1.8 uses shared typography/tokens. Chain rows are within each swipeable product. */
-.comparison-main .chain-price-list{display:flex;flex-direction:column;gap:0}
-.comparison-main .chain-price-row{
- display:grid;grid-template-columns:minmax(0,1fr) auto;
- grid-template-areas:"name value" "name date";
- align-items:center;column-gap:12px;row-gap:2px;
- border-top:1px solid var(--line);padding:9px 0;
+.tertiary:active{background:color-mix(in srgb,var(--bg) 70%,var(--line))}
+.tertiary:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.comparison-main .product-register-action{
+ display:flex;
+ align-items:center;
+ justify-content:center;
+ gap:6px;
+ width:100%;
 }
-.comparison-main .chain-name{grid-area:name;min-width:0;overflow-wrap:anywhere;font-size:14px;color:var(--ink)}
-.comparison-main .chain-price-value{grid-area:value;justify-self:end;font-size:19px;font-weight:700;color:var(--ink);font-variant-numeric:tabular-nums}
-.comparison-main .chain-price-date{grid-area:date;justify-self:end;font-size:11px;color:var(--muted)}
-.comparison-main .chain-price-empty{color:var(--muted);font-size:15px;border-top:1px solid var(--line);padding:9px 0}
-.comparison-main .comparison-product-content{padding-top:6px;padding-bottom:7px}
-.comparison-main .comparison-name{padding-bottom:5px}
+.comparison-main .product-register-action svg{width:18px;height:18px;flex:none}
+
+/* Price comparison uses one canonical horizontal chain-row layout below. */
 .preview-record-page,.preview-budget-page{padding:15px 16px 110px}
 .record-entry-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px;margin:14px 0 22px}
 .record-entry-actions button{display:flex;align-items:center;justify-content:center;gap:5px;min-height:44px;font-size:13px}
@@ -2192,14 +2181,14 @@ html,body {
  display:flex;align-items:center;justify-content:center;flex:0 0 28px;
  min-height:30px;color:var(--muted);opacity:.75;pointer-events:none;
 }
-.comparison-main .chain-price-list{border-top:1px solid var(--line);padding-top:3px}
+.comparison-main .chain-price-list{display:flex;flex-direction:column;gap:0;border-top:1px solid var(--line);padding-top:3px}
 .comparison-main .chain-price-row{
  display:grid;grid-template-columns:minmax(0,1fr) minmax(78px,auto) 58px;
  grid-template-areas:"name value date";
  align-items:center;column-gap:8px;row-gap:0;
  min-height:30px;padding:3px 0;border:0;
 }
-.comparison-main .chain-name{grid-area:name;font-size:13px;line-height:1.3;overflow-wrap:anywhere}
+.comparison-main .chain-name{grid-area:name;min-width:0;font-size:13px;line-height:1.3;overflow-wrap:anywhere;color:var(--ink)}
 .comparison-main .chain-price-value{
  grid-area:value;justify-self:end;font-size:16px;font-weight:650;
  line-height:1.3;white-space:nowrap;font-variant-numeric:tabular-nums;
@@ -2209,7 +2198,7 @@ html,body {
  grid-area:date;justify-self:end;font-size:11px;line-height:1.3;
  white-space:nowrap;font-variant-numeric:tabular-nums;color:var(--muted);
 }
-.comparison-main .chain-price-empty{padding:8px 0 2px;border:0}
+.comparison-main .chain-price-empty{padding:8px 0 2px;border:0;color:var(--muted);font-size:15px}
 .comparison-main .comparison-product-front .swipe-peek{
  background:var(--line);opacity:.75;flex:0 0 5px;
 }
