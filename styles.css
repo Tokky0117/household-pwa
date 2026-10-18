@@ -2230,7 +2230,7 @@ html,body {
 
 /* Search owns internal geometry; screen wrappers own width and outer spacing. */
 .ui-search{min-height:44px;width:100%}
-.ui-search input{height:44px;font-size:16px}
+.ui-search input,.formfield .ui-search input{height:44px;min-height:44px;padding:0;border:0;background:transparent;box-shadow:none;font-size:16px}
 .ui-search .clear-search{min-width:44px;min-height:44px}
 .ui-search>svg{width:20px;height:20px}
 main>.ui-search{margin-bottom:8px}
