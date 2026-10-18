@@ -29,7 +29,7 @@ const ui=vm.runInNewContext(source+`
 `,ctx,{filename:'app.js'});
 
 function ruleBody(selector){
- const escaped=selector.replace(/[.*+?^${}()|[\]\\]/g,'\\assert.ok(ui.listView().includes('data-stock=')&&ui.listView().includes('data-list-edit='),'Stock and swipe list preserved');');
+ const escaped=selector.replace(/[.*+?^${}()|[\]\\]/g, m=>'\\'+m);
  const matches=[...css.matchAll(new RegExp(escaped+'\\s*\\{([^{}]*)\\}','g'))];
  return matches.map(m=>m[1]);
 }
