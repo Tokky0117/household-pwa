@@ -204,6 +204,9 @@ function commonMenu(items,{label='',compact=false,hidden=false}={}){
 // Shared UI components. Views supply content and behavior; these functions own markup.
 // Keep identifiers escaped and preserve existing delegated data-* events.
 const UI={
+  searchField({id,label,placeholder=label,value='',clearAction=null,extra=''}) {
+    return `<div class="ui-search">${miniIcon('search')}<input id="${esc(id)}" type="search" placeholder="${esc(placeholder)}" value="${esc(value)}" aria-label="${esc(label)}" ${extra}>${clearAction?`<button type="button" class="clear-search" data-act="${esc(clearAction)}" aria-label="検索をクリア" ${value?'':'hidden'}>${miniIcon('close')}</button>`:''}</div>`;
+  },
   stock(item){return `<button class="stock ${item.inStock?'':'off'}" data-stock="${esc(item.id)}" aria-label="${esc(item.name)}の在庫を切り替える" aria-pressed="${item.inStock}"><span class="stock-pill" aria-hidden="true">${item.inStock?'あり':'なし'}</span></button>`},
   dropdown({id,name=null,value,options,label='',compact=false,open=false}){
     const active=options.find(x=>String(x.value)===String(value))||options[0];
@@ -274,7 +277,7 @@ function listHelpView(){
 function listView(){
  const copy='<button class="iconbtn" type="button" data-act="copyList" aria-label="在庫なしをコピー" title="在庫なしをコピー">'+miniIcon('copy')+'</button>';
  const add='<button class="iconbtn" type="button" data-act="add" aria-label="日用品を追加" title="日用品を追加">'+miniIcon('plus')+'</button>';
- return `${head('日用品','くらしストック',false,add,copy)}<main><div class="searchbar">${miniIcon('search')}<input id="search" type="search" placeholder="日用品名を検索" value="${esc(query)}" autocomplete="off" aria-label="日用品を検索"><button type="button" class="clear-search" data-act="clearSearch" aria-label="検索をクリア" ${query?"":"hidden"}>${miniIcon("close")}</button></div><div class="filterrow"><label class="switchlabel"><input type="checkbox" id="onlyOut" ${onlyOut?'checked':''}>在庫なしのみ表示</label></div><p class="sample-price-notice">※ 価格・店舗はサンプル</p><div id="item-results">${listResults()}</div>${listHelpView()}</main>${nav()}`;
+ return `${head('日用品','くらしストック',false,add,copy)}<main>${UI.searchField({id:'search',label:'日用品を検索',placeholder:'日用品を検索',value:query,clearAction:'clearSearch',extra:'autocomplete="off"'})}<div class="filterrow"><label class="switchlabel"><input type="checkbox" id="onlyOut" ${onlyOut?'checked':''}>在庫なしのみ表示</label></div><div id="item-results">${listResults()}</div>${listHelpView()}</main>${nav()}`;
 }
 function priceCompareView(){
  const i=current();if(!i){page='list';return listView()}
@@ -313,7 +316,7 @@ function formView(){
   UI.formField({id:'name',label:'日用品名',value:i?.name||'',maxlength:80,required:true,placeholder:'例：食器用スポンジ'}),
   UI.formField({id:'category',label:'カテゴリ',control:'select',value:i?.category??0,options:CATS.map((label,value)=>({label,value}))})
  ].join('');
- return UI.sheet({title,body:`<form id="itemForm">${fields}<div class="formactions"><button type="submit" class="primary">${editing?'変更を保存':'登録する'}</button></div></form>`});
+ return UI.sheet({title,variant:'item-editor-sheet',body:`<form id="itemForm">${fields}<div class="formactions"><button type="submit" class="primary">${editing?'変更を保存':'登録する'}</button></div></form>`});
 }
 // Shared registered-product row: name opens editing; long press changes display order.
 function managementRow({name,sub,action,aria,details='',editId=null,productId=null}) {
@@ -339,7 +342,7 @@ function pickerResults(){
  }).join('')||'<div class="panel empty">該当する候補はありません</div>';
 }
 function pickerView(){
- const search=UI.formField({id:'catalogue-search',label:'商品を検索',type:'search',value:pickQuery,placeholder:'名称で検索',extra:'autocomplete="off"'});
+ const search=`<div class="formfield"><label for="catalogue-search">商品を検索</label>${UI.searchField({id:'catalogue-search',label:'商品を検索',placeholder:'名称で検索',value:pickQuery,extra:'autocomplete="off"'})}</div>`;
  return UI.sheet({title:'商品を登録',variant:'product-picker-modal',body:`<div class="product-picker-sheet"><div class="product-picker-search">${search}</div><div id="catalogue-results" class="product-picker-results">${pickerResults()}</div><div class="product-picker-footer">${esc(current()?.name||'日用品')}に登録</div></div>`});
 }
 function productCreateView(){
