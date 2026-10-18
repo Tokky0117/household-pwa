@@ -104,17 +104,17 @@ main {
   padding: 18px 16px 22px;
 }
 
-.searchbar {
+.ui-search {
   display: flex;
   align-items: center;
   gap: 8px;
 }
 
-.searchbar span {
+.ui-search span {
   color: var(--muted);
 }
 
-.searchbar input {
+.ui-search input {
   flex: 1;
   min-width: 0;
   border: 0;
@@ -946,34 +946,33 @@ html,body {
   grid-row: 1;
 }
 
-.searchbar {
+.ui-search {
   background: #f4f5f6;
   border: 1px solid transparent;
   border-radius: 11px;
   padding: 0 12px;
-  margin-bottom: 10px;
   color: #888;
   box-shadow: none;
 }
 
-.searchbar:focus-within {
+.ui-search:focus-within {
   border-color: #c9d9eb;
   box-shadow: none;
   background: #f4f5f6;
 }
 
-.searchbar>svg {
+.ui-search>svg {
   width: 23px;
   height: 23px;
   flex: none;
   stroke-width: 2.2;
 }
 
-.searchbar input {
-  height: 46px;
+.ui-search input {
+  height: 44px;
 }
 
-.searchbar input::-webkit-search-cancel-button {
+.ui-search input::-webkit-search-cancel-button {
   -webkit-appearance: none;
   display: none;
 }
@@ -1254,7 +1253,7 @@ html,body {
   white-space: nowrap;
 }
 
-.searchbar input {
+.ui-search input {
   font-size: 16px;
 }
 
@@ -1932,7 +1931,6 @@ html,body {
 .catalogue-picker>.ui-select{margin-bottom:4px}
 .catalogue-picker .formfield{display:block;margin:0 0 5px}
 .catalogue-search-title{font-size:14px;font-weight:700;display:block;margin-bottom:8px}
-.catalogue-picker input[type="search"]{background:var(--card);color:var(--ink);border:1px solid var(--line);border-radius:var(--ui-radius-control);min-height:46px;width:100%;font-size:16px;padding:10px 12px}
 .catalogue-candidate{display:flex;align-items:center;gap:10px;width:100%;text-align:left;background:var(--card);color:var(--ink);border:1px solid var(--line);border-radius:var(--ui-radius-card);min-height:60px;padding:11px 13px;margin:0 0 8px}
 .catalogue-candidate:disabled{opacity:.65;cursor:default}
 .catalogue-candidate-end{flex:none;font-size:12px;color:var(--muted);white-space:nowrap}
@@ -2087,7 +2085,7 @@ html,body {
 .product-picker-search{flex:0 0 auto;padding:0 3px 12px;position:relative;z-index:1;background:var(--card)}
 .product-picker-search .formfield{margin:0}
 .product-picker-search .formfield label{display:block;margin:0 0 7px;min-height:auto}
-.product-picker-search .formfield input[type="search"]{display:block;width:100%;max-width:100%;box-sizing:border-box;min-height:46px;font-size:16px}
+.product-picker-search .ui-search{width:100%;max-width:100%}
 .product-picker-results{flex:1 1 auto;min-height:0;overflow-y:auto;overscroll-behavior:contain;padding:4px 3px 8px}
 .product-picker-footer{flex:0 0 auto;padding:9px 4px 3px;font-size:12px;color:var(--muted);border-top:1px solid var(--line)}
 /* Drag ghost must preserve the *same* card layout, radius, and typography. */
@@ -2229,3 +2227,20 @@ html,body {
 .list-help-content{padding:0 4px 5px;color:var(--muted);font-size:12px;line-height:1.55}
 .list-help-content[hidden]{display:none}
 .list-help-content p{margin:0;padding:3px 0}
+
+/* Search owns internal geometry; screen wrappers own width and outer spacing. */
+.ui-search{min-height:44px;width:100%}
+.ui-search input{height:44px;font-size:16px}
+.ui-search .clear-search{min-width:44px;min-height:44px}
+.ui-search>svg{width:20px;height:20px}
+main>.ui-search{margin-bottom:8px}
+main>.ui-search + .filterrow{margin-bottom:5px}
+
+/* Shared sheet variant: generous room for the five category options.
+   On short viewports or with a keyboard, scrolling remains possible. */
+.half-sheet.item-editor-sheet{
+ height:min(540px,calc(100dvh - env(safe-area-inset-top) - 12px));
+ max-height:calc(100dvh - env(safe-area-inset-top) - 12px);
+ overflow-y:auto;
+}
+.item-editor-sheet .ui-select:has(.ui-menu:not([hidden])){z-index:70}
