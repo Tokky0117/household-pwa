@@ -1,6 +1,6 @@
 # くらしストック｜Preview v29（v1.8試作）
  
-> **2026-10-18 時点の現行基準：** [基本設計 v1.8](./household_pwa_requirements_basic_design%281%29.md)／[データモデル v1.8](./DATA_MODEL.md)／[共通UIガイドライン v1.8](./UI_GUIDELINES.md)。以下の古い試作履歴は参考情報であり、v1.8と矛盾する旧記述は現行仕様ではありません。
+> **2026-10-18 時点の現行基準：** [基本設計 v1.8](./household_pwa_requirements_basic_design%281%29.md)／[データモデル v1.8](./DATA_MODEL.md)／[共通UIガイドライン v2.0](./UI_GUIDELINES.md)／[画面別UI仕様](./SCREEN_UI_SPEC.md)。[UI変更・検証履歴](./UI_CHANGELOG.md)は過去の経緯であり、現行の共通UI規則ではありません。以下の古い試作履歴は参考情報であり、現行設計と矛盾する旧記述は適用しません。
 
 ## Preview v29で動作する範囲
 - 日用品一覧は**先頭登録商品の直近1年・全チェーン中の最安値＋商品名＋チェーン名**を表示。
