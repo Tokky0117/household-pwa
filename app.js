@@ -295,13 +295,11 @@ function priceCompareView(){
    const value=noQuantity?'内容量を入力':incompatible?'比較不可':priceScope==='unit'?yen(r.price*compareQuantity/conversion):yen(r.price);
    return `<div class="chain-price-row"><span class="chain-name">${esc(chainLabel(r.chainId))}</span><strong class="chain-price-value ${noQuantity||incompatible?'chain-price-unavailable':''}">${esc(value)}</strong><time class="chain-price-date" datetime="${esc(r.date)}">${esc(r.date.slice(2).replace(/-/g,'/'))}</time></div>`;
   }).join('')||'<div class="chain-price-empty">—</div>';
-  return `<article class="comparison-product product-sort-row swipe-item ${openSwipeId===p.id?'swipe-open':''}" data-product-id="${esc(p.id)}">
+  return `<article class="comparison-product product-sort-row" data-product-id="${esc(p.id)}"><div class="comparison-product-header swipe-item ${openSwipeId===p.id?'swipe-open':''}" data-product-id="${esc(p.id)}">
 <div class="swipe-actions">
 <button type="button" class="swipe-edit" data-pedit="${esc(p.id)}" tabindex="${openSwipeId===p.id?0:-1}" aria-label="${esc(p.name||'商品')}を編集">${miniIcon('pencil')}<span>編集</span></button>
 <button type="button" class="swipe-delete" data-premove="${esc(p.id)}" tabindex="${openSwipeId===p.id?0:-1}" aria-label="${esc(p.name||'商品')}の登録解除">${miniIcon('trash')}<span>解除</span></button>
-</div><div class="swipe-front comparison-product-front">
-<div class="comparison-product-content"><div class="comparison-product-title"><div class="comparison-name"><strong>${esc(p.name||'商品名未設定')}</strong><small>${esc(sub)}</small></div><span class="product-drag-hint" aria-hidden="true"><svg viewBox="0 0 16 22" width="16" height="22" fill="currentColor"><circle cx="4" cy="4" r="1.5"/><circle cx="12" cy="4" r="1.5"/><circle cx="4" cy="11" r="1.5"/><circle cx="12" cy="11" r="1.5"/><circle cx="4" cy="18" r="1.5"/><circle cx="12" cy="18" r="1.5"/></svg></span></div>
-<div class="chain-price-list">${priceRows}</div></div><span class="swipe-peek" aria-hidden="true"></span></div></article>`;
+</div><div class="swipe-front comparison-product-front"><div class="comparison-product-title"><div class="comparison-name"><strong>${esc(p.name||'商品名未設定')}</strong><small>${esc(sub)}</small></div></div><span class="swipe-peek" aria-hidden="true"></span></div></div><div class="chain-price-list">${priceRows}</div></article>`;
  }).join('')||'<div class="panel empty">登録商品はありません</div>';
  const unitControls=priceScope==='unit'? `<div class="compare-form compact-compare-form"><div class="compare-form-row">
 ${UI.formField({id:'compare-quantity',name:'quantity',label:'内容量',value:compareQuantity??'',extra:'inputmode="decimal" placeholder="店頭商品の内容量"'})}
@@ -410,8 +408,8 @@ function pageView(){
   case 'products': return productsView();
   case 'productPick': return priceCompareView();
   case 'recordAdd': return receiptView();
-  case 'productCreate':
-  case 'productEdit': return productCreateView();
+  case 'productCreate': return productCreateView();
+  case 'productEdit': return priceCompareView();
   default: return mainTabView();
  }
 }
@@ -668,7 +666,7 @@ app.addEventListener('pointerdown',e=>{
  if(page==='list'&&(query||onlyOut))return;
  if(e.target.closest('input,textarea,select,[data-stock],[data-list-edit],[data-list-hide],[data-premove],[data-product-menu],[data-pedit],[data-cat]'))return;
  const row=e.target.closest(dragRowSelector(page==='compare'||page==='products'?'product':'item'));
- if(row)startPending(row,{pointerId:e.pointerId,clientX:e.clientX,clientY:e.clientY},'mouse');
+ if(row&&(page!=='compare'||e.target.closest('.comparison-product-header')))startPending(row,{pointerId:e.pointerId,clientX:e.clientX,clientY:e.clientY},'mouse');
 });
 function moveDrag(e){
  if(pendingDrag&&e.pointerId===pendingDrag.pointerId&&Math.hypot(e.clientX-pendingDrag.x,e.clientY-pendingDrag.y)>9)clearPending();
@@ -707,7 +705,7 @@ app.addEventListener('touchstart',e=>{
  if(e.touches.length!==1||dialog||!['list','products','compare'].includes(page)||page==='list'&&(query||onlyOut))return;
  if(e.target.closest('input,textarea,select,[data-stock],[data-list-edit],[data-list-hide],[data-premove],[data-product-menu],[data-pedit],[data-cat]'))return;
  const row=e.target.closest(dragRowSelector(page==='compare'||page==='products'?'product':'item'));
- if(!row)return;
+ if(!row||(page==='compare'&&!e.target.closest('.comparison-product-header')))return;
  const t=e.touches[0];startPending(row,{pointerId:t.identifier,clientX:t.clientX,clientY:t.clientY},'touch');
 },{passive:true});
 app.addEventListener('touchmove',e=>{
