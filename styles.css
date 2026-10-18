@@ -2010,7 +2010,10 @@ html,body {
 @media(prefers-reduced-motion:reduce){.swipe-front{transition:none}}
 /* v24: unified, less card-heavy price information view */
 .comparison-main .comparison-list{display:flex;flex-direction:column;gap:10px}
-.comparison-main .comparison-product{user-select:none}
+.comparison-main .comparison-product{
+ display:block;margin:0;border:1px solid var(--line);
+ border-radius:11px;background:var(--card);overflow:hidden;user-select:none;
+}
 .comparison-main .comparison-name{min-width:0;display:flex;flex-direction:column;gap:2px;padding-bottom:0}
 .comparison-main .comparison-name strong{font-size:15px;overflow-wrap:anywhere}
 .comparison-main .comparison-name small{font-size:12px;text-align:left;color:var(--muted)}
@@ -2159,10 +2162,6 @@ html,body {
 .budget-category-row strong{font-variant-numeric:tabular-nums}
 
 /* Product information is a static card; only its header is swipeable. */
-.comparison-main .comparison-product{
- display:block;margin:0;border:1px solid var(--line);
- border-radius:11px;background:var(--card);overflow:hidden;
-}
 .comparison-main .comparison-product-header.swipe-item{
  margin:0;min-height:44px;border:0;border-radius:0;overflow:hidden;
 }
