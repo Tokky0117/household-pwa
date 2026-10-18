@@ -47,6 +47,14 @@ assert.ok(css.includes('.tertiary{')&&css.includes('color:var(--accent)'),'Share
 assert.ok(!source.includes('priceCells(){'),'Obsolete normal/discount UI component removed');
 assert.ok(!css.includes('grid-template-areas:"name value" "name date"'),'Obsolete two-row price CSS removed');
 assert.ok(ui.listView().includes('data-stock=')&&ui.listView().includes('data-list-edit='),'Stock and swipe list preserved');
+assert.ok(ui.listView().includes('class="ui-search"')&&ui.listView().includes('id="search"'),'Daily list uses shared search component');
+assert.ok(!ui.listView().includes('※ 価格・店舗はサンプル'),'Daily list no longer shows temporary sample notice');
+assert.ok(ui.pickerView().includes('class="ui-search"')&&ui.pickerView().includes('id="catalogue-search"'),'Product picker reuses shared search');
+assert.ok(source.includes("variant:'item-editor-sheet'"),'Item add/edit uses shared sheet height variant');
+assert.ok(css.includes('.half-sheet.item-editor-sheet{')&&css.includes('height:min(540px'),'Item edit sheet accommodates five choices');
+assert.ok(css.includes('.formfield .ui-search input')&&css.includes('background:transparent'),'Form search has shared internal styling');
+assert.ok(!css.includes('.searchbar'),'Obsolete list-specific search style removed');
+
 assert.ok(ui.listView().includes('class="stock-pill"'),'Stock labels are visually compact inside the shared button');
 assert.ok(css.includes('.stock .stock-pill{')&&css.includes('min-height:32px'),'Visible stock pill uses compact height');
 assert.ok(css.includes('.swipe-item .stock{')&&css.includes('min-height:44px'),'Stock button keeps accessible hit target');
