@@ -21,7 +21,7 @@ const ui=vm.runInNewContext(source+`
  setProductGroup,reorderProducts,registeredProducts,convertQuantity,setOpenSwipe,
  chainMinima,priceCandidates,budgetTotals,savePreviewRecord,periodStart,
  demoRecords,demoRecordItems,allPreviewRecords,allPreviewItems,
- setSelected(v){selected=v},setPage(v){page=v},setMode(v){priceScope=v},
+ setSelected(v){selected=v},setPage(v){page=v},setMode(v){priceScope=v},setDock(v){shopExpanded=v},
  setPeriod(v){period=v},setQty(v){compareQuantity=v},setUnit(v){compareUnit=v},
  setNewRecordType(v){newRecordType=v},recordAddView,
  getCompare(){return [compareQuantity,compareUnit]},getSwipe(){return openSwipeId},
@@ -112,7 +112,7 @@ assert.ok(view.includes('shop-compare-dock')&&view.includes('data-act="shopToggl
 assert.ok(view.includes('目の前の商品と同じ内容量で価格を比較'),'Purpose is clear');
 assert.ok(!view.includes('data-scope="product"'),'Comparison tabs removed');
 assert.ok(!view.includes('id="compare-quantity"'),'Dock collapsed initially');
-ui.setMode('unit');view=ui.priceCompareView();
+ui.setDock(true);ui.setMode('unit');view=ui.priceCompareView();
 assert.ok(view.includes('内容量を入力'),'Missing amount clearly stated when comparing');
 assert.ok(view.includes('id="compare-quantity"')&&view.includes('id="compare-unit"'),'Comparison fields exist in dock');
 assert.ok(view.includes('店頭商品の内容量を入力'),'Input instruction exists');
