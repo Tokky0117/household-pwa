@@ -1952,7 +1952,6 @@ html,body {
 .compare-form-row .formfield{min-width:0}
 .product-sort-row{touch-action:pan-y;user-select:none;-webkit-user-select:none}
 .product-sort-row.dragging{background:var(--accent-soft);box-shadow:0 8px 20px #162c4130,inset 0 0 0 2px var(--accent);position:relative;z-index:5;touch-action:none;opacity:.92;border-radius:12px}
-@media(max-width:380px){
 /* v24: compact two-line item row, inventory-only right column, subtle swipe affordance */
 .swipe-item{position:relative;display:block;overflow:hidden;min-width:0;touch-action:pan-y;-webkit-touch-callout:none}
 .swipe-front{display:flex;align-items:stretch;width:100%;min-height:67px;position:relative;z-index:1;background:var(--card);transition:transform .18s ease;touch-action:pan-y}
