@@ -111,7 +111,7 @@ assert.ok(view.includes('class="tertiary manage-add product-register-action"'),'
 assert.ok(view.includes('shop-compare-dock')&&view.includes('data-act="shopToggle"'),'Fixed comparison trigger visible');
 assert.ok(view.includes('目の前の商品と同じ内容量で価格を比較'),'Purpose is clear');
 assert.ok(!view.includes('data-scope="product"'),'Comparison tabs removed');
-assert.ok(!view.includes('id="compare-quantity"'),'Dock collapsed initially');
+assert.ok(view.includes('id="shop-compare-fields" hidden'),'Dock collapsed initially');
 ui.setDock(true);ui.setMode('unit');view=ui.priceCompareView();
 assert.ok(view.includes('内容量を入力'),'Missing amount clearly stated when comparing');
 assert.ok(view.includes('id="compare-quantity"')&&view.includes('id="compare-unit"'),'Comparison fields exist in dock');
