@@ -2251,3 +2251,30 @@ main>.ui-search + .filterrow{margin-bottom:5px}
  overflow-y:auto;
 }
 .item-editor-sheet .ui-select:has(.ui-menu:not([hidden])){z-index:70}
+
+/* Fixed, nonmodal store-quantity comparison: price rows remain scrollable. */
+.comparison-main{padding-bottom:calc(120px + env(safe-area-inset-bottom))}
+.price-purpose{margin:2px 0 12px;font-size:13px;line-height:1.4;color:var(--muted)}
+.shop-compare-dock{
+ position:fixed;z-index:35;left:max(8px,env(safe-area-inset-left));
+ right:max(8px,env(safe-area-inset-right));bottom:calc(8px + env(safe-area-inset-bottom));
+ background:var(--card);border:1px solid var(--line);border-radius:12px;
+ box-shadow:0 5px 24px #0002;overflow:visible;
+}
+.shop-compare-toggle{
+ display:flex;align-items:center;justify-content:space-between;
+ gap:12px;width:100%;min-height:56px;padding:9px 14px;
+ background:transparent;border:0;color:var(--ink);text-align:left;
+}
+.shop-compare-heading{display:flex;flex-direction:column;gap:3px;min-width:0}
+.shop-compare-heading strong{font-size:14px}
+.shop-compare-heading small{font-size:12px;line-height:1.35;color:var(--muted)}
+.shop-compare-toggle .ui-chevron{width:18px;flex-shrink:0}
+#shop-compare-fields{padding:0 14px 13px}
+#shop-compare-fields[hidden]{display:none}
+.shop-compare-instruction{margin:1px 0 8px;font-size:13px;color:var(--ink)}
+#shop-compare-fields .compare-form-row{grid-template-columns:minmax(0,1fr) minmax(95px,110px);gap:10px;align-items:end}
+#shop-compare-fields .formfield{min-width:0;margin:0}
+#shop-compare-fields input{font-size:16px}
+.comparison-main:has(+ .shop-compare-dock.expanded){padding-bottom:calc(230px + env(safe-area-inset-bottom))}
+@media(max-height:530px){.shop-compare-dock{bottom:env(safe-area-inset-bottom)}}
