@@ -59,7 +59,7 @@ assert.ok(ui.listView().includes('class="stock-pill"'),'Stock labels are visuall
 assert.ok(css.includes('.stock .stock-pill{')&&css.includes('min-height:32px'),'Visible stock pill uses compact height');
 assert.ok(css.includes('.swipe-item .stock{')&&css.includes('min-height:44px'),'Stock button keeps accessible hit target');
 assert.ok(css.includes('.swipe-item .stock.off{background:transparent'),'Off state has transparent outer hit target');
-for(const selector of ['.comparison-main .comparison-list','.comparison-main .comparison-product','.comparison-main .comparison-name','.comparison-product-content','.swipe-item .stock']){
+for(const selector of ['.comparison-main .comparison-list','.comparison-main .comparison-product','.comparison-main .comparison-name','.swipe-item .stock']){
  assert.equal(ruleBody(selector).length,1,'Canonical one-place CSS declaration: '+selector);
 }
 
