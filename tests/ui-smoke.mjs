@@ -119,7 +119,7 @@ assert.ok(view.includes('店頭商品の内容量を入力'),'Input instruction 
 ui.setQty(900);view=ui.priceCompareView();
 assert.ok(view.includes('900mLあたりの換算価格'),'Comparison basis is displayed');
 assert.ok(view.includes('298円'),'Same-unit conversion');
-assert.ok(!view.includes('内容量を入力'),'Completed input removes placeholder');
+assert.ok(!view.includes('>内容量を入力</strong>'),'Completed input removes per-chain missing-quantity status');
 assert.equal(ui.convertQuantity(1,'L','mL'),1000);
 assert.equal(ui.convertQuantity(2,'個','本'),null);
 assert.ok(view.includes('inputmode="decimal" placeholder="例：1100"'),'Comparison uses numeric keyboard');
