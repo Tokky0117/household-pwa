@@ -191,3 +191,8 @@ assert.ok(!css.includes('[data-dialog="confirmHide"]')&&css.includes('.dialog-ac
 assert.ok(source.includes('duplicateItemNotice(existing,false)')&&source.includes('duplicateItemNotice(hidden,true)'),'Existing and hidden duplicates use inline notice');
 assert.ok(!source.includes('新しい日用品として登録')&&!source.includes("if(action==='new'&&p)"),'Retired duplicate-new flow is absent');
 assert.ok(source.includes("if(action==='restoreItem'||action==='showExistingItem')"),'Duplicate notice actions are handled');
+
+assert.ok(source.includes('function say(message,{anchor=null,duration=3000}={})'),'Contextual notification API');
+assert.ok(source.includes('toastSerial')&&source.includes('clearTimeout(toastTimer)'),'Notification timer replacement');
+assert.ok(source.includes('function fieldNotice(form,message,fieldId)'),'Persistent field error helper');
+assert.ok(css.includes('.ui-field-notice{'),'Field error styling');
