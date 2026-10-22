@@ -100,6 +100,7 @@ function assertVersion(row,v){if(!Number.isSafeInteger(Number(v))||Number(v)!==N
 function validCategory(value){if(!CATEGORIES.some((_,i)=>String(i)===String(value)))fail('BAD_REQUEST','カテゴリが不正です')}
 function productShape(data){
  const name=String(data.name||'').trim(),q=data.package_quantity,u=data.package_unit;
+ if(/^[=+@\-]/.test(name))fail('BAD_REQUEST','商品名の先頭に使用できない記号があります');
  if(!name||name.length>150)fail('BAD_REQUEST','商品名が不正です');
  const empty=(q===null||q===''||q===undefined)&&(u===null||u===''||u===undefined);
  if(!empty&&(!Number.isFinite(Number(q))||Number(q)<=0||!UNITS.includes(u)))fail('BAD_REQUEST','内容量と単位を確認してください');
@@ -111,6 +112,7 @@ function mutate(user,action,payload,operationId){
  if(!lock.tryLock(20000))fail('BUSY','しばらくして再試行してください');
  try{
   const hid=user.householdId,ops=scoped('processed_operations',hid);
+  if(PropertiesService.getScriptProperties().getProperty('ENABLE_EXPERIMENTAL_WRITES')!=='true')fail('WRITES_DISABLED','書き込みはまだ有効ではありません');
   const body=JSON.stringify({action:action,payload:payload});
   const digest=Utilities.base64EncodeWebSafe(Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256,body));
   const previous=ops.find(x=>String(x.obj.operation_id)===operationId);
@@ -123,7 +125,7 @@ function mutate(user,action,payload,operationId){
   let output,entityId,entityType;
   if(action==='item.create'){
    const name=String(payload.name||'').trim();validCategory(payload.category_id);
-   if(!name||name.length>150)fail('BAD_REQUEST','日用品名を確認してください');
+   if(!name||name.length>150||/^[=+@\-]/.test(name))fail('BAD_REQUEST','日用品名を確認してください');
    if(items.some(x=>x.obj.normalized_name===normalized(name)))fail('DUPLICATE','同じ名前の日用品があります');
    entityId=Utilities.getUuid();entityType='item_groups';
    const sort=Math.max(0,...items.filter(x=>String(x.obj.category_id)===String(payload.category_id)).map(x=>Number(x.obj.sort_order)||0))+1;
@@ -133,7 +135,7 @@ function mutate(user,action,payload,operationId){
    const row=items.find(x=>String(x.obj.item_group_id)===requiredId(payload.item_group_id));if(!row)fail('NOT_FOUND','日用品が見つかりません');
    assertVersion(row,payload.version);output=Object.assign({},row.obj);
    if(Object.prototype.hasOwnProperty.call(payload,'name')){
-    const name=String(payload.name||'').trim();if(!name||name.length>150)fail('BAD_REQUEST','日用品名を確認してください');
+    const name=String(payload.name||'').trim();if(!name||name.length>150||/^[=+@\-]/.test(name))fail('BAD_REQUEST','日用品名を確認してください');
     if(items.some(x=>x!==row&&x.obj.normalized_name===normalized(name)&&!x.obj.is_hidden))fail('DUPLICATE','同じ名前の日用品があります');
     output.name=name;output.normalized_name=normalized(name);
    }
