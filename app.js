@@ -728,7 +728,7 @@ function setOpenSwipe(id){
 app.addEventListener('pointerdown',e=>{
  if(!['list','compare'].includes(page)||dialog||activeDrag)return;
  if(e.pointerType!=='mouse'||e.button!==0)return;
- if(e.target.closest('[data-stock],[data-list-edit],[data-list-hide],[data-pedit],[data-premove]'))return;
+ if(e.target.closest('[data-list-edit],[data-list-hide],[data-pedit],[data-premove]'))return;
  const row=e.target.closest('.swipe-item');
  if(!row)return;
  swipeGesture={row,id:e.pointerId,x:e.clientX,y:e.clientY,axis:null,swiped:false};
@@ -757,7 +757,7 @@ app.addEventListener('pointercancel',e=>{if(swipeGesture?.id===e.pointerId)swipe
 let listTouchSwipe=null;
 app.addEventListener('touchstart',e=>{
  if(!['list','compare'].includes(page)||dialog||e.touches.length!==1||activeDrag)return;
- if(e.target.closest('[data-stock],[data-list-edit],[data-list-hide],[data-pedit],[data-premove]'))return;
+ if(e.target.closest('[data-list-edit],[data-list-hide],[data-pedit],[data-premove]'))return;
  const row=e.target.closest('.swipe-item');if(!row)return;
  const t=e.touches[0];
  listTouchSwipe={id:t.identifier,row,x:t.clientX,y:t.clientY,lastX:t.clientX,lastY:t.clientY,axis:null};
