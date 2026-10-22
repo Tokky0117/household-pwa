@@ -196,3 +196,9 @@ assert.ok(source.includes('function say(message,{anchor=null,duration=3000}={})'
 assert.ok(source.includes('toastSerial')&&source.includes('clearTimeout(toastTimer)'),'Notification timer replacement');
 assert.ok(source.includes('function fieldNotice(form,message,fieldId)'),'Persistent field error helper');
 assert.ok(css.includes('.ui-field-notice{'),'Field error styling');
+
+assert.ok(source.includes('function inlineActionNotice(anchor,message)'),'Inline feedback helper exists');
+assert.ok(source.includes("say('在庫なしをコピーしました'"),'Clipboard success feedback stays');
+assert.ok(!source.includes("say('表示順を保存しました'")&&!source.includes("say('商品を登録しました'"),'Redundant success toasts removed');
+assert.ok(source.includes("inlineActionNotice(el,'この商品は登録済みです')"),'Duplicate product notice by candidate');
+assert.ok(css.includes('.ui-action-notice-floating'),'Header feedback stays separate from layout');
