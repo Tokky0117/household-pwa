@@ -1945,9 +1945,6 @@ html,body {
 .comparison-product-title{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:10px}
 .comparison-product-title strong{font-size:15px}
 .comparison-product-title small{font-size:12px;color:var(--muted);text-align:right;line-height:1.45}
-.comparison-main .pricebox strong{font-size:21px}
-.comparison-main .pricebox{padding:11px;min-width:0}
-.comparison-main .pricebox .label{font-size:12px}
 .compare-form-row{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px}
 .compare-form-row .formfield{min-width:0}
 .product-sort-row{touch-action:pan-y;user-select:none;-webkit-user-select:none}
@@ -1982,13 +1979,6 @@ html,body {
 .comparison-main .comparison-name{min-width:0;display:flex;flex-direction:column;gap:2px;padding-bottom:0}
 .comparison-main .comparison-name strong{font-size:15px;overflow-wrap:anywhere}
 .comparison-main .comparison-name small{font-size:12px;text-align:left;color:var(--muted)}
-.comparison-main .comparison-more{flex:none;width:44px;min-height:44px;min-width:44px;font-size:21px;border:0;background:transparent}
-.comparison-product-actions{display:flex;justify-content:flex-end;gap:8px;margin:0 0 8px}
-.comparison-product-actions button{font-size:13px;min-height:38px}
-.comparison-main .pricegrid{gap:8px}
-.comparison-main .pricebox{background:transparent;border:0;padding:4px 0 7px}
-.comparison-main .pricebox strong{font-size:20px;margin:4px 0}
-.comparison-main .pricebox small{font-size:12px;color:var(--muted);display:block;overflow-wrap:anywhere}
 .comparison-main .price-heading{margin:8px 0 6px}
 
 /* v25 touch: keep iOS vertical scrolling and press feedback, reserve stock tap width */
@@ -2012,12 +2002,8 @@ html,body {
 .swipe-item .list-prices{line-height:1.25;font-size:11.5px;margin:0}
 .swipe-item .swipe-peek{flex:0 0 6px;align-self:stretch;background:var(--line);opacity:.40}
 .comparison-product-front{min-height:0!important;align-items:stretch}
-.comparison-main .comparison-product .pricebox{padding:2px 0 4px}
 .product-picker-sheet{padding:6px 16px 22px;max-height:60vh;overflow:auto}
 .product-picker-sheet .catalogue-candidate{width:100%}
-.compact-compare-form{padding:4px 0 8px}
-.compact-compare-form .compare-form-row{align-items:end}
-.compact-compare-form .hint{margin:4px 0 0}
 
 /* v27: stable product picker sheet; search is a shared formField control */
 .half-sheet.product-picker-modal{
@@ -2066,8 +2052,6 @@ html,body {
 .swipe-item.drag-ghost .item-title{font-weight:650}
 .swipe-item.drag-placeholder{border-radius:11px!important}
 .comparison-main .comparison-product.drag-placeholder{border-radius:11px!important}
-.compare-heading-unit{font-weight:500;font-size:12px;color:var(--muted)}
-.comparison-main .pricebox .label{display:block;font-size:12px;line-height:1.45}
 
 /* v28: explicit cross-store product minima, restrained tertiary add action */
 .comparison-main .price-heading{align-items:center;gap:12px}
