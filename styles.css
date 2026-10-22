@@ -2215,3 +2215,7 @@ main>.ui-search + .filterrow{margin-bottom:5px}
 .half-sheet.product-picker-modal>.sheet-body{display:flex;flex-direction:column;overflow:hidden}
 .half-sheet.product-picker-modal>.sheet-body>.product-picker-sheet{flex:1 1 auto;min-height:0}
 #shop-compare-fields .ui-quantity-unit{grid-template-columns:minmax(0,1fr) minmax(95px,110px);gap:10px}
+
+/* Shared contextual feedback: anchored placement comes from say(), field errors persist. */
+.ui-field-notice{margin:7px 0 0;font-size:13px;line-height:1.5;color:var(--red)}
+.toast{max-width:min(90vw,340px);white-space:normal;line-height:1.4;pointer-events:none}
