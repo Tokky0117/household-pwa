@@ -196,7 +196,13 @@ function commonMenu(items,{label='',compact=false,hidden=false}={}){
 // Keep identifiers escaped and preserve existing delegated data-* events.
 const UI={
   searchField({id,label,placeholder=label,value='',clearAction=null,extra=''}) {
-    return `<div class="ui-search">${miniIcon('search')}<input id="${esc(id)}" type="search" placeholder="${esc(placeholder)}" value="${esc(value)}" aria-label="${esc(label)}" ${extra}>${clearAction?`<button type="button" class="clear-search" data-act="${esc(clearAction)}" aria-label="検索をクリア" ${value?'':'hidden'}>${miniIcon('close')}</button>`:''}</div>`;
+    return `<div class="ui-search">${miniIcon('search')}<input id="${esc(id)}" type="search" placeholder="${esc(placeholder)}" value="${esc(value)}" aria-label="${esc(label)}" ${extra}><button type="button" class="clear-search" data-search-clear="${esc(id)}" aria-label="検索をクリア" ${value?'':'hidden'}>${miniIcon('close')}</button></div>`;
+  },
+  quantityUnitFields({quantityId,unitId,quantityName='quantity',unitName='unit',quantity='',unit='mL',placeholder='',extra=''}) {
+    return `<div class="ui-quantity-unit">${UI.formField({id:quantityId,name:quantityName,label:'内容量',value:quantity,placeholder,extra})}${UI.formField({id:unitId,name:unitName,label:'単位',control:'select',value:unit,options:UNIT_OPTIONS.map(x=>({label:x,value:x}))})}</div>`;
+  },
+  sectionHeading({title,subtitle='',trailing='',className=''}) {
+    return `<div class="ui-section-heading ${esc(className)}"><div class="ui-section-heading-copy"><h2 class="sectiontitle">${esc(title)}</h2>${subtitle?`<span class="ui-section-heading-sub">${esc(subtitle)}</span>`:''}</div>${trailing}</div>`;
   },
   stock(item){return `<button class="stock ${item.inStock?'':'off'}" data-stock="${esc(item.id)}" aria-label="${esc(item.name)}の在庫を切り替える" aria-pressed="${item.inStock}"><span class="stock-pill" aria-hidden="true">${item.inStock?'あり':'なし'}</span></button>`},
   dropdown({id,name=null,value,options,label='',compact=false,open=false}){
@@ -294,10 +300,7 @@ function priceCompareView(){
  const unitControls=`<section class="shop-compare-dock ${shopExpanded?'expanded':''}" aria-label="店頭商品との内容量比較">
 <button type="button" class="shop-compare-toggle" data-act="shopToggle" aria-expanded="${shopExpanded}" aria-controls="shop-compare-fields">
 <span class="shop-compare-heading"><strong>店頭の商品と比較</strong><small>目の前の商品と同じ内容量で価格を比較</small></span>${chevron(shopExpanded?'down':'up')}</button>
-<div id="shop-compare-fields" ${shopExpanded?'':'hidden'}><p class="shop-compare-instruction">店頭商品の内容量を入力</p><div class="compare-form-row">
-${UI.formField({id:'compare-quantity',name:'quantity',label:'内容量',value:compareQuantity??'',extra:'inputmode="decimal" placeholder="例：1100"'})}
-${UI.formField({id:'compare-unit',name:'unit',label:'単位',control:'select',value:compareUnit||UNIT_OPTIONS[0],options:UNIT_OPTIONS.map(x=>({label:x,value:x}))})}
-</div></div></section>`;
+<div id="shop-compare-fields" ${shopExpanded?'':'hidden'}><p class="shop-compare-instruction">店頭商品の内容量を入力</p>${UI.quantityUnitFields({quantityId:"compare-quantity",unitId:"compare-unit",quantity:compareQuantity??"",unit:compareUnit||UNIT_OPTIONS[0],placeholder:"例：1100",extra:'inputmode="decimal"'})}</div></section>`;
  return `${head('価格情報',i.name,true)}<main class="detail-main comparison-main"><p class="price-purpose">登録した商品の、お店ごとの最安値を確認</p><div class="detail-section-heading price-heading"><div class="price-heading-copy"><h2 class="sectiontitle">登録商品</h2><span class="price-heading-sub">${priceScope==='unit'&&unitLabel?esc(unitLabel)+'の換算価格':'税込・安い順'}</span></div>${UI.dropdown({id:'price-period',value:period,label:'期間',compact:true,open:periodMenu,options:[{value:'3m',label:'直近3か月'},{value:'1y',label:'直近1年'}]})}</div><div class="comparison-list">${productRows}</div><button type="button" class="tertiary manage-add product-register-action" data-act="productPick">${miniIcon('plus')}<span>商品を登録</span></button></main>${unitControls}`;
 }
 function formView(){
@@ -342,8 +345,7 @@ function productCreateView(){
  const p=editing?catalogue.products.find(x=>x.id===editingProductId&&x.itemGroupId===selected):null;
  if(editing&&!p)return '';
  const fields=UI.formField({id:'new-product-name',name:'name',label:'商品名',value:p?.name||(editing?'':pickQuery)||'',required:true,maxlength:80,placeholder:'商品名を入力'})+
- UI.formField({id:'new-product-quantity',name:'quantity',label:'内容量',value:p?.packageQuantity??'',extra:'inputmode="decimal" pattern="[0-9]+([.,][0-9]+)?"'})+
- UI.formField({id:'new-product-unit',name:'unit',label:'単位',control:'select',value:p?.packageUnit||'mL',options:UNIT_OPTIONS.map(x=>({label:x,value:x}))});
+ UI.quantityUnitFields({quantityId:'new-product-quantity',unitId:'new-product-unit',quantity:p?.packageQuantity??'',unit:p?.packageUnit||'mL',extra:'inputmode="decimal" pattern="[0-9]+([.,][0-9]+)?"'});
  const form=`<form id="productCreateForm">${fields}<div class="formactions"><button class="primary" type="submit">${editing?'変更を保存':'商品を登録'}</button></div></form>`;
  return editing?UI.sheet({title:'商品を編集',variant:'product-editor-sheet',body:form}):`${head('新しい商品を作成',i.name,true)}<main class="manage-main">${form}<p class="hint">内容量が不明なら空欄でも登録できます。</p></main>`;
 }
