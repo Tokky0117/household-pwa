@@ -444,7 +444,13 @@ function inlineActionNotice(anchor,message){
  document.querySelectorAll('.ui-action-notice').forEach(el=>el.remove());
  if(!anchor?.isConnected)return;
  const note=document.createElement('p');note.className='ui-action-notice';note.setAttribute('role','status');note.textContent=message;
- anchor.insertAdjacentElement('afterend',note);
+ if(anchor.closest('.head-left,.head-right')){
+  document.body.append(note);
+  const rect=anchor.getBoundingClientRect();
+  note.classList.add('ui-action-notice-floating');
+  note.style.top=Math.min(window.innerHeight-72,rect.bottom+8)+'px';
+  note.style.left=Math.max(10,Math.min(rect.left,window.innerWidth-240))+'px';
+ }else anchor.insertAdjacentElement('afterend',note);
 }
 function fieldNotice(form,message,fieldId){
  clearToast();
