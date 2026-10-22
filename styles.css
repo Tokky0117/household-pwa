@@ -1403,13 +1403,9 @@ html,body {
   font-size: 20px;
 }
 
-.unit-page {
-  padding-top: 18px;
-}
 
-.unit-page .formactions .primary {
-  width: 100%;
-}
+
+
 
 .setting-label-line {
   display: flex;
@@ -1546,37 +1542,17 @@ html,body {
   box-shadow: none;
 }
 
-.unit-page .setting-label-line {
-  margin: 4px 0 16px;
-  align-items: center;
-}
 
-.unit-page .setting-label-line .sectiontitle {
-  margin: 0;
-  font-size: 17px;
-}
 
-.unit-fields {
-  display: grid;
-  grid-template-columns: minmax(0,1fr) minmax(0,1fr);
-  gap: 12px;
-}
 
-.unit-fields .formfield {
-  min-width: 0;
-  margin: 0 0 14px;
-}
 
-.unit-fields input,.unit-fields select {
-  width: 100%;
-  min-width: 0;
-  min-height: 46px;
-  font-size: 16px;
-}
 
-.unit-page .formactions {
-  margin-top: 4px;
-}
+
+
+
+
+
+
 
 .ui-menu {
   position: absolute;
@@ -1905,9 +1881,9 @@ html,body {
 .catalogue-row-body .hint,.catalogue-row-body .hint:last-child{font-size:12px;line-height:1.4;margin:0}
 .catalogue-remove{flex:none;display:grid;place-items:center;width:44px;height:44px;font-size:21px;border-radius:11px}
 .manage-add{display:block;width:100%;margin:12px 0;min-height:44px}
-.catalogue-picker{display:flex;flex-direction:column;gap:10px}
-.catalogue-picker>.ui-select{margin-bottom:4px}
-.catalogue-picker .formfield{display:block;margin:0 0 5px}
+
+
+
 .catalogue-search-title{font-size:14px;font-weight:700;display:block;margin-bottom:8px}
 .catalogue-candidate{display:flex;align-items:center;gap:10px;width:100%;text-align:left;background:var(--card);color:var(--ink);border:1px solid var(--line);border-radius:var(--ui-radius-card);min-height:60px;padding:11px 13px;margin:0 0 8px}
 .catalogue-candidate:disabled{opacity:.65;cursor:default}
@@ -1929,8 +1905,8 @@ html,body {
 .catalogue-candidate-end{display:flex;align-items:center;justify-content:center;min-width:20px}
 .catalogue-candidate-end .ui-chevron{width:18px;height:18px;color:var(--accent)}
 .catalogue-list-heading{font-size:13px;font-weight:650;color:var(--muted);padding:2px 0 4px}
-.catalogue-picker .catalogue-candidate{cursor:pointer}
-.catalogue-picker .catalogue-candidate:disabled{cursor:default}
+
+
 /* Same dialog DOM for all operations: centered title, balanced left-aligned explanation. */
 .dialog h2{text-align:center}
 .dialog .dialog-description{width:100%;max-width:32ch;margin:0 auto 18px;text-align:left;line-height:1.65}
@@ -1945,8 +1921,8 @@ html,body {
 .comparison-product-title{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:10px}
 .comparison-product-title strong{font-size:15px}
 .comparison-product-title small{font-size:12px;color:var(--muted);text-align:right;line-height:1.45}
-.compare-form-row{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px}
-.compare-form-row .formfield{min-width:0}
+
+
 .product-sort-row{touch-action:pan-y;user-select:none;-webkit-user-select:none}
 .product-sort-row.dragging{background:var(--accent-soft);box-shadow:0 8px 20px #162c4130,inset 0 0 0 2px var(--accent);position:relative;z-index:5;touch-action:none;opacity:.92;border-radius:12px}
 /* v24: compact two-line item row, inventory-only right column, subtle swipe affordance */
@@ -2055,8 +2031,8 @@ html,body {
 
 /* v28: explicit cross-store product minima, restrained tertiary add action */
 .comparison-main .price-heading{align-items:center;gap:12px}
-.comparison-main .price-heading-copy{min-width:0;display:flex;flex-direction:column;gap:3px}
-.comparison-main .price-heading-copy .sectiontitle{margin:0;line-height:1.3;font-size:16px}
+
+
 .comparison-main .price-heading-sub{display:block;color:var(--muted);font-size:12px;line-height:1.35}
 .tertiary{
  background:color-mix(in srgb,var(--bg) 86%,var(--line));
@@ -2212,7 +2188,7 @@ main>.ui-search + .filterrow{margin-bottom:5px}
 #shop-compare-fields{padding:0 14px 13px}
 #shop-compare-fields[hidden]{display:none}
 .shop-compare-instruction{margin:1px 0 8px;font-size:13px;color:var(--ink)}
-#shop-compare-fields .compare-form-row{grid-template-columns:minmax(0,1fr) minmax(95px,110px);gap:10px;align-items:end}
+
 #shop-compare-fields .formfield{min-width:0;margin:0}
 #shop-compare-fields input{font-size:16px}
 .comparison-main:has(+ .shop-compare-dock.expanded){padding-bottom:calc(230px + env(safe-area-inset-bottom))}
