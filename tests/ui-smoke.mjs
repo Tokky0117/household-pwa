@@ -173,3 +173,9 @@ assert.ok(source.includes('data-search-clear=')&&source.includes('function syncS
 assert.ok(source.includes('UI.quantityUnitFields({quantityId:'),'Shared quantity/unit composition is used');
 assert.ok(source.includes('UI.sectionHeading({title:'),'Shared heading composition is used');
 assert.ok(source.includes('class="sheet-body"'),'Every modal gets a shared scroll container');
+
+const swipeStartExclusion="if(e.target.closest('[data-list-edit],[data-list-hide],[data-pedit],[data-premove]'))return;";
+assert.equal(source.split(swipeStartExclusion).length-1,2,'Mouse and Safari touch swipe allow starting on stock control');
+assert.ok(source.includes("if(e.target.closest('input,textarea,select,[data-stock]"),'Long-press on stock button still excluded');
+assert.ok(source.includes("if(el.dataset.stock){"),'Stock tap still handled');
+assert.ok(source.includes("suppressClick=true;setTimeout(()=>{suppressClick=false},300)"),'Safari swipe suppresses synthesized stock click');
