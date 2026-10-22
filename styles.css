@@ -1189,15 +1189,23 @@ html,body {
   grid-column: 2;
 }
 
-.dialog-actions [data-dialog="confirmHide"] {
-  background: #fff;
+.dialog-actions .confirm-caution {
+  background: var(--card);
   color: var(--accent);
-  border: 1px solid #bdd7f5;
+  border: 1px solid var(--line);
 }
-
-.dialog-actions [data-dialog="confirmHide"]:active {
+.dialog-actions .confirm-caution:active {
   background: var(--accent-soft);
 }
+.ui-inline-notice {
+  padding: 12px;
+  margin: 8px 0 4px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--card);
+}
+.ui-inline-notice p {margin:0 0 10px;line-height:1.5;font-size:14px}
+.ui-inline-notice button {width:100%}
 
 .headrow {
   grid-template-columns: 44px minmax(0,1fr) 44px;
