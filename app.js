@@ -195,7 +195,7 @@ function commonMenu(items,{label='',compact=false,hidden=false}={}){
 // Shared UI components. Views supply content and behavior; these functions own markup.
 // Keep identifiers escaped and preserve existing delegated data-* events.
 const UI={
-  searchField({id,label,placeholder=label,value='',clearAction=null,extra=''}) {
+  searchField({id,label,placeholder=label,value='',extra=''}) {
     return `<div class="ui-search">${miniIcon('search')}<input id="${esc(id)}" type="search" placeholder="${esc(placeholder)}" value="${esc(value)}" aria-label="${esc(label)}" ${extra}><button type="button" class="clear-search" data-search-clear="${esc(id)}" aria-label="検索をクリア" ${value?'':'hidden'}>${miniIcon('close')}</button></div>`;
   },
   quantityUnitFields({quantityId,unitId,quantityName='quantity',unitName='unit',quantity='',unit='mL',placeholder='',extra=''}) {
@@ -274,7 +274,7 @@ function listHelpView(){
 function listView(){
  const copy='<button class="iconbtn" type="button" data-act="copyList" aria-label="在庫なしをコピー" title="在庫なしをコピー">'+miniIcon('copy')+'</button>';
  const add='<button class="iconbtn" type="button" data-act="add" aria-label="日用品を追加" title="日用品を追加">'+miniIcon('plus')+'</button>';
- return `${head('日用品','くらしストック',false,add,copy)}<main>${UI.searchField({id:'search',label:'日用品を検索',placeholder:'日用品を検索',value:query,clearAction:'clearSearch',extra:'autocomplete="off"'})}<div class="filterrow"><label class="switchlabel"><input type="checkbox" id="onlyOut" ${onlyOut?'checked':''}>在庫なしのみ表示</label></div><div id="item-results">${listResults()}</div>${listHelpView()}</main>${nav()}`;
+ return `${head('日用品','くらしストック',false,add,copy)}<main>${UI.searchField({id:'search',label:'日用品を検索',placeholder:'日用品を検索',value:query,extra:'autocomplete="off"'})}<div class="filterrow"><label class="switchlabel"><input type="checkbox" id="onlyOut" ${onlyOut?'checked':''}>在庫なしのみ表示</label></div><div id="item-results">${listResults()}</div>${listHelpView()}</main>${nav()}`;
 }
 function priceCompareView(){
  const i=current();if(!i){page='list';return listView()}
