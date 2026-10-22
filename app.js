@@ -733,7 +733,7 @@ function endDrag(e,cancel=false){
   persist();
  }else{
   const ids=[...document.querySelectorAll('.comparison-product[data-product-id]:not(.drag-ghost),.catalogue-row[data-product-id]:not(.drag-ghost)')].map(row=>row.dataset.productId);
-  if(!reorderProducts(selected,ids)){render();fieldNotice(document.querySelector('.comparison-main')||app,'並び順を保存できませんでした','missing');return}
+  if(!reorderProducts(selected,ids)){render();const list=document.querySelector('.comparison-list');if(list){const note=document.createElement('p');note.className='ui-field-notice';note.setAttribute('role','alert');note.textContent='並び順を保存できませんでした';list.before(note);note.scrollIntoView({block:'nearest'})}return}
  }
  render();say('表示順を保存しました',{anchor:d.kind==='item'?'.swipe-item[data-item-id="'+d.row.dataset.itemId+'"]':'.comparison-product[data-product-id="'+d.row.dataset.productId+'"]'});
 }
