@@ -2219,3 +2219,7 @@ main>.ui-search + .filterrow{margin-bottom:5px}
 /* Shared contextual feedback: anchored placement comes from say(), field errors persist. */
 .ui-field-notice{margin:7px 0 0;font-size:13px;line-height:1.5;color:var(--red)}
 .toast{max-width:min(90vw,340px);white-space:normal;line-height:1.4;pointer-events:none}
+
+/* Contextual notices remain visible until the next relevant action. */
+.ui-action-notice{margin:6px 8px 10px;padding:9px 12px;border-radius:10px;border:1px solid var(--line);background:var(--card);color:var(--ink);font-size:13px;line-height:1.4}
+.ui-action-notice-floating{position:fixed;z-index:90;max-width:min(240px,calc(100vw - 20px));box-shadow:0 5px 18px #0002;margin:0}
