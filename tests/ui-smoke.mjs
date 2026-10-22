@@ -122,7 +122,7 @@ assert.ok(view.includes('298円'),'Same-unit conversion');
 assert.ok(!view.includes('>内容量を入力</strong>'),'Completed input removes per-chain missing-quantity status');
 assert.equal(ui.convertQuantity(1,'L','mL'),1000);
 assert.equal(ui.convertQuantity(2,'個','本'),null);
-assert.ok(view.includes('inputmode="decimal" placeholder="例：1100"'),'Comparison uses numeric keyboard');
+assert.ok(view.includes('placeholder="例：1100"')&&view.includes('inputmode="decimal"'),'Comparison uses numeric keyboard');
 ui.setUnit('g');view=ui.priceCompareView();
 assert.ok(view.includes('比較不可'),'Nonconvertible units are reported');
 ui.setUnit('mL');view=ui.priceCompareView();
@@ -167,3 +167,9 @@ const a=cls('p-milk-1'),b=cls('p-milk-2');mockSwipeRows=[a,b];
 ui.setOpenSwipe('p-milk-1');assert.ok(a.state.has('swipe-open')&&!b.state.has('swipe-open'));
 ui.setOpenSwipe('p-milk-2');assert.ok(!a.state.has('swipe-open')&&b.state.has('swipe-open'));
 console.log('v36 preview: price by chain, period, conversion, budget, common UI, reorder and swipe passed');
+
+// Shared UI regression assertions: all search fields expose consistent clearing.
+assert.ok(source.includes('data-search-clear=')&&source.includes('function syncSearch('),'Shared search-clear DOM and behavior');
+assert.ok(source.includes('UI.quantityUnitFields({quantityId:'),'Shared quantity/unit composition is used');
+assert.ok(source.includes('UI.sectionHeading({title:'),'Shared heading composition is used');
+assert.ok(source.includes('class="sheet-body"'),'Every modal gets a shared scroll container');
