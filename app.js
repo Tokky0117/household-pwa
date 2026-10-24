@@ -378,7 +378,7 @@ function budgetView(){
  return `${head('家計簿','くらしストック')}<main class="preview-budget-page"><p class="sample-price-notice">※ サンプルと端末内の試作記録。値札は集計対象外です。</p><div class="budget-month"><button type="button" class="iconbtn" data-act="prevMonth" aria-label="前月">${chevron('left')}</button><strong>${esc(budgetMonth.replace('-', '年'))}月</strong><button type="button" class="iconbtn" data-act="nextMonth" aria-label="翌月">${chevron('right')}</button></div><div class="budget-total"><span>税込合計</span><strong>${yen(total)}</strong></div><div class="budget-category-list">${categoryRows.map(([name,value])=>`<div class="budget-category-row"><span>${esc(name)}</span><strong>${yen(value)}</strong></div>`).join('')}</div></main>${nav()}`;
 }
 function stub(title,icon,desc){return `${head(title,'くらしストック')}<main><div class="panel placeholder"><div class="bubble">${icon}</div><h2>${title}画面</h2><p>${desc}</p></div><div class="alert">この画面は共通UIの確認用です。データ処理や同期はまだ行いません。</div></main>${nav()}`}
-function settingsView(){return `${head('設定','くらしストック')}<main><div class="panel"><h2>データと同期</h2><div class="info-row row"><div><strong>同期状態</strong><div class="hint">Google Sheets 接続前</div></div><span class="tag">未設定</span></div><button class="secondary" data-act="sync" style="width:100%">手動同期</button></div><div class="panel"><h2>試作版の操作</h2><p class="hint">変更内容はこの端末の localStorage のみに保存され、夫婦間では共有されません。</p><button class="secondary danger" data-act="reset">仮データを初期状態に戻す</button></div><div class="panel"><h2>今後の実装</h2><p class="hint">レシート／値札のチェーン照合、Google Apps Script 接続、認証、オフライン差分同期を追加予定です。</p></div></main>${nav()}`}
+function settingsView(){const auth=window.KurashiAuth?.status?.()||{configured:false,signedIn:false};const loginPanel=`<div class="panel"><h2>Googleログイン（接続準備）</h2><p class="hint">${auth.signedIn?'この端末でログイン済みです。実データの同期はまだ無効です。':auth.configured?'初回のみGoogleアカウントでログインします。期限切れ時は再ログインが必要です。':'Googleログインの接続設定を準備中です。現時点では試作データだけを利用できます。'}</p>${auth.signedIn?'<button type="button" class="secondary" data-act="googleSignOut">ログアウト</button>':auth.configured?'<div id="google-login-button"></div>':''}</div>`;return `${head('設定','くらしストック')}<main>${loginPanel}<div class="panel"><h2>データと同期</h2><div class="info-row row"><div><strong>同期状態</strong><div class="hint">Google Sheets 接続前</div></div><span class="tag">未設定</span></div><button class="secondary" data-act="sync" style="width:100%">手動同期</button></div><div class="panel"><h2>試作版の操作</h2><p class="hint">変更内容はこの端末の localStorage のみに保存され、夫婦間では共有されません。</p><button class="secondary danger" data-act="reset">仮データを初期状態に戻す</button></div><div class="panel"><h2>今後の実装</h2><p class="hint">レシート／値札のチェーン照合、Google Apps Script 接続、認証、オフライン差分同期を追加予定です。</p></div></main>${nav()}`}
 // All confirmation dialogs share one DOM and CSS. A Japanese full stop ends a paragraph line.
 function dialogView(){
  if(!dialog)return '';
@@ -417,6 +417,7 @@ function render(){
  app.innerHTML=`<div class="shell ${focus?'focus':''}">${pageView()}</div>${modal}${overlay}`;
  if(scrollReset)window.scrollTo(0,page==='list'&&previousPage==='compare'?listScrollPosition:0);
  previousPage=page;previousSelected=selected;
+ if(tab==='settings'&&page==='list'&&window.KurashiAuth?.status?.().configured&&!window.KurashiAuth?.status?.().signedIn)window.KurashiAuth.signIn();
 }
 let toastTimer=null,toastSerial=0;
 function clearToast(){
@@ -661,7 +662,7 @@ if(action==='prevMonth'||action==='nextMonth'){
  const [year,month]=budgetMonth.split('-').map(Number);const d=new Date(year,month-1+(action==='prevMonth'?-1:1),1);
  budgetMonth=[d.getFullYear(),String(d.getMonth()+1).padStart(2,'0')].join('-');render();return;
 }
-if(action==='sync'){inlineActionNotice(el,'同期は未接続です');return}if(action==='reset'){dialog={title:'仮データを初期化しますか？',message:'この端末で行った変更がすべて消え、最初のサンプル状態に戻ります。',buttons:[{id:'cancel',label:'キャンセル'},{id:'resetYes',label:'初期化する',primary:true,danger:true}]}}render()});
+if(action==='googleSignOut'){window.KurashiAuth?.signOut?.();render();return}if(action==='sync'){inlineActionNotice(el,'同期は未接続です');return}if(action==='reset'){dialog={title:'仮データを初期化しますか？',message:'この端末で行った変更がすべて消え、最初のサンプル状態に戻ります。',buttons:[{id:'cancel',label:'キャンセル'},{id:'resetYes',label:'初期化する',primary:true,danger:true}]}}render()});
 // Shared dismissal behavior: menus close when focus moves to the rest of the page.
 // Do not rerender the whole screen: that would discard form contents and search focus.
 function closeAllDropdowns(){
