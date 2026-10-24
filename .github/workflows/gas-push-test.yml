@@ -1,18 +1,18 @@
 name: Push GAS to test project (manual)
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - stage-a-ui-handoff-review
-    paths:
-      - 'gas/sync-request.txt'
+    inputs:
+      confirm_target_backup:
+        description: 'Confirm GAS target source was backed up and reviewed (type BACKUP_DONE)'
+        required: true
+        type: string
 
 permissions:
   contents: read
 
 jobs:
   push-test:
-    if: github.ref == 'refs/heads/stage-a-ui-handoff-review'
+    if: github.ref == 'refs/heads/stage-a-ui-handoff-review' && inputs.confirm_target_backup == 'BACKUP_DONE'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
