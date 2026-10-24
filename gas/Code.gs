@@ -186,6 +186,23 @@ function testCategoriesReadOnly(){
  Logger.log('READ_OK: categories = '+records.length+' / '+records.map(r=>r.name).join('、'));
  return true;
 }
+/**
+ * Read-only pre-deployment check: validates all 12 sheet headers without changing data.
+ * Logs table names only, not user records, tokens, or household IDs.
+ * Existing initialized sheets must NOT be reinitialized.
+ */
+function testAllSheetsReadOnly(){
+ const names=Object.keys(TABLES);
+ names.forEach(name=>{
+  const headers=TABLES[name],sh=tab(name);
+  const actual=sh.getRange(1,1,1,headers.length).getValues()[0];
+  if(headers.some((h,i)=>String(actual[i])!==h))fail('SCHEMA_MISMATCH',name+' の列を確認してください');
+ });
+ testCategoriesReadOnly();
+ Logger.log('SCHEMA_READ_OK: '+names.length+' sheets');
+ return true;
+}
+
 /** Call manually on an EMPTY spreadsheet; does not insert households or users. */
 function initializeEmptySchema(){
  const ss=spreadsheet();
