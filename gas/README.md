@@ -47,3 +47,22 @@ function testCategoriesReadOnly(){
 }
 ```
 Apps Scriptの関数選択で `testCategoriesReadOnly` を選んで実行。ログに `READ_OK: categories = 5` が出れば、GASからスプレッドシートの読み取りに成功。書込みはしない。
+
+
+## GitHub → テスト用Apps Scriptのコード反映（準備済み、認証未設定）
+
+- GitHub Actions `.github/workflows/gas-push-test.yml` に **手動実行のみ** の `clasp push --force` を追加。
+- 実行対象は `stage-a-ui-handoff-review` ブランチ限定。**テスト用のGASスクリプトID** をGitHub Secretsの `GAS_SCRIPT_ID_TEST` に設定する。
+- ユーザー認可情報は `CLASPRC_JSON` にGitHub Secretとして登録する。これは `clasp login` で生成される *OAuthリフレッシュトークンを含む非常に重要な認証情報*。チャット、Issue、コミット、スクリーンショットへ貼り付けない。
+- `CLASPRC_JSON` を作るには最初の一度だけ、`clasp` が利用できるターミナル（PCまたはiPhoneからアクセス可能な安全な開発環境）でGoogle認証する必要がある。**GitHub Actionsだけでは対話的OAuthログインは完了できない**。
+- Apps Script設定の「スクリプトID」と、Cloudの「プロジェクト番号」やWeb OAuthの「クライアントID」は別物。入力対象を混同しない。
+- <https://script.google.com/home/usersettings> でApps Script APIを有効にする必要がある。
+- `clasp push --force` は対象Apps Scriptプロジェクトのソースを上書きする。**その前に現在のコードを別途保存し、対象が専用テストプロジェクトか確認する**。スクリプトプロパティやGoogle Sheetsのデータを初期化する操作ではない。
+- 手動Action成功でも公開済みWebアプリのバージョン更新やPWA連携は自動では行われない。
+
+### iPhoneで先にできる作業
+1. Apps Scriptの「プロジェクトの設定」→「ID」→**スクリプトID** を確認する（このID自体は認証秘密ではない）。
+2. <https://script.google.com/home/usersettings> で「Google Apps Script API」をオンにする。
+3. GitHubのリポジトリ → Settings → Secrets and variables → Actions に `GAS_SCRIPT_ID_TEST` を登録する。OAuth用 `CLASPRC_JSON` は後で安全な端末・環境から登録する。
+
+**現時点ではワークフロー実行不可**（GitHub Secretsが未設定）。ユーザーのGoogleアカウントへの代理ログインやApps Script更新は実施していない。
