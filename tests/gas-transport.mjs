@@ -2,7 +2,6 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import vm from 'node:vm';
 const code=readFileSync(new URL('../gas-api.js',import.meta.url),'utf8');
-let pending=[];
 const window={KurashiAuth:{getToken:()=> 'test-id-token'}};
 const ctx={window,URL,AbortController,setTimeout,clearTimeout};
 vm.runInNewContext(code,ctx);
@@ -29,7 +28,7 @@ const fetcher=async (url,opts)=>{
 const data=await api.request('bootstrap',{}, {fetcher});
 assert.equal(data.categories[0].name,'飲食');
 assert.equal(calls,1);
-await assert.rejects(api.request('bootstrap',{}, {token:'',fetcher:async()=>({ok:true,text:async()=>'{})'} )}),/GAS_RESPONSE_INVALID/);
+await assert.rejects(api.request('bootstrap',{}, {token:'',fetcher:async()=>({ok:true,text:async()=>'{invalid json'} )}),/GAS_RESPONSE_INVALID/);
 await assert.rejects(api.request('bootstrap',{}, {fetcher:async()=>({ok:true,text:async()=>JSON.stringify({ok:false,error:{code:'FORBIDDEN'}})})}),/FORBIDDEN/);
 api.configure('');
 assert.equal(api.status().configured,false);
