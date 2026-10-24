@@ -22,5 +22,5 @@ assert.equal(JSON.parse(sandbox.doGet()).error.code,'POST_REQUIRED');
 currentRows=[...categoryRows.slice(0,5)];
 assert.throws(()=>sandbox.testCategoriesReadOnly(),/件数・順序・名称/);
 currentRows=[['wrong',...categoryRows[0].slice(1)],...categoryRows.slice(1)];
-assert.throws(()=>sandbox.testCategoriesReadOnly(),/SCHEMA_MISMATCH/);
+assert.throws(()=>sandbox.testCategoriesReadOnly(),err=>err?.code==='SCHEMA_MISMATCH');
 console.log('GAS offline read-only checks PASS');
