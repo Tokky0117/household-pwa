@@ -19,7 +19,7 @@
   notify();
  }
  function configure(value){
-  clientId=typeof value==='string'&&/^[0-9]+-[a-z0-9-]+\\.apps\\.googleusercontent\\.com$/.test(value)?value:'';
+  clientId=typeof value==='string'&&/^[0-9]+-[a-z0-9-]+\.apps\.googleusercontent\.com$/.test(value)?value:'';
   initialized=false;signOut();
  }
  function initialize(){
