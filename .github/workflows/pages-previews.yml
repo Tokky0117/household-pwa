@@ -33,6 +33,9 @@ jobs:
       - name: Validate GAS read-only contract offline
         run: node tests/gas-offline-smoke.mjs
 
+      - name: Validate GAS auth and household isolation offline
+        run: node tests/gas-auth-isolation.mjs
+
       - name: Build isolated static previews
         shell: bash
         run: |
