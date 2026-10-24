@@ -1,0 +1,49 @@
+name: Push GAS to test project (manual)
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  push-test:
+    if: github.ref == 'refs/heads/stage-a-ui-handoff-review'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Check credentials exist
+        env:
+          CLASPRC_JSON: ${{ secrets.CLASPRC_JSON }}
+          GAS_SCRIPT_ID_TEST: ${{ secrets.GAS_SCRIPT_ID_TEST }}
+        run: |
+          test -n "$CLASPRC_JSON" || { echo "Missing CLASPRC_JSON"; exit 1; }
+          test -n "$GAS_SCRIPT_ID_TEST" || { echo "Missing GAS_SCRIPT_ID_TEST"; exit 1; }
+      - name: Prepare temporary clasp config
+        env:
+          CLASPRC_JSON: ${{ secrets.CLASPRC_JSON }}
+          GAS_SCRIPT_ID_TEST: ${{ secrets.GAS_SCRIPT_ID_TEST }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$HOME"
+          node - <<'NODE'
+          const fs = require('node:fs');
+          const auth = JSON.parse(process.env.CLASPRC_JSON);
+          if (!auth || typeof auth !== 'object') throw new Error('Invalid clasp credentials');
+          fs.writeFileSync(process.env.HOME+'/.clasprc.json', JSON.stringify(auth), {mode:0o600});
+          const scriptId = process.env.GAS_SCRIPT_ID_TEST.trim();
+          if (!/^[A-Za-z0-9_-]{20,}$/.test(scriptId)) throw new Error('Invalid Script ID');
+          fs.writeFileSync('.clasp.json', JSON.stringify({scriptId,rootDir:'gas'})+'\n',{mode:0o600});
+          NODE
+      - name: Check GAS source syntax
+        run: cp gas/Code.gs /tmp/kurashi-gas-check.js && node --check /tmp/kurashi-gas-check.js && rm /tmp/kurashi-gas-check.js
+        shell: bash
+      - name: Push source to test GAS project
+        run: npx --yes @google/clasp@3 push --force
+      - name: Remove temporary credentials
+        if: always()
+        run: rm -f "$HOME/.clasprc.json" ".clasp.json"
