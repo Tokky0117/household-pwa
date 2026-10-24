@@ -36,13 +36,16 @@ jobs:
       - name: Validate GAS auth and household isolation offline
         run: node tests/gas-auth-isolation.mjs
 
+      - name: Validate GAS transport adapter offline
+        run: node tests/gas-transport.mjs
+
       - name: Build isolated static previews
         shell: bash
         run: |
           set -euo pipefail
           git fetch --prune origin '+refs/heads/*:refs/remotes/origin/*'
           mkdir -p _site/previews
-          files=(index.html app.js auth.js styles.css manifest.webmanifest icon.svg sw.js)
+          files=(index.html app.js auth.js gas-api.js styles.css manifest.webmanifest icon.svg sw.js)
 
           copy_site() {
             local ref="$1"
