@@ -29,7 +29,9 @@ function jsonReply(obj){return ContentService.createTextOutput(JSON.stringify(ob
 function doGet(){return jsonReply({ok:false,error:{code:'POST_REQUIRED',message:'POSTのみ利用できます'}})}
 function doPost(e){
  try{
-  const input=JSON.parse(String(e&&e.postData&&e.postData.contents||''));
+  let input;
+  try{input=JSON.parse(String(e&&e.postData&&e.postData.contents||''))}
+  catch(_){fail('BAD_REQUEST','JSON形式を確認してください')}
   if(!input||typeof input!=='object'||Array.isArray(input))fail('BAD_REQUEST','入力が不正です');
   const user=authenticate(input.id_token);
   const action=String(input.action||'');
