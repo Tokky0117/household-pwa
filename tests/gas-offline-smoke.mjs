@@ -16,6 +16,11 @@ const sandbox={
   logs:[]
 };
 vm.createContext(sandbox);vm.runInContext(code,sandbox,{filename:'gas/Code.gs'});
+// Blank spreadsheet rows must not shift real sheet row numbers for future writes.
+currentRows=[categoryRows[0],categoryRows[1],['','',''],...categoryRows.slice(2)];
+const rowPositions=sandbox.rows('categories').map(x=>x.row);
+assert.deepEqual(Array.from(rowPositions),[2,4,5,6,7]);
+currentRows=categoryRows;
 assert.equal(sandbox.testCategoriesReadOnly(),true);
 assert.match(sandbox.logs[0],/READ_OK: categories = 5/);
 assert.equal(JSON.parse(sandbox.doGet()).error.code,'POST_REQUIRED');
