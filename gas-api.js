@@ -17,7 +17,7 @@
  async function request(action,payload,options={}){
    if(!endpoint)throw new Error('GAS_NOT_CONFIGURED');
    if(!['bootstrap','sync'].includes(action))throw new Error('READ_ONLY');
-   const token=options.token||window.KurashiAuth?.getToken?.();
+   const token=options.token??window.KurashiAuth?.getToken?.();
    if(!token)throw new Error('LOGIN_REQUIRED');
    const fetcher=options.fetcher||window.fetch.bind(window);
    const controller=new AbortController();
