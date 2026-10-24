@@ -26,4 +26,4 @@
 - Google Sheets実データが接続済みであるかのような表示はしない。
 
 ## 現在の実装状況
-GitHub Pagesではログインボタンのみ。GASは未デプロイ・未反映。接続URLは未設定、家庭データの送受信は未実装。設計確定後、通信アダプタと試験用画面を独立実装する。
+v50で独立した `gas-api.js` をプレビューの読み込み対象へ追加。`KurashiGasApi.configure(url)` で明示的に検証済みのGAS URLだけを設定し、`request('bootstrap'|'sync')` の読み取り操作のみ許可する。初期値は未設定で、アプリ本体からの呼び出しもまだないため**通信は一切発生しない**。テスト `tests/gas-transport.mjs` をCIに追加。GASは未デプロイ・未反映、実機CORSと通信方式は未検証。
