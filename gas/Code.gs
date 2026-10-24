@@ -172,6 +172,18 @@ function mutate(user,action,payload,operationId){
   return result;
  }finally{lock.releaseLock()}
 }
+/**
+ * Run manually in Apps Script editor to verify spreadsheet read permissions.
+ * Prints counts and names only; does not access private household rows or write.
+ */
+function testCategoriesReadOnly(){
+ const records=rows('categories').map(r=>r.obj);
+ if(records.length!==5||records.some((r,i)=>String(r.name)!==CATEGORIES[i]||Number(r.fixed_order)!==i+1)){
+  throw new Error('categories シートの件数・順序・名称が設計と一致しません');
+ }
+ Logger.log('READ_OK: categories = '+records.length+' / '+records.map(r=>r.name).join('、'));
+ return true;
+}
 /** Call manually on an EMPTY spreadsheet; does not insert households or users. */
 function initializeEmptySchema(){
  const ss=spreadsheet();
