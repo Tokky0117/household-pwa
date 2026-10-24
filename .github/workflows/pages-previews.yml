@@ -30,6 +30,9 @@ jobs:
       - name: Validate v1.8 preview behavior
         run: node tests/ui-smoke.mjs
 
+      - name: Validate GAS read-only contract offline
+        run: node tests/gas-offline-smoke.mjs
+
       - name: Build isolated static previews
         shell: bash
         run: |
