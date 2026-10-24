@@ -32,7 +32,7 @@ await assert.rejects(api.request('bootstrap',{}, {fetcher}),/LOGIN_REQUIRED/);
 window.KurashiAuth.getToken=()=> 'test-id-token';
 assert.equal(data.categories[0].name,'飲食');
 assert.equal(calls,1);
-await assert.rejects(api.request('bootstrap',{}, {token:'',fetcher:async()=>({ok:true,text:async()=>'{invalid json'} )}),/GAS_RESPONSE_INVALID/);
+await assert.rejects(api.request('bootstrap',{}, {token:'test-id-token',fetcher:async()=>({ok:true,text:async()=>'{invalid json'} )}),/GAS_RESPONSE_INVALID/);
 await assert.rejects(api.request('bootstrap',{}, {fetcher:async()=>({ok:true,text:async()=>JSON.stringify({ok:false,error:{code:'FORBIDDEN'}})})}),/FORBIDDEN/);
 api.configure('');
 assert.equal(api.status().configured,false);
