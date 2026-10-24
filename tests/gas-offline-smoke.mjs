@@ -24,6 +24,9 @@ currentRows=categoryRows;
 assert.equal(sandbox.testCategoriesReadOnly(),true);
 assert.match(sandbox.logs[0],/READ_OK: categories = 5/);
 assert.equal(JSON.parse(sandbox.doGet()).error.code,'POST_REQUIRED');
+for(const contents of ['{','null','[]','']){
+ assert.equal(JSON.parse(sandbox.doPost({postData:{contents}})).error.code,'BAD_REQUEST');
+}
 currentRows=[...categoryRows.slice(0,5)];
 assert.throws(()=>sandbox.testCategoriesReadOnly(),/件数・順序・名称/);
 currentRows=[['wrong',...categoryRows[0].slice(1)],...categoryRows.slice(1)];
