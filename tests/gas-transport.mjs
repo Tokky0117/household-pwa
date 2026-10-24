@@ -13,6 +13,7 @@ assert.throws(()=>api.configure('https://evil.example/'),/GAS_ENDPOINT_INVALID/)
 api.configure('https://script.google.com/macros/s/TEST123/exec');
 assert.equal(api.status().configured,true);
 await assert.rejects(api.request('item.create'),/READ_ONLY/);
+await assert.rejects(api.request('bootstrap',{}, {token:''}),/LOGIN_REQUIRED/);
 let calls=0;
 const fetcher=async (url,opts)=>{
  calls++;assert.equal(url,'https://script.google.com/macros/s/TEST123/exec');
