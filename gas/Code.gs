@@ -51,7 +51,7 @@ function tab(name){const sh=spreadsheet().getSheetByName(name);if(!sh)fail('SCHE
 function rows(name){
  const sh=tab(name),v=sh.getDataRange().getValues(),headers=TABLES[name];
  if(!v.length||headers.some((h,i)=>String(v[0][i])!==h))fail('SCHEMA_MISMATCH',name+' の列を確認してください');
- return v.slice(1).filter(r=>r.some(c=>c!==''&&c!==null)).map((v,i)=>({row:i+2,obj:Object.fromEntries(headers.map((h,j)=>[h,v[j]=== ''?null:v[j]]))}));
+ return v.slice(1).map((cells,i)=>({row:i+2,cells})).filter(x=>x.cells.some(c=>c!==''&&c!==null)).map(x=>({row:x.row,obj:Object.fromEntries(headers.map((h,j)=>[h,x.cells[j]===''?null:x.cells[j]]))}));
 }
 function write(name,row,obj){
  const sh=tab(name),h=TABLES[name];
