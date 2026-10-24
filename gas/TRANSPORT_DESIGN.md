@@ -27,3 +27,14 @@
 
 ## 現在の実装状況
 v50で独立した `gas-api.js` をプレビューの読み込み対象へ追加。`KurashiGasApi.configure(url)` で明示的に検証済みのGAS URLだけを設定し、`request('bootstrap'|'sync')` の読み取り操作のみ許可する。初期値は未設定で、アプリ本体からの呼び出しもまだないため**通信は一切発生しない**。テスト `tests/gas-transport.mjs` をCIに追加。GASは未デプロイ・未反映、実機CORSと通信方式は未検証。
+
+## 反映直前チェック（v50）
+1. GitHub Actionsで `tests/ui-smoke.mjs`、`tests/gas-offline-smoke.mjs`、`tests/gas-auth-isolation.mjs`、`tests/gas-transport.mjs` の全成功を確認。構文検査だけで成功と判断しない。
+2. **GASへの反映はまだ実行しない**：GitHub Secret `CLASPRC_JSON` 未登録。iPhone Codespacesでの認証は中断済み。誤って `gas/sync-request.txt` を変更してワークフローを起動しない。
+3. 現在のApps Scriptにしか存在しない編集があればバックアップし、`gas/Code.gs` との差分を確認してから一括反映する。
+4. スクリプトプロパティ `SPREADSHEET_ID`, `GOOGLE_CLIENT_ID` の存在だけ確認し、値をドキュメント・ログへ公開しない。
+5. `testCategoriesReadOnly()` で5件読込を実機確認。失敗したらデプロイしない。
+6. `users` / `households` の登録方式と二人の本人確認が確定するまでWebアプリへ家計データを入れない。匿名での `bootstrap` は拒否する。
+7. Safari/PWAから `bootstrap` の応答が読み取れるかを確認。CORSで読めない場合は中継方式を採るまで接続機能を公開しない。
+
+この工程の目的はユーザーのiPhone操作を最終段階に集約すること。Google側の権限承認・GASのデプロイ操作は、現在のGitHub接続からは代理実行できない。
