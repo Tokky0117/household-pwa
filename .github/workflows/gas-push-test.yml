@@ -1,6 +1,11 @@
 name: Push GAS to test project (manual)
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - stage-a-ui-handoff-review
+    paths:
+      - 'gas/sync-request.txt'
 
 permissions:
   contents: read
