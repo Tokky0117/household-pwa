@@ -1,0 +1,36 @@
+name: Offline regression tests (no GAS access)
+
+on:
+  push:
+    branches:
+      - stage-a-ui-handoff-review
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  offline-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Check syntax
+        run: |
+          node --check auth.js
+          node --check gas-api.js
+          node --check app.js
+          cp gas/Code.gs /tmp/kurashi-gas-check.js
+          node --check /tmp/kurashi-gas-check.js
+      - name: UI offline regression
+        run: node tests/ui-smoke.mjs
+      - name: GAS schema and malformed input
+        run: node tests/gas-offline-smoke.mjs
+      - name: Google auth and household isolation
+        run: node tests/gas-auth-isolation.mjs
+      - name: GAS read-only transport
+        run: node tests/gas-transport.mjs
