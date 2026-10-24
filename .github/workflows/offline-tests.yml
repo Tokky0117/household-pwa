@@ -32,5 +32,8 @@ jobs:
         run: node tests/gas-offline-smoke.mjs
       - name: Google auth and household isolation
         run: node tests/gas-auth-isolation.mjs
+      - name: Validate all 12 GAS sheet headers without writes
+        run: node tests/gas-schema-preflight.mjs
+
       - name: GAS read-only transport
         run: node tests/gas-transport.mjs
