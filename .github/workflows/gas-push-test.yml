@@ -47,8 +47,32 @@ jobs:
       - name: Check GAS source syntax
         run: cp gas/Code.gs /tmp/kurashi-gas-check.js && node --check /tmp/kurashi-gas-check.js && rm /tmp/kurashi-gas-check.js
         shell: bash
+      - name: Back up current test GAS source
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p gas-backup
+          node - <<'NODE'
+          const fs = require('node:fs');
+          const config = JSON.parse(fs.readFileSync('.clasp.json','utf8'));
+          fs.writeFileSync('gas-backup/.clasp.json', JSON.stringify({scriptId:config.scriptId,rootDir:'.'})+'\n');
+          NODE
+          cd gas-backup
+          npx --yes @google/clasp@3 pull
+          test -f Code.gs || { echo "Remote Code.gs not found; aborting destructive push"; exit 1; }
+
+      - name: Store GAS source backup before overwriting
+        uses: actions/upload-artifact@v4
+        with:
+          name: gas-source-before-push
+          path: |
+            gas-backup/**
+            !gas-backup/.clasp.json
+          if-no-files-found: error
+          retention-days: 30
+
       - name: Push source to test GAS project
         run: npx --yes @google/clasp@3 push --force
       - name: Remove temporary credentials
         if: always()
-        run: rm -f "$HOME/.clasprc.json" ".clasp.json"
+        run: rm -f "$HOME/.clasprc.json" ".clasp.json" "gas-backup/.clasp.json"
