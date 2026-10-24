@@ -27,6 +27,9 @@ const fetcher=async (url,opts)=>{
  return {ok:true,text:async()=>JSON.stringify({ok:true,data:{categories:[{name:'飲食'}]}})};
 };
 const data=await api.request('bootstrap',{}, {fetcher});
+window.KurashiAuth.getToken=()=>null;
+await assert.rejects(api.request('bootstrap',{}, {fetcher}),/LOGIN_REQUIRED/);
+window.KurashiAuth.getToken=()=> 'test-id-token';
 assert.equal(data.categories[0].name,'飲食');
 assert.equal(calls,1);
 await assert.rejects(api.request('bootstrap',{}, {token:'',fetcher:async()=>({ok:true,text:async()=>'{invalid json'} )}),/GAS_RESPONSE_INVALID/);
