@@ -83,3 +83,9 @@ Apps Scriptの関数選択で `testCategoriesReadOnly` を選んで実行。ロ�
 - `tests/gas-offline-smoke.mjs` に、カテゴリ5件の読み取り・列の不一致・空行を挟んだ行番号保持の検査を追加。
 - GitHub Pagesプレビューの検証ワークフローにもGASオフライン検査を追加。**Google Sheets実機へのアクセス成功を意味しない**。
 - 自動反映は認証未設定のため保留。GAS本体は未変更、テスト用の書込みは引き続き無効。
+
+### 認証・家庭分離のオフライン回帰テスト（2026-10-24）
+- `tests/gas-auth-isolation.mjs`: Google tokeninfoレスポンスをモックし、対象利用者A/Bの `bootstrap` / `sync` がそれぞれ自分の家庭だけの品目・商品・店舗・変更履歴を返すことを検査。
+- 未登録ユーザー、audience不一致、期限切れ、tokeninfoエラー、トークン未指定で読み出しを拒否するケースも含む。
+- GitHub PagesプレビューのCIで `node tests/gas-auth-isolation.mjs` を実行するよう設定。
+- **オフラインのモックテストであり、実際のOAuth、GAS APIのデプロイ権限、CORS、Safari動作は未検証。** コードの自動反映と本番データの書込みは行わない。
