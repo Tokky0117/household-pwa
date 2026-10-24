@@ -35,3 +35,15 @@
 - GAS実環境のテスト、夫婦2端末の認証境界テスト、プレビュー接続
 
 **本番データ保存を開始するには上記ブロッカーの解消が必要。** 12シートのデータ契約は `DATA_MODEL.md` を参照。
+
+## iPhoneでの読取テスト
+GitHubへの更新はApps Scriptエディタへ自動同期されない。既存GASコードの末尾に以下を追記して保存する（同名関数があれば重複追加しない）。
+```javascript
+function testCategoriesReadOnly(){
+ const records=rows('categories').map(r=>r.obj);
+ if(records.length!==5||records.some((r,i)=>String(r.name)!==CATEGORIES[i]||Number(r.fixed_order)!==i+1))throw new Error('categories の内容が設計と一致しません');
+ Logger.log('READ_OK: categories = '+records.length+' / '+records.map(r=>r.name).join('、'));
+ return true;
+}
+```
+Apps Scriptの関数選択で `testCategoriesReadOnly` を選んで実行。ログに `READ_OK: categories = 5` が出れば、GASからスプレッドシートの読み取りに成功。書込みはしない。
