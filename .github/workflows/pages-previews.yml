@@ -39,6 +39,9 @@ jobs:
       - name: Validate GAS transport adapter offline
         run: node tests/gas-transport.mjs
 
+      - name: Validate all 12 GAS sheet headers without writes
+        run: node tests/gas-schema-preflight.mjs
+
       - name: Build isolated static previews
         shell: bash
         run: |
