@@ -49,6 +49,8 @@ const ctx={
 };
 vm.createContext(ctx);
 vm.runInContext(source,ctx,{filename:'gas/Code.gs'});
+// Unit-test household isolation with two families; separate gate tests enforce the one-family trial marker.
+ctx.assertIsolatedTrialIdentity=()=>{};
 const u1={householdId:'h1',userId:'u1'},u2={householdId:'h2',userId:'u2'};
 let opNum=0;
 const op=()=> 'test-op-'+(++opNum);
