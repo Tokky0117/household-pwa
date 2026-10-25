@@ -222,6 +222,8 @@ function mutateItemSafely(user,action,payload,operationId){
 }
 function mutate(user,action,payload,operationId){
  if(action==='item.create'||action==='item.update')return mutateItemSafely(user,action,payload,operationId);
+ // Product writes retain the old non-transactional implementation: do not expose it.
+ fail('WRITES_DISABLED','商品の書き込みは安全確認中です');
  requiredId(operationId);
  const lock=LockService.getScriptLock();
  if(!lock.tryLock(20000))fail('BUSY','しばらくして再試行してください');
