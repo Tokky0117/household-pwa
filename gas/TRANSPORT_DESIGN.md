@@ -108,3 +108,11 @@ Chromeの接続テスト画面でGoogleログイン、GAS WebアプリへのPOST
 - GitHub Pagesのプレビュービルドが依存ファイル `live-operation-journal.js` をコピーしていなかった問題を修正。新しい試験準備ページも配布対象へ追加した。
 - 新回帰テスト `tests/gas-trial-setup.mjs` をActionsに登録。ただしGitHub Actionsの成功状態はまだ確認できていない。
 - 現在のユーザー側の次工程：新しいGASプロジェクトで試験専用シートを作成し、完了のみ連絡する。Googleの識別子・シートURL・トークンはチャットに貼らない。
+
+## CORS障害を確認した時点の方針（2026-10-26）
+- 試験用GASのWebアプリをGitHub Pages内の `gas-trial-connection.html` から `fetch(POST)` すると「通信エラー：CORSまたはネットワーク制限」となった。**個別の原因はブラウザネットワークログで未確定**だが、GAS ContentServiceのレスポンスはGoogle公式仕様により `script.googleusercontent.com` へリダイレクトされる。CORSヘッダーのないリダイレクト先を静的GitHub PagesのJSから読めない状況は構造的にあり得る。
+- この問題をGoogle CloudのOAuthクライアント設定緩和、Webアプリの「全員」への公開拡大、JSONPでのトークン運搬、`mode:'no-cors'` による不透明レスポンス、ブラウザのCORS無効化では解決しない。
+- 次の実装案を先に検証して選定する：**(A)** Apps Script HTML Serviceに試験UIを配置し `google.script.run` を使用（最初に試す。機能は試験専用・読み取りに限定）、**(B)** 信頼できる独立したHTTPSバックエンドを用意し同一オリジン／CORS／認証を適切に構成。通常PWAで実保存を有効にするには通信方式の再設計とセキュリティ評価が必須。
+- 切り分け用に `testIsolatedTrialResultReadOnly()` を試験GAS用コードへ追加。エディタから実行すればGoogle Sheetsの試験後件数・在庫・履歴・受領記録を**読み取りのみ**で検証できる。期待ログ `ISOLATED_TRIAL_READ_ONLY_OK`。この関数はデプロイもGoogle IDトークンも不要、書込み設定も変更しない。
+- 現行のGitHub Pagesの読み取り/保存アダプタは、試験GASとのブラウザ通信が通るまで実データ運用に使用しない。書込みゲート `LIVE_WRITE_ENABLED=false` を維持。稼働中の家庭用GAS・`main` は変更しない。
+参考: https://developers.google.com/apps-script/guides/content （ContentService redirects） / https://developers.google.com/apps-script/guides/html/communication （HTMLService google.script.run）
