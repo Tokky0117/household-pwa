@@ -116,3 +116,9 @@ Chromeの接続テスト画面でGoogleログイン、GAS WebアプリへのPOST
 - 切り分け用に `testIsolatedTrialResultReadOnly()` を試験GAS用コードへ追加。エディタから実行すればGoogle Sheetsの試験後件数・在庫・履歴・受領記録を**読み取りのみ**で検証できる。期待ログ `ISOLATED_TRIAL_READ_ONLY_OK`。この関数はデプロイもGoogle IDトークンも不要、書込み設定も変更しない。
 - 現行のGitHub Pagesの読み取り/保存アダプタは、試験GASとのブラウザ通信が通るまで実データ運用に使用しない。書込みゲート `LIVE_WRITE_ENABLED=false` を維持。稼働中の家庭用GAS・`main` は変更しない。
 参考: https://developers.google.com/apps-script/guides/content （ContentService redirects） / https://developers.google.com/apps-script/guides/html/communication （HTMLService google.script.run）
+
+## 2026-10-26：試験用GAS HTML Serviceの実機読み取り成功
+- ユーザーが、試験用Webアプリの `?trial_read=1` で表示されるHTML Service画面から、期待どおりの件数を読み取れたことを報告。期待値はカテゴリ5件、日用品1件、商品0件、店舗0件。これにより**試験GAS内の `google.script.run` から試験Google Sheetsへの読み取り経路**を実機で確認した。
+- 一方、別オリジンのGitHub Pages→GAS `fetch` はCORS/ネットワークエラーだった。HTML Service成功はその通信問題を解決したことや、通常のGitHub Pages版PWAの読み書きが完成したことを意味しない。
+- 次の設計課題は、どのオリジンでアプリUIを提供するか、セッションとIDトークンの取り扱い、`google.script.run` の呼び出し権限、家庭別のデータ分離、同時更新時の操作ID保持、PWAオフライン対応を比較したうえで実装方式を決定すること。HTML Serviceでの簡易試験UIは**本番の通信アーキテクチャとして未承認**。
+- 書込ゲート `LIVE_WRITE_ENABLED=false` と `ENABLE_EXPERIMENTAL_WRITES=false`（または未設定）を継続。試験用シートは初期状態に戻さず、ワンタイム書込試験の再実行は禁止。家庭用シート、稼働中GAS、`main` には変更なし。
