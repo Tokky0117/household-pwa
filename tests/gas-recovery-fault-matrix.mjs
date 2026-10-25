@@ -52,6 +52,8 @@ function harness(){
  };
  vm.createContext(context);
  vm.runInContext(source,context,{filename:'gas/Code.gs'});
+ // Fault simulations exercise two devices and households; trial identity gate is tested independently.
+ context.assertIsolatedTrialIdentity=()=>{};
  const userA={householdId:'family-1',userId:'alice'};
  const userB={householdId:'family-1',userId:'bob'};
  const userOther={householdId:'family-2',userId:'outside'};
