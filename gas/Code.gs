@@ -379,6 +379,33 @@ function testIsolatedWriteTrialPreflightReadOnly(){
  return true;
 }
 /**
+ * Manual editor-only READ-ONLY verification after the one-time isolated trial.
+ * Does NOT use ContentService, CORS, deployment or browser credentials.
+ * Does NOT modify sheet rows or Script Properties.
+ */
+function testIsolatedTrialResultReadOnly(){
+ const props=PropertiesService.getScriptProperties();
+ const active=props.getProperty('SPREADSHEET_ID');
+ const designated=props.getProperty('WRITE_TRIAL_SPREADSHEET_ID');
+ if(!active||active!==designated)fail('TRIAL_NOT_ISOLATED','試験用シートの設定を確認してください');
+ assertIsolatedTrialIdentity();
+ testAllSheetsReadOnly();
+ const hid=String(rows('households')[0].obj.household_id);
+ const itemRows=scoped('item_groups',hid),logRows=scoped('change_log',hid),
+       receipts=scoped('processed_operations',hid);
+ if(itemRows.length!==1||logRows.length!==2||receipts.length!==2||
+    Number(itemRows[0].obj.version)!==2||
+    itemRows[0].obj.in_stock!==false||
+    Number(logRows[0].obj.sequence_no)!==1||
+    Number(logRows[1].obj.sequence_no)!==2)
+  fail('TRIAL_RESULT_MISMATCH','試験後の件数や在庫状態が一致しません');
+ // The prior editor-only test performs no product/store mutations.
+ if(scoped('products',hid).length||rows('stores').length)
+  fail('TRIAL_RESULT_MISMATCH','商品または店舗に想定外のデータがあります');
+ Logger.log('ISOLATED_TRIAL_READ_ONLY_OK: categories=5, items=1, products=0, stores=0, changes=2, receipts=2, item_version=2');
+ return true;
+}
+/**
  * Editor-only, ONE-TIME real write rehearsal for the isolated test sheet.
  * Deliberately does NOT change ENABLE_EXPERIMENTAL_WRITES or deploy a Web App.
  * It DOES create/update test-only rows. Run only after the READ-ONLY preflight.
