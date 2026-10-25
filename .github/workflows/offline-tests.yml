@@ -29,6 +29,8 @@ jobs:
           node --check /tmp/kurashi-gas-check.js
       - name: Durable item journal and account-scoped explicit retry
         run: node tests/live-operation-journal.mjs
+      - name: Fresh isolated trial-sheet creator and published setup page
+        run: node tests/gas-trial-setup.mjs
       - name: Isolated write-trial marker and read-only preflight
         run: node tests/gas-isolated-trial-gate.mjs
       - name: GAS power-loss matrix and multi-device version tests
