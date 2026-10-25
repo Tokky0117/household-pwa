@@ -177,7 +177,8 @@ function load(){try{const d=JSON.parse(localStorage.getItem(key));return Array.i
 let liveSnapshot=null,liveStatus='未取得',liveBusy=false,liveMode=false;
 function liveListView(){
  const groups=liveSnapshot?.item_groups||[],products=liveSnapshot?.products||[],stores=liveSnapshot?.stores||[];
- const label=liveSnapshot?'Google Sheetsから読み取り済み':'Google Sheetsのデータは未取得';
+ const allEmpty=groups.length===0&&products.length===0&&stores.length===0;
+ const label=allEmpty?'取得成功：Google Sheetsに登録データはまだありません':'取得成功：Google Sheetsからデータを読み取りました';
  const rows=CATS.map((cat,category)=>{
   const matching=groups.filter(i=>!i.is_hidden&&Number(i.category_id)===category).sort((a,b)=>Number(a.sort_order||0)-Number(b.sort_order||0));
   return `<section class="category"><div class="cathead"><strong>${esc(cat)}</strong><span class="count">${matching.length}点</span></div>${matching.map(i=>{
@@ -185,7 +186,7 @@ function liveListView(){
    return `<div class="item"><div class="swipe-front"><div class="itemname" style="text-align:left"><span class="item-title">${esc(i.name)}</span><span class="list-prices">${linked.length?esc(linked.map(p=>p.name).join('、')):'登録商品なし'}</span></div><div class="item-stock-area">${i.in_stock===true||String(i.in_stock).toLowerCase()==='true'?'在庫あり':'在庫なし'}</div></div></div>`;
   }).join('')||'<p class="hint">登録なし</p>'}</section>`;
  }).join('');
- return `${head('日用品','Google Sheets・読み取り専用')}<main><div class="panel"><strong>${label}</strong><p class="hint">この画面では追加・編集・在庫変更はできません。端末内の試作データは変更されません。</p><p class="hint">日用品 ${groups.length} 件 ／ 商品 ${products.length} 件 ／ 店舗 ${stores.length} 件</p><button class="secondary" data-act="refreshLive" ${liveBusy?'disabled':''}>再読み込み</button><button class="secondary" data-act="leaveLive">試作データに戻る</button></div>${rows}<div class="panel"><h2>店舗（読み取り専用）</h2><p class="hint">${stores.length?esc(stores.map(x=>x.canonical_name).join('、')):'登録なし'}</p></div></main>${nav()}`;
+ return `${head('日用品','Google Sheets・読み取り専用')}<main><div class="panel"><strong>${label}</strong><p class="hint">カテゴリ ${liveSnapshot?.categories?.length||0} 件の読み取りを確認しました。日用品・商品・店舗はシートの登録件数を表示しています。</p>${allEmpty?'<p class="hint">この家庭のデータは空です。試作データを確認する場合は「試作データに戻る」を押してください。</p>':''}<p class="hint">この画面では追加・編集・在庫変更はできません。端末内の試作データは変更されません。</p><p class="hint">日用品 ${groups.length} 件 ／ 商品 ${products.length} 件 ／ 店舗 ${stores.length} 件</p><button class="secondary" data-act="refreshLive" ${liveBusy?'disabled':''}>再読み込み</button><button class="secondary" data-act="leaveLive">試作データに戻る</button></div>${rows}<div class="panel"><h2>店舗（読み取り専用）</h2><p class="hint">${stores.length?esc(stores.map(x=>x.canonical_name).join('、')):'登録なし'}</p></div></main>${nav()}`;
 }
 async function refreshLive(){
  if(liveBusy)return;
@@ -193,7 +194,7 @@ async function refreshLive(){
  liveBusy=true;liveStatus='取得中';render();
  try{
   const data=await window.KurashiGasApi.request('bootstrap');
-  if(!data||!Array.isArray(data.categories)||!Array.isArray(data.item_groups)||!Array.isArray(data.products)||!Array.isArray(data.stores)||typeof data.household_id!=='string')throw Error('RESPONSE_SHAPE_INVALID');
+  if(!data||!Array.isArray(data.categories)||!Array.isArray(data.item_groups)||!Array.isArray(data.products)||!Array.isArray(data.stores)||typeof data.household_id!=='string'||data.categories.length!==CATS.length||data.categories.some((c,i)=>String(c.name)!==CATS[i]))throw Error('RESPONSE_SHAPE_INVALID');
   liveSnapshot=data;liveMode=true;liveStatus='取得成功';tab='items';page='list';selected=null;openSwipeId=null;
  }catch(err){liveStatus='取得失敗：'+String(err?.message||'UNKNOWN')}
  finally{liveBusy=false;render()}
