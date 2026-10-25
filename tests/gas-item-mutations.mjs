@@ -22,7 +22,7 @@ books.categories.push(...['飲食','キッチン','洗面・風呂','洗濯・�
 const initial=books.item_groups.map(x=>x.slice());
 let writesEnabled=false,writeCount=0,uuidNum=0,lockHeld=false,failOperationJournal=false;
 const ctx={
- PropertiesService:{getScriptProperties(){return {getProperty(name){return ({SPREADSHEET_ID:'mock',GOOGLE_CLIENT_ID:'test-client',ENABLE_EXPERIMENTAL_WRITES:writesEnabled?'true':'false'})[name]||null}}}},
+ PropertiesService:{getScriptProperties(){return {getProperty(name){return ({SPREADSHEET_ID:'mock',WRITE_TRIAL_SPREADSHEET_ID:'mock',GOOGLE_CLIENT_ID:'test-client',ENABLE_EXPERIMENTAL_WRITES:writesEnabled?'true':'false'})[name]||null}}}},
  SpreadsheetApp:{openById(id){assert.equal(id,'mock');return {getSheetByName(name){
   if(!books[name])return null;
   const cells=books[name];
