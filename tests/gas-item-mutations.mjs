@@ -31,7 +31,7 @@ const ctx={
    getDataRange(){return {getValues(){return cells.map(row=>row.slice())}}},
    getRange(row,col,height,width){assert.equal(col,1);assert.equal(height,1);return {setValues(values){
     assert.equal(values[0].length,width);
-    if(name==='processed_operations'&&failOperationJournal)throw Error('INJECTED_JOURNAL_FAILURE');
+    if(name==='processed_operations'&&failOperationJournal&&row<=cells.length)throw Error('INJECTED_JOURNAL_FAILURE');
     writeCount++;
     while(cells.length<row)cells.push([]);
     cells[row-1]=values[0].slice();
@@ -110,15 +110,30 @@ assert.deepEqual(Array.from(ctx.scoped('change_log','h2'),x=>x.obj.sequence_no),
 assert.equal(ctx.scoped('processed_operations','h1').length,6);
 assert.equal(ctx.scoped('processed_operations','h2').length,1);
 assert.equal(lockHeld,false);
-// Known blocker: Sheets rows are not transactional. Simulated failure after the
-// item and change-log append leaves a committed item without an operation receipt.
-// Document it as an unresolved release blocker; do not treat as safe to enable.
+// Force the FINAL journal update to fail after the entity and change log
+// were committed. A retry with identical operation ID must reconcile safely.
 failOperationJournal=true;
-assert.throws(()=>execute(u1,'item.create',{name:'部分失敗検出',category_id:0},'fault-op-123'),/INJECTED_JOURNAL_FAILURE/);
+const faultPayload={name:'部分失敗検出',category_id:0};
+assert.throws(()=>execute(u1,'item.create',faultPayload,'fault-op-123'),/INJECTED_JOURNAL_FAILURE/);
 failOperationJournal=false;
-assert.ok(rowByName('h1','部分失敗検出'),'Entity was written before journal failure');
-assert.equal(ctx.scoped('processed_operations','h1').some(x=>x.obj.operation_id==='fault-op-123'),false);
-fails(u1,'item.create',{name:'部分失敗検出',category_id:0},'DUPLICATE','fault-op-123');
+assert.ok(rowByName('h1','部分失敗検出'),'Entity written before final journal update');
+assert.equal(ctx.scoped('processed_operations','h1').find(x=>x.obj.operation_id==='fault-op-123').obj.result.includes('"status":"prepared"'),true);
+fails(u1,'item.create',{name:'割り込み',category_id:0},'RECOVERY_REQUIRED','blocked-op-1');
+const beforeResume=byHouse('h1').length;
+const resumed=execute(u1,'item.create',faultPayload,'fault-op-123');
+assert.equal(resumed.entity.name,'部分失敗検出');
+assert.equal(byHouse('h1').length,beforeResume);
+assert.equal(ctx.scoped('processed_operations','h1').find(x=>x.obj.operation_id==='fault-op-123').obj.result.includes('"status":"prepared"'),false);
+assert.deepEqual(JSON.parse(JSON.stringify(execute(u1,'item.create',faultPayload,'fault-op-123'))),JSON.parse(JSON.stringify(resumed)));
+fails(u1,'item.create',{name:'誤送信',category_id:0},'OPERATION_REUSED','fault-op-123');
+// Also test pending update recovery, including version not incrementing twice.
+failOperationJournal=true;
+const faultUpdate={item_group_id:first.entity.item_group_id,version:5,in_stock:false};
+assert.throws(()=>execute(u1,'item.update',faultUpdate,'fault-update-123'),/INJECTED_JOURNAL_FAILURE/);
+failOperationJournal=false;
+const prevVersion=rowByName('h1','ミルク').version;
+const updated=execute(u1,'item.update',faultUpdate,'fault-update-123');
+assert.equal(updated.entity.version,prevVersion);
+assert.equal(updated.entity.in_stock,false);
 assert.equal(lockHeld,false);
-console.log('KNOWN RELEASE BLOCKER: journal append failure leaves partial write; writes must stay disabled');
-console.log('GAS item mutations: disabled gate, create, version conflict, duplicates, hide, replay, households PASS');
+console.log('GAS item mutations: journal-finalization faults recover by identical operation ID, no duplicate writes PASS');
