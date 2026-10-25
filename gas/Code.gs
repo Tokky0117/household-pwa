@@ -118,14 +118,21 @@ function samePlannedItem(actual,planned){
   'in_stock','sort_order','is_hidden','version','created_at','updated_at','deleted_at'];
  return fields.every(key=>String(actual[key]===null?'':actual[key])===String(planned[key]===null?'':planned[key]));
 }
+function requireIsolatedWriteTrial(){
+ const props=PropertiesService.getScriptProperties();
+ const configured=props.getProperty('SPREADSHEET_ID');
+ const isolated=props.getProperty('WRITE_TRIAL_SPREADSHEET_ID');
+ if(!configured||!isolated||configured!==isolated||
+    props.getProperty('ENABLE_EXPERIMENTAL_WRITES')!=='true')
+  fail('WRITES_DISABLED','テスト用の書き込み許可が確認できません');
+}
 function mutateItemSafely(user,action,payload,operationId){
  requiredId(operationId);
  if(!/^[A-Za-z0-9_-]{8,128}$/.test(operationId))fail('BAD_REQUEST','操作IDが不正です');
  const lock=LockService.getScriptLock();
  if(!lock.tryLock(20000))fail('BUSY','しばらくして再試行してください');
  try{
-  if(PropertiesService.getScriptProperties().getProperty('ENABLE_EXPERIMENTAL_WRITES')!=='true')
-   fail('WRITES_DISABLED','書き込みはまだ有効ではありません');
+  requireIsolatedWriteTrial();
   const hid=user.householdId;
   const digest=Utilities.base64EncodeWebSafe(Utilities.computeDigest(
    Utilities.DigestAlgorithm.SHA_256,JSON.stringify({action:action,payload:payload})));
@@ -339,6 +346,27 @@ function testCurrentGoogleSubject(){
  return true;
 }
 
+/**
+ * READ-ONLY preflight for a COPY of the spreadsheet, never for production.
+ * Run manually in a separate Apps Script project before enabling the isolated
+ * trial. Does NOT write to the spreadsheet or change script properties.
+ */
+function testIsolatedWriteTrialPreflightReadOnly(){
+ const props=PropertiesService.getScriptProperties();
+ const active=props.getProperty('SPREADSHEET_ID');
+ const isolated=props.getProperty('WRITE_TRIAL_SPREADSHEET_ID');
+ if(!active||!isolated||active!==isolated)
+  fail('TRIAL_NOT_ISOLATED','独立した試験用スプレッドシートを指定してください');
+ testAllSheetsReadOnly();
+ const expectedEmpty=['item_groups','products','product_aliases','stores',
+  'records','record_items','change_log','processed_operations','receipt_rules'];
+ for(const name of expectedEmpty)if(rows(name).length!==0)
+  fail('TRIAL_NOT_EMPTY',name+' のデータを消去した試験用コピーを使用してください');
+ if(rows('users').length!==1||rows('households').length!==1)
+  fail('TRIAL_MEMBERSHIP','試験用の家庭・ユーザーを各1件だけ登録してください');
+ Logger.log('ISOLATED_WRITE_TRIAL_PREFLIGHT_OK: 12 sheets / 5 categories / 9 empty data sheets');
+ return true;
+}
 /** Call manually on an EMPTY spreadsheet; does not insert households or users. */
 function initializeEmptySchema(){
  const ss=spreadsheet();
