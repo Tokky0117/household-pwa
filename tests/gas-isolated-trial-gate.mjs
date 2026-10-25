@@ -47,6 +47,7 @@ assert.equal(mock.testIsolatedWriteTrialPreflightReadOnly(),true);
 // remains absent, then refuses any further run on non-empty trial sheets.
 const before=writeCount;
 assert.equal(mock.runIsolatedItemWriteTrialOnce(),true);
+assert.equal(mock.testIsolatedTrialResultReadOnly(),true,'Editor-only post-trial verification bypasses browser CORS');
 assert.equal(writeCount,before+8);
 assert.equal(mock.scoped('item_groups','trial-home').length,1);
 assert.equal(mock.scoped('change_log','trial-home').length,2);
