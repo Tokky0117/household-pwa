@@ -26,6 +26,8 @@ jobs:
           node --check app.js
           cp gas/Code.gs /tmp/kurashi-gas-check.js
           node --check /tmp/kurashi-gas-check.js
+      - name: GAS item mutation mock integration tests
+        run: node tests/gas-item-mutations.mjs
       - name: Live item mutation disabled gate
         run: node tests/live-write-gate.mjs
       - name: Live read-only Google Sheets mode regression
