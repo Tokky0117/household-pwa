@@ -128,7 +128,7 @@ function mutate(user,action,payload,operationId){
   if(action==='item.create'){
    const name=String(payload.name||'').trim();validCategory(payload.category_id);
    if(!name||name.length>150||/^[=+@\-]/.test(name))fail('BAD_REQUEST','日用品名を確認してください');
-   if(items.some(x=>x.obj.normalized_name===normalized(name)))fail('DUPLICATE','同じ名前の日用品があります');
+   if(items.some(x=>normalized(x.obj.name)===normalized(name)))fail('DUPLICATE','同名の日用品は非表示データを含めて再利用してください');
    entityId=Utilities.getUuid();entityType='item_groups';
    const sort=Math.max(0,...items.filter(x=>String(x.obj.category_id)===String(payload.category_id)).map(x=>Number(x.obj.sort_order)||0))+1;
    output={item_group_id:entityId,household_id:hid,category_id:payload.category_id,name:name,normalized_name:normalized(name),in_stock:true,sort_order:sort,is_hidden:false,version:1,created_at:now,updated_at:now,deleted_at:null};
@@ -138,11 +138,12 @@ function mutate(user,action,payload,operationId){
    assertVersion(row,payload.version);output=Object.assign({},row.obj);
    if(Object.prototype.hasOwnProperty.call(payload,'name')){
     const name=String(payload.name||'').trim();if(!name||name.length>150||/^[=+@\-]/.test(name))fail('BAD_REQUEST','日用品名を確認してください');
-    if(items.some(x=>x!==row&&x.obj.normalized_name===normalized(name)&&!x.obj.is_hidden))fail('DUPLICATE','同じ名前の日用品があります');
+    if(items.some(x=>x.row!==row.row&&normalized(x.obj.name)===normalized(name)&&!x.obj.is_hidden))fail('DUPLICATE','同じ名前の日用品があります');
     output.name=name;output.normalized_name=normalized(name);
    }
    if(Object.prototype.hasOwnProperty.call(payload,'category_id')){validCategory(payload.category_id);output.category_id=payload.category_id}
    for(const field of ['in_stock','is_hidden'])if(Object.prototype.hasOwnProperty.call(payload,field)){if(typeof payload[field]!=='boolean')fail('BAD_REQUEST',field+'が不正です');output[field]=payload[field]}
+   if(output.is_hidden===false&&items.some(x=>x.row!==row.row&&!x.obj.is_hidden&&normalized(x.obj.name)===normalized(output.name)))fail('DUPLICATE','同じ名前の日用品があります');
    if(Object.prototype.hasOwnProperty.call(payload,'sort_order')){if(!Number.isSafeInteger(payload.sort_order)||payload.sort_order<1)fail('BAD_REQUEST','表示順が不正です');output.sort_order=payload.sort_order}
    output.version=Number(output.version)+1;output.updated_at=now;entityId=output.item_group_id;entityType='item_groups';write('item_groups',row.row,output);
   }else if(action==='product.create'){
