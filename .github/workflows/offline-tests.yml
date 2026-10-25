@@ -38,5 +38,8 @@ jobs:
       - name: Validate iPhone GAS handoff bundle
         run: node tests/gas-handoff.mjs
 
+      - name: Validate GAS browser connection diagnostics
+        run: node tests/gas-connection-page.mjs
+
       - name: GAS read-only transport
         run: node tests/gas-transport.mjs
