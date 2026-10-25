@@ -1,0 +1,40 @@
+# くらしストック：通信アーキテクチャ判断メモ（2026-10-26）
+
+対象は `stage-a-ui-handoff-review`。**このメモは本番移行許可ではない。**
+
+## 確認できた事実
+
+- 新しい試験専用Google Sheetsと専用GASを作成し、GASエディタで `item.create` / `item.update` / 同一操作ID再送 / 古いversion拒否を実データ上で確認した。
+- 同じ試験GASにHTML Serviceでページを配置し、`google.script.run` でカテゴリ5・日用品1・商品0・店舗0を取得するブラウザ試験も成功。
+- GitHub Pagesの静的PWAから、GAS Content Serviceを`fetch`した通信はCORSまたはネットワーク制限エラー。個別のブラウザ通信ログによる原因特定は未実施。
+- 上記成功は**試験GAS内からの通信**を示すだけで、GitHub Pages PWAが現状のGAS APIで読み書きできることを証明しない。
+
+## 実装案の比較
+
+| 方式 | メリット | 重要な制約・未解決事項 | 採否 |
+|---|---|---|---|
+| A: Google Apps Script HTML Service `google.script.run` | 別APIサーバーなし。GAS内画面からの読取実績あり | HTML Serviceはiframeサンドボックス。GitHub Pagesの既存Service Worker/PWAをそのまま移せない。GAS側の公開関数アクセス制御と認証を新設する必要 | **試験・画面設計の検証用として継続** |
+| B: GitHub Pages PWA → 信頼できるHTTPS API (Cloud Run / Functions等) → Sheets/GAS相当の業務ロジック | 既存PWA・オフライン・サービスワーカーの維持、同一オリジン/CORSを設計可能 | サーバー設定・認証検証・権限管理・運用費・移植/共通化の作業が必要 | **本番候補として設計比較を継続** |
+| C: GitHub Pagesから直接GAS `fetch` | 追加ホスト不要 | 現に読取通信失敗。ContentServiceリダイレクトやレスポンス制御の制約が大きい | **現状のままは不採用** |
+| D: JSONP / `no-cors` / URLにIDトークン付与 | 実装が簡単に見える | 応答検証・トークン漏えい・認証の危険がある | **採用しない** |
+
+## 当面の方針
+
+1. **UIを全面移植しない**：今あるiPhone向けPWAの見た目、操作性、Service Worker、未確定操作ジャーナルを温存。
+2. 試験GAS内で読取専用の一覧＋名前検索を作り、`google.script.run` の操作感/画面描画/再取得を検証。テスト専用家庭・試験専用シートのマーカーが一致する場合のみデータを返す。返す値は日用品名・カテゴリ・在庫状態だけ。ユーザーID・家庭ID・トークンは返さない。
+3. **試験用の「自分のみ」アクセス制限は外さない**。GAS Webアプリを「スクリプトの所有者として実行」にすると呼出元利用者の家庭識別を暗黙に証明できるわけではない。`google.script.run`で呼べるすべての公開サーバー関数について、将来の一般公開前に認証・認可・入力検証・内部関数の非公開化を監査する。
+4. 実装方式を決める前に、iPhoneのホーム画面追加、オフライン操作、Google認証、複数家庭/端末、同期・失敗復旧、費用を検証する。機能の一部成功だけで本番移行を決めない。
+5. `LIVE_WRITE_ENABLED=false`、`ENABLE_EXPERIMENTAL_WRITES`未設定/falseを維持。運用中GAS・家庭用Google Sheets・`main`には変更を加えない。
+
+## プロトタイプ試験手順
+
+- 開発ブランチの最新 `gas/Code.gs` を**試験GASだけ**に貼り付けて保存、既存の試験専用Webアプリを新バージョンに更新。
+- 試験用Webアプリの `/exec?trial_read=1` にアクセス。「試験用データを読み取る」でカテゴリ5・日用品1・商品0・店舗0のほか、在庫なしの試験用・牛乳が一覧に表示されることを確認する。
+- 名前検索、再取得を確認。表示専用で、在庫や日用品の行数を変更しない。エラー時は詳細なURLや認証情報を共有せず、エラー名だけ連絡する。
+- **現段階のユーザー操作は強制しない**。この試験は新アーキテクチャの妥当性を確認するもので、普段使いのPWA移行とは別。
+
+参考：
+- https://developers.google.com/apps-script/guides/html/reference/run
+- https://developers.google.com/apps-script/guides/html/restrictions
+- https://developers.google.com/apps-script/guides/web
+- https://developers.google.com/apps-script/guides/content
