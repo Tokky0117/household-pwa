@@ -108,7 +108,120 @@ function productShape(data){
  if(!empty&&(!Number.isFinite(Number(q))||Number(q)<=0||!UNITS.includes(u)))fail('BAD_REQUEST','内容量と単位を確認してください');
  return {name:name,normalized_name:normalized(name),package_quantity:empty?null:Number(q),package_unit:empty?null:u};
 }
+/**
+ * Crash-recoverable item mutation: write intent before touching the entity.
+ * A pending intent blocks other mutations in the same household until resumed.
+ * Client must retry the EXACT original operation_id and payload.
+ */
+function samePlannedItem(actual,planned){
+ const fields=['item_group_id','household_id','category_id','name','normalized_name',
+  'in_stock','sort_order','is_hidden','version','created_at','updated_at','deleted_at'];
+ return fields.every(key=>String(actual[key]===null?'':actual[key])===String(planned[key]===null?'':planned[key]));
+}
+function mutateItemSafely(user,action,payload,operationId){
+ requiredId(operationId);
+ if(!/^[A-Za-z0-9_-]{8,128}$/.test(operationId))fail('BAD_REQUEST','操作IDが不正です');
+ const lock=LockService.getScriptLock();
+ if(!lock.tryLock(20000))fail('BUSY','しばらくして再試行してください');
+ try{
+  if(PropertiesService.getScriptProperties().getProperty('ENABLE_EXPERIMENTAL_WRITES')!=='true')
+   fail('WRITES_DISABLED','書き込みはまだ有効ではありません');
+  const hid=user.householdId;
+  const digest=Utilities.base64EncodeWebSafe(Utilities.computeDigest(
+   Utilities.DigestAlgorithm.SHA_256,JSON.stringify({action:action,payload:payload})));
+  const operations=scoped('processed_operations',hid);
+  const previous=operations.find(x=>String(x.obj.operation_id)===operationId);
+  if(previous&&String(previous.obj.request_hash)!==digest)fail('OPERATION_REUSED','操作IDが再利用されています');
+  const pending=operations.find(x=>{
+   try{return JSON.parse(String(x.obj.result)).status==='prepared'}catch(_){return true}
+  });
+  if(pending&&String(pending.obj.operation_id)!==operationId)
+   fail('RECOVERY_REQUIRED','未完了の操作があります。元の操作を再送してください');
+  let plan,operationRow=previous?.row;
+  if(previous){
+   const stored=JSON.parse(String(previous.obj.result));
+   if(stored.status!=='prepared')return stored;
+   plan=stored;
+  }else{
+   const now=new Date().toISOString();
+   const items=scoped('item_groups',hid);
+   let output,baseVersion=null;
+   if(action==='item.create'){
+    const name=String(payload.name||'').trim();validCategory(payload.category_id);
+    if(!name||name.length>150||/^[=+@\\-]/.test(name))fail('BAD_REQUEST','日用品名を確認してください');
+    if(items.some(x=>normalized(x.obj.name)===normalized(name)))
+     fail('DUPLICATE','同名の日用品は非表示データを含めて再利用してください');
+    const sort=Math.max(0,...items.filter(x=>String(x.obj.category_id)===String(payload.category_id)).map(x=>Number(x.obj.sort_order)||0))+1;
+    output={item_group_id:Utilities.getUuid(),household_id:hid,category_id:payload.category_id,
+     name:name,normalized_name:normalized(name),in_stock:true,sort_order:sort,is_hidden:false,
+     version:1,created_at:now,updated_at:now,deleted_at:null};
+   }else{
+    const itemId=requiredId(payload.item_group_id);
+    const row=items.find(x=>String(x.obj.item_group_id)===itemId);
+    if(!row)fail('NOT_FOUND','日用品が見つかりません');
+    assertVersion(row,payload.version);baseVersion=Number(row.obj.version);
+    output=Object.assign({},row.obj);
+    if(Object.prototype.hasOwnProperty.call(payload,'name')){
+     const name=String(payload.name||'').trim();
+     if(!name||name.length>150||/^[=+@\\-]/.test(name))fail('BAD_REQUEST','日用品名を確認してください');
+     if(items.some(x=>x.row!==row.row&&!x.obj.is_hidden&&normalized(x.obj.name)===normalized(name)))
+      fail('DUPLICATE','同じ名前の日用品があります');
+     output.name=name;output.normalized_name=normalized(name);
+    }
+    if(Object.prototype.hasOwnProperty.call(payload,'category_id')){
+     validCategory(payload.category_id);output.category_id=payload.category_id;
+    }
+    for(const key of ['in_stock','is_hidden'])if(Object.prototype.hasOwnProperty.call(payload,key)){
+     if(typeof payload[key]!=='boolean')fail('BAD_REQUEST',key+'が不正です');
+     output[key]=payload[key];
+    }
+    if(output.is_hidden===false&&items.some(x=>x.row!==row.row&&!x.obj.is_hidden&&normalized(x.obj.name)===normalized(output.name)))
+     fail('DUPLICATE','同じ名前の日用品があります');
+    if(Object.prototype.hasOwnProperty.call(payload,'sort_order')){
+     if(!Number.isSafeInteger(payload.sort_order)||payload.sort_order<1)fail('BAD_REQUEST','表示順が不正です');
+     output.sort_order=payload.sort_order;
+    }
+    output.version=baseVersion+1;output.updated_at=now;
+   }
+   const sequence=currentSequence(hid)+1;
+   plan={status:'prepared',action:action,entity:output,sequence_no:sequence,base_version:baseVersion};
+   // Crucial: prepare durable replay data FIRST.
+   append('processed_operations',{household_id:hid,operation_id:operationId,
+    request_hash:digest,result:JSON.stringify(plan),processed_at:now});
+   operationRow=scoped('processed_operations',hid).find(x=>String(x.obj.operation_id)===operationId)?.row;
+   if(!operationRow)fail('RECOVERY_REQUIRED','操作の事前記録を確認できません');
+  }
+  const entity=plan.entity;
+  const itemId=String(entity.item_group_id);
+  const row=scoped('item_groups',hid).find(x=>String(x.obj.item_group_id)===itemId);
+  if(row){
+   if(!samePlannedItem(row.obj,entity)){
+    if(action!=='item.update'||Number(row.obj.version)!==plan.base_version)
+     fail('RECOVERY_CONFLICT','更新済みデータと再送内容が一致しません');
+    write('item_groups',row.row,entity);
+   }
+  }else{
+   if(action!=='item.create')fail('RECOVERY_CONFLICT','更新対象が消えています');
+   append('item_groups',entity);
+  }
+  const existingLog=scoped('change_log',hid).find(x=>String(x.obj.change_id)===operationId);
+  if(existingLog){
+   if(Number(existingLog.obj.sequence_no)!==plan.sequence_no||
+      String(existingLog.obj.entity_id)!==itemId||
+      String(existingLog.obj.action)!==action)fail('RECOVERY_CONFLICT','操作履歴が一致しません');
+  }else{
+   if(currentSequence(hid)>=plan.sequence_no)fail('RECOVERY_CONFLICT','同期番号が競合しています');
+   append('change_log',{change_id:operationId,sequence_no:plan.sequence_no,household_id:hid,
+    entity_type:'item_groups',entity_id:itemId,action:action,occurred_at:entity.updated_at});
+  }
+  const result={entity:publicRow(entity),sequence_no:plan.sequence_no};
+  write('processed_operations',operationRow,{household_id:hid,operation_id:operationId,
+   request_hash:digest,result:JSON.stringify(result),processed_at:entity.updated_at});
+  return result;
+ }finally{lock.releaseLock()}
+}
 function mutate(user,action,payload,operationId){
+ if(action==='item.create'||action==='item.update')return mutateItemSafely(user,action,payload,operationId);
  requiredId(operationId);
  const lock=LockService.getScriptLock();
  if(!lock.tryLock(20000))fail('BUSY','しばらくして再試行してください');
