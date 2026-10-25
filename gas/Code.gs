@@ -26,7 +26,60 @@ const CATEGORIES=['飲食','キッチン','洗面・風呂','洗濯・掃除','�
 const UNITS=['個','本','枚','g','kg','mL','L'];
 function fail(code,message){throw {code:code,message:message}}
 function jsonReply(obj){return ContentService.createTextOutput(JSON.stringify(obj)).setMimeType(ContentService.MimeType.JSON)}
-function doGet(){return jsonReply({ok:false,error:{code:'POST_REQUIRED',message:'POSTのみ利用できます'}})}
+function doGet(e){
+ // Diagnostic is available only from the dedicated, isolated trial GAS.
+ // Serve HTML on the GAS origin, never return authentication data to a URL.
+ if(e&&e.parameter&&e.parameter.trial_read==='1'){
+  assertIsolatedTrialConfigReadOnly();
+  return HtmlService.createHtmlOutput(isolatedTrialReadPage_()).setTitle('くらしストック・試験読取');
+ }
+ return jsonReply({ok:false,error:{code:'POST_REQUIRED',message:'POSTのみ利用できます'}});
+}
+/**
+ * The trial-only HTML page calls the GAS server using google.script.run.
+ * No cross-origin fetch, no tokens in URLs, and no mutation functions.
+ */
+function isolatedTrialReadPage_(){
+ return `<!doctype html><html lang="ja"><head><base target="_top">
+ <meta name="viewport" content="width=device-width,initial-scale=1">
+ <style>body{font-family:system-ui,-apple-system,sans-serif;max-width:540px;margin:24px auto;padding:0 16px;line-height:1.7;color:#29374a}button{font:inherit;background:#214d8f;color:white;border:0;border-radius:9px;padding:14px 18px;width:100%;min-height:48px}button:disabled{opacity:.6}section{border:1px solid #d9e0ec;border-radius:12px;padding:16px;margin:14px 0}.muted{color:#5c6d80;font-size:14px}</style></head>
+ <body><h2>試験用Google Sheets・読み取り確認</h2>
+ <p>この画面はGASから提供されます。読み取り専用で、日用品を変更しません。</p>
+ <section><button id="check" type="button">試験用データを読み取る</button>
+ <p id="status" role="status">ボタンを押してください。</p>
+ <p id="details" class="muted"></p></section>
+ <p class="muted">終了後、読み取り成功またはエラー名だけを伝えてください。試験用シートURLは共有不要です。</p>
+ <script>
+ document.getElementById('check').addEventListener('click',function(){
+  var button=this,status=document.getElementById('status'),details=document.getElementById('details');
+  button.disabled=true;status.textContent='取得中です…';details.textContent='';
+  google.script.run.withSuccessHandler(function(result){
+   button.disabled=false;status.textContent='読み取り成功';
+   details.textContent='カテゴリ '+result.categories+' 件／日用品 '+result.items+' 件／商品 '+result.products+' 件／店舗 '+result.stores+' 件';
+  }).withFailureHandler(function(error){
+   button.disabled=false;status.textContent='読み取りエラー: '+(error&&error.message?error.message:'UNKNOWN');
+  }).trialReadOnlyCounts();
+ });
+ </scr`+`ipt></body></html>`;
+}
+function assertIsolatedTrialConfigReadOnly(){
+ const props=PropertiesService.getScriptProperties();
+ const active=props.getProperty('SPREADSHEET_ID');
+ const expected=props.getProperty('WRITE_TRIAL_SPREADSHEET_ID');
+ if(!active||!expected||active!==expected||
+    props.getProperty('ENABLE_EXPERIMENTAL_WRITES')==='true')
+  fail('TRIAL_NOT_ISOLATED','試験用の読み取り設定を確認してください');
+ assertIsolatedTrialIdentity();
+}
+function trialReadOnlyCounts(){
+ assertIsolatedTrialConfigReadOnly();
+ const hid=String(rows('households')[0].obj.household_id);
+ const categories=rows('categories');
+ if(categories.length!==5||categories.some((r,i)=>String(r.obj.name)!==CATEGORIES[i]))
+  fail('CATEGORIES_MISMATCH','カテゴリを確認してください');
+ return {categories:categories.length,items:scoped('item_groups',hid).length,
+  products:scoped('products',hid).length,stores:rows('stores').length};
+}
 function doPost(e){
  try{
   let input;
