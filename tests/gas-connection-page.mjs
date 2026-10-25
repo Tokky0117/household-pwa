@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 const page=readFileSync(new URL('../gas-connection-test.html',import.meta.url),'utf8');
+const auth=readFileSync(new URL('../auth.js',import.meta.url),'utf8');
 const workflow=readFileSync(new URL('../.github/workflows/pages-previews.yml',import.meta.url),'utf8');
 assert.match(page,/KurashiGasApi\.request\('bootstrap'\)/);
 assert.doesNotMatch(page,/KurashiGasApi\.request\('(item\.|product\.)/);
@@ -8,6 +9,10 @@ assert.match(page,/290567395833-cdemend3itmapsgsounu8pf72hgvm315\.apps\.googleus
 assert.match(page,/https:\/\/script\.google\.com\/macros\/s\/AKfycbx8el-F0XgEP2-1U6XKdduXF0nOuH1BrwmnWZUIkMVCKku1lqeBA8acBrPgbYDtIqokIw\/exec/);
 assert.match(page,/id="check" type="button" disabled/);
 assert.match(page,/id="google-login-button"/);
+assert.match(page,/KurashiAuth\.configure\(CLIENT_ID,\{manualOnly:true\}\)/);
+assert.doesNotMatch(page,/KurashiAuth\.restore\(\)/);
+assert.match(auth,/auto_select:!manualOnly/);
+assert.match(auth,/if\(clientId&&!manualOnly\)restore\(\)/);
 assert.match(page,/addEventListener\('load',update\)/);
 assert.doesNotMatch(page,/localStorage|sessionStorage|document\.cookie/);
 assert.match(workflow,/gas-connection-test\.html/);
