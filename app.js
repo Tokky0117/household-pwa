@@ -717,6 +717,9 @@ function dismissMenusOutside(target){
 
 }
 app.addEventListener('click',e=>dismissMenusOutside(e.target));
+// Refresh settings when GIS finishes loading or Google login state changes.
+window.addEventListener('kurashi-gis-ready',()=>{if(tab==='settings'&&page==='list')render()});
+window.KurashiAuth?.subscribe?.(()=>{if(tab==='settings'&&page==='list')render()});
 render();
 if('serviceWorker'in navigator&&location.protocol.startsWith('http'))navigator.serviceWorker.register('./sw.js').catch(()=>{});
 
