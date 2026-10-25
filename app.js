@@ -177,6 +177,21 @@ function load(){try{const d=JSON.parse(localStorage.getItem(key));return Array.i
 let liveSnapshot=null,liveStatus='未取得',liveBusy=false,liveMode=false;
 let liveEditor=null,liveWriteBusy=false,liveWriteStatus='';
 const liveWritable=()=>window.KurashiGasApi?.writeEnabled?.()===true;
+function livePending(){
+ const subject=window.KurashiAuth?.status?.()?.subject;
+ const householdId=liveSnapshot?.household_id;
+ try{return window.KurashiLiveJournal?.forAccount(subject,householdId)||{status:'none',entry:null}}
+ catch(_){return {status:'invalid',entry:null}}
+}
+function liveRecoveryView(){
+ const pending=livePending();
+ if(pending.status==='none')return '';
+ if(pending.status==='different-account')return '<div class="panel"><h2>未完了の保存操作</h2><p class="hint">この端末には別のアカウントまたは家庭の未完了操作があります。現在のアカウントから送信できません。</p></div>';
+ if(pending.status==='invalid')return '<div class="panel"><h2>保存操作の記録エラー</h2><p class="hint">端末の操作記録を確認できません。新しい保存を停止しています。</p></div>';
+ const entry=pending.entry;
+ return '<section class="panel"><h2>未完了の保存操作</h2><p class="hint">処理結果が未確定です。自動送信はしません。</p><p class="hint">対象：'+esc(entry.payload.name||entry.payload.item_group_id||'日用品')+'</p><button type="button" class="secondary" data-act="retryLive" '+(liveWritable()&&!liveWriteBusy?'':'disabled')+'>同じ操作を確認・再送</button><p class="hint">同じ操作IDと内容でのみ再送します。</p></section>';
+}
+
 const liveCategories=()=>CATS.map((name,i)=>`<option value="${i}" ${Number(liveEditor?.category_id)===i?'selected':''}>${esc(name)}</option>`).join('');
 function liveEditForm(){
  if(!liveEditor)return '';
@@ -188,29 +203,50 @@ function liveEditForm(){
  <button type="button" class="secondary" data-act="cancelLive">キャンセル</button></section>`;
 }
 function openLiveEditor(item){
- if(!liveSnapshot||liveWriteBusy)return;
+ if(!liveSnapshot||liveWriteBusy||livePending().status!=='none')return;
  liveEditor={item_group_id:item?.item_group_id||null,name:String(item?.name||''),category_id:Number(item?.category_id??0),version:item?.version??null};
  liveWriteStatus='';render();
 }
+async function sendPendingLive(entry){
+ if(!liveWritable()||liveWriteBusy){liveWriteStatus='書き込みは無効です';render();return}
+ const pending=livePending();
+ if(pending.status!=='pending'||pending.entry.operationId!==entry.operationId){
+  liveWriteStatus='操作記録とログイン中の家庭が一致しません';render();return
+ }
+ liveWriteBusy=true;liveWriteStatus='保存操作を確認中';render();
+ try{
+  await window.KurashiGasApi.request(entry.action,entry.payload,{operationId:entry.operationId});
+  window.KurashiLiveJournal.complete(entry.operationId);
+  liveEditor=null;
+  liveWriteStatus='保存が確定しました。データを更新しています。';
+  try{
+   const data=await window.KurashiGasApi.request('bootstrap');
+   if(!validateLiveSnapshot(data)||data.household_id!==entry.householdId)throw Error('RESPONSE_SHAPE_INVALID');
+   liveSnapshot=data;liveWriteStatus='保存しました';liveStatus='取得成功';
+  }catch(_){liveWriteStatus='保存は確定しましたが、一覧の再取得に失敗しました。再読み込みしてください。';}
+ }catch(err){
+  try{window.KurashiLiveJournal.markUncertain(entry.operationId)}
+  catch(_){liveWriteStatus='操作記録を更新できません。新しい保存を行わず、端末の設定を確認してください。';return}
+  liveWriteStatus='保存結果が未確定です（'+String(err?.message||'UNKNOWN')+'）。同じ操作を確認・再送してください。新しい操作は開始できません。';
+ }finally{liveWriteBusy=false;render()}
+}
 async function liveMutate(action,payload){
  if(!liveWritable()||liveWriteBusy){liveWriteStatus='保存機能はまだ無効です';render();return}
- if(!window.KurashiAuth?.status?.().signedIn){liveWriteStatus='Googleログインが必要です';render();return}
- liveWriteBusy=true;liveWriteStatus='保存処理中';render();
- // A fresh operation ID is created for each intended mutation; never log ID tokens.
- const operationId=crypto.randomUUID();
+ if(!window.KurashiAuth?.status?.().signedIn||!liveSnapshot){liveWriteStatus='Googleログインとデータ取得が必要です';render();return}
+ if(livePending().status!=='none'){liveWriteStatus='未完了の操作があります。先に結果を確認してください。';render();return}
+ let entry;
  try{
-  await window.KurashiGasApi.request(action,payload,{operationId});
-  liveEditor=null;
-  const data=await window.KurashiGasApi.request('bootstrap');
-  if(!validateLiveSnapshot(data))throw Error('RESPONSE_SHAPE_INVALID');
-  liveSnapshot=data;liveWriteStatus='保存しました';liveStatus='取得成功';
- }catch(err){
-  if(['VERSION_CONFLICT','DUPLICATE','NOT_FOUND'].includes(err?.message)){
-   liveWriteStatus='保存できませんでした：'+err.message+'。再読み込みして確認してください。';
-  }else{
-   liveWriteStatus='保存結果を確認できません：'+String(err?.message||'UNKNOWN')+'。重複登録を防ぐため、再読み込みして状態を確認してください。';
-  }
- }finally{liveWriteBusy=false;render()}
+  entry=window.KurashiLiveJournal.prepare({
+   subject:window.KurashiAuth.status().subject,
+   householdId:liveSnapshot.household_id,action,payload,operationId:crypto.randomUUID()
+  });
+ }catch(err){liveWriteStatus='送信前の安全記録に失敗しました：'+String(err?.message||'UNKNOWN');render();return}
+ await sendPendingLive(entry);
+}
+async function retryLive(){
+ const pending=livePending();
+ if(pending.status!=='pending'){liveWriteStatus='再送できる操作がありません';render();return}
+ await sendPendingLive(pending.entry);
 }
 function validateLiveSnapshot(data){
  return !!data&&Array.isArray(data.categories)&&Array.isArray(data.item_groups)&&
@@ -233,7 +269,7 @@ function liveListView(){
  <button type="button" class="secondary" data-act="hideLive" data-live-id="${esc(i.item_group_id)}" ${liveWritable()?'':'disabled'}>非表示</button></div></div>`;
   }).join('')||'<p class="hint">登録なし</p>'}</section>`;
  }).join('');
- return `${head('日用品','Google Sheets・読み取り専用')}<main><div class="panel"><strong>${label}</strong><p class="hint">カテゴリ ${liveSnapshot?.categories?.length||0} 件の読み取りを確認しました。日用品・商品・店舗はシートの登録件数を表示しています。</p>${allEmpty?'<p class="hint">この家庭のデータは空です。試作データを確認する場合は「試作データに戻る」を押してください。</p>':''}<p class="hint">この画面では追加・編集・在庫変更はできません。端末内の試作データは変更されません。</p><p class="hint">日用品 ${groups.length} 件 ／ 商品 ${products.length} 件 ／ 店舗 ${stores.length} 件</p><button class="secondary" data-act="refreshLive" ${liveBusy?'disabled':''}>再読み込み</button><button class="secondary" data-act="leaveLive">試作データに戻る</button><p class="hint" role="status">${esc(liveWriteStatus)}</p><button type="button" class="secondary" data-act="addLive" ${liveWritable()?'':'disabled'}>日用品を登録</button><p class="hint">${liveWritable()?'登録・編集・在庫変更が利用できます。':'登録・編集・在庫変更・削除は実装準備中です。安全確認が終わるまで無効です。'}</p></div>${liveEditForm()}${rows}<div class="panel"><h2>店舗（読み取り専用）</h2><p class="hint">${stores.length?esc(stores.map(x=>x.canonical_name).join('、')):'登録なし'}</p></div></main>${nav()}`;
+ return `${head('日用品','Google Sheets・読み取り専用')}<main><div class="panel"><strong>${label}</strong><p class="hint">カテゴリ ${liveSnapshot?.categories?.length||0} 件の読み取りを確認しました。日用品・商品・店舗はシートの登録件数を表示しています。</p>${allEmpty?'<p class="hint">この家庭のデータは空です。試作データを確認する場合は「試作データに戻る」を押してください。</p>':''}<p class="hint">この画面では追加・編集・在庫変更はできません。端末内の試作データは変更されません。</p><p class="hint">日用品 ${groups.length} 件 ／ 商品 ${products.length} 件 ／ 店舗 ${stores.length} 件</p><button class="secondary" data-act="refreshLive" ${liveBusy?'disabled':''}>再読み込み</button><button class="secondary" data-act="leaveLive">試作データに戻る</button><p class="hint" role="status">${esc(liveWriteStatus)}</p><button type="button" class="secondary" data-act="addLive" ${liveWritable()&&livePending().status==='none'?'':'disabled'}>日用品を登録</button><p class="hint">${liveWritable()?'登録・編集・在庫変更が利用できます。':'登録・編集・在庫変更・削除は実装準備中です。安全確認が終わるまで無効です。'}</p></div>${liveRecoveryView()}${liveEditForm()}${rows}<div class="panel"><h2>店舗（読み取り専用）</h2><p class="hint">${stores.length?esc(stores.map(x=>x.canonical_name).join('、')):'登録なし'}</p></div></main>${nav()}`;
 }
 async function refreshLive(){
  if(liveBusy)return;
@@ -682,6 +718,7 @@ if(el.dataset.uiChoice!==undefined){
  closeAllDropdowns();wrapper.querySelector('.ui-select-trigger')?.focus();return;
 }
 if(el.dataset.listEdit){duplicateItemId=null;selected=el.dataset.listEdit;editReturnPage='list';openSwipeId=null;page='edit';render();return}if(el.dataset.listHide){selected=el.dataset.listHide;setOpenSwipe(null);dialog={title:'日用品を削除',message:'日用品リストから削除します。',buttons:[{id:'cancel',label:'キャンセル'},{id:'confirmHide',label:'削除',critical:true}]};render();return}
+if(el.dataset.act==='retryLive'){retryLive();return}
 if(el.dataset.act==='addLive'){openLiveEditor(null);return}
 if(el.dataset.act==='editLive'){const item=liveSnapshot?.item_groups?.find(x=>String(x.item_group_id)===el.dataset.liveId);if(item)openLiveEditor(item);return}
 if(el.dataset.act==='cancelLive'){liveEditor=null;render();return}
