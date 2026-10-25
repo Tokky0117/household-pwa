@@ -43,7 +43,20 @@ const user={userId:'test-user',householdId:'trial-home'};
 const create=(name,opid)=>mock.mutate(user,'item.create',{name,category_id:0},opid);
 const errorCode=(fn,code)=>assert.throws(fn,e=>e?.code===code,'expected '+code);
 assert.equal(mock.testIsolatedWriteTrialPreflightReadOnly(),true);
+// Editor-only helper tests actual item writes while ENABLE_EXPERIMENTAL_WRITES
+// remains absent, then refuses any further run on non-empty trial sheets.
 const before=writeCount;
+assert.equal(mock.runIsolatedItemWriteTrialOnce(),true);
+assert.equal(writeCount,before+8);
+assert.equal(mock.scoped('item_groups','trial-home').length,1);
+assert.equal(mock.scoped('change_log','trial-home').length,2);
+assert.equal(mock.scoped('processed_operations','trial-home').length,2);
+assert.equal(enabled,false);
+errorCode(()=>mock.runIsolatedItemWriteTrialOnce(),'TRIAL_NOT_EMPTY');
+// Reset only mock rows; all following gate tests still start with an empty trial.
+for(const name of ['item_groups','change_log','processed_operations'])allSheets[name].splice(1);
+writeCount=before;
+
 errorCode(()=>create('牛乳','attempt-0001'),'WRITES_DISABLED');
 assert.equal(writeCount,before);
 enabled=true;
