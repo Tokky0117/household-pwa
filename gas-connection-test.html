@@ -13,7 +13,7 @@ a{color:#20528d}
 <p>くらしストックのテスト用GASから、カテゴリを<strong>読み取るだけ</strong>の検証画面です。アプリの保存内容やGoogle Sheetsは変更しません。</p>
 <section><h2>① Googleログイン</h2>
 <div id="google-login-button"></div><p id="auth-status" role="status">ログイン状態を確認中です。</p>
-<button id="signout" type="button" hidden>この画面のログインを解除</button></section>
+<div id="identity" hidden><p class="info">家庭への登録に使うGoogleアカウント識別ID（sub）。メールアドレスや認証トークンとは別の値です。</p><pre id="subject" aria-label="Googleアカウント識別ID"></pre><button id="copy-subject" type="button">識別IDをコピー</button><p id="copy-message" role="status"></p><p class="info">このIDはGoogle Sheetsのusersシートにだけ貼り付け、チャットには送らないでください。</p></div><button id="signout" type="button" hidden>この画面のログインを解除</button></section>
 <section><h2>② 読み取りテスト</h2>
 <button id="check" type="button" disabled>カテゴリを読み取りテスト</button>
 <p id="result" role="status" aria-live="polite">Googleログイン後に実行できます。</p>
@@ -30,16 +30,22 @@ a{color:#20528d}
 'use strict';
 const CLIENT_ID='290567395833-cdemend3itmapsgsounu8pf72hgvm315.apps.googleusercontent.com';
 const ENDPOINT='https://script.google.com/macros/s/AKfycbx8el-F0XgEP2-1U6XKdduXF0nOuH1BrwmnWZUIkMVCKku1lqeBA8acBrPgbYDtIqokIw/exec';
-const authStatus=document.getElementById('auth-status'),button=document.getElementById('check'),result=document.getElementById('result'),details=document.getElementById('details'),signout=document.getElementById('signout');
+const authStatus=document.getElementById('auth-status'),button=document.getElementById('check'),result=document.getElementById('result'),details=document.getElementById('details'),signout=document.getElementById('signout'),identity=document.getElementById('identity'),subject=document.getElementById('subject'),copyMessage=document.getElementById('copy-message');
 window.KurashiAuth.configure(CLIENT_ID);
 window.KurashiGasApi.configure(ENDPOINT);
 function update(){
  const signedIn=window.KurashiAuth.status().signedIn;
  authStatus.textContent=signedIn?'Googleログイン済み。下のテストを実行できます。':'未ログインです。上のボタンからGoogleでログインしてください。';
- button.disabled=!signedIn;signout.hidden=!signedIn;
+ button.disabled=!signedIn;signout.hidden=!signedIn;identity.hidden=!signedIn;subject.textContent=signedIn?String(window.KurashiAuth.status().subject||''):'';
  if(!signedIn)window.KurashiAuth.signIn();
 }
 window.KurashiAuth.subscribe(update);
+document.getElementById('copy-subject').addEventListener('click',async()=>{
+ const value=window.KurashiAuth.status().signedIn?window.KurashiAuth.status().subject:null;
+ if(!value)return;
+ try{await navigator.clipboard.writeText(value);copyMessage.textContent='識別IDをコピーしました。usersシートのauth_subject列に貼り付けてください。';}
+ catch{copyMessage.textContent='コピーできませんでした。表示されたIDを手動でコピーしてください。'}
+});
 document.querySelector('script[src^="https://accounts.google.com/gsi/client"]')?.addEventListener('load',update);
 window.addEventListener('load',()=>{update();if(!window.KurashiAuth.status().signedIn)window.KurashiAuth.restore()});
 signout.addEventListener('click',()=>{window.KurashiAuth.signOut();result.textContent='ログアウトしました。';details.hidden=true});
