@@ -42,6 +42,9 @@ jobs:
       - name: Validate all 12 GAS sheet headers without writes
         run: node tests/gas-schema-preflight.mjs
 
+      - name: Validate iPhone GAS handoff bundle
+        run: node tests/gas-handoff.mjs
+
       - name: Build isolated static previews
         shell: bash
         run: |
