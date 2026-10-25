@@ -19,7 +19,7 @@ function harness(){
  }};
  const context={
   PropertiesService:{getScriptProperties(){return {getProperty(k){
-   return k==='SPREADSHEET_ID'?'mock':k==='ENABLE_EXPERIMENTAL_WRITES'?'true':null
+   return (k==='SPREADSHEET_ID'||k==='WRITE_TRIAL_SPREADSHEET_ID')?'mock':k==='ENABLE_EXPERIMENTAL_WRITES'?'true':null
   }}}},
   SpreadsheetApp:{openById(){return {getSheetByName(name){
    const cells=tables[name];
