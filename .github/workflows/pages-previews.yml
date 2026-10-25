@@ -36,7 +36,7 @@ jobs:
           set -euo pipefail
           git fetch --prune origin '+refs/heads/*:refs/remotes/origin/*'
           mkdir -p _site/previews
-          files=(index.html app.js auth.js gas-api.js styles.css manifest.webmanifest icon.svg sw.js gas-setup.html gas-connection-test.html gas/Code.gs)
+          files=(index.html app.js auth.js gas-api.js live-operation-journal.js styles.css manifest.webmanifest icon.svg sw.js gas-setup.html gas-trial-setup.html gas-connection-test.html gas/Code.gs)
 
           copy_site() {
             local ref="$1"
@@ -64,7 +64,7 @@ jobs:
             if copy_site "refs/remotes/$remote_ref" "$dest"; then
               # Scope the Service Worker cache per preview to avoid cross-branch conflicts.
               if [[ -f "$dest/sw.js" ]]; then
-                sed -i "s/const CACHE=\x27[^\x27]*\x27/const CACHE=\x27household-preview-$slug-v55\x27/" "$dest/sw.js"
+                sed -i "s/const CACHE=\x27[^\x27]*\x27/const CACHE=\x27household-preview-$slug-v56\x27/" "$dest/sw.js"
               fi
               echo "Preview: /previews/$slug/"
             else
