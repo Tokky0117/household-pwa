@@ -127,24 +127,24 @@ function assertIsolatedTrialIdentity(){
     !String(members[0].obj.auth_subject||'').match(/^[0-9]+$/))
   fail('TRIAL_NOT_ISOLATED','試験専用の家庭とユーザーが確認できません');
 }
-function requireIsolatedWriteTrial(){
+function requireIsolatedWriteTrial(localEditorTrial){
  const props=PropertiesService.getScriptProperties();
  const configured=props.getProperty('SPREADSHEET_ID');
  const isolated=props.getProperty('WRITE_TRIAL_SPREADSHEET_ID');
  if(!configured||!isolated||configured!==isolated||
-    props.getProperty('ENABLE_EXPERIMENTAL_WRITES')!=='true')
+    (!localEditorTrial&&props.getProperty('ENABLE_EXPERIMENTAL_WRITES')!=='true'))
   fail('WRITES_DISABLED','テスト用の書き込み許可が確認できません');
- // A matching property alone could accidentally point at the real family sheet.
- // The sheet must also carry a deliberate, visible trial-only household marker.
+ // Even editor-only trials must pass both independently configured IDs and
+ // the deliberate, single-household trial marker.
  assertIsolatedTrialIdentity();
 }
-function mutateItemSafely(user,action,payload,operationId){
+function mutateItemSafely(user,action,payload,operationId,localEditorTrial){
  requiredId(operationId);
  if(!/^[A-Za-z0-9_-]{8,128}$/.test(operationId))fail('BAD_REQUEST','操作IDが不正です');
  const lock=LockService.getScriptLock();
  if(!lock.tryLock(20000))fail('BUSY','しばらくして再試行してください');
  try{
-  requireIsolatedWriteTrial();
+  requireIsolatedWriteTrial(localEditorTrial);
   const hid=user.householdId;
   const digest=Utilities.base64EncodeWebSafe(Utilities.computeDigest(
    Utilities.DigestAlgorithm.SHA_256,JSON.stringify({action:action,payload:payload})));
@@ -376,6 +376,47 @@ function testIsolatedWriteTrialPreflightReadOnly(){
   fail('TRIAL_NOT_EMPTY',name+' のデータを消去した試験用コピーを使用してください');
  assertIsolatedTrialIdentity();
  Logger.log('ISOLATED_WRITE_TRIAL_PREFLIGHT_OK: 12 sheets / 5 categories / 9 empty data sheets');
+ return true;
+}
+/**
+ * Editor-only, ONE-TIME real write rehearsal for the isolated test sheet.
+ * Deliberately does NOT change ENABLE_EXPERIMENTAL_WRITES or deploy a Web App.
+ * It DOES create/update test-only rows. Run only after the READ-ONLY preflight.
+ * Endpoint doPost cannot call this helper; it only dispatches allowlisted actions.
+ */
+function runIsolatedItemWriteTrialOnce(){
+ if(PropertiesService.getScriptProperties().getProperty('ENABLE_EXPERIMENTAL_WRITES')==='true')
+  fail('TRIAL_GATE_OPEN','公開用の書き込み許可を先に無効にしてください');
+ testIsolatedWriteTrialPreflightReadOnly();
+ // Source of identity is the sole trial household/user, not a caller payload.
+ const household=rows('households')[0].obj,member=rows('users')[0].obj;
+ const user={householdId:String(household.household_id),userId:String(member.user_id)};
+ const prefix='localtrial-'+Utilities.getUuid().replace(/-/g,'').slice(0,24);
+ const createPayload={name:'試験用・牛乳',category_id:0};
+ const first=mutateItemSafely(user,'item.create',createPayload,prefix+'-create',true);
+ const duplicate=mutateItemSafely(user,'item.create',createPayload,prefix+'-create',true);
+ if(first.entity.item_group_id!==duplicate.entity.item_group_id||
+    Number(first.entity.version)!==1||Number(first.sequence_no)!==1)
+  fail('TRIAL_ASSERT_FAILED','初回登録・再送の検証に失敗しました');
+ const updatePayload={item_group_id:first.entity.item_group_id,version:1,in_stock:false};
+ const second=mutateItemSafely(user,'item.update',updatePayload,prefix+'-update',true);
+ const repeated=mutateItemSafely(user,'item.update',updatePayload,prefix+'-update',true);
+ if(Number(second.entity.version)!==2||second.entity.in_stock!==false||
+    Number(repeated.entity.version)!==2||Number(second.sequence_no)!==2)
+  fail('TRIAL_ASSERT_FAILED','在庫更新・再送の検証に失敗しました');
+ let staleRejected=false;
+ try{
+  mutateItemSafely(user,'item.update',
+   {item_group_id:first.entity.item_group_id,version:1,in_stock:true},prefix+'-stale',true);
+ }catch(err){if(err.code==='VERSION_CONFLICT')staleRejected=true;else throw err}
+ if(!staleRejected)fail('TRIAL_ASSERT_FAILED','古いバージョンの更新が拒否されません');
+ const items=scoped('item_groups',user.householdId);
+ const changes=scoped('change_log',user.householdId);
+ const operations=scoped('processed_operations',user.householdId);
+ if(items.length!==1||changes.length!==2||operations.length!==2||
+    items[0].obj.in_stock!==false||Number(items[0].obj.version)!==2)
+  fail('TRIAL_ASSERT_FAILED','試験後の行数またはバージョンが一致しません');
+ Logger.log('ISOLATED_ITEM_WRITE_TRIAL_OK: item_groups=1, change_log=2, processed_operations=2, version=2, replay=OK, stale=REJECTED');
  return true;
 }
 /**
