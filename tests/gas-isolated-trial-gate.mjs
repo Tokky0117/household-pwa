@@ -30,6 +30,7 @@ const mock={
   computeDigest(_algorithm,value){return Array.from(createHash('sha256').update(value).digest())},
   base64EncodeWebSafe(bytes){return Buffer.from(bytes).toString('base64url')}
  },
+ HtmlService:{createHtmlOutput(html){return {html,setTitle(title){this.title=title;return this}}}},
  Logger:{log(){}},Date,JSON
 };
 vm.createContext(mock);
@@ -48,6 +49,13 @@ assert.equal(mock.testIsolatedWriteTrialPreflightReadOnly(),true);
 const before=writeCount;
 assert.equal(mock.runIsolatedItemWriteTrialOnce(),true);
 assert.equal(mock.testIsolatedTrialResultReadOnly(),true,'Editor-only post-trial verification bypasses browser CORS');
+const diag=mock.doGet({parameter:{trial_read:'1'}});
+assert.match(diag.html,/google\.script\.run/);
+assert.match(diag.html,/trialReadOnlyCounts/);
+assert.doesNotMatch(diag.html,/id_token|operation_id|localStorage/);
+assert.deepEqual(JSON.parse(JSON.stringify(mock.trialReadOnlyCounts())),
+ {categories:5,items:1,products:0,stores:0});
+
 assert.equal(writeCount,before+8);
 assert.equal(mock.scoped('item_groups','trial-home').length,1);
 assert.equal(mock.scoped('change_log','trial-home').length,2);
