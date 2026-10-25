@@ -207,6 +207,22 @@ function openLiveEditor(item){
  liveEditor={item_group_id:item?.item_group_id||null,name:String(item?.name||''),category_id:Number(item?.category_id??0),version:item?.version??null};
  liveWriteStatus='';render();
 }
+async function withLiveWriteLock(work){
+ // Shared across tabs on the same origin. Never guess that a localStorage
+ // check is an atomic cross-tab lock: fail closed without Web Locks.
+ if(!navigator.locks?.request){
+  liveWriteStatus='このブラウザでは同時保存の安全確認ができません。保存を停止しました。';render();return
+ }
+ try{
+  return await navigator.locks.request('kurashi-live-items-write-v1',
+   {mode:'exclusive',ifAvailable:true},async lock=>{
+    if(!lock){liveWriteStatus='別のタブで保存処理中です。完了後に画面を再読み込みしてください。';render();return}
+    return work();
+   });
+ }catch(err){
+  liveWriteStatus='保存ロックを取得できません：'+String(err?.message||'UNKNOWN');render();
+ }
+}
 async function sendPendingLive(entry){
  if(!liveWritable()||liveWriteBusy){liveWriteStatus='書き込みは無効です';render();return}
  const pending=livePending();
@@ -231,6 +247,7 @@ async function sendPendingLive(entry){
  }finally{liveWriteBusy=false;render()}
 }
 async function liveMutate(action,payload){
+ return withLiveWriteLock(async()=>{
  if(!liveWritable()||liveWriteBusy){liveWriteStatus='保存機能はまだ無効です';render();return}
  if(!window.KurashiAuth?.status?.().signedIn||!liveSnapshot){liveWriteStatus='Googleログインとデータ取得が必要です';render();return}
  if(livePending().status!=='none'){liveWriteStatus='未完了の操作があります。先に結果を確認してください。';render();return}
@@ -242,11 +259,14 @@ async function liveMutate(action,payload){
   });
  }catch(err){liveWriteStatus='送信前の安全記録に失敗しました：'+String(err?.message||'UNKNOWN');render();return}
  await sendPendingLive(entry);
+ });
 }
 async function retryLive(){
+ return withLiveWriteLock(async()=>{
  const pending=livePending();
  if(pending.status!=='pending'){liveWriteStatus='再送できる操作がありません';render();return}
  await sendPendingLive(pending.entry);
+ });
 }
 function validateLiveSnapshot(data){
  return !!data&&Array.isArray(data.categories)&&Array.isArray(data.item_groups)&&
