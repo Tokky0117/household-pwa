@@ -42,26 +42,56 @@ function doGet(e){
 function isolatedTrialReadPage_(){
  return `<!doctype html><html lang="ja"><head><base target="_top">
  <meta name="viewport" content="width=device-width,initial-scale=1">
- <style>body{font-family:system-ui,-apple-system,sans-serif;max-width:540px;margin:24px auto;padding:0 16px;line-height:1.7;color:#29374a}button{font:inherit;background:#214d8f;color:white;border:0;border-radius:9px;padding:14px 18px;width:100%;min-height:48px}button:disabled{opacity:.6}section{border:1px solid #d9e0ec;border-radius:12px;padding:16px;margin:14px 0}.muted{color:#5c6d80;font-size:14px}</style></head>
+ <style>body{font-family:system-ui,-apple-system,sans-serif;max-width:540px;margin:24px auto;padding:0 16px;line-height:1.7;color:#29374a;background:#fafbfe}button{font:inherit;background:#214d8f;color:white;border:0;border-radius:9px;padding:14px 18px;width:100%;min-height:48px}button:disabled{opacity:.6}section{background:white;border:1px solid #d9e0ec;border-radius:12px;padding:16px;margin:14px 0}ul{list-style:none;padding:0}li{border-top:1px solid #e5e8ef;padding:10px 0;display:flex;justify-content:space-between;gap:12px}small,.muted{color:#5c6d80;font-size:14px}.name{overflow-wrap:anywhere;min-width:0}.stock{flex-shrink:0}</style></head>
  <body><h2>試験用Google Sheets・読み取り確認</h2>
- <p>この画面はGASから提供されます。読み取り専用で、日用品を変更しません。</p>
+ <p>この画面は試験専用GASから提供されます。日用品の表示・絞り込みだけを行い、データは変更しません。</p>
  <section><button id="check" type="button">試験用データを読み取る</button>
  <p id="status" role="status">ボタンを押してください。</p>
  <p id="details" class="muted"></p></section>
- <p class="muted">終了後、読み取り成功またはエラー名だけを伝えてください。試験用シートURLは共有不要です。</p>
+ <section><label for="search">日用品名で絞り込む</label>
+ <input id="search" type="search" placeholder="日用品名" disabled>
+ <ul id="items" aria-label="日用品一覧"></ul>
+ <p id="empty" class="muted">読み取り後に表示します。</p></section>
+ <p class="muted">この試作画面にはログイン・家庭切り替え機能はありません。試験用デプロイの「自分のみ」を維持してください。</p>
  <script>
- document.getElementById('check').addEventListener('click',function(){
-  var button=this,status=document.getElementById('status'),details=document.getElementById('details');
-  button.disabled=true;status.textContent='取得中です…';details.textContent='';
-  google.script.run.withSuccessHandler(function(result){
-   button.disabled=false;status.textContent='読み取り成功';
-   details.textContent='カテゴリ '+result.categories+' 件／日用品 '+result.items+' 件／商品 '+result.products+' 件／店舗 '+result.stores+' 件';
-  }).withFailureHandler(function(error){
-   button.disabled=false;status.textContent='読み取りエラー: '+(error&&error.message?error.message:'UNKNOWN');
-  }).trialReadOnlyCounts();
- });
+ (function(){
+  'use strict';
+  var button=document.getElementById('check'),status=document.getElementById('status'),details=document.getElementById('details'),
+      search=document.getElementById('search'),list=document.getElementById('items'),empty=document.getElementById('empty');
+  var rows=[],serial=0;
+  function render(){
+   var q=search.value.normalize('NFKC').trim().toLowerCase(),filtered=rows.filter(function(row){
+    return row.name.normalize('NFKC').toLowerCase().indexOf(q)!==-1;
+   });
+   list.replaceChildren();
+   filtered.forEach(function(row){
+    var li=document.createElement('li'),name=document.createElement('span'),stock=document.createElement('small');
+    name.className='name';name.textContent=row.name+' · '+row.category;
+    stock.className='stock';stock.textContent=row.in_stock?'在庫あり':'在庫なし';
+    li.appendChild(name);li.appendChild(stock);list.appendChild(li);
+   });
+   empty.textContent=filtered.length?'':'一致する日用品がありません。';
+  }
+  search.addEventListener('input',render);
+  button.addEventListener('click',function(){
+   var call=++serial;button.disabled=true;search.disabled=true;status.textContent='取得中です…';details.textContent='';rows=[];render();
+   google.script.run.withSuccessHandler(function(result){
+    if(call!==serial)return;
+    button.disabled=false;search.disabled=false;
+    rows=Array.isArray(result.items)?result.items:[];
+    status.textContent='読み取り成功';
+    details.textContent='カテゴリ '+result.categories+' 件／日用品 '+rows.length+' 件／商品 '+result.products+' 件／店舗 '+result.stores+' 件';
+    render();
+   }).withFailureHandler(function(error){
+    if(call!==serial)return;
+    button.disabled=false;search.disabled=true;
+    status.textContent='読み取りエラー: '+(error&&error.message?error.message:'UNKNOWN');
+   }).trialReadOnlyItemList();
+  });
+ })();
  </scr`+`ipt></body></html>`;
 }
+
 function assertIsolatedTrialConfigReadOnly(){
  const props=PropertiesService.getScriptProperties();
  const active=props.getProperty('SPREADSHEET_ID');
@@ -80,6 +110,30 @@ function trialReadOnlyCounts(){
  return {categories:categories.length,items:scoped('item_groups',hid).length,
   products:scoped('products',hid).length,stores:rows('stores').length};
 }
+/**
+ * Temporary trial-only list shape. No IDs, households, auth subjects or tokens.
+ * The protected singleton test-household gate runs on EVERY call. Do not
+ * reuse this endpoint for multiple households or a public production web app.
+ */
+function trialReadOnlyItemList(){
+ assertIsolatedTrialConfigReadOnly();
+ const householdId=String(rows('households')[0].obj.household_id);
+ const categories=rows('categories').map(x=>x.obj);
+ if(categories.length!==5||categories.some((r,i)=>String(r.name)!==CATEGORIES[i]))
+  fail('CATEGORIES_MISMATCH','カテゴリを確認してください');
+ const catNames=Object.fromEntries(categories.map(x=>[String(x.category_id),String(x.name)]));
+ const items=scoped('item_groups',householdId);
+ if(items.length>500)fail('TRIAL_TOO_MANY_ITEMS','試験用の表示件数を超えました');
+ return {categories:categories.length,products:scoped('products',householdId).length,
+  stores:rows('stores').length,
+  items:items.filter(x=>!x.obj.is_hidden).sort((a,b)=>
+    (Number(a.obj.sort_order)||0)-(Number(b.obj.sort_order)||0)).map(x=>({
+     name:String(x.obj.name||'').slice(0,150),
+     category:catNames[String(x.obj.category_id)]||'その他',
+     in_stock:x.obj.in_stock===true||String(x.obj.in_stock).toLowerCase()==='true'
+    }))};
+}
+
 function doPost(e){
  try{
   let input;
