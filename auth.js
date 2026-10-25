@@ -25,7 +25,7 @@
  }
  function initialize(){
   if(initialized||!clientId||!window.google?.accounts?.id)return false;
-  window.google.accounts.id.initialize({client_id:clientId,callback:receive,auto_select:!manualOnly,cancel_on_tap_outside:true});
+  window.google.accounts.id.initialize({client_id:clientId,callback:receive,auto_select:!manualOnly,cancel_on_tap_outside:true,...(manualOnly?{use_fedcm_for_button:true}:{})});
   initialized=true;return true;
  }
  function signIn(){
