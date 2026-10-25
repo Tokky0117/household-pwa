@@ -12,7 +12,8 @@ const localStorage={
  removeItem:key=>storage.delete(key)
 };
 const sheet={household_id:'house-1',categories:['飲食','キッチン','洗面・風呂','洗濯・掃除','その他'].map(name=>({name})),item_groups:[],products:[],stores:[]};
-let subject='1234567890',failOnce=true,mutationCalls=[];
+let subject='1234567890',failOnce=true,mutationCalls=[],held=false;
+const locks={async request(_name,_opts,fn){if(held)return fn(null);held=true;try{return await fn({name:'kurashi-live-items-write-v1'})}finally{held=false}}};
 const api={
  writeEnabled:()=>true,
  async request(action,payload,options={}){
@@ -35,7 +36,7 @@ function launch(){
   createElement(){return {style:{},setAttribute(){}}},body:{append(){}}
  };
  const context=vm.createContext({window,document,localStorage,
-  navigator:{},location:{protocol:'file:'},crypto:{randomUUID:()=> 'test-op-123'},
+  navigator:{locks},location:{protocol:'file:'},crypto:{randomUUID:()=> 'test-op-123'},
   setTimeout:()=>1,clearTimeout(){},Date,Intl,URL,Event:class Event{},console});
  vm.runInContext(journalSrc,context);
  return {app:vm.runInContext(appSrc+"\n({refreshLive,liveMutate,retryLive,livePending,liveListView})",context),
@@ -76,4 +77,28 @@ assert.equal(mutationCalls.length,2);
 assert.equal(third.app.livePending().status,'invalid');
 storage.delete('kurashi_live_item_pending_v1');
 assert.equal(first.journal.read(),null);
-console.log('Durable explicit-retry journal: cross-account protection, reload, no auto-send PASS');
+// Two tabs attempt writes concurrently. The first holds the lock across the
+// entire request and journal confirmation. The other must fail closed.
+let releaseRequest;
+const delayed=new Promise(resolve=>{releaseRequest=resolve});
+const firstCallCount=mutationCalls.length;
+let onFirstRequest;
+const originalRequest=api.request;
+api.request=async (action,payload,opts)=>{
+ if(action==='bootstrap')return sheet;
+ mutationCalls.push({action,payload,operationId:opts.operationId});
+ await delayed;
+ return {entity:{item_group_id:'another'},sequence_no:2};
+};
+const tabA=launch(),tabB=launch();
+await tabA.app.refreshLive();await tabB.app.refreshLive();
+const inflight=tabA.app.liveMutate('item.create',{name:'洗剤',category_id:3});
+await Promise.resolve();await Promise.resolve();
+const other=tabB.app.liveMutate('item.create',{name:'シャンプー',category_id:2});
+await other;
+assert.equal(mutationCalls.length,firstCallCount+1,'Second tab must not send');
+assert.match(tabB.app.liveListView(),/別のタブで保存処理中/);
+releaseRequest();await inflight;
+assert.equal(tabA.journal.read(),null);
+api.request=originalRequest;
+console.log('Durable explicit-retry journal: cross-account protection, reload, no auto-send, tab lock PASS');
