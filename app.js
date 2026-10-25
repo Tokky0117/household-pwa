@@ -199,7 +199,7 @@ function liveEditForm(){
  <label class="formfield">名称<input id="live-name" type="text" maxlength="150" value="${esc(liveEditor.name)}" autocomplete="off"></label>
  <label class="formfield">カテゴリ<select id="live-category">${liveCategories()}</select></label>
  <p class="hint">${liveWritable()?'Google Sheetsに保存します。':'保存は安全確認が終わるまで無効です。入力内容はGoogle Sheetsへ送信されません。'}</p>
- <button type="button" data-act="saveLive" ${liveWritable()&&!liveWriteBusy?'':'disabled'}>保存する</button>
+ <button type="button" data-act="saveLive" ${liveWritable()&&!liveWriteBusy&&livePending().status==='none'?'':'disabled'}>保存する</button>
  <button type="button" class="secondary" data-act="cancelLive">キャンセル</button></section>`;
 }
 function openLiveEditor(item){
@@ -284,9 +284,9 @@ function liveListView(){
    const linked=products.filter(p=>!p.deleted_at&&String(p.item_group_id)===String(i.item_group_id));
    return `<div class="item"><div class="swipe-front"><div class="itemname" style="text-align:left"><span class="item-title">${esc(i.name)}</span><span class="list-prices">${linked.length?esc(linked.map(p=>p.name).join('、')):'登録商品なし'}</span></div><div class="item-stock-area">${i.in_stock===true||String(i.in_stock).toLowerCase()==='true'?'在庫あり':'在庫なし'}</div></div>
  <div class="row" style="gap:8px;padding:8px">
- <button type="button" class="secondary" data-act="editLive" data-live-id="${esc(i.item_group_id)}" ${liveWritable()?'':'disabled'}>編集</button>
- <button type="button" class="secondary" data-act="stockLive" data-live-id="${esc(i.item_group_id)}" ${liveWritable()?'':'disabled'}>在庫切替</button>
- <button type="button" class="secondary" data-act="hideLive" data-live-id="${esc(i.item_group_id)}" ${liveWritable()?'':'disabled'}>非表示</button></div></div>`;
+ <button type="button" class="secondary" data-act="editLive" data-live-id="${esc(i.item_group_id)}" ${liveWritable()&&livePending().status==='none'?'':'disabled'}>編集</button>
+ <button type="button" class="secondary" data-act="stockLive" data-live-id="${esc(i.item_group_id)}" ${liveWritable()&&livePending().status==='none'?'':'disabled'}>在庫切替</button>
+ <button type="button" class="secondary" data-act="hideLive" data-live-id="${esc(i.item_group_id)}" ${liveWritable()&&livePending().status==='none'?'':'disabled'}>非表示</button></div></div>`;
   }).join('')||'<p class="hint">登録なし</p>'}</section>`;
  }).join('');
  return `${head('日用品','Google Sheets・読み取り専用')}<main><div class="panel"><strong>${label}</strong><p class="hint">カテゴリ ${liveSnapshot?.categories?.length||0} 件の読み取りを確認しました。日用品・商品・店舗はシートの登録件数を表示しています。</p>${allEmpty?'<p class="hint">この家庭のデータは空です。試作データを確認する場合は「試作データに戻る」を押してください。</p>':''}<p class="hint">この画面では追加・編集・在庫変更はできません。端末内の試作データは変更されません。</p><p class="hint">日用品 ${groups.length} 件 ／ 商品 ${products.length} 件 ／ 店舗 ${stores.length} 件</p><button class="secondary" data-act="refreshLive" ${liveBusy?'disabled':''}>再読み込み</button><button class="secondary" data-act="leaveLive">試作データに戻る</button><p class="hint" role="status">${esc(liveWriteStatus)}</p><button type="button" class="secondary" data-act="addLive" ${liveWritable()&&livePending().status==='none'?'':'disabled'}>日用品を登録</button><p class="hint">${liveWritable()?'登録・編集・在庫変更が利用できます。':'登録・編集・在庫変更・削除は実装準備中です。安全確認が終わるまで無効です。'}</p></div>${liveRecoveryView()}${liveEditForm()}${rows}<div class="panel"><h2>店舗（読み取り専用）</h2><p class="hint">${stores.length?esc(stores.map(x=>x.canonical_name).join('、')):'登録なし'}</p></div></main>${nav()}`;
