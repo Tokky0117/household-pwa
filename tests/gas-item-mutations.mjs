@@ -20,9 +20,9 @@ books.households.push(['h1','家庭1',1,''],['h2','家庭2',1,'']);
 books.users.push(['u1','h1','User1','sub1'],['u2','h2','User2','sub2']);
 books.categories.push(...['飲食','キッチン','洗面・風呂','洗濯・掃除','その他'].map((name,i)=>[i,name,i+1]));
 const initial=books.item_groups.map(x=>x.slice());
-let writesEnabled=false,writeCount=0,uuidNum=0,lockHeld=false,failOperationJournal=false;
+let writesEnabled=false,trialSheetId='mock',writeCount=0,uuidNum=0,lockHeld=false,failOperationJournal=false;
 const ctx={
- PropertiesService:{getScriptProperties(){return {getProperty(name){return ({SPREADSHEET_ID:'mock',WRITE_TRIAL_SPREADSHEET_ID:'mock',GOOGLE_CLIENT_ID:'test-client',ENABLE_EXPERIMENTAL_WRITES:writesEnabled?'true':'false'})[name]||null}}}},
+ PropertiesService:{getScriptProperties(){return {getProperty(name){return ({SPREADSHEET_ID:'mock',WRITE_TRIAL_SPREADSHEET_ID:trialSheetId,GOOGLE_CLIENT_ID:'test-client',ENABLE_EXPERIMENTAL_WRITES:writesEnabled?'true':'false'})[name]||null}}}},
  SpreadsheetApp:{openById(id){assert.equal(id,'mock');return {getSheetByName(name){
   if(!books[name])return null;
   const cells=books[name];
@@ -65,6 +65,13 @@ assert.equal(lockHeld,false);
 assert.deepEqual(books.item_groups,initial,'Disabled mode must not mutate the Sheet');
 // In-memory-only switch to exercise guarded logic. Never set real script properties.
 writesEnabled=true;
+trialSheetId='wrong-sheet';
+fails(u1,'item.create',{name:'遮断テスト',category_id:0},'WRITES_DISABLED');
+assert.equal(writeCount,0,'Wrong trial sheet must never be written');
+trialSheetId='';
+fails(u1,'item.create',{name:'遮断テスト',category_id:0},'WRITES_DISABLED');
+assert.equal(writeCount,0,'Missing isolated ID must never be written');
+trialSheetId='mock';
 const firstPayload={name:'牛乳',category_id:0};
 const firstId=op();
 const first=execute(u1,'item.create',firstPayload,firstId);
