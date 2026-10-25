@@ -122,3 +122,10 @@ Chromeの接続テスト画面でGoogleログイン、GAS WebアプリへのPOST
 - 一方、別オリジンのGitHub Pages→GAS `fetch` はCORS/ネットワークエラーだった。HTML Service成功はその通信問題を解決したことや、通常のGitHub Pages版PWAの読み書きが完成したことを意味しない。
 - 次の設計課題は、どのオリジンでアプリUIを提供するか、セッションとIDトークンの取り扱い、`google.script.run` の呼び出し権限、家庭別のデータ分離、同時更新時の操作ID保持、PWAオフライン対応を比較したうえで実装方式を決定すること。HTML Serviceでの簡易試験UIは**本番の通信アーキテクチャとして未承認**。
 - 書込ゲート `LIVE_WRITE_ENABLED=false` と `ENABLE_EXPERIMENTAL_WRITES=false`（または未設定）を継続。試験用シートは初期状態に戻さず、ワンタイム書込試験の再実行は禁止。家庭用シート、稼働中GAS、`main` には変更なし。
+
+## 2026-10-26：試験GAS内の日用品一覧プロトタイプ
+- 試験GASの`/exec?trial_read=1` に表示するHTML Serviceを、件数に加えて日用品一覧と名前検索に対応する読み取り専用画面へ拡張。
+- サーバー関数`trialReadOnlyItemList()`を追加し、試験専用シートと家庭名マーカーを毎回検証。返却する個別情報は`name`/`category`/`in_stock`のみ。件数はカテゴリ・商品・店舗だけ。名前150字、500件超は拒否。
+- HTMLにデータ値を文字列連結で埋め込まず、`textContent`で安全に描画。実際のGASコードで模擬読み取り・危険文字列を含む日用品名・HTML内JS構文・通常doGetの非公開応答を検証済み。
+- 試験用の「自分のみ」アクセス権維持が前提。**汎用の家庭認証・本番PWA接続・オフライン同期は未実装**。意思決定と残課題は`gas/TRANSPORT_DECISION.md`を参照。
+- 専用シートの現在の1件は変更しない。書込ゲートと運用中GAS・`main`はそのまま。
