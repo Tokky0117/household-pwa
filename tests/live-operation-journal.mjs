@@ -101,4 +101,13 @@ assert.match(tabB.app.liveListView(),/別のタブで保存処理中/);
 releaseRequest();await inflight;
 assert.equal(tabA.journal.read(),null);
 api.request=originalRequest;
+// Browsers without Web Locks must reject a write before recording or sending.
+const lockRequest=locks.request;
+delete locks.request;
+const unsupported=launch();await unsupported.app.refreshLive();
+await unsupported.app.liveMutate('item.create',{name:'非対応端末',category_id:0});
+assert.equal(mutationCalls.length,firstCallCount+1);
+assert.equal(unsupported.journal.read(),null);
+assert.match(unsupported.app.liveListView(),/このブラウザでは同時保存の安全確認ができません/);
+locks.request=lockRequest;
 console.log('Durable explicit-retry journal: cross-account protection, reload, no auto-send, tab lock PASS');
