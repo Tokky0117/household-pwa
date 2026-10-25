@@ -12,6 +12,8 @@ assert.match(page,/id="google-login-button"/);
 assert.match(page,/KurashiAuth\.configure\(CLIENT_ID,\{manualOnly:true\}\)/);
 assert.doesNotMatch(page,/KurashiAuth\.restore\(\)/);
 assert.match(auth,/auto_select:!manualOnly/);
+assert.match(auth,/manualOnly\?\{use_fedcm_for_button:true\}/);
+assert.match(page,/id="auth-diagnostics"/);
 assert.match(auth,/if\(clientId&&!manualOnly\)restore\(\)/);
 assert.match(page,/addEventListener\('load',update\)/);
 assert.doesNotMatch(page,/localStorage|sessionStorage|document\.cookie/);
