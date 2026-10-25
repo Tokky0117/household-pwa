@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>くらしストック｜Google Sheets接続テスト</title>
+<style>
+:root{font-family:-apple-system,BlinkMacSystemFont,"Hiragino Kaku Gothic ProN",sans-serif;color:#263247;background:#f6f7fb}
+body{max-width:650px;margin:auto;padding:20px 16px 50px;line-height:1.65}h1{font-size:1.35rem}
+section{background:white;border:1px solid #d8dfeb;border-radius:14px;padding:18px;margin:15px 0}
+button{background:#21518e;color:white;border:0;border-radius:10px;min-height:46px;padding:10px 16px;font-size:1rem;font-weight:650;width:100%;margin:12px 0}
+button:disabled{opacity:.5}#google-login-button{min-height:44px}p{overflow-wrap:anywhere}
+.info{color:#536175;font-size:.9rem}pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#eef2f6;border-radius:8px;padding:12px}
+a{color:#20528d}
+</style></head><body>
+<h1>Google Sheets 接続テスト</h1>
+<p>くらしストックのテスト用GASから、カテゴリを<strong>読み取るだけ</strong>の検証画面です。アプリの保存内容やGoogle Sheetsは変更しません。</p>
+<section><h2>① Googleログイン</h2>
+<div id="google-login-button"></div><p id="auth-status" role="status">ログイン状態を確認中です。</p>
+<button id="signout" type="button" hidden>この画面のログインを解除</button></section>
+<section><h2>② 読み取りテスト</h2>
+<button id="check" type="button" disabled>カテゴリを読み取りテスト</button>
+<p id="result" role="status" aria-live="polite">Googleログイン後に実行できます。</p>
+<pre id="details" hidden></pre>
+<p class="info">成功時はカテゴリ名と件数だけを表示します。IDトークンはブラウザ内のメモリで扱い、この画面では保存・表示しません。</p></section>
+<section><h2>エラーが出たとき</h2>
+<p class="info">「ネットワークまたはCORS制限」と表示された場合、GAS自体が稼働していても、GitHub Pagesから直接応答を読み取れない可能性があります。Google Cloudの認証を緩めたり、トークンをURLに貼ったりしないでください。</p>
+</section>
+<p><a href="./">アプリに戻る</a></p>
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+<script src="./auth.js"></script><script src="./gas-api.js"></script>
+<script>
+(function(){
+'use strict';
+const CLIENT_ID='290567395833-cdemend3itmapsgsounu8pf72hgvm315.apps.googleusercontent.com';
+const ENDPOINT='https://script.google.com/macros/s/AKfycbx8el-F0XgEP2-1U6XKdduXF0nOuH1BrwmnWZUIkMVCKku1lqeBA8acBrPgbYDtIqokIw/exec';
+const authStatus=document.getElementById('auth-status'),button=document.getElementById('check'),result=document.getElementById('result'),details=document.getElementById('details'),signout=document.getElementById('signout');
+window.KurashiAuth.configure(CLIENT_ID);
+window.KurashiGasApi.configure(ENDPOINT);
+function update(){
+ const signedIn=window.KurashiAuth.status().signedIn;
+ authStatus.textContent=signedIn?'Googleログイン済み。下のテストを実行できます。':'未ログインです。上のボタンからGoogleでログインしてください。';
+ button.disabled=!signedIn;signout.hidden=!signedIn;
+ if(!signedIn)window.KurashiAuth.signIn();
+}
+window.KurashiAuth.subscribe(update);
+window.addEventListener('load',()=>{update();if(!window.KurashiAuth.status().signedIn)window.KurashiAuth.restore()});
+signout.addEventListener('click',()=>{window.KurashiAuth.signOut();result.textContent='ログアウトしました。';details.hidden=true});
+button.addEventListener('click',async()=>{
+ button.disabled=true;result.textContent='読み取り中です…';details.hidden=true;
+ try{
+  const data=await window.KurashiGasApi.request('bootstrap');
+  if(!Array.isArray(data?.categories))throw new Error('RESPONSE_SHAPE_INVALID');
+  const names=data.categories.map(x=>String(x.name||''));
+  result.textContent='取得成功：カテゴリ '+names.length+' 件';
+  details.textContent=names.join('、');details.hidden=false;
+ }catch(err){
+  let message='接続エラー：'+String(err?.message||'UNKNOWN');
+  if(err instanceof TypeError||err?.name==='AbortError')message='ネットワークまたはCORS制限の可能性があります。ブラウザの開発者ツールでも確認できます。';
+  else if(err?.message==='FORBIDDEN')message='このGoogleアカウントがGASのusersシートで家庭に登録されていません。';
+  else if(err?.message==='UNAUTHORIZED')message='Google認証がGAS側で拒否されました。';
+  result.textContent=message;
+ }finally{button.disabled=!window.KurashiAuth.status().signedIn}
+});
+})();
+</script></body></html>
