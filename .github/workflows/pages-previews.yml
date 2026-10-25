@@ -64,7 +64,7 @@ jobs:
             if copy_site "refs/remotes/$remote_ref" "$dest"; then
               # Scope the Service Worker cache per preview to avoid cross-branch conflicts.
               if [[ -f "$dest/sw.js" ]]; then
-                sed -i "s/const CACHE=\x27[^\x27]*\x27/const CACHE=\x27household-preview-$slug-v54\x27/" "$dest/sw.js"
+                sed -i "s/const CACHE=\x27[^\x27]*\x27/const CACHE=\x27household-preview-$slug-v55\x27/" "$dest/sw.js"
               fi
               echo "Preview: /previews/$slug/"
             else
