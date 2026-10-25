@@ -63,7 +63,7 @@ assert.doesNotMatch(pageHtml,/innerHTML|id_token|localStorage/);
 
 const diag=mock.doGet({parameter:{trial_read:'1'}});
 assert.match(diag.html,/google\.script\.run/);
-assert.match(diag.html,/trialReadOnlyCounts/);
+assert.match(diag.html,/trialReadOnlyItemList/);
 assert.doesNotMatch(diag.html,/id_token|operation_id|localStorage/);
 assert.deepEqual(JSON.parse(JSON.stringify(mock.trialReadOnlyCounts())),
  {categories:5,items:1,products:0,stores:0});
@@ -83,13 +83,16 @@ assert.equal(writeCount,before);
 enabled=true;
 activeId='real-household';
 trialId='sandbox';
+errorCode(()=>mock.trialReadOnlyItemList(),'TRIAL_NOT_ISOLATED');
 errorCode(()=>create('牛乳','attempt-0002'),'WRITES_DISABLED');
 activeId='sandbox';
 trialId='real-household';
 errorCode(()=>create('牛乳','attempt-0003'),'WRITES_DISABLED');
 trialId='sandbox';
+assert.equal(mock.trialReadOnlyItemList().categories,5);
 // Mimic accidentally pointing both properties at a household sheet.
 allSheets.households[1][1]='わが家';
+errorCode(()=>mock.trialReadOnlyItemList(),'TRIAL_NOT_ISOLATED');
 errorCode(()=>create('牛乳','attempt-0004'),'TRIAL_NOT_ISOLATED');
 errorCode(()=>mock.testIsolatedWriteTrialPreflightReadOnly(),'TRIAL_NOT_ISOLATED');
 allSheets.households[1][1]='[KURASHI_WRITE_TRIAL_ONLY]';
