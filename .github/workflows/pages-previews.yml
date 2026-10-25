@@ -27,26 +27,8 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Validate v1.8 preview behavior
-        run: node tests/ui-smoke.mjs
-
-      - name: Validate GAS read-only contract offline
-        run: node tests/gas-offline-smoke.mjs
-
-      - name: Validate GAS auth and household isolation offline
-        run: node tests/gas-auth-isolation.mjs
-
-      - name: Validate GAS transport adapter offline
-        run: node tests/gas-transport.mjs
-
-      - name: Validate all 12 GAS sheet headers without writes
-        run: node tests/gas-schema-preflight.mjs
-
-      - name: Validate iPhone GAS handoff bundle
-        run: node tests/gas-handoff.mjs
-
-      - name: Validate GAS browser connection diagnostics
-        run: node tests/gas-connection-page.mjs
+      # Regression checks run independently in offline-tests.yml.
+      # A test failure must not block publishing read-only diagnostic pages.
 
       - name: Build isolated static previews
         shell: bash
