@@ -1,6 +1,6 @@
 # GAS API 初期実装（実験用・未デプロイ）
 
-更新：2026-10-22。対象ブランチ：`stage-a-ui-handoff-review`。
+更新：2026-10-25。対象ブランチ：`stage-a-ui-handoff-review`。
 
 ## 実装済み
 `gas/Code.gs` に12シートのヘッダー定義と空シート初期化、Google IDトークン照合、`users.auth_subject` と `households` による家庭認可、`bootstrap`、`sync`、`item.create`、`item.update`、`product.create`、`product.update`、`product.move` を追加。
@@ -13,7 +13,7 @@
 3. 空シートだけのテスト用ブックで `initializeEmptySchema()` を手動実行。12シートを作る（途中失敗時は状態を確認してやり直す）。
 4. `households` に家庭IDを、`users` にGoogle IDトークンの `sub` と同じ `auth_subject` および所属家庭IDを**管理者が手動登録**。ユーザーをAPIから自己登録させない。
 5. 認証・家庭境界・競合テストが済むまでは `ENABLE_EXPERIMENTAL_WRITES` を設定しない。書込みは `WRITES_DISABLED` で拒否される。後日、専用テスト環境に限り明示的に `true` を設定して試験する。
-6. 実際のデプロイ権限、Google Identityログインの連携、CORS/リダイレクト制限は未解決。**GitHub Pagesのv46からこのGAS Webアプリへ直接fetchできると仮定しない**。クライアント・中継方式は認証とともに別途設計する。
+6. 実際のデプロイ権限、Google Identityログインの連携、CORS/リダイレクト制限は未解決。**GitHub Pagesのv50からこのGAS Webアプリへ直接fetchできると仮定しない**。クライアント・中継方式は認証とともに別途設計する。
 
 ## リクエスト例
 `POST /exec` へContent-Type `text/plain` でJSON文字列を送信：
@@ -27,7 +27,7 @@
 結果は `{"ok":true,"data":...}` または `{"ok":false,"error":{"code":"...","message":"..."}}`。GAS ContentServiceによるレスポンスはHTTP 200でもエラーを含むので、必ず `ok` を検査する。Google IDトークンや家庭IDをURL・ログに記録しない。
 
 ## 未実装／接続ブロッカー
-- クライアントのGoogleログイン、GASとGitHub Pagesの安全な通信方式、公開設定・認可を含む実機検証
+- クライアントのGoogleログインの実機確認、GASとGitHub Pagesの安全な通信方式、公開設定・認可を含む実機検証
 - 親子レシート明細をまとめて書くAPI、更新途中失敗の補償・復旧・照合機構
 - 日用品と商品の連続した並び替えの一括更新・順序の連番維持（現行APIの更新は単行単位）
 - 店舗の正規化・別名登録・一意制約、OCR、レシート・値札の登録・修正・削除
@@ -65,10 +65,16 @@ Apps Scriptの関数選択で `testCategoriesReadOnly` を選んで実行。ロ�
 2. <https://script.google.com/home/usersettings> で「Google Apps Script API」をオンにする。
 3. GitHubのリポジトリ → Settings → Secrets and variables → Actions に `GAS_SCRIPT_ID_TEST` を登録する。OAuth用 `CLASPRC_JSON` は後で安全な端末・環境から登録する。
 
-**現時点ではワークフロー実行不可**（GitHub Secretsが未設定）。ユーザーのGoogleアカウントへの代理ログインやApps Script更新は実施していない。
+**現時点ではワークフロー実行不可**（`CLASPRC_JSON` が未設定）。ユーザーのGoogleアカウントへの代理ログインやApps Script更新は実施していない。
 
-### ブランチ専用の起動方式
-このワークフローはまだ `main` に存在しないため、GitHubの「Run workflow」ボタンは表示されない場合がある。その場合でも作業ブランチの `gas/sync-request.txt` に変更をコミットすることを**明示的な反映要求**とし、`push` トリガーで起動できる。コードをコミットしただけでは自動反映されず、事前のバックアップ・シークレット設定・対象の確認後に反映する。反映を完全自動化するのはテスト完了後に別途判断する。
+### ブランチ専用の起動方式（2026-10-25更新）
+- 現行ワークフローは **手動 `workflow_dispatch` のみ**。以前の `gas/sync-request.txt` による push 起動は削除済みで、ファイルを変更してもGASには反映されない。
+- このワークフローは `main` に存在しないため、GitHubのUIに「Run workflow」が表示されないことがある。**UIに出ないからといってGitHub上の他のファイルを編集して発火させない**。
+- 正しい `CLASPRC_JSON` と `GAS_SCRIPT_ID_TEST` が設定済みであり、専用テストGASとそのバックアップ対象を確認した場合だけ、手動で `BACKUP_DONE` を入力して実行する。
+- 実行時はまず現行GASソースを `clasp pull` でバックアップし、GitHub Actions artifactとして保存する。**バックアップ取得・artifactアップロードが成功しなければ上書きしない**。artifactの保持期限は30日。
+- `clasp push --force` はGASのソースを上書きする。**スクリプトプロパティを初期化するものではなく、Webアプリの公開バージョンを更新するものでもない**。
+- `initializeEmptySchema()` は初期化済みシートでは絶対に実行しない。
+- GASへ反映後、エディタから `testAllSheetsReadOnly()` を実行する。12シートの列、カテゴリ5件を読むだけで書込みはしない。ブラウザのCORS/Googleログインも別途確認する。
 
 ## 手動反映を最小化する方針（2026-10-24）
 
