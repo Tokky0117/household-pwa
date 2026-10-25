@@ -4,6 +4,9 @@
 (function(){
  'use strict';
  let endpoint='';
+ // Explicit release gate: requires separate reviewed deployment to enable writes.
+ const LIVE_WRITE_ENABLED=false;
+ const MUTATIONS=new Set(['item.create','item.update']);
  const MAX_RESPONSE=1024*1024;
  function configure(url){
    if(!url){endpoint='';return}
@@ -16,7 +19,11 @@
  function status(){return {configured:!!endpoint};}
  async function request(action,payload,options={}){
    if(!endpoint)throw new Error('GAS_NOT_CONFIGURED');
-   if(!['bootstrap','sync'].includes(action))throw new Error('READ_ONLY');
+   if(!['bootstrap','sync'].includes(action)){
+     if(!MUTATIONS.has(action))throw new Error('UNSUPPORTED');
+     if(!LIVE_WRITE_ENABLED)throw new Error('WRITES_DISABLED');
+     if(!options.operationId||!(/^[a-zA-Z0-9_-]{8,128}$/).test(options.operationId))throw new Error('OPERATION_ID_REQUIRED');
+   }
    const token=options.token??window.KurashiAuth?.getToken?.();
    if(!token)throw new Error('LOGIN_REQUIRED');
    const fetcher=options.fetcher||window.fetch.bind(window);
@@ -26,7 +33,7 @@
      const res=await fetcher(endpoint,{
        method:'POST',mode:'cors',redirect:'follow',credentials:'omit',
        headers:{'Content-Type':'text/plain;charset=utf-8'},
-       body:JSON.stringify({id_token:token,action,payload:payload||{}}),
+       body:JSON.stringify({id_token:token,action,payload:payload||{},...(MUTATIONS.has(action)?{operation_id:options.operationId}:{})}),
        signal:controller.signal
      });
      if(!res.ok)throw new Error('GAS_HTTP_'+res.status);
@@ -39,5 +46,5 @@
      return result.data;
    }finally{clearTimeout(timeout)}
  }
- window.KurashiGasApi={configure,status,request};
+ window.KurashiGasApi={configure,status,request,writeEnabled:()=>LIVE_WRITE_ENABLED};
 })();
