@@ -2,7 +2,7 @@
 (function(){
  'use strict';
  let clientId='',token=null,subject=null,expires=0;
- let initialized=false,manualOnly=false;
+ let initialized=false,manualOnly=false,buttonElement=null;
  const listeners=new Set();
  const status=()=>({configured:!!clientId,signedIn:!!token&&Date.now()<expires,subject:subject});
  const notify=()=>listeners.forEach(f=>f(status()));
@@ -21,10 +21,11 @@
  function configure(value,options={}){
   manualOnly=options.manualOnly===true;
   clientId=typeof value==='string'&&/^[0-9]+-[a-z0-9-]+\.apps\.googleusercontent\.com$/.test(value)?value:'';
-  initialized=false;signOut();
+  initialized=false;buttonElement=null;signOut();
  }
  function initialize(){
-  if(initialized||!clientId||!window.google?.accounts?.id)return false;
+  if(initialized)return true;
+  if(!clientId||!window.google?.accounts?.id)return false;
   window.google.accounts.id.initialize({client_id:clientId,callback:receive,auto_select:!manualOnly,cancel_on_tap_outside:true,...(manualOnly?{use_fedcm_for_button:true}:{})});
   initialized=true;return true;
  }
@@ -32,8 +33,10 @@
   if(!initialize())return false;
   const el=document.getElementById('google-login-button');
   if(!el)return false;
+  if(buttonElement===el)return true;
   el.replaceChildren();
   window.google.accounts.id.renderButton(el,{theme:'outline',size:'large',text:'signin_with',width:240});
+  buttonElement=el;
   return true;
  }
  function restore(){
