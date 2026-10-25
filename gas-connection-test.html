@@ -40,6 +40,7 @@ function update(){
  if(!signedIn)window.KurashiAuth.signIn();
 }
 window.KurashiAuth.subscribe(update);
+document.querySelector('script[src^="https://accounts.google.com/gsi/client"]')?.addEventListener('load',update);
 window.addEventListener('load',()=>{update();if(!window.KurashiAuth.status().signedIn)window.KurashiAuth.restore()});
 signout.addEventListener('click',()=>{window.KurashiAuth.signOut();result.textContent='ログアウトしました。';details.hidden=true});
 button.addEventListener('click',async()=>{
