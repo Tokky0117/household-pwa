@@ -88,3 +88,10 @@ Chromeの接続テスト画面でGoogleログイン、GAS WebアプリへのPOST
 - `tests/live-operation-journal.mjs` を更新し、共有ロックを持つ2タブからの並列送信とロック非対応ブラウザの拒否を検証する。追加の模擬実行でも「先行1件送信、後続タブ拒否、ジャーナル確定後削除」を確認。
 - **別端末間**の排他はWeb Locksでは対応できない。GASのLockService + version照合と、実Google Sheetsでの同時更新試験が必要。
 - テスト専用スプレッドシートへの書き込み試験は**まだ未実施**。利用者の現行GASへのコピー・デプロイ、スクリプトプロパティ変更、GitHubの`main`更新は行っていない。GitHub Actions一式の成功も未確認。
+
+## v56：別端末競合・故障マトリクスと隔離試験のゲート（2026-10-25）
+- `tests/gas-recovery-fault-matrix.mjs` を追加。GASの「操作意図記録／本体書込／変更履歴／操作確定」の各段階で書込前・書込直後の障害を模擬し、登録8件＋更新8件＝**16経路**を検査する。別ユーザーが同じversionで競合し、後続を `VERSION_CONFLICT` で拒否するケースと他家庭の更新拒否も含めた。
+- 保存処理に試験用の追加ゲート `WRITE_TRIAL_SPREADSHEET_ID` を設けた。`SPREADSHEET_ID` と完全一致し、さらに `ENABLE_EXPERIMENTAL_WRITES=true` のときに限りGAS側の日用品書込が可能。不一致・欠落のときは `WRITES_DISABLED`。模擬動作で一致時1件保存／不一致・欠落時0件を確認。
+- `testIsolatedWriteTrialPreflightReadOnly()` を追加。12シートのヘッダー・固定5カテゴリ・試験用家庭1件とユーザー1件・9データシート空を読み取り検証する。プロパティを書き換えたりデータを追加したりしない。
+- 実Google Sheetsでの試験時の段取りを `gas/WRITE_TRIAL_PLAN.md` に整理。稼働中GASや家庭用シートを流用せず、専用シート＋別GASプロジェクトを使い、試験後は公開・書込許可を閉じる。
+- **試験環境への実書込はまだしていない**。通常アプリのクライアント書込ゲート `LIVE_WRITE_ENABLED=false` も維持。本番の書込機能は別審査・別承認であり、この段階では有効化しない。
