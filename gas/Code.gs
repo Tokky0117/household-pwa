@@ -203,6 +203,26 @@ function testAllSheetsReadOnly(){
  return true;
 }
 
+
+/**
+ * Manual admin-only helper: obtain the effective account's Google subject for
+ * initial users.auth_subject enrollment. Run only from the Apps Script editor.
+ * Never log or store the ID token; output only the account subject.
+ * Requires "openid" in appsscript.json oauthScopes.
+ */
+function testCurrentGoogleSubject(){
+ const token=ScriptApp.getIdentityToken();
+ if(!token)throw new Error('openid 権限がありません。マニフェストと認証を確認してください');
+ const part=token.split('.')[1];
+ if(!part)throw new Error('IDトークンを解析できません');
+ const b64=part.replace(/-/g,'+').replace(/_/g,'/');
+ const decoded=Utilities.newBlob(Utilities.base64Decode(b64)).getDataAsString();
+ const subject=JSON.parse(decoded).sub;
+ if(typeof subject!=='string'||!/^[0-9]+$/.test(subject))throw new Error('GoogleユーザーIDを取得できません');
+ Logger.log('USER_AUTH_SUBJECT: '+subject);
+ return true;
+}
+
 /** Call manually on an EMPTY spreadsheet; does not insert households or users. */
 function initializeEmptySchema(){
  const ss=spreadsheet();
