@@ -7,9 +7,9 @@
 ## 試験前の安全な準備（開始時にまとめて案内する）
 
 1. 現在の家庭用Google Sheetsは変更せず、**新しい試験専用スプレッドシート**を別に用意。12シートのヘッダー・カテゴリ5件だけを用意する。一般的な「ファイルのコピー」は家庭情報も複製する可能性があるため、コピー後は全件確認し、試験用の家庭1件・本人ユーザー1件以外を必ず削除する。元のデータを試験に転用しない。
-2. 日用品、商品、別名、店舗、記録、明細、変更履歴、処理済み操作、レシートルールの**9シートはヘッダー以外すべて空**。家庭とユーザーは試験専用各1件。Google subject列は書式なしテキスト。
+2. 日用品、商品、別名、店舗、記録、明細、変更履歴、処理済み操作、レシートルールの**9シートはヘッダー以外すべて空**。家庭とユーザーは試験専用各1件。**試験専用の家庭名（households.display_name）は `[KURASHI_WRITE_TRIAL_ONLY]` と完全一致**させる。users.household_idはその家庭IDと一致させ、Google subject列は書式なしテキストの数字文字列とする。
 3. 本番GASプロジェクトは変更せず、試験用に**別のApps Scriptプロジェクト**を用意。そのスクリプトに開発ブランチの `gas/Code.gs` と必要なマニフェスト権限を反映し、認証・試験用スプレッドシートへのアクセスを許可する。現行の公開GAS WebアプリURLは再利用しない。
-4. 試験プロジェクトのスクリプトプロパティに `SPREADSHEET_ID`（試験シートID）、`GOOGLE_CLIENT_ID`（試験で使用するOAuthクライアントID）を設定。さらに `WRITE_TRIAL_SPREADSHEET_ID` に **同じ試験シートID** を設定。ここまでは `ENABLE_EXPERIMENTAL_WRITES` を設定しない。
+4. 試験プロジェクトのスクリプトプロパティに `SPREADSHEET_ID`（試験シートID）、`GOOGLE_CLIENT_ID`（試験で使用するOAuthクライアントID）を設定。さらに `WRITE_TRIAL_SPREADSHEET_ID` に **同じ試験シートID** を設定。書込時には家庭名の試験専用マーカー、家庭1件・ユーザー1件と所属整合性も毎回検証される。実家庭データの名前を試験用マーカーに変更してはならない。ここまでは `ENABLE_EXPERIMENTAL_WRITES` を設定しない。
 5. エディタから **`testIsolatedWriteTrialPreflightReadOnly`** を実行。「`ISOLATED_WRITE_TRIAL_PREFLIGHT_OK`」を確認する。これはシートを読み取るだけ。失敗した場合は進めない。
 6. 試験プロジェクトだけで `ENABLE_EXPERIMENTAL_WRITES=true` を設定し、別URLとしてデプロイする。**既存家庭用GASにこのプロパティを設定しない**。テストクライアントにも専用GAS URLと独立した書き込み許可を使い、通常プレビューの `LIVE_WRITE_ENABLED=false` は維持する。
 
@@ -26,7 +26,7 @@
 | 意図記録中・本体保存中・履歴作成中の中断 | 元操作IDでのみ復旧。重複行・重複履歴ができない |
 | 複数ブラウザタブ | 同一オリジンでは排他制御。別端末ではGASロック・versionで保護 |
 | 未ログイン・トークン失効 | UNAUTHORIZED。操作データを書かない |
-| リリースゲート不一致 | WRITE_TRIAL_SPREADSHEET_IDの欠落／不一致ならWRITES_DISABLED |
+| リリースゲート不一致 | WRITE_TRIAL_SPREADSHEET_IDの欠落／不一致ならWRITES_DISABLED、専用家庭名やユーザー構成が違えばTRIAL_NOT_ISOLATED |
 
 ## 停止・片付け
 
