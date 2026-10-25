@@ -2,7 +2,7 @@
 (function(){
  'use strict';
  let clientId='',token=null,subject=null,expires=0;
- let initialized=false;
+ let initialized=false,manualOnly=false;
  const listeners=new Set();
  const status=()=>({configured:!!clientId,signedIn:!!token&&Date.now()<expires,subject:subject});
  const notify=()=>listeners.forEach(f=>f(status()));
@@ -18,13 +18,14 @@
   token=value;subject=claims.sub;expires=Math.min(Number(claims.exp)*1000,Date.now()+55*60*1000);
   notify();
  }
- function configure(value){
+ function configure(value,options={}){
+  manualOnly=options.manualOnly===true;
   clientId=typeof value==='string'&&/^[0-9]+-[a-z0-9-]+\.apps\.googleusercontent\.com$/.test(value)?value:'';
   initialized=false;signOut();
  }
  function initialize(){
   if(initialized||!clientId||!window.google?.accounts?.id)return false;
-  window.google.accounts.id.initialize({client_id:clientId,callback:receive,auto_select:true,cancel_on_tap_outside:true});
+  window.google.accounts.id.initialize({client_id:clientId,callback:receive,auto_select:!manualOnly,cancel_on_tap_outside:true});
   initialized=true;return true;
  }
  function signIn(){
@@ -49,5 +50,5 @@
  function getToken(){if(!token||Date.now()>=expires){token=null;subject=null;return null}return token}
  function subscribe(fn){listeners.add(fn);return ()=>listeners.delete(fn)}
  window.KurashiAuth={configure,signIn,restore,signOut,getToken,status,subscribe};
- window.addEventListener('load',()=>{if(clientId)restore()});
+ window.addEventListener('load',()=>{if(clientId&&!manualOnly)restore()});
 })();
