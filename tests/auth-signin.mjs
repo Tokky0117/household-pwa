@@ -1,0 +1,18 @@
+import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
+import vm from 'node:vm';
+const source=readFileSync(new URL('../auth.js',import.meta.url),'utf8');
+let init=0,render=0,clear=0;
+const login={replaceChildren(){clear++}};
+const gis={initialize(){init++},renderButton(el){assert.equal(el,login);render++},prompt(){},disableAutoSelect(){}};
+const win={google:{accounts:{id:gis}},addEventListener(){}};
+const ctx={window:win,document:{getElementById(id){assert.equal(id,'google-login-button');return login}},Date};
+vm.createContext(ctx);vm.runInContext(source,ctx);
+win.KurashiAuth.configure('290567395833-cdemend3itmapsgsounu8pf72hgvm315.apps.googleusercontent.com',{manualOnly:true});
+assert.equal(win.KurashiAuth.signIn(),true);
+assert.equal(win.KurashiAuth.signIn(),true);
+assert.equal(init,1);assert.equal(render,1);assert.equal(clear,1);
+win.KurashiAuth.configure('290567395833-cdemend3itmapsgsounu8pf72hgvm315.apps.googleusercontent.com',{manualOnly:true});
+assert.equal(win.KurashiAuth.signIn(),true);
+assert.equal(init,2);assert.equal(render,2);
+console.log('GIS sign-in initialization and idempotent render PASS');
