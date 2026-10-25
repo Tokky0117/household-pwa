@@ -49,6 +49,18 @@ assert.equal(mock.testIsolatedWriteTrialPreflightReadOnly(),true);
 const before=writeCount;
 assert.equal(mock.runIsolatedItemWriteTrialOnce(),true);
 assert.equal(mock.testIsolatedTrialResultReadOnly(),true,'Editor-only post-trial verification bypasses browser CORS');
+const snapshot=JSON.parse(JSON.stringify(mock.trialReadOnlyItemList()));
+assert.equal(snapshot.categories,5);
+assert.equal(snapshot.items.length,1);
+assert.equal(snapshot.items[0].name,'試験用・牛乳');
+assert.equal(snapshot.items[0].in_stock,false);
+assert.equal(snapshot.items[0].category,'飲食');
+assert.deepEqual(Object.keys(snapshot.items[0]).sort(),['category','in_stock','name']);
+const pageHtml=mock.isolatedTrialReadPage_();
+assert.match(pageHtml,/textContent=row\.name/);
+assert.match(pageHtml,/\.trialReadOnlyItemList\(\)/);
+assert.doesNotMatch(pageHtml,/innerHTML|id_token|localStorage/);
+
 const diag=mock.doGet({parameter:{trial_read:'1'}});
 assert.match(diag.html,/google\.script\.run/);
 assert.match(diag.html,/trialReadOnlyCounts/);
