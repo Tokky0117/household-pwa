@@ -95,3 +95,9 @@ Chromeの接続テスト画面でGoogleログイン、GAS WebアプリへのPOST
 - `testIsolatedWriteTrialPreflightReadOnly()` を追加。12シートのヘッダー・固定5カテゴリ・試験用家庭1件とユーザー1件・9データシート空を読み取り検証する。プロパティを書き換えたりデータを追加したりしない。
 - 実Google Sheetsでの試験時の段取りを `gas/WRITE_TRIAL_PLAN.md` に整理。稼働中GASや家庭用シートを流用せず、専用シート＋別GASプロジェクトを使い、試験後は公開・書込許可を閉じる。
 - **試験環境への実書込はまだしていない**。通常アプリのクライアント書込ゲート `LIVE_WRITE_ENABLED=false` も維持。本番の書込機能は別審査・別承認であり、この段階では有効化しない。
+
+## 2026-10-25：試験専用環境の誤設定対策（追加）
+- `SPREADSHEET_ID===WRITE_TRIAL_SPREADSHEET_ID` のみでは、両者を同じ家庭用シートIDに誤設定した場合に不十分と判明。GASの `requireIsolatedWriteTrial()` と事前検査に `assertIsolatedTrialIdentity()` を追加した。
+- 試験用家庭は **1件のみ**、家庭名は `[KURASHI_WRITE_TRIAL_ONLY]` と完全一致、試験用ユーザーも **1件のみ**で家庭IDが一致、`auth_subject` は数字文字列。この条件が満たされない書き込みは `TRIAL_NOT_ISOLATED` で停止する。一般家庭の本名や既存家庭用シートを試験環境へ転用しない。
+- `tests/gas-isolated-trial-gate.mjs` にシートID不一致／未設定、家庭名マーカー不一致、ユーザー識別不整合、データ入力済みの事前検査拒否、正しい試験環境でのみモック書込許可を検証する回帰テストを追加しCIへ登録。
+- 本番データへ書き込む許可ではなく、**試験用スプレッドシートへ限定するための二重認証**。実Google Sheetsの書込試験は未実施。現行デプロイ先、通常PWAの書込ゲート、`main` は変更していない。
