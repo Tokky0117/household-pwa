@@ -17,7 +17,7 @@ const mock={
  SpreadsheetApp:{openById(){return {getSheetByName(name){
   const cells=allSheets[name];if(!cells)return null;
   return {getLastRow(){return cells.length},getDataRange(){return {getValues(){return cells.map(x=>x.slice())}}},
-   getRange(row,col,height,width){return {setValues(vals){
+   getRange(row,col,height,width){return {getValues(){return Array.from({length:height},(_,i)=>cells[row+i-1].slice(col-1,col-1+width))},setValues(vals){
     assert.equal(height,1);assert.equal(col,1);assert.equal(vals[0].length,width);
     writeCount++;
     while(cells.length<row)cells.push([]);
