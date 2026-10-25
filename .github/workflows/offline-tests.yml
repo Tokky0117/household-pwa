@@ -41,5 +41,7 @@ jobs:
       - name: Validate GAS browser connection diagnostics
         run: node tests/gas-connection-page.mjs
 
+      - name: Google login button initialization
+        run: node tests/auth-signin.mjs
       - name: GAS read-only transport
         run: node tests/gas-transport.mjs
