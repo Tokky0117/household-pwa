@@ -66,3 +66,10 @@ Chromeの接続テスト画面でGoogleログイン、GAS WebアプリへのPOST
 - **既知の公開禁止事項**：`mutate` は `item_groups` 更新→`change_log` 追記→`processed_operations` 追記を別々に行う。最後の記録に失敗すると日用品だけ保存された状態となり得る。テストはこの状況を故障注入で検出する。復旧・重複再送の仕様が完成するまで `ENABLE_EXPERIMENTAL_WRITES` とクライアントの `LIVE_WRITE_ENABLED` を無効のままにする。
 - 安全性の完成条件：失敗状態の再取得・照合と同一operation_idでの確実な再試行／完了確認、操作の永続記録に関する復旧設計、二重クリック・タイムアウト・複数端末の実機試験、テスト専用スプレッドシートを用いた動作確認、段階的な明示承認。現状はすべて未完。
 - GitHubのGASコードは利用者のデプロイ済みWebアプリに自動反映されない。未承認の公開反映はしない。
+
+## item.create / item.update 事前ジャーナル方式（開発ブランチのみ、2026-10-25）
+- 旧方式の「item_groups書込→change_log→processed_operations」は部分失敗時の再送を安全に判定できなかった。日用品操作に限り、先に `processed_operations` へ `status=prepared`・計画済み確定行・元version・予定sequence_no・要求ハッシュを保存してから実データを書き込む方式へ変更。
+- ロック中、同家庭に未完了 `prepared` があれば**異なる操作IDは `RECOVERY_REQUIRED` で拒否**。元の操作IDかつ同一要求のみ、実データ行と操作履歴を照合し、抜けている段階を補完して結果を確定する。
+- `change_log.change_id=operation_id` として再送時に同一変更履歴を重複追記しない。異常なバージョンや異なる結果は `RECOVERY_CONFLICT` で停止し、推測して上書きしない。
+- 1回のモック実行で、正常登録→同一IDでの再送→更新後の履歴確定失敗→元IDによる復旧を確認。更新バージョンが二重に進まず、履歴も2行のままであることを検証した。さらに `tests/gas-item-mutations.mjs` の故障注入シナリオを新方式に修正してCI対象にしている（GitHub Actions全体の結果は未確認）。
+- **未解決の公開禁止事項**：ブラウザ終了後の元操作IDと要求の復元方法、`prepared` 行自体の不整合復旧、デプロイ済みGASとの差分、実Sheets障害・タイムアウト・同時更新の実機検証、製品書き込みの旧経路。これらが解決するまでクライアント `LIVE_WRITE_ENABLED=false` および実GASの `ENABLE_EXPERIMENTAL_WRITES` は無効。商品系の旧書き込みは開発ブランチ内でも `WRITES_DISABLED` で拒否する。
