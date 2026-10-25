@@ -12,7 +12,9 @@ assert.throws(()=>api.configure('http://script.google.com/macros/s/id/exec'),/GA
 assert.throws(()=>api.configure('https://evil.example/'),/GAS_ENDPOINT_INVALID/);
 api.configure('https://script.google.com/macros/s/TEST123/exec');
 assert.equal(api.status().configured,true);
-await assert.rejects(api.request('item.create'),/READ_ONLY/);
+await assert.rejects(api.request('item.create'),/WRITES_DISABLED/);
+assert.equal(api.writeEnabled(),false);
+await assert.rejects(api.request('product.create'),/UNSUPPORTED/);
 await assert.rejects(api.request('bootstrap',{}, {token:''}),/LOGIN_REQUIRED/);
 let calls=0;
 const fetcher=async (url,opts)=>{
