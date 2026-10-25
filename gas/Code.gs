@@ -378,6 +378,43 @@ function testIsolatedWriteTrialPreflightReadOnly(){
  Logger.log('ISOLATED_WRITE_TRIAL_PREFLIGHT_OK: 12 sheets / 5 categories / 9 empty data sheets');
  return true;
 }
+/**
+ * OPTIONAL: Run MANUALLY in a NEW, independent Apps Script project.
+ * Creates a brand-new isolated spreadsheet only. Never reads or modifies the
+ * currently configured SPREADSHEET_ID or any household data. Does not enable
+ * writes, edit Script Properties, or publish a Web App.
+ * Fill the newly created users.auth_subject manually as plain text.
+ */
+function createFreshIsolatedWriteTrialSpreadsheet(){
+ const label='くらしストック_書込試験専用_'+Utilities.getUuid().slice(0,8);
+ const ss=SpreadsheetApp.create(label);
+ const names=Object.keys(TABLES);
+ const first=ss.getSheets()[0];
+ first.setName(names[0]);
+ for(let i=1;i<names.length;i++)ss.insertSheet(names[i]);
+ for(const name of names){
+  const sh=ss.getSheetByName(name);
+  const headers=TABLES[name];
+  sh.getRange(1,1,1,headers.length).setValues([headers]);
+  sh.setFrozenRows(1);
+ }
+ const householdId='trial-'+Utilities.getUuid();
+ ss.getSheetByName('households').appendRow([
+  householdId,TRIAL_HOUSEHOLD_LABEL,1,new Date().toISOString()
+ ]);
+ // The Google subject MUST be entered by the owner, in plain text. Never
+ // guess it, log it, or substitute the script owner email.
+ const users=ss.getSheetByName('users');
+ users.getRange(2,4).setNumberFormat('@');
+ users.getRange(2,1,1,3).setValues([[
+  'trial-user-'+Utilities.getUuid(),householdId,'試験ユーザー'
+ ]]);
+ CATEGORIES.forEach((name,i)=>ss.getSheetByName('categories').appendRow([i,name,i+1]));
+ Logger.log('新しい試験専用シートを作成しました。URL: '+ss.getUrl());
+ Logger.log('次に users!D2 に Google subject を文字列として入力してください。');
+ Logger.log('既存家庭用のシートやスクリプトプロパティは変更していません。');
+ return ss.getUrl();
+}
 /** Call manually on an EMPTY spreadsheet; does not insert households or users. */
 function initializeEmptySchema(){
  const ss=spreadsheet();
