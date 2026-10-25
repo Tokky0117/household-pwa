@@ -118,6 +118,15 @@ function samePlannedItem(actual,planned){
   'in_stock','sort_order','is_hidden','version','created_at','updated_at','deleted_at'];
  return fields.every(key=>String(actual[key]===null?'':actual[key])===String(planned[key]===null?'':planned[key]));
 }
+const TRIAL_HOUSEHOLD_LABEL='[KURASHI_WRITE_TRIAL_ONLY]';
+function assertIsolatedTrialIdentity(){
+ const families=rows('households'),members=rows('users');
+ if(families.length!==1||members.length!==1||
+    String(families[0].obj.display_name)!==TRIAL_HOUSEHOLD_LABEL||
+    String(members[0].obj.household_id)!==String(families[0].obj.household_id)||
+    !String(members[0].obj.auth_subject||'').match(/^[0-9]+$/))
+  fail('TRIAL_NOT_ISOLATED','試験専用の家庭とユーザーが確認できません');
+}
 function requireIsolatedWriteTrial(){
  const props=PropertiesService.getScriptProperties();
  const configured=props.getProperty('SPREADSHEET_ID');
@@ -125,6 +134,9 @@ function requireIsolatedWriteTrial(){
  if(!configured||!isolated||configured!==isolated||
     props.getProperty('ENABLE_EXPERIMENTAL_WRITES')!=='true')
   fail('WRITES_DISABLED','テスト用の書き込み許可が確認できません');
+ // A matching property alone could accidentally point at the real family sheet.
+ // The sheet must also carry a deliberate, visible trial-only household marker.
+ assertIsolatedTrialIdentity();
 }
 function mutateItemSafely(user,action,payload,operationId){
  requiredId(operationId);
@@ -155,7 +167,7 @@ function mutateItemSafely(user,action,payload,operationId){
    let output,baseVersion=null;
    if(action==='item.create'){
     const name=String(payload.name||'').trim();validCategory(payload.category_id);
-    if(!name||name.length>150||/^[=+@\\-]/.test(name))fail('BAD_REQUEST','日用品名を確認してください');
+    if(!name||name.length>150||/^[=+@-]/.test(name))fail('BAD_REQUEST','日用品名を確認してください');
     if(items.some(x=>normalized(x.obj.name)===normalized(name)))
      fail('DUPLICATE','同名の日用品は非表示データを含めて再利用してください');
     const sort=Math.max(0,...items.filter(x=>String(x.obj.category_id)===String(payload.category_id)).map(x=>Number(x.obj.sort_order)||0))+1;
@@ -170,7 +182,7 @@ function mutateItemSafely(user,action,payload,operationId){
     output=Object.assign({},row.obj);
     if(Object.prototype.hasOwnProperty.call(payload,'name')){
      const name=String(payload.name||'').trim();
-     if(!name||name.length>150||/^[=+@\\-]/.test(name))fail('BAD_REQUEST','日用品名を確認してください');
+     if(!name||name.length>150||/^[=+@-]/.test(name))fail('BAD_REQUEST','日用品名を確認してください');
      if(items.some(x=>x.row!==row.row&&!x.obj.is_hidden&&normalized(x.obj.name)===normalized(name)))
       fail('DUPLICATE','同じ名前の日用品があります');
      output.name=name;output.normalized_name=normalized(name);
@@ -362,8 +374,7 @@ function testIsolatedWriteTrialPreflightReadOnly(){
   'records','record_items','change_log','processed_operations','receipt_rules'];
  for(const name of expectedEmpty)if(rows(name).length!==0)
   fail('TRIAL_NOT_EMPTY',name+' のデータを消去した試験用コピーを使用してください');
- if(rows('users').length!==1||rows('households').length!==1)
-  fail('TRIAL_MEMBERSHIP','試験用の家庭・ユーザーを各1件だけ登録してください');
+ assertIsolatedTrialIdentity();
  Logger.log('ISOLATED_WRITE_TRIAL_PREFLIGHT_OK: 12 sheets / 5 categories / 9 empty data sheets');
  return true;
 }
