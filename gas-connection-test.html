@@ -12,7 +12,7 @@ a{color:#20528d}
 <h1>Google Sheets 接続テスト</h1>
 <p>くらしストックのテスト用GASから、カテゴリを<strong>読み取るだけ</strong>の検証画面です。アプリの保存内容やGoogle Sheetsは変更しません。</p>
 <section><h2>① Googleログイン</h2>
-<div id="google-login-button"></div><p id="auth-status" role="status">ログイン状態を確認中です。</p>
+<div id="google-login-button"></div><p class="info">Chromeではブラウザ標準のFedCMログイン方式を使用します。ログイン画面が閉じる場合は、画面下の診断表示を確認してください。</p><p id="auth-status" role="status">ログイン状態を確認中です。</p><p id="auth-diagnostics" class="info" role="status"></p>
 <div id="identity" hidden><p class="info">家庭への登録に使うGoogleアカウント識別ID（sub）。メールアドレスや認証トークンとは別の値です。</p><pre id="subject" aria-label="Googleアカウント識別ID"></pre><button id="copy-subject" type="button">識別IDをコピー</button><p id="copy-message" role="status"></p><p class="info">このIDはGoogle Sheetsのusersシートにだけ貼り付け、チャットには送らないでください。</p></div><button id="signout" type="button" hidden>この画面のログインを解除</button></section>
 <section><h2>② 読み取りテスト</h2>
 <button id="check" type="button" disabled>カテゴリを読み取りテスト</button>
@@ -30,14 +30,14 @@ a{color:#20528d}
 'use strict';
 const CLIENT_ID='290567395833-cdemend3itmapsgsounu8pf72hgvm315.apps.googleusercontent.com';
 const ENDPOINT='https://script.google.com/macros/s/AKfycbx8el-F0XgEP2-1U6XKdduXF0nOuH1BrwmnWZUIkMVCKku1lqeBA8acBrPgbYDtIqokIw/exec';
-const authStatus=document.getElementById('auth-status'),button=document.getElementById('check'),result=document.getElementById('result'),details=document.getElementById('details'),signout=document.getElementById('signout'),identity=document.getElementById('identity'),subject=document.getElementById('subject'),copyMessage=document.getElementById('copy-message');
+const authStatus=document.getElementById('auth-status'),button=document.getElementById('check'),result=document.getElementById('result'),details=document.getElementById('details'),signout=document.getElementById('signout'),identity=document.getElementById('identity'),subject=document.getElementById('subject'),copyMessage=document.getElementById('copy-message'),authDiagnostics=document.getElementById('auth-diagnostics');
 window.KurashiAuth.configure(CLIENT_ID,{manualOnly:true});
 window.KurashiGasApi.configure(ENDPOINT);
 function update(){
  const signedIn=window.KurashiAuth.status().signedIn;
  authStatus.textContent=signedIn?'Googleログイン済み。下のテストを実行できます。':'未ログインです。上のGoogleログインボタンをクリックしてください（自動ログインは停止しています）。';
  button.disabled=!signedIn;signout.hidden=!signedIn;identity.hidden=!signedIn;subject.textContent=signedIn?String(window.KurashiAuth.status().subject||''):'';
- if(!signedIn)window.KurashiAuth.signIn();
+ if(!signedIn){const rendered=window.KurashiAuth.signIn();authDiagnostics.textContent=rendered?'ログインボタンを表示しました。Googleログインを選択してください。':'Google認証ライブラリが読み込めていません。Chromeでページを再読み込みしてください。';}else{authDiagnostics.textContent='Googleログインが確認できました。';}
 }
 window.KurashiAuth.subscribe(update);
 document.getElementById('copy-subject').addEventListener('click',async()=>{
