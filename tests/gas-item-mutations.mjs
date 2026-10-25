@@ -20,7 +20,7 @@ books.households.push(['h1','家庭1',1,''],['h2','家庭2',1,'']);
 books.users.push(['u1','h1','User1','sub1'],['u2','h2','User2','sub2']);
 books.categories.push(...['飲食','キッチン','洗面・風呂','洗濯・掃除','その他'].map((name,i)=>[i,name,i+1]));
 const initial=books.item_groups.map(x=>x.slice());
-let writesEnabled=false,writeCount=0,uuidNum=0,lockHeld=false;
+let writesEnabled=false,writeCount=0,uuidNum=0,lockHeld=false,failOperationJournal=false;
 const ctx={
  PropertiesService:{getScriptProperties(){return {getProperty(name){return ({SPREADSHEET_ID:'mock',GOOGLE_CLIENT_ID:'test-client',ENABLE_EXPERIMENTAL_WRITES:writesEnabled?'true':'false'})[name]||null}}}},
  SpreadsheetApp:{openById(id){assert.equal(id,'mock');return {getSheetByName(name){
@@ -30,7 +30,9 @@ const ctx={
    getLastRow(){return cells.length},
    getDataRange(){return {getValues(){return cells.map(row=>row.slice())}}},
    getRange(row,col,height,width){assert.equal(col,1);assert.equal(height,1);return {setValues(values){
-    assert.equal(values[0].length,width);writeCount++;
+    assert.equal(values[0].length,width);
+    if(name==='processed_operations'&&failOperationJournal)throw Error('INJECTED_JOURNAL_FAILURE');
+    writeCount++;
     while(cells.length<row)cells.push([]);
     cells[row-1]=values[0].slice();
    }}}
@@ -108,4 +110,15 @@ assert.deepEqual(ctx.scoped('change_log','h2').map(x=>x.obj.sequence_no),[1]);
 assert.equal(ctx.scoped('processed_operations','h1').length,6);
 assert.equal(ctx.scoped('processed_operations','h2').length,1);
 assert.equal(lockHeld,false);
+// Known blocker: Sheets rows are not transactional. Simulated failure after the
+// item and change-log append leaves a committed item without an operation receipt.
+// Document it as an unresolved release blocker; do not treat as safe to enable.
+failOperationJournal=true;
+assert.throws(()=>execute(u1,'item.create',{name:'部分失敗検出',category_id:0},'fault-op-123'),/INJECTED_JOURNAL_FAILURE/);
+failOperationJournal=false;
+assert.ok(rowByName('h1','部分失敗検出'),'Entity was written before journal failure');
+assert.equal(ctx.scoped('processed_operations','h1').some(x=>x.obj.operation_id==='fault-op-123'),false);
+fails(u1,'item.create',{name:'部分失敗検出',category_id:0},'DUPLICATE','fault-op-123');
+assert.equal(lockHeld,false);
+console.log('KNOWN RELEASE BLOCKER: journal append failure leaves partial write; writes must stay disabled');
 console.log('GAS item mutations: disabled gate, create, version conflict, duplicates, hide, replay, households PASS');
