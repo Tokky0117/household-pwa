@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>試験用GASの読み取り接続｜くらしストック</title>
+<style>
+:root{font-family:-apple-system,BlinkMacSystemFont,"Hiragino Kaku Gothic ProN",sans-serif;color:#273649;background:#f6f7fa}body{max-width:660px;margin:auto;padding:20px 16px 50px;line-height:1.7}
+h1{font-size:1.3rem}h2{font-size:1.06rem}.panel{background:#fff;border:1px solid #dce3ef;border-radius:14px;padding:17px;margin:16px 0}
+label{display:block;font-weight:650;margin:10px 0 5px}input[type=url]{box-sizing:border-box;width:100%;font-size:16px;padding:12px;border:1px solid #bdc9d8;border-radius:9px}
+button{min-height:48px;width:100%;border:0;border-radius:9px;background:#22538e;color:#fff;font-size:1rem;font-weight:700;margin:9px 0;padding:11px}
+button:disabled{background:#a1aaba}.secondary{background:#eef2f8;color:#20508c}
+.muted{font-size:.92rem;color:#56677b}.warning{border-left:4px solid #ac762a;padding-left:11px}a{color:#22538e}
+</style></head><body>
+<h1>試験用GAS｜読み取り接続確認</h1>
+<p>新しく作成した<strong>試験専用GAS</strong>へGoogleログインして、試験用シートの件数だけを確認します。この画面から書き込み処理は呼び出しません。</p>
+<section class="panel">
+<h2>① 試験用WebアプリのURL</h2>
+<label for="trial-url">試験用GASのWebアプリURL（/exec）</label>
+<input id="trial-url" type="url" inputmode="url" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="https://script.google.com/macros/s/.../exec">
+<p class="muted">このURLはこの画面のメモリだけで扱い、ブラウザ保存・ページURLへの追加・送信記録への出力はしません。既存の家庭用GASのURLは入力しないでください。</p>
+<p id="endpoint-status" role="status">試験用URLを入力してください。</p>
+</section>
+<section class="panel">
+<h2>② 試験用Googleログイン</h2>
+<div id="google-login-button"></div>
+<p id="auth-status" role="status">Googleログインボタンを準備しています。</p>
+<p id="auth-diagnostics" class="muted"></p>
+<button id="retry-google" type="button" class="secondary">Googleログインボタンを再読み込み</button>
+<button id="signout" type="button" class="secondary" hidden>この画面からログアウト</button>
+</section>
+<section class="panel">
+<h2>③ 読み取り接続テスト</h2>
+<button id="check" type="button" disabled>試験用シートの件数を読み取る</button>
+<p id="result" role="status" aria-live="polite">URLとログインを確認してください。</p>
+<p id="counts" class="muted"></p>
+<p class="warning"><strong>重要：</strong>この画面で保存・登録・削除はできません。読み取りが成功しても `ENABLE_EXPERIMENTAL_WRITES` を有効にしないでください。</p>
+</section>
+<section class="panel">
+<h2>失敗した場合</h2>
+<p class="muted">ネットワークエラーの場合、GitHub PagesからGASへのCORS制限が考えられます。公開範囲を広げたり、トークンをURLに載せたりせず、表示されたエラー名だけ教えてください。</p>
+</section>
+<p><a href="./">アプリに戻る</a></p>
+<script src="./auth.js"></script><script src="./gas-api.js"></script>
+<script>
+(function(){
+ 'use strict';
+ const CLIENT_ID='290567395833-cdemend3itmapsgsounu8pf72hgvm315.apps.googleusercontent.com';
+ const MAIN_GAS='https://script.google.com/macros/s/AKfycbx8el-F0XgEP2-1U6XKdduXF0nOuH1BrwmnWZUIkMVCKku1lqeBA8acBrPgbYDtIqokIw/exec';
+ const url=document.getElementById('trial-url'),endpointStatus=document.getElementById('endpoint-status');
+ const status=document.getElementById('auth-status'),diagnostics=document.getElementById('auth-diagnostics');
+ const result=document.getElementById('result'),counts=document.getElementById('counts'),check=document.getElementById('check');
+ const logout=document.getElementById('signout');
+ let loading=false,attempt=0,scriptState='未開始';
+ window.KurashiAuth.configure(CLIENT_ID,{manualOnly:true});
+ function validateTrialUrl(value){
+  try{
+   const candidate=new URL(value.trim());
+   if(candidate.href===MAIN_GAS)return '家庭用GASのURLは指定できません';
+   window.KurashiGasApi.configure(candidate.href);
+   return '';
+  }catch{return '試験用GASの /exec URLを確認してください'}
+ }
+ function update(){
+  const active=window.KurashiAuth.status().signedIn;
+  logout.hidden=!active;
+  status.textContent=active?'試験用Googleログイン済みです。':'Googleログインしてください。';
+  let endpointError='試験用URLを入力してください。';
+  if(url.value.trim())endpointError=validateTrialUrl(url.value);
+  else window.KurashiGasApi.configure('');
+  endpointStatus.textContent=endpointError||'試験用URLの形式を確認しました。';
+  check.disabled=!active||!!endpointError||loading;
+  if(active){diagnostics.textContent='Googleログイン成功';return}
+  if(window.google?.accounts?.id){
+   try{window.KurashiAuth.signIn();diagnostics.textContent='ログインボタンを表示しています。';}
+   catch{diagnostics.textContent='ログインボタンの初期化に失敗しました。'}
+  }else diagnostics.textContent='Google認証ライブラリ：'+scriptState;
+ }
+ function loadGoogle(){
+  const current=++attempt;scriptState='読み込み中';update();
+  const existing=document.getElementById('trial-google-loader');if(existing)existing.remove();
+  const script=document.createElement('script');script.id='trial-google-loader';script.async=true;
+  script.onload=()=>{if(current!==attempt)return;scriptState='読み込み完了';update()};
+  script.onerror=()=>{if(current!==attempt)return;scriptState='読み込み失敗';update()};
+  script.src='https://accounts.google.com/gsi/client';document.head.appendChild(script);
+ }
+ window.KurashiAuth.subscribe(update);
+ url.addEventListener('input',()=>{counts.textContent='';result.textContent='試験用URLを確認してください。';update()});
+ document.getElementById('retry-google').addEventListener('click',loadGoogle);
+ logout.addEventListener('click',()=>{window.KurashiAuth.signOut();result.textContent='ログアウトしました。';counts.textContent='';update()});
+ check.addEventListener('click',async()=>{
+  if(loading)return;
+  const invalid=validateTrialUrl(url.value);if(invalid){result.textContent=invalid;update();return}
+  if(!window.KurashiAuth.status().signedIn){result.textContent='ログインが必要です';update();return}
+  loading=true;counts.textContent='';result.textContent='読み取り中です…';update();
+  try{
+   // The adapter enforces the write-disabled gate. Only read action is used.
+   const data=await window.KurashiGasApi.request('bootstrap');
+   if(!data||typeof data.household_id!=='string'||!Array.isArray(data.categories)||
+      !Array.isArray(data.item_groups)||!Array.isArray(data.products)||!Array.isArray(data.stores)||
+      data.categories.length!==5)throw Error('RESPONSE_SHAPE_INVALID');
+   const expected=['飲食','キッチン','洗面・風呂','洗濯・掃除','その他'];
+   if(!data.categories.every((v,i)=>v?.name===expected[i]))throw Error('CATEGORIES_MISMATCH');
+   result.textContent='読み取り成功：カテゴリ5件';
+   counts.textContent='日用品 '+data.item_groups.length+' 件 ／ 商品 '+data.products.length+' 件 ／ 店舗 '+data.stores.length+' 件';
+  }catch(e){
+   result.textContent=(e?.name==='AbortError'||e instanceof TypeError)?
+    '通信エラー：CORSまたはネットワーク制限の可能性があります。':
+    '接続エラー：'+String(e?.message||'UNKNOWN');
+  }finally{loading=false;update()}
+ });
+ window.addEventListener('load',loadGoogle);
+ update();
+})();
+</script>
+</body></html>
