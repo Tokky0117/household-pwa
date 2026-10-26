@@ -50,3 +50,13 @@ Google公式仕様により、HTML Serviceの`google.script.run`からはGASの�
 **重要な留保**：この試験版は「アクセスできるユーザー＝自分のみ」の単独利用を前提とする。Google IDトークンを使った家庭別認可や複数家庭のサービスではない。これをそのまま一般向けにデプロイすることは禁止。現在動いている試験用Webアプリの公開範囲を広げないこと。現行の試験用GASコード・家庭用GAS・`main`はこのコミットで変更していない。
 
 参考：Google Apps Script公式「HTML Service: Communicate with Server Functions」（Private functions章） https://developers.google.com/apps-script/guides/html/communication
+
+## 2026-10-26：認証付きHTTPS試作をコード化（未デプロイ）
+
+既存GitHub Pages PWAをそのまま残せる候補Bのために`backend/`を追加。詳細なデプロイ前提は`backend/README.md`に記載。`readonly-contract.mjs`でOriginの完全一致検査、POST `/v1/bootstrap`のみ許可、Google署名検証済みclaimsと`users.auth_subject`の一意照合、家庭別の行フィルタリング、Sheetsヘッダー検証、家庭別sequence_no計算を行う。HTTPレスポンスはno-store。書込ルートは存在しない。
+
+`server.mjs`はNode.jsでGoogle公式`google-auth-library`によるIDトークン検証、Google Sheets APIは実行環境のADC + 読取スコープを使用。起動には`TRIAL_BACKEND_ENABLED=true`など明示的な試験環境変数が必要で、現時点でGoogle Cloud/試験用シート/稼働中GASには一切接続していない。`pwa-readonly-client.js`は別ファイルのオプトイン案で、現行PWAの`index.html`には読み込ませていない。
+
+`tests/backend-readonly-contract.mjs`と`tests/backend-pwa-client.mjs`をオフラインCIに追加。メインのバックエンド契約を模擬実行して、本人の家庭のみ返す・他家庭を除外・異なるOriginを拒否・登録更新ルートを拒否・家庭別同期番号が保持されることを確認。クライアントも模擬実行して、書込拒否とAuthorizationヘッダーへのトークン送信を確認した。**実Cloud Runでの動作、Google SDK依存関係のインストール、CI全体の成功は未検証**。
+
+次の評価軸：Google Cloudアカウント/費用・サービスアカウント共有・デプロイ作業量、認証付きクロスオリジン通信、PWAオフライン・同期、スマホでの通信品質。これらが満たされるまで普段使いの家庭データに接続しない。
