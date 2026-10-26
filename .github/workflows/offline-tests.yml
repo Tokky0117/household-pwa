@@ -36,6 +36,8 @@ jobs:
         run: node tests/backend-readonly-contract.mjs
       - name: Opt-in PWA HTTPS bootstrap adapter
         run: node tests/backend-pwa-client.mjs
+      - name: Trial GAS simulated optimistic stock UI
+        run: node tests/gas-optimistic-ui-demo.mjs
       - name: Standalone trial read-only GAS security boundary
         run: node tests/gas-trial-readonly-bundle.mjs
       - name: Durable item journal and account-scoped explicit retry
