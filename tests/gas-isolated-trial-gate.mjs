@@ -61,17 +61,11 @@ allSheets.households.push(['trial-home','[KURASHI_WRITE_TRIAL_ONLY]',1,'']);
 allSheets.users.push(['test-user','trial-home','テスト担当','1234567890']);
 const user={userId:'test-user',householdId:'trial-home'};
 const create=(name,opid)=>mock.mutate(user,'item.create',{name,category_id:0},opid);
-let trialStage='initial';
-process.on('uncaughtException',err=>{
- console.error('FAILED_TRIAL_STAGE:',trialStage, 'CODE:',err?.code,'MESSAGE:',err?.message);
- process.exitCode=1;
-});
 const errorCode=(fn,code)=>assert.throws(fn,e=>e?.code===code,'expected '+code);
 assert.equal(mock.testIsolatedWriteTrialPreflightReadOnly(),true);
 // Editor-only helper tests actual item writes while ENABLE_EXPERIMENTAL_WRITES
 // remains absent, then refuses any further run on non-empty trial sheets.
 const before=writeCount;
-trialStage='editor-one-time-mock';
 assert.equal(mock.runIsolatedItemWriteTrialOnce(),true);
 assert.equal(mock.testIsolatedTrialResultReadOnly(),true,'Editor-only post-trial verification bypasses browser CORS');
 const snapshot=JSON.parse(JSON.stringify(mock.trialReadOnlyItemList()));
@@ -85,7 +79,6 @@ const writeCountBeforeStock=writeCount;
 errorCode(()=>mock.trialStockRead(),'WRITES_DISABLED');
 errorCode(()=>mock.trialStockUpdate({}),'BAD_REQUEST');
 assert.equal(writeCount,writeCountBeforeStock);
-trialStage='trial-stock-read';
 stockUiEnabled=true;
 const stockInitial=mock.trialStockRead();
 assert.equal(stockInitial.name,'試験用・牛乳');
@@ -107,9 +100,7 @@ for(const [name,row] of [
  assert.equal(writeCount,original);
  allSheets[name].pop();
 }
-trialStage='trial-stock-save';
 const saved=mock.trialStockUpdate(stockRequest);
-trialStage='trial-stock-replay';
 const repeated=mock.trialStockUpdate(stockRequest);
 assert.equal(saved.version,3);
 assert.equal(saved.in_stock,true);
@@ -138,7 +129,6 @@ allSheets.item_groups[1][5]=false;
 allSheets.item_groups[1][8]=2;
 writeCount=writeCountBeforeStock;
 
-trialStage='html-checks';
 const pageHtml=mock.isolatedTrialReadPage_();
 assert.match(pageHtml,/textContent=row\.name/);
 assert.match(pageHtml,/id="inspect"/);
@@ -172,7 +162,6 @@ writeCount=before;
 
 errorCode(()=>create('牛乳','attempt-0001'),'WRITES_DISABLED');
 assert.equal(writeCount,before);
-trialStage='legacy-gate-checks';
 enabled=true;
 activeId='real-household';
 trialId='sandbox';
@@ -196,7 +185,6 @@ allSheets.users[1][3]='not-valid-sub';
 errorCode(()=>create('牛乳','attempt-0005'),'TRIAL_NOT_ISOLATED');
 allSheets.users[1][3]='1234567890';
 assert.equal(writeCount,before,'Every rejected attempt must be read-only');
-trialStage='legacy-mutate-check';
 const created=create('牛乳','attempt-0006');
 assert.equal(created.entity.name,'牛乳');
 assert.equal(created.entity.household_id,'trial-home');
