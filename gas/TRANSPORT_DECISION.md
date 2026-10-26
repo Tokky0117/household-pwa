@@ -38,3 +38,15 @@
 - https://developers.google.com/apps-script/guides/html/restrictions
 - https://developers.google.com/apps-script/guides/web
 - https://developers.google.com/apps-script/guides/content
+
+## 2026-10-26：GAS HTML Service公開関数の安全境界を分離
+
+Google公式仕様により、HTML Serviceの`google.script.run`からはGASのグローバル関数を呼べる。名前末尾が`_`の関数はクライアントから呼べない。一方、試験時に使用していた統合`gas/Code.gs`には、データ行アクセス・初期化・編集・試験データ生成などのグローバル関数が多数含まれており、読み取り画面と同じプロジェクトへ置いたまま一般公開してはいけない。
+
+この問題を防ぐ**専用の読み取り版**として`gas/trial-readonly/Code.gs`を新設した。これは統合`gas/Code.gs`へ追加するファイルではなく、**別個の試験専用GASプロジェクトへ単独配置する想定**。公開関数は`doGet`と`trialReadOnlyItemList`の2つだけ。データアクセス・試験識別確認・HTML組み立てなどの内部ヘルパーはすべて末尾`_`。編集・スキーマ初期化・外部POST関数は同梱しない。
+
+動作と安全条件：`SPREADSHEET_ID===WRITE_TRIAL_SPREADSHEET_ID`、`ENABLE_EXPERIMENTAL_WRITES!==true`、家庭1件の専用マーカーと紐付くユーザー1件を毎回確認。取得対象は該当する試験家庭の日用品（名前・カテゴリ・在庫状態）のみで非表示・削除済みを除外。商品・店舗は件数のみ。DOMへの挿入は`textContent`、トークンや家庭IDを画面に戻さない。固定5カテゴリの整合、500件上限をチェックする。オフラインテスト`tests/gas-trial-readonly-bundle.mjs`をCI登録した。
+
+**重要な留保**：この試験版は「アクセスできるユーザー＝自分のみ」の単独利用を前提とする。Google IDトークンを使った家庭別認可や複数家庭のサービスではない。これをそのまま一般向けにデプロイすることは禁止。現在動いている試験用Webアプリの公開範囲を広げないこと。現行の試験用GASコード・家庭用GAS・`main`はこのコミットで変更していない。
+
+参考：Google Apps Script公式「HTML Service: Communicate with Server Functions」（Private functions章） https://developers.google.com/apps-script/guides/html/communication
