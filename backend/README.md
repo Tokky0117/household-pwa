@@ -18,8 +18,9 @@
 1. **完全に独立した**Google Cloudの試験環境と、空またはダミーデータのみの試験用スプレッドシートを用意。既存の家庭用シートは絶対に共有しない。
 2. 試験用Cloud Runの実行サービスアカウントに、**試験用スプレッドシートの閲覧権限のみ**を付与。サービスアカウント鍵JSONをGitHubへ入れない。ADCを使用する。
 3. Cloud Runの環境変数を設定（すべて必須）。`TRIAL_BACKEND_ENABLED=true`、`GOOGLE_CLIENT_ID`（GitHub Pagesで利用するGoogleログインのaudience）、`ALLOWED_ORIGIN=https://tokky0117.github.io`、`READONLY_SPREADSHEET_ID`（独立試験シート）。
-4. `POST /v1/bootstrap`をブラウザから`Authorization: Bearer <IDトークン>`で呼ぶ。署名・issuer・audience・expiry・`users.auth_subject`・家庭の存在と一意性をサーバーで確認。GitHub Pages以外のOriginを拒否。CORSは認証の代替ではない。
-5. レスポンスはアプリの`bootstrap`形状のみ。Google Sheetsの全行をフロントへ返さない。保存系のルートは実装していない。
+4. バックエンド自身も、読込先が **家庭1件（名前 `[KURASHI_WRITE_TRIAL_ONLY]`）・ユーザー1件**の試験専用シートであることを毎回検証する。通常家庭や複数家庭のシートは `TRIAL_NOT_ISOLATED` として拒否。複数家庭の分離ロジック自体はオフラインの模擬データで検証する。
+5. `POST /v1/bootstrap`をブラウザから`Authorization: Bearer <IDトークン>`で呼ぶ。署名・issuer・audience・expiry・`users.auth_subject`・家庭の存在と一意性をサーバーで確認。GitHub Pages以外のOriginを拒否。CORSは認証の代替ではない。
+6. レスポンスはアプリの`bootstrap`形状のみ。Google Sheetsの全行をフロントへ返さない。保存系のルートは実装していない。
 
 ## セキュリティ上の残課題
 
