@@ -1,3 +1,11 @@
+> **履歴資料・現在は実行禁止（2026-10-27）**
+> この文書の「新規GASプロジェクト」「新規スプレッドシート作成」「ENABLE_EXPERIMENTAL_WRITES=true」等の手順は旧案であり、実行しません。
+> 現在は既存の試験用GASと試験用Google Sheetsを再利用し、`gas/TRANSPORT_DECISION.md` の最新方針に従います。
+> `runIsolatedItemWriteTrialOnce()` は実行済みのため再実行しません。
+> `main` と本番GAS・本番Sheetsは変更しません。
+
+---
+
 # くらしストック｜Google Sheets 実書込試験の安全な実施手順（未実施）
 
 更新：2026-10-25。対象：`stage-a-ui-handoff-review` のみ。
