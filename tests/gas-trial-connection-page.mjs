@@ -15,6 +15,17 @@ assert.doesNotMatch(html,/KurashiGasApi\.request\('(item\.|product\.)/);
 assert.doesNotMatch(html,/localStorage|sessionStorage|document\.cookie/);
 assert.doesNotMatch(html,/new URLSearchParams|location\.search|location\.hash/);
 assert.match(html,/data\.categories\.length!==5/);
+assert.match(html,/id="probe-get"/);
+assert.match(html,/id="probe-result"/);
+assert.match(html,/probeGet\.addEventListener\('click',async\(\)=>/);
+const getHandler=html.match(/probeGet\.addEventListener\('click',async\(\)=>\{([\s\S]*?)\n \}\);/);
+assert.ok(getHandler,'GET probe handler found');
+assert.match(getHandler[1],/method:'GET'/);
+assert.match(getHandler[1],/credentials:'omit'/);
+assert.match(getHandler[1],/mode:'cors'/);
+assert.doesNotMatch(getHandler[1],/getToken|id_token|Authorization|localStorage|sessionStorage|URLSearchParams/);
+assert.match(getHandler[1],/原因未確定/);
+
 assert.match(api,/const LIVE_WRITE_ENABLED=false/);
 assert.match(html,/この画面から書き込み処理は呼び出しません/);
 console.log('Isolated GAS read-only diagnostic: no mutation or token/endpoint persistence PASS');
