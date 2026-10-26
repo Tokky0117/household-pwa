@@ -50,6 +50,14 @@ const html=mock.doGet().html;
 assert.match(html,/google\.script\.run/);
 assert.match(html,/\.trialReadOnlyItemList\(\)/);
 assert.match(html,/name\.textContent=item\.name/);
+assert.match(html,/画面表示のみ即時切替/);
+assert.match(html,/シートには一切保存しません/);
+assert.match(html,/item\.in_stock=!item\.in_stock/);
+const toggleListener=html.match(/state\.addEventListener\('click',function\(\)\{([\s\S]*?)\n    \}\);/);
+assert.ok(toggleListener,'The stock toggle must have a local click handler');
+assert.doesNotMatch(toggleListener[1],/google\.script\.run|fetch\(|XMLHttpRequest|localStorage/);
+assert.doesNotMatch(toggleListener[1],/document\.location|window\.location/);
+
 assert.doesNotMatch(html,/innerHTML|localStorage/);
 const js=html.match(/<script>([\s\S]*?)<\/script>/)?.[1];
 assert.ok(js,'GAS-hosted HTML should have a script');
