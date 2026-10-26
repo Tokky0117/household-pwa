@@ -23,12 +23,19 @@ jobs:
         run: |
           node --check auth.js
           node --check gas-api.js
+          node --check backend/readonly-contract.mjs
+          node --check backend/pwa-readonly-client.js
+          node --check backend/server.mjs
           node --check live-operation-journal.js
           node --check app.js
           cp gas/Code.gs /tmp/kurashi-gas-check.js
           node --check /tmp/kurashi-gas-check.js
           cp gas/trial-readonly/Code.gs /tmp/kurashi-trial-readonly-check.js
           node --check /tmp/kurashi-trial-readonly-check.js
+      - name: Read-only HTTPS identity and household isolation contract
+        run: node tests/backend-readonly-contract.mjs
+      - name: Opt-in PWA HTTPS bootstrap adapter
+        run: node tests/backend-pwa-client.mjs
       - name: Standalone trial read-only GAS security boundary
         run: node tests/gas-trial-readonly-bundle.mjs
       - name: Durable item journal and account-scoped explicit retry
