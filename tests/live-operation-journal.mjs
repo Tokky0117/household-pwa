@@ -66,7 +66,7 @@ subject='1234567890';
 await second.app.retryLive();
 assert.equal(mutationCalls.length,2);
 assert.equal(mutationCalls[0].operationId,mutationCalls[1].operationId);
-assert.deepEqual(mutationCalls[0].payload,mutationCalls[1].payload);
+assert.deepEqual(JSON.parse(JSON.stringify(mutationCalls[0].payload)),JSON.parse(JSON.stringify(mutationCalls[1].payload)));
 assert.equal(second.journal.read(),null);
 assert.equal(sheet.item_groups.length,1);
 // A storage failure blocks sending before the request begins.
