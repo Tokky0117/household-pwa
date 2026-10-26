@@ -68,6 +68,20 @@ assert.equal(stockInitial.version,2);
 assert.equal(stockInitial.in_stock,false);
 const stockRequest={id:stockInitial.id,version:stockInitial.version,in_stock:true,operation_id:'trial-stock-00000001'};
 errorCode(()=>mock.trialStockUpdate({...stockRequest,id:'wrong-id'}),'NOT_FOUND');
+for(const [name,row] of [
+ ['products',['unexpected-product','trial-home']],
+ ['product_aliases',['unexpected-alias']],
+ ['stores',['unexpected-store','trial-home']],
+ ['records',['unexpected-record','trial-home']],
+ ['record_items',['unexpected-line']],
+ ['receipt_rules',['unexpected-rule']]
+]){
+ const original=writeCount;allSheets[name].push(row);
+ errorCode(()=>mock.trialStockRead(),'TRIAL_NOT_ISOLATED');
+ errorCode(()=>mock.trialStockUpdate(stockRequest),'TRIAL_NOT_ISOLATED');
+ assert.equal(writeCount,original);
+ allSheets[name].pop();
+}
 const saved=mock.trialStockUpdate(stockRequest);
 const repeated=mock.trialStockUpdate(stockRequest);
 assert.equal(saved.version,3);
@@ -87,6 +101,8 @@ assert.match(stockPage,/id="toggle"/);
 assert.match(stockPage,/trialStockUpdate\(entry\)/);
 assert.match(stockPage,/localStorage\.setItem/);
 assert.match(stockPage,/保存結果が未確定/);
+assert.match(stockPage,/RESULT_MISMATCH/);
+assert.match(stockPage,/端末の未完了操作が不正/);
 stockUiEnabled=false;
 errorCode(()=>mock.doGet({parameter:{trial_stock:'1'}}),'WRITES_DISABLED');
 // Restore the original mock baseline so legacy regressions remain unchanged.
