@@ -27,6 +27,10 @@ const UNITS=['個','本','枚','g','kg','mL','L'];
 function fail(code,message){throw {code:code,message:message}}
 function jsonReply(obj){return ContentService.createTextOutput(JSON.stringify(obj)).setMimeType(ContentService.MimeType.JSON)}
 function doGet(e){
+ if(e&&e.parameter&&e.parameter.trial_stock==='1'){
+  trialGuard_();
+  return HtmlService.createHtmlOutput(trialPage_()).setTitle('くらしストック・試験在庫保存');
+ }
  // Diagnostic is available only from the dedicated, isolated trial GAS.
  // Serve HTML on the GAS origin, never return authentication data to a URL.
  if(e&&e.parameter&&e.parameter.trial_read==='1'){
@@ -668,4 +672,128 @@ function initializeEmptySchema(){
  });
  const cat=ss.getSheetByName('categories');
  CATEGORIES.forEach((name,i)=>cat.appendRow([i,name,i+1]));
+}
+
+
+/**
+ * Existing owner-only isolated GAS: independent opt-in to test one stock change.
+ * KEEP deployment access "only myself"; no public consumer auth is provided here.
+ * No separate GAS project or spreadsheet is required.
+ */
+function trialGuard_(){
+ const p=PropertiesService.getScriptProperties();
+ if(!p.getProperty('SPREADSHEET_ID')||
+  p.getProperty('SPREADSHEET_ID')!==p.getProperty('WRITE_TRIAL_SPREADSHEET_ID')||
+  p.getProperty('ENABLE_EXPERIMENTAL_WRITES')==='true'||
+  p.getProperty('STOCK_UI_TRIAL_ENABLED')!=='true')
+  fail('WRITES_DISABLED','試験用の書込み設定を確認してください');
+ const homes=rows('households'),users=rows('users');
+ if(homes.length!==1||users.length!==1||
+  String(homes[0].obj.display_name)!==TRIAL_HOUSEHOLD_LABEL||
+  String(users[0].obj.household_id)!==String(homes[0].obj.household_id)||
+  !/^[0-9]+$/.test(String(users[0].obj.auth_subject||'')))
+  fail('TRIAL_NOT_ISOLATED','試験専用家庭の識別に失敗しました');
+ const h=String(homes[0].obj.household_id);
+ for(const name of ['item_groups','products','stores','change_log','processed_operations']){
+  if(rows(name).some(r=>String(r.obj.household_id)!==h))
+   fail('TRIAL_NOT_ISOLATED','他家庭のデータが混在しています');
+ }
+ const items=scoped('item_groups',h);
+ if(items.length!==1||items[0].obj.name!=='試験用・牛乳'||
+    String(items[0].obj.is_hidden).toLowerCase()==='true')
+  fail('TRIAL_NOT_ISOLATED','対象は試験用・牛乳1件だけです');
+ const categories=rows('categories');
+ if(categories.length!==5||categories.some((r,i)=>
+  String(r.obj.name)!==CATEGORIES[i]||Number(r.obj.category_id)!==i||
+  Number(r.obj.fixed_order)!==i+1))
+  fail('TRIAL_NOT_ISOLATED','カテゴリが試験用の構成ではありません');
+ return {householdId:h,userId:String(users[0].obj.user_id),item:items[0].obj};
+}
+function trialStockRead(){
+ const x=trialGuard_(),o=x.item;
+ return {name:String(o.name),id:String(o.item_group_id),version:Number(o.version),
+  in_stock:o.in_stock===true||String(o.in_stock).toLowerCase()==='true'};
+}
+function trialStockUpdate(request){
+ if(!request||typeof request!=='object'||Array.isArray(request)||
+  Object.keys(request).sort().join(',')!=='id,in_stock,operation_id,version'||
+  typeof request.id!=='string'||typeof request.in_stock!=='boolean'||
+  !Number.isSafeInteger(request.version)||request.version<1||
+  typeof request.operation_id!=='string'||!/^[a-zA-Z0-9_-]{8,128}$/.test(request.operation_id))
+  fail('BAD_REQUEST','試験用の操作データが不正です');
+ const user=trialGuard_();
+ if(request.id!==String(user.item.item_group_id))
+  fail('NOT_FOUND','試験用の日用品ではありません');
+ const result=mutateItemSafely({householdId:user.householdId,userId:user.userId},
+  'item.update',{item_group_id:request.id,version:request.version,in_stock:request.in_stock},
+  request.operation_id,true);
+ return {id:String(result.entity.item_group_id),version:Number(result.entity.version),
+  in_stock:result.entity.in_stock===true||String(result.entity.in_stock).toLowerCase()==='true'};
+}
+function trialPage_(){
+ return `<!doctype html><html lang="ja"><head><base target="_top">
+ <meta name="viewport" content="width=device-width,initial-scale=1">
+ <style>body{font-family:system-ui,-apple-system,sans-serif;max-width:540px;margin:18px auto;padding:0 16px;color:#223952;background:#f8fafc}section{background:white;border:1px solid #d5dfeb;border-radius:12px;padding:16px;margin-top:16px}button{font:inherit;border-radius:9px;padding:13px 16px;border:0;background:#24518b;color:white;width:100%;margin-top:10px;min-height:48px}button:disabled{opacity:.6}small{color:#66788a}p{line-height:1.7}</style></head><body>
+ <h2>試験専用・在庫保存</h2>
+ <p>この画面は<strong>試験用・牛乳</strong>だけの保存試験です。家庭用シートには接続しません。</p>
+ <section><button id="read" type="button">試験用の在庫を読み取る</button><p id="item">未取得</p>
+ <button id="toggle" type="button" disabled>在庫を切り替える</button>
+ <button id="retry" type="button" disabled>同じ操作IDで保存結果を確認・再送</button>
+ <p id="status" role="status" aria-live="polite">読み取り待ち</p>
+ <small>保存先は試験用シートです。通信エラー時、サーバーで保存済みか不明なため、勝手に元に戻したり別操作を送信しません。</small></section>
+ <script>
+ (function(){
+ 'use strict';
+ var KEY='kurashi_stock_trial_pending_v1',snapshot=null,busy=false,pending=null;
+ var item=document.getElementById('item'),status=document.getElementById('status'),
+     read=document.getElementById('read'),toggle=document.getElementById('toggle'),
+     retry=document.getElementById('retry');
+ function stored(){var raw=localStorage.getItem(KEY);return raw?JSON.parse(raw):null}
+ function put(v){localStorage.setItem(KEY,JSON.stringify(v));if(!stored()||stored().operation_id!==v.operation_id)throw Error('JOURNAL_NOT_DURABLE')}
+ function clear(v){localStorage.removeItem(KEY);if(localStorage.getItem(KEY)!==null)throw Error('JOURNAL_NOT_CLEARED')}
+ function show(value){if(snapshot){item.textContent=snapshot.name+'：'+(value?'在庫あり':'在庫なし')+'（シート確定version '+snapshot.version+'）'}}
+ function controls(){read.disabled=busy;toggle.disabled=busy||!snapshot||!!pending;retry.disabled=busy||!pending}
+ function fail(e){status.textContent='保存結果が未確定です：'+(e&&e.message||'UNKNOWN')+'。同じ操作IDでのみ再送できます。';busy=false;controls()}
+ function send(entry){
+  busy=true;show(entry.in_stock);status.textContent='保存中（Google Sheetsへの反映待ち）';controls();
+  google.script.run.withSuccessHandler(function(result){
+   if(!pending||pending.operation_id!==entry.operation_id)return;
+   try{
+    if(result.id!==entry.id||typeof result.in_stock!=='boolean'||!Number.isSafeInteger(result.version))throw Error('INVALID_RESULT');
+    clear(entry);pending=null;
+    snapshot={id:result.id,name:snapshot.name,version:result.version,in_stock:result.in_stock};
+    show(snapshot.in_stock);status.textContent='Google Sheetsへの保存完了';
+   }catch(e){fail(e);return}
+   busy=false;controls();
+  }).withFailureHandler(fail).trialStockUpdate(entry);
+ }
+ function load(){
+  if(busy)return;
+  busy=true;controls();status.textContent='読み取り中';
+  google.script.run.withSuccessHandler(function(data){
+   busy=false;
+   if(!data||typeof data.id!=='string'||typeof data.version!=='number'){status.textContent='読み取り結果が不正です';controls();return}
+   snapshot=data;show(data.in_stock);
+   try{pending=stored()}catch(e){status.textContent='端末内の記録が読めません。保存を停止します。';pending={};controls();return}
+   status.textContent=pending?'未完了操作あり。同じ操作IDの確認・再送のみ可能':'読み取り成功';
+   controls();
+  }).withFailureHandler(function(e){busy=false;status.textContent='読み取りエラー：'+(e&&e.message||'UNKNOWN');controls()}).trialStockRead();
+ }
+ read.addEventListener('click',load);
+ toggle.addEventListener('click',function(){
+  if(busy||!snapshot||pending)return;
+  var opId;
+  try{opId='trialstock-'+crypto.randomUUID().replace(/-/g,'')}
+  catch(_){status.textContent='安全な操作IDが生成できません。送信しません';return}
+  var entry={id:snapshot.id,version:snapshot.version,in_stock:!snapshot.in_stock,operation_id:opId};
+  try{put(entry);pending=entry}catch(e){status.textContent='操作記録を保存できません。送信しません';controls();return}
+  send(entry);
+ });
+ retry.addEventListener('click',function(){
+  if(busy||!pending||!snapshot||pending.id!==snapshot.id){status.textContent='対象を確認できません。保存は停止しました';return}
+  send(pending);
+ });
+ load();
+ })();
+ </scr`+`ipt></body></html>`;
 }
