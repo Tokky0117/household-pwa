@@ -28,6 +28,9 @@ button:disabled{background:#a1aaba}.secondary{background:#eef2f8;color:#20508c}
 </section>
 <section class="panel">
 <h2>③ 読み取り接続テスト</h2>
+<p class="muted">まずGET診断で応答が読めるかを調べ、その後にログイン付きの読み取りPOSTを確認できます。GET診断は認証トークンを送りません。</p>
+<button id="probe-get" type="button" class="secondary" disabled>GET診断（トークン送信なし）</button>
+<p id="probe-result" role="status" aria-live="polite">未実行です。</p>
 <button id="check" type="button" disabled>試験用シートの件数を読み取る</button>
 <p id="result" role="status" aria-live="polite">URLとログインを確認してください。</p>
 <p id="counts" class="muted"></p>
@@ -48,6 +51,8 @@ button:disabled{background:#a1aaba}.secondary{background:#eef2f8;color:#20508c}
  const status=document.getElementById('auth-status'),diagnostics=document.getElementById('auth-diagnostics');
  const result=document.getElementById('result'),counts=document.getElementById('counts'),check=document.getElementById('check');
  const logout=document.getElementById('signout');
+ const probeGet=document.getElementById('probe-get'),probeResult=document.getElementById('probe-result');
+ let probing=false;
  let loading=false,attempt=0,scriptState='未開始';
  window.KurashiAuth.configure(CLIENT_ID,{manualOnly:true});
  function validateTrialUrl(value){
@@ -66,7 +71,8 @@ button:disabled{background:#a1aaba}.secondary{background:#eef2f8;color:#20508c}
   if(url.value.trim())endpointError=validateTrialUrl(url.value);
   else window.KurashiGasApi.configure('');
   endpointStatus.textContent=endpointError||'試験用URLの形式を確認しました。';
-  check.disabled=!active||!!endpointError||loading;
+  check.disabled=!active||!!endpointError||loading||probing;
+  probeGet.disabled=!!endpointError||loading||probing;
   if(active){diagnostics.textContent='Googleログイン成功';return}
   if(window.google?.accounts?.id){
    try{window.KurashiAuth.signIn();diagnostics.textContent='ログインボタンを表示しています。';}
@@ -82,9 +88,30 @@ button:disabled{background:#a1aaba}.secondary{background:#eef2f8;color:#20508c}
   script.src='https://accounts.google.com/gsi/client';document.head.appendChild(script);
  }
  window.KurashiAuth.subscribe(update);
- url.addEventListener('input',()=>{counts.textContent='';result.textContent='試験用URLを確認してください。';update()});
+ url.addEventListener('input',()=>{counts.textContent='';result.textContent='試験用URLを確認してください。';probeResult.textContent='未実行です。';update()});
  document.getElementById('retry-google').addEventListener('click',loadGoogle);
  logout.addEventListener('click',()=>{window.KurashiAuth.signOut();result.textContent='ログアウトしました。';counts.textContent='';update()});
+ probeGet.addEventListener('click',async()=>{
+  if(probing||loading)return;
+  const invalid=validateTrialUrl(url.value);
+  if(invalid){probeResult.textContent=invalid;update();return}
+  probing=true;probeResult.textContent='GET接続を確認中…';update();
+  const controller=new AbortController(),timeout=setTimeout(()=>controller.abort(),10000);
+  try{
+   // Never include an ID token, auth subject or spreadsheet data in this request.
+   // The experiment is not a substitute for the authenticated bootstrap POST.
+   const response=await fetch(url.value.trim(),{
+    method:'GET',mode:'cors',credentials:'omit',redirect:'follow',cache:'no-store',
+    signal:controller.signal
+   });
+   probeResult.textContent='GET：HTTP '+response.status+' の応答を読めました。'+
+    '（読み取りPOSTが成功するとは限りません）';
+  }catch(err){
+   probeResult.textContent=err?.name==='AbortError'?
+    'GET：タイムアウト。応答を確認できません。':
+    'GET：ブラウザが応答を読めませんでした（CORS・認証画面・ネットワーク等。原因未確定）。';
+  }finally{clearTimeout(timeout);probing=false;update()}
+ });
  check.addEventListener('click',async()=>{
   if(loading)return;
   const invalid=validateTrialUrl(url.value);if(invalid){result.textContent=invalid;update();return}
