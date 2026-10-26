@@ -88,3 +88,24 @@ Google公式料金表を確認。Cloud Runリクエストベースの無料枠�
 Google公式参考：
 - https://developers.google.com/apps-script/guides/services/quotas
 - https://developers.google.com/apps-script/guides/html/restrictions
+
+## 2026-10-26：当初仕様をできる限り維持する方針での実装（無料→即時反応）
+
+ユーザー承認により、通信経路の変更を必要最小限とし、①無料での継続利用、②画面操作への即時反応を最優先とする。
+
+**検証の読み替えに注意**：
+- `gas/TRANSPORT_DESIGN.md`には2026-10-25のChromeのGAS接続試験で`カテゴリ5件`を受信した記録がある。その後の**別の試験用GAS（アクセス範囲「自分のみ」）**へのGitHub Pagesからの直接アクセスがCORS/ネットワークエラーだった。
+- 異なるデプロイ設定とエンドポイントの結果を同等扱いしない。直接POST経路が「必ず通る」とも「全設定で不可能」とも結論しない。ブラウザのネットワークログ、HTTPリダイレクト先・CORSレスポンス・Googleアカウント制限の影響を調査し、公開範囲を広げる前に認証上の安全性を評価する。
+- ただしContentServiceが一時URLへリダイレクトする公式仕様は事実。API応答が読めない経路に業務書込を流さない。`no-cors`・JSONP・トークンのURL配置で迂回しない。
+
+**UI即時反応の実装**：
+- `gas/trial-readonly/Code.gs`の試験専用HTMLで、日用品の在庫表示をクリック直後に切り替える「端末内だけの操作感試験」を追加。通信を待たずに表示変更し、クリックハンドラから`google.script.run`や`fetch`は呼ばない。
+- **シートには書き込まれない**ことを画面で明示し、再読み取り時にはサーバー確定値に戻る。今後の本物の保存では別途「未確定」「保存中」「確定」「競合／失敗」の区別、操作IDの永続化、手動での同一操作再送を必要とする。無条件に成功扱いしたり通信エラー時に勝手に再送しない。
+- 既存の試験GASにこのコードを上書きせず、専用読み取りGASプロジェクトのみで使う想定。現在の試験用GAS・通常PWAは更新しない。純粋な操作感試験は実データ変更不要。
+- HTML Serviceのiframe制約、PWAのService Worker/ホーム画面機能、Googleログイン・複数家庭認証の要件は残るため、**GAS内HTMLへの全面移行は未決定**。
+- Cloud Runは追加費用と運用負担のリスクから当面の採用候補から下げ、`backend/`コードは未デプロイの比較資料として保留。外部課金・本番書込の有効化は行わない。
+
+参考：
+- https://developers.google.com/apps-script/guides/content
+- https://developers.google.com/apps-script/guides/html/best-practices
+- https://developers.google.com/apps-script/guides/html/communication
