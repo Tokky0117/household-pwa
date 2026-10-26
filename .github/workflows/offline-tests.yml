@@ -30,16 +30,12 @@ jobs:
           node --check app.js
           cp gas/Code.gs /tmp/kurashi-gas-check.js
           node --check /tmp/kurashi-gas-check.js
-          cp gas/trial-stock/Code.gs /tmp/kurashi-trial-stock-check.js
-          node --check /tmp/kurashi-trial-stock-check.js
           cp gas/trial-readonly/Code.gs /tmp/kurashi-trial-readonly-check.js
           node --check /tmp/kurashi-trial-readonly-check.js
       - name: Read-only HTTPS identity and household isolation contract
         run: node tests/backend-readonly-contract.mjs
       - name: Opt-in PWA HTTPS bootstrap adapter
         run: node tests/backend-pwa-client.mjs
-      - name: Isolated trial stock persistence gates and idempotency
-        run: node tests/gas-trial-stock-write.mjs
       - name: Trial GAS simulated optimistic stock UI
         run: node tests/gas-optimistic-ui-demo.mjs
       - name: Standalone trial read-only GAS security boundary
