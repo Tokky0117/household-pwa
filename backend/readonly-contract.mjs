@@ -8,7 +8,8 @@ export const SHEETS={
  categories:['category_id','name','fixed_order'],
  item_groups:['item_group_id','household_id','category_id','name','normalized_name','in_stock','sort_order','is_hidden','version','created_at','updated_at','deleted_at'],
  products:['product_id','household_id','item_group_id','name','normalized_name','package_quantity','package_unit','item_group_order','version','created_at','updated_at','deleted_at'],
- stores:['chain_id','household_id','canonical_name','normalized_name','aliases','version','updated_at']
+ stores:['chain_id','household_id','canonical_name','normalized_name','aliases','version','updated_at'],
+ change_log:['change_id','sequence_no','household_id','entity_type','entity_id','action','occurred_at']
 };
 const CATEGORY_NAMES=['飲食','キッチン','洗面・風呂','洗濯・掃除','その他'];
 const MAX_ROWS=5000;
@@ -42,11 +43,13 @@ export function bootstrapFromRows(raw,claims,expectedAudience){
   throw Error('SHEET_SCHEMA_INVALID');
  const scoped=(name)=>tables[name].filter(row=>String(row.household_id)===home&&
    (!Object.hasOwn(row,'deleted_at')||!row.deleted_at));
- const items=scoped('item_groups').filter(row=>!equivalent(row.is_hidden));
+ const items=scoped('item_groups');
  const products=scoped('products');
  const stores=scoped('stores');
+ const sequence=tables.change_log.filter(row=>String(row.household_id)===home)
+  .reduce((value,row)=>Math.max(value,Number(row.sequence_no)||0),0);
  return {household_id:home,categories:tables.categories,
-  item_groups:items,products,stores,sequence_no:0};
+  item_groups:items,products,stores,sequence_no:sequence};
 }
 /**
  * A transport-agnostic handler. The production adapter MUST verify signature,
