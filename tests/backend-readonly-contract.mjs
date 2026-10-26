@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import {createReadOnlyHandler,SHEETS,bootstrapFromRows} from '../backend/readonly-contract.mjs';
+import {createReadOnlyHandler,SHEETS,bootstrapFromRows,assertIsolatedTrialTables} from '../backend/readonly-contract.mjs';
 const now=Math.floor(Date.now()/1000)+300;
 const audience='example-client.apps.googleusercontent.com',allowed='https://tokky0117.github.io';
 const cells={};
@@ -76,4 +76,13 @@ const unauthorized=await createReadOnlyHandler({
 })({method:'POST',path:'/v1/bootstrap',headers:{origin:allowed,authorization:'Bearer '+('x'.repeat(110))}});
 assert.equal(unauthorized.status,403);
 assert.doesNotMatch(unauthorized.body,/home-|12345|99999/);
+assert.throws(()=>assertIsolatedTrialTables(cells),/TRIAL_NOT_ISOLATED/,
+ 'Multiple real households can never be the deployed test backend');
+const isolated=structuredClone(cells);
+isolated.households.splice(2);
+isolated.users.splice(2);
+isolated.households[1][1]='[KURASHI_WRITE_TRIAL_ONLY]';
+assert.equal(assertIsolatedTrialTables(isolated),true);
+isolated.households[1][1]='家庭データ';
+assert.throws(()=>assertIsolatedTrialTables(isolated),/TRIAL_NOT_ISOLATED/);
 console.log('Read-only HTTPS auth/CORS/household partition + write denial PASS');
