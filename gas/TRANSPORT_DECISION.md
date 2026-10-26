@@ -147,3 +147,12 @@ ContentServiceが`script.googleusercontent.com`へリダイレクトされるこ
 公式資料：
 - https://developers.google.com/apps-script/guides/content
 - https://developers.google.com/apps-script/guides/html/communication
+
+## 2026-10-26：HTML Service内でのiPhone/PWA互換性診断
+
+- Google公式のHTML Serviceは**iframeサンドボックス**で動作する。GitHub Pagesとは別の実行オリジンであり、**既存GitHub PagesのService Workerキャッシュ・ホーム画面の起動範囲をGASページへそのまま引き継ぐことはできない**。ブラウザの「Service Worker APIあり」だけをオフライン実装可能の証拠としない。<https://developers.google.com/apps-script/guides/html/restrictions>
+- `google.script.run`は非同期。サーバーへの複数要求の実行順は保証されず、GASの公式記載では並列実行は最大10件。今後の本物の保存では**同一日用品の操作を直列化**し、操作ID・競合検出・未完了記録と画面上の未確定状態を一体で管理する。<https://developers.google.com/apps-script/guides/html/communication>
+- `gas/trial-readonly/Code.gs`へ「この画面の動作環境を確認」ボタンを追加。動作時にiframe内判定、standalone表示モード、Service Worker APIの存在、indexedDB APIの存在、`google.script.run`の存在を**端末画面内で表示するだけ**。Sheets・GASへの通信、ブラウザへのデータ保存、Service Workerの登録は行わない。
+- この端末診断はブラウザが提供するAPIの表面上の存在確認であり、IndexedDBの書込成功・Service Worker登録の許可・オフライン再起動・iPhoneホーム画面のインストール可否を証明しない。機能移行決定前に独立した実機試験が必要。
+- 同試験画面の在庫切替は引き続き**端末内表示だけ即時反応**。読み直せば元の確定値に戻る。保存機能と誤認させず、別GAS試験環境だけで運用し、家庭用データには接続しない。
+- **暫定判断：GAS内の画面への全面移行は保留。** 無料と即時反応は実現できる見込みがあるが、現在のPWAのオフライン体験を失う恐れがある。通信経路の変更とUIホスト変更を混同せず比較する。
