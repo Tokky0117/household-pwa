@@ -12,7 +12,7 @@ const win={
 };
 const context={window:win,URL,AbortController,setTimeout,clearTimeout,console};
 vm.createContext(context);vm.runInContext(api,context);
-win.KurashiGasApi.configure('https://script.google.com/macros/s/AKfycbx8el-F0XgEP2-1U6XKdduXF0nOuH1BrwmnWZUIkMVCKku1lqeBA8acBrPgbYDtIqokIw/exec');
+win.KurashiGasApi.configure('https://script.google.com/macros/s/TESTONLY123/exec');
 assert.equal(win.KurashiGasApi.writeEnabled(),false);
 await assert.rejects(win.KurashiGasApi.request('item.create',{name:'テスト',category_id:0},{operationId:'idempotency-123'}),/WRITES_DISABLED/);
 await assert.rejects(win.KurashiGasApi.request('item.update',{item_group_id:'i',version:1,in_stock:false},{operationId:'idempotency-123'}),/WRITES_DISABLED/);
