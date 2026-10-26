@@ -58,6 +58,15 @@ assert.equal(snapshot.items[0].category,'飲食');
 assert.deepEqual(Object.keys(snapshot.items[0]).sort(),['category','in_stock','name']);
 const pageHtml=mock.isolatedTrialReadPage_();
 assert.match(pageHtml,/textContent=row\.name/);
+assert.match(pageHtml,/id="inspect"/);
+assert.match(pageHtml,/id="capabilities"/);
+assert.match(pageHtml,/display-mode: standalone/);
+assert.match(pageHtml,/serviceWorker/);
+assert.match(pageHtml,/indexedDB/);
+const inspectScript=pageHtml.match(/document\.getElementById\('inspect'\)\.addEventListener\('click',function\(\)\{([\s\S]*?)\n  \}\);/);
+assert.ok(inspectScript);
+assert.doesNotMatch(inspectScript[1],/fetch\(|google\.script\.run\.with|localStorage|sessionStorage|serviceWorker\.register|indexedDB\.open/);
+
 assert.match(pageHtml,/\.trialReadOnlyItemList\(\)/);
 assert.doesNotMatch(pageHtml,/innerHTML|id_token|localStorage/);
 
