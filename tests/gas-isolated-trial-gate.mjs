@@ -182,10 +182,13 @@ activeId='sandbox';
 trialId='real-household';
 errorCode(()=>create('牛乳','attempt-0003'),'WRITES_DISABLED');
 trialId='sandbox';
+// Read-only trial access must keep the general experimental write gate disabled.
+enabled=false;
 assert.equal(mock.trialReadOnlyItemList().categories,5);
 // Mimic accidentally pointing both properties at a household sheet.
 allSheets.households[1][1]='わが家';
 errorCode(()=>mock.trialReadOnlyItemList(),'TRIAL_NOT_ISOLATED');
+enabled=true; // Legacy mutation gate is tested separately from the read-only endpoint.
 errorCode(()=>create('牛乳','attempt-0004'),'TRIAL_NOT_ISOLATED');
 errorCode(()=>mock.testIsolatedWriteTrialPreflightReadOnly(),'TRIAL_NOT_ISOLATED');
 allSheets.households[1][1]='[KURASHI_WRITE_TRIAL_ONLY]';
