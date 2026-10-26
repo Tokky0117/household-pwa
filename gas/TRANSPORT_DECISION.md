@@ -109,3 +109,25 @@ Google公式参考：
 - https://developers.google.com/apps-script/guides/content
 - https://developers.google.com/apps-script/guides/html/best-practices
 - https://developers.google.com/apps-script/guides/html/communication
+
+## 2026-10-26：追加費用なしの直接通信を切り分ける実機診断
+
+`gas-trial-connection.html`へ **GET診断（トークン送信なし）**を追加。利用者が入力した試験GAS `/exec`へ、`mode:'cors'`、`credentials:'omit'`でGETを一度だけ送り、応答HTTPステータスがブラウザで読めるか調べる。通信先URLをlocalStorage/URLパラメータへ保存しない。従来のGoogleログイン付きPOSTの`bootstrap`は別ボタンとして維持。通常GASエンドポイントは引き続き入力禁止、書込機能も無効。
+
+### テスト結果の解釈（誤った断定を避ける）
+
+| GET（トークンなし） | POST（Google IDトークンあり） | 判定 |
+|---|---|---|
+| 応答を読めた | 読み取り成功 | この組合せでは直接読取の実績あり。ただし他端末や将来も保証するものではない |
+| 応答を読めた | ネットワーク/CORSエラー | POST固有の通信・認証・リダイレクト経路の問題を調査。CORS原因と断定しない |
+| 読めない | 読み取り成功 | GETだけが利用できない設定の可能性。POSTの成功を優先 |
+| 読めない | ネットワーク/CORSエラー | Webアプリのログイン制限、ContentServiceリダイレクト、CORS、ネットワークのどれか、あるいは複合要因。**ブラウザUIだけでは特定不可** |
+| どちらかタイムアウト | 不問 | 通信または実行遅延。権限変更による安易な回避をしない |
+
+GAS Webアプリのアクセス設定は`MYSELF`（デプロイ者のみ）、`ANYONE`（ログイン済みユーザー）、`ANYONE_ANONYMOUS`（誰でも）などに分かれ、**ブラウザのGoogleログイン状態とApps Scriptのアクセス設定は別**。実機差はこの条件を先に比べる。<https://developers.google.com/apps-script/manifest/web-app-api-executable>
+
+ContentServiceが`script.googleusercontent.com`へリダイレクトされることは公式仕様。ブラウザが応答の中身を読めない場合は、読み取りであっても本番PWAでの保存に直接利用しない。外部サーバー、課金契約、`no-cors`、JSONP、公開範囲拡大はこの検証ではしない。既存の試験用GAS・現行PWA・家庭用シートを変更せず、ページだけを開発ブランチへ追加する。
+
+ユーザー操作の最小手順：開発ブランチの`gas-trial-connection.html`を表示、既存の試験用`/exec`を入力、**GET診断**→Googleログイン→**件数読み取り**。返答はGETの結果文とPOSTの結果文のみ（URLやトークンを共有しない）。
+
+これによって直接通信の技術的成立性を調べる。**方式の最終採用はまだ決めず**、iPhoneホーム画面からの挙動・無料での継続利用・UI即時反応・安全な同期を合わせて評価する。
