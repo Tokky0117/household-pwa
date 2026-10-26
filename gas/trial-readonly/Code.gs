@@ -74,9 +74,9 @@ function trialReadOnlyItemList(){
 function trialPage_(){
  return `<!doctype html><html lang="ja"><head><base target="_top">
  <meta name="viewport" content="width=device-width,initial-scale=1">
- <style>body{font-family:system-ui,-apple-system,sans-serif;background:#fafbfe;color:#273649;max-width:620px;margin:20px auto;padding:0 16px;line-height:1.7}section{background:white;border:1px solid #dbe2ee;border-radius:14px;margin:16px 0;padding:16px}button{background:#22518a;color:white;border:0;border-radius:9px;padding:13px;width:100%;font:inherit}button:disabled{opacity:.6}input{font:inherit;max-width:95%;padding:8px;margin-top:8px}ul{list-style:none;padding:0}li{display:flex;justify-content:space-between;border-top:1px solid #e6e9ef;padding:10px 0;gap:8px}li span:first-child{overflow-wrap:anywhere;min-width:0}small{color:#637080;white-space:nowrap}h1{font-size:1.25rem}</style></head><body>
+ <style>body{font-family:system-ui,-apple-system,sans-serif;background:#fafbfe;color:#273649;max-width:620px;margin:20px auto;padding:0 16px;line-height:1.7}section{background:white;border:1px solid #dbe2ee;border-radius:14px;margin:16px 0;padding:16px}button{background:#22518a;color:white;border:0;border-radius:9px;padding:13px;width:100%;font:inherit}button:disabled{opacity:.6}.try-stock{width:auto;min-width:86px;padding:8px 10px;flex-shrink:0}.try-stock.off{background:#e7eef7;color:#245088}input{font:inherit;max-width:95%;padding:8px;margin-top:8px}ul{list-style:none;padding:0}li{display:flex;justify-content:space-between;border-top:1px solid #e6e9ef;padding:10px 0;gap:8px}li span:first-child{overflow-wrap:anywhere;min-width:0}small{color:#637080;white-space:nowrap}h1{font-size:1.25rem}</style></head><body>
  <h1>くらしストック｜試験用データ</h1>
- <p>GAS内部から読み取る専用ページです。日用品の登録や変更はできません。</p>
+ <p>GAS内部から読み取る専用ページです。日用品の登録や変更はできません。</p><p><strong>操作感の試験：</strong>在庫ボタンを押すと画面表示のみ即時切替します。<strong>シートには一切保存しません。</strong>「日用品一覧を読み取る」でシートの状態に戻ります。</p>
  <section><button id="read" type="button">日用品一覧を読み取る</button>
  <p id="status" role="status">読み取るボタンを押してください。</p>
  <p id="counts"></p></section>
@@ -93,9 +93,20 @@ function trialPage_(){
    list.replaceChildren();
    var rows=items.filter(function(item){return item.name.normalize('NFKC').toLowerCase().includes(query)});
    rows.forEach(function(item){
-    var li=document.createElement('li'),name=document.createElement('span'),state=document.createElement('small');
+    var li=document.createElement('li'),name=document.createElement('span'),state=document.createElement('button');
     name.textContent=item.name+' ・ '+item.category;
+    state.type='button';state.className='try-stock'+(item.in_stock?'':' off');
     state.textContent=item.in_stock?'在庫あり':'在庫なし';
+    state.setAttribute('aria-label',item.name+' の在庫表示を試す（保存しません）');
+    state.setAttribute('aria-pressed',String(item.in_stock));
+    state.addEventListener('click',function(){
+     // This is a synchronous local display trial: absolutely NO server call.
+     item.in_stock=!item.in_stock;
+     state.textContent=item.in_stock?'在庫あり':'在庫なし';
+     state.className='try-stock'+(item.in_stock?'':' off');
+     state.setAttribute('aria-pressed',String(item.in_stock));
+     status.textContent='画面内の表示のみ切り替えました（保存していません）';
+    });
     li.appendChild(name);li.appendChild(state);list.appendChild(li);
    });
    empty.textContent=rows.length?'':'一致する日用品はありません';
