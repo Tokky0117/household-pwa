@@ -15,7 +15,6 @@ const project=process.env.TRIAL_BACKEND_ENABLED==='true';
 if(!project||!origin||!audience||!spreadsheetId)
  throw Error('BACKEND_DISABLED: set explicit isolated-trial environment variables');
 const verifier=new OAuth2Client(audience);
-const auth=google.auth.fromJSON ? null : null; // ADC below, never embedded secrets
 const sheets=google.sheets({version:'v4',auth:new google.auth.GoogleAuth({
  scopes:['https://www.googleapis.com/auth/spreadsheets.readonly']
 })});
@@ -40,7 +39,7 @@ const handler=createReadOnlyHandler({
 const port=Number(process.env.PORT||8080);
 http.createServer(async(req,res)=>{
  try{
-  const result=await handler({method:req.method,path:(req.url||'').split('?')[0],
+  const result=await handler({method:req.method,path:req.url||'',
    headers:req.headers});
   res.writeHead(result.status,result.headers);res.end(result.body);
  }catch(_){
