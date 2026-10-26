@@ -6,7 +6,7 @@
 import http from 'node:http';
 import {OAuth2Client} from 'google-auth-library';
 import {google} from 'googleapis';
-import {SHEETS,createReadOnlyHandler} from './readonly-contract.mjs';
+import {SHEETS,createReadOnlyHandler,assertIsolatedTrialTables} from './readonly-contract.mjs';
 
 const origin=process.env.ALLOWED_ORIGIN||'';
 const audience=process.env.GOOGLE_CLIENT_ID||'';
@@ -33,6 +33,7 @@ const handler=createReadOnlyHandler({
   const result={};
   for(let i=0;i<ranges.length;i++)result[Object.keys(SHEETS)[i]]=
    response.data.valueRanges?.[i]?.values??[];
+  assertIsolatedTrialTables(result);
   return result;
  }
 });
