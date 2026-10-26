@@ -131,3 +131,19 @@ ContentServiceが`script.googleusercontent.com`へリダイレクトされるこ
 ユーザー操作の最小手順：開発ブランチの`gas-trial-connection.html`を表示、既存の試験用`/exec`を入力、**GET診断**→Googleログイン→**件数読み取り**。返答はGETの結果文とPOSTの結果文のみ（URLやトークンを共有しない）。
 
 これによって直接通信の技術的成立性を調べる。**方式の最終採用はまだ決めず**、iPhoneホーム画面からの挙動・無料での継続利用・UI即時反応・安全な同期を合わせて評価する。
+
+## 2026-10-26：GET・POSTブラウザ実機診断の結果
+
+ユーザー提示のスクリーンショットで、**試験専用GASへのGitHub Pages接続**は次の状態だった：
+- Googleログイン：成功。
+- トークンなしGET：`ブラウザが応答を読めませんでした（CORS・認証画面・ネットワーク等。原因未確定）`。
+- IDトークン付き`bootstrap` POST：`通信エラー：CORSまたはネットワーク制限の可能性があります`。
+- GASが提供するHTML Service画面からのGoogle Sheets読み取り：前回、カテゴリ5件・日用品1件・商品0件・店舗0件で実機成功。
+
+**判断：この試験用Webアプリの現在のアクセス範囲／ブラウザ条件では直接GET・POSTとも成立していない。** 通常GASのContentServiceのリダイレクト、ブラウザCORS、Googleアクセス制限など個別原因は未確定。現段階で公開範囲を変更して再試験しない。無料を優先するため、次の候補はGAS HTML Service＋`google.script.run`（実績あり）。既存GitHub Pages PWAのService Worker/オフライン維持とのトレードオフ、Googleログインの家庭別認可、関数の公開境界を確認してからUI移植範囲を決める。
+
+`google.script.run`は公式に非同期API。操作時の表示を同期的に切り替え、保存の未確定状態だけを表示してサーバー応答を待つ構成は設計可能。ただし今までの端末内在庫切替試験は**サーバー保存なしの操作感確認に限る**。本物の即時保存にするには、処理前ジャーナル・同一operation ID・失敗／競合時の復旧と家庭別認可が必須。安全対策の完成まで書き込みは有効化しない。
+
+公式資料：
+- https://developers.google.com/apps-script/guides/content
+- https://developers.google.com/apps-script/guides/html/communication
