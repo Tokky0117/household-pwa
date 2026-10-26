@@ -58,7 +58,7 @@ function mutateItemSafely_(user,action,payload,operationId,localEditorTrial){
  const lock=LockService.getScriptLock();
  if(!lock.tryLock(20000))fail_('BUSY','しばらくして再試行してください');
  try{
-  requireIsolatedWriteTrial(localEditorTrial);
+  requireIsolatedWriteTrial_(localEditorTrial);
   const hid=user.householdId;
   const digest=Utilities.base64EncodeWebSafe(Utilities.computeDigest(
    Utilities.DigestAlgorithm.SHA_256,JSON.stringify({action:action,payload:payload})));
