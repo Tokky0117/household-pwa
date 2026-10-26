@@ -17,18 +17,24 @@ const env={
   if(k==='ENABLE_EXPERIMENTAL_WRITES')return null;
   return null;
  }}}},
- SpreadsheetApp:{openById(id){assert.equal(id,'trial-only');return{getSheetByName(name){
-  const records=tables[name];
-  if(!records)return null;
-  return {getDataRange(){return{getValues(){return records.map(r=>r.slice())}}},
-   getLastRow(){return records.length},
-   getRange(row,col,height,width){return{setValues(values){
-    assert.equal(col,1);assert.equal(height,1);assert.equal(values[0].length,width);
-    writes++;while(records.length<row)records.push([]);
-    records[row-1]=values[0].slice();
-   }}}
-  };
- }};}}},
+ SpreadsheetApp:{openById(id){
+  assert.equal(id,'trial-only');
+  return {getSheetByName(name){
+   const records=tables[name];
+   if(!records)return null;
+   return {
+    getDataRange(){return {getValues(){return records.map(r=>r.slice())}}},
+    getLastRow(){return records.length},
+    getRange(row,col,height,width){
+     return {setValues(values){
+      assert.equal(col,1);assert.equal(height,1);assert.equal(values[0].length,width);
+      writes++;while(records.length<row)records.push([]);
+      records[row-1]=values[0].slice();
+     }};
+    }
+   };
+  }};
+ }},
  LockService:{getScriptLock(){return{tryLock(){return true},releaseLock(){}}}},
  Utilities:{DigestAlgorithm:{SHA_256:'sha256'},
   computeDigest(_alg,data){return Array.from(createHash('sha256').update(data).digest())},
