@@ -25,6 +25,22 @@ const getBody=(rows,name)=>{
  return rows.slice(1).filter(row=>Array.isArray(row)&&row.some(v=>v!==''&&v!==null))
   .map(row=>Object.fromEntries(columns.map((col,i)=>[col,row[i]??''])));
 };
+/**
+ * Deployment defense: an isolated test backend cannot be pointed at real
+ * multi-user household data by accident. The generic contract is separately
+ * tested against multi-household fixtures; the running trial remains isolated.
+ */
+export function assertIsolatedTrialTables(raw){
+ const homes=getBody(raw.households,'households');
+ const users=getBody(raw.users,'users');
+ if(homes.length!==1||users.length!==1||
+    String(homes[0].display_name)!=='[KURASHI_WRITE_TRIAL_ONLY]'||
+    !String(homes[0].household_id||'')||
+    String(users[0].household_id)!==String(homes[0].household_id)||
+    !validIdentifier(String(users[0].auth_subject||'')))
+  throw Error('TRIAL_NOT_ISOLATED');
+ return true;
+}
 export function bootstrapFromRows(raw,claims,expectedAudience){
  if(!claims||claims.aud!==expectedAudience||!validIdentifier(claims.sub)||
     !['https://accounts.google.com','accounts.google.com'].includes(claims.iss)||
