@@ -199,3 +199,18 @@ GAS `google.script.run`経由の正式な書き込みAPI設計は別工程とす
 - 実試験開始時もWebアプリのアクセス範囲は**「自分のみ」**に固定する。試験後は新規プロパティ`STOCK_UI_TRIAL_ENABLED=false`に戻す。既存の家庭用GAS/シート、既存の一回限りの試験GAS、GitHub`main`、現行PWAは変更しない。
 
 実際の導入手順と試験停止手順は`gas/trial-stock/README.md`に記載。これを本番通信方式決定や家庭データ公開の承認と混同しない。
+
+## 2026-10-26：試験環境を増やさない方針への修正・統合実装
+
+ユーザー指示により、前節の **「別の独立GASプロジェクトを新設」案は撤回**。GitHubに追加した `gas/trial-stock/`、`gas-stock-trial-setup.html` と専用テストは削除し、プレビューとCIからも除外した。**新しいGASプロジェクトやスプレッドシートは作らない**。
+
+現在の採用実装は **既存の試験用GASに相当する `gas/Code.gs` の試験機能拡張**。
+- 既存 `?trial_read=1` 読み取り画面と模擬UIは変更せず、追加で `?trial_stock=1` を提供する。
+- `trialStockRead` と `trialStockUpdate` をグローバル追加。対象は隔離マーカー付き試験家庭1件・ユーザー1件・固定カテゴリ5件・「試験用・牛乳」1件のみ。他家庭の item_groups/products/stores/change_log/processed_operations 混入を拒否。
+- `SPREADSHEET_ID===WRITE_TRIAL_SPREADSHEET_ID`、`ENABLE_EXPERIMENTAL_WRITES` は未設定/falseを維持し、新しい試験専用プロパティ `STOCK_UI_TRIAL_ENABLED=true` のときに限って試験用操作を許可。試験後は false に戻す。
+- 既存の安全な `mutateItemSafely` を使い、同一ID再送・version照合・事前操作記録・LockServiceで処理する。旧「一度限りのエディタ書込試験」関数は実行しない。
+- 本人のアクセス権だけでの試験を前提とし、既存のWebアプリのアクセス範囲は「自分のみ」を維持。**家庭別の利用者認証を一般公開に提供する仕様ではない**。
+- UIはタップ即時反映→保存中→Sheetsが結果を返してから確定。端末ジャーナル保存に失敗すれば送信を止める。通信結果不明なら同一IDだけ手動再送する。
+- `tests/gas-isolated-trial-gate.mjs` へ同一シート上での保存、再送、競合、安全ゲートを追加。実GAS/iPhoneへの反映、CI全体の成功はまだ未確認。GitHubブランチ変更はデプロイ済みGASへ自動反映されない。
+
+**新規プロジェクトを作る案の説明は、これ以降の手順としては無効**。以降は既存の試験用GASを新バージョンへ更新し、同じ `/exec?trial_stock=1` で試験する。家庭用GAS・家庭用Sheets・main・PWAのLIVE_WRITE_ENABLEDは不変更。
