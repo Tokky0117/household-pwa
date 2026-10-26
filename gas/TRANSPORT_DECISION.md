@@ -64,3 +64,13 @@ Google公式仕様により、HTML Serviceの`google.script.run`からはGASの�
 ### 試験用バックエンドへの追加フェイルクローズ
 - `backend/server.mjs`は実シート読込直後に`assertIsolatedTrialTables()`を実行。試験専用マーカー付き家庭1件・ユーザー1件に該当しなければ応答せず503。誤って通常の家庭シートを環境変数に設定しても、実データを画面へ返さない。
 - 多家庭対応の認証分離ロジックは独立した純粋関数でモックテストし、**実際の試験デプロイは1家庭専用**のままとする。Cloud Run実デプロイ・SDK動作は未実施。
+
+## 2026-10-26：費用・セキュリティ監査の結論（暫定）
+
+Google公式料金表を確認。Cloud Runリクエストベースの無料枠は月200万リクエスト/180,000 vCPU秒/360,000 GiB秒（us-central1基準）。**無料の保証はなく**、関連サービス/リージョン/インスタンス数の影響がある。Sheets API読取は通常1プロジェクト毎分300回・1ユーザー毎分60回、`batchGet`を含め要監視。
+
+さらに、Cloud RunのIAM Invoker認証とアプリ向けGoogle IDトークンは別。通常のブラウザをサービスに直接アクセスさせるにはCloud Runの公開設定が必要になり得るため、JWTの検証・家庭照合・コスト防止を含めた運用設計が不可欠。`Origin`照合だけで認証したことにはならない。
+
+`backend/readonly-contract.mjs`はOriginをURLとして厳密検証するよう修正。試験専用シートマーカーがあっても異なる家庭の`item_groups`/`products`/`stores`/`change_log`行が混ざっていれば`TRIAL_NOT_ISOLATED`として全応答を拒否。`tests/backend-readonly-contract.mjs`に、混入と不正Originの回帰試験を追加。
+
+**現段階はCloud Runをデプロイしない。** 独立Cloudプロジェクト・試験用シート・サービスアカウントの閲覧権限・課金通知・インスタンス制限・テスト終了時の停止手順を整えてから判断。これらが揃うまでは、検証済みのGAS HTML Serviceを試験用途に限定し、既存iPhone PWAは現状維持する。詳しくは`backend/README.md`。
