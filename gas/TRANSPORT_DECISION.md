@@ -74,3 +74,17 @@ Google公式料金表を確認。Cloud Runリクエストベースの無料枠�
 `backend/readonly-contract.mjs`はOriginをURLとして厳密検証するよう修正。試験専用シートマーカーがあっても異なる家庭の`item_groups`/`products`/`stores`/`change_log`行が混ざっていれば`TRIAL_NOT_ISOLATED`として全応答を拒否。`tests/backend-readonly-contract.mjs`に、混入と不正Originの回帰試験を追加。
 
 **現段階はCloud Runをデプロイしない。** 独立Cloudプロジェクト・試験用シート・サービスアカウントの閲覧権限・課金通知・インスタンス制限・テスト終了時の停止手順を整えてから判断。これらが揃うまでは、検証済みのGAS HTML Serviceを試験用途に限定し、既存iPhone PWAは現状維持する。詳しくは`backend/README.md`。
+
+## 2026-10-26：ユーザー指定の最優先条件を反映
+
+**意思決定基準の優先順位：①追加料金なし（継続利用で無料）、②UI操作への即時反応。** 開発の簡単さや既存GitHub Pages PWAの配布方式維持は、その後に評価する。
+
+- Cloud Run＋Sheets API案は、無料枠を超えたときの従量課金と運用負担があるため、**採用第一候補から外す**。試作ファイル`backend/`は比較・検証資料として残し、デプロイしない。
+- 第一候補はGoogle Apps Script＋Google Sheetsで、HTML Service内から`google.script.run`を呼ぶ構成。試験専用GASで読み書きと画面表示が成功済み。ただしHTML Serviceはiframeサンドボックス制約があり、従来PWAのService Worker/オフライン利用をそのまま維持できるかは未確認。
+- UIは**optimistic UI（先に画面反映し非同期保存）**を採用候補とする。保存中の小表示、成功時確定、失敗/競合時に未確定表示と明示再送または復元を行う。保存成功前にサーバー確定済みと表示しない。端末を閉じても未確定操作を失わないようジャーナル設計を継続。
+- GASにも日次クォータ・実行時間・同時実行制限があるため、無料で無制限に使えるとの保証はしない。個人・家庭利用の想定件数、通信回数削減、行データのまとめ読み・差分更新を検討。
+- 優先順位に従い、今後は**GAS HTML Serviceを使った実UI即時反応試験**を先行する。別クラウドに課金設定は行わない。一般家庭向け認証・公開関数アクセス権と既存UI移行は安全性検証後に決定する。
+
+Google公式参考：
+- https://developers.google.com/apps-script/guides/services/quotas
+- https://developers.google.com/apps-script/guides/html/restrictions
