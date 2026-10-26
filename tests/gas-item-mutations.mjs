@@ -22,28 +22,48 @@ books.categories.push(...['飲食','キッチン','洗面・風呂','洗濯・�
 const initial=books.item_groups.map(x=>x.slice());
 let writesEnabled=false,trialSheetId='mock',writeCount=0,uuidNum=0,lockHeld=false,failOperationJournal=false;
 const ctx={
- PropertiesService:{getScriptProperties(){return {getProperty(name){return ({SPREADSHEET_ID:'mock',WRITE_TRIAL_SPREADSHEET_ID:trialSheetId,GOOGLE_CLIENT_ID:'test-client',ENABLE_EXPERIMENTAL_WRITES:writesEnabled?'true':'false'})[name]||null}}}},
- SpreadsheetApp:{openById(id){assert.equal(id,'mock');return {getSheetByName(name){
-  if(!books[name])return null;
-  const cells=books[name];
-  return {
-   getLastRow(){return cells.length},
-   getDataRange(){return {getValues(){return cells.map(row=>row.slice())}}},
-   getRange(row,col,height,width){assert.equal(col,1);assert.equal(height,1);return {setValues(values){
-    assert.equal(values[0].length,width);
-    if(name==='processed_operations'&&failOperationJournal&&row<=cells.length)throw Error('INJECTED_JOURNAL_FAILURE');
-    writeCount++;
-    while(cells.length<row)cells.push([]);
-    cells[row-1]=values[0].slice();
-   }}}
-  };
- }}}}},
- LockService:{getScriptLock(){return {tryLock(){assert.equal(lockHeld,false);lockHeld=true;return true},releaseLock(){lockHeld=false}}}},
+ PropertiesService:{
+  getScriptProperties(){
+   return {getProperty(name){
+    return ({
+     SPREADSHEET_ID:'mock',WRITE_TRIAL_SPREADSHEET_ID:trialSheetId,
+     GOOGLE_CLIENT_ID:'test-client',ENABLE_EXPERIMENTAL_WRITES:writesEnabled?'true':'false'
+    })[name]||null;
+   }};
+  }
+ },
+ SpreadsheetApp:{
+  openById(id){
+   assert.equal(id,'mock');
+   return {getSheetByName(name){
+    if(!books[name])return null;
+    const cells=books[name];
+    return {
+     getLastRow(){return cells.length},
+     getDataRange(){return {getValues(){return cells.map(row=>row.slice())}}},
+     getRange(row,col,height,width){
+      assert.equal(col,1);assert.equal(height,1);
+      return {setValues(values){
+       assert.equal(values[0].length,width);
+       if(name==='processed_operations'&&failOperationJournal&&row<=cells.length)throw Error('INJECTED_JOURNAL_FAILURE');
+       writeCount++;
+       while(cells.length<row)cells.push([]);
+       cells[row-1]=values[0].slice();
+      }};
+     }
+    };
+   }};
+  }
+ },
+ LockService:{getScriptLock(){return {
+  tryLock(){assert.equal(lockHeld,false);lockHeld=true;return true},
+  releaseLock(){lockHeld=false}
+ }}},
  Utilities:{
-   getUuid(){return 'uuid-'+(++uuidNum)},
-   DigestAlgorithm:{SHA_256:'sha256'},
-   computeDigest(alg,body){assert.equal(alg,'sha256');return Array.from(createHash('sha256').update(body).digest())},
-   base64EncodeWebSafe(bytes){return Buffer.from(bytes).toString('base64url')}
+  getUuid(){return 'uuid-'+(++uuidNum)},
+  DigestAlgorithm:{SHA_256:'sha256'},
+  computeDigest(alg,body){assert.equal(alg,'sha256');return Array.from(createHash('sha256').update(body).digest())},
+  base64EncodeWebSafe(bytes){return Buffer.from(bytes).toString('base64url')}
  },
  Date,JSON
 };
