@@ -186,3 +186,16 @@ ContentServiceが`script.googleusercontent.com`へリダイレクトされるこ
 本番保存を有効にする前に、`operation_id`を操作前に端末内に永続化し、端末を閉じても状態を復旧できることを確認する。GASが結果を返した場合だけ保存確定。通信が不確定な場合は表示を「確認待ち」の状態として残し、同じ操作IDの照合/ユーザー明示再送（勝手に新規操作として再送しない）を行う。競合時は再取得して調停し、新しい変更を無言で上書きしない。家庭識別・公開関数制御・複数端末同時操作も必須。
 
 GAS `google.script.run`経由の正式な書き込みAPI設計は別工程とする。書込許可 `ENABLE_EXPERIMENTAL_WRITES`は無効、一般向け公開は未承認。既存のiPhone PWAのService Worker制限は別途評価中。
+
+## 2026-10-26：隔離されたGASで実在庫保存を結ぶ試作
+
+従来の実Sheetsへの編集試験はエディタ内から成功したが、画面から保存させる入口は未検証だった。このため、**既存GASを改変せず**、`gas/trial-stock/Code.gs` を新設した。**別の独立GASプロジェクトへ単独配置する前提**で、今回の既存試験用シートに含まれる「試験用・牛乳」1件だけ更新できる試験用画面を提供する。
+
+- `google.script.run`の公開関数は `doGet` / `trialStockRead` / `trialStockUpdate` だけ。他のヘルパーはすべて末尾`_`。一般`doPost`、商品の登録更新、任意の日用品追加はない。
+- Script Properties `SPREADSHEET_ID===WRITE_TRIAL_SPREADSHEET_ID`、既存の`ENABLE_EXPERIMENTAL_WRITES`は未設定/falseのまま。新しい独立許可`STOCK_UI_TRIAL_ENABLED=true`がない場合は**読み取りと書き込みの両方を拒否**する。隔離マーカー家庭1件・ユーザー1件、商品名固定の日用品1件、他家庭の行ゼロ、カテゴリ固定5件を検査。
+- 既存の`mutateItemSafely`から、安全に保存するための「事前記録→在庫変更→change_log→結果確定」、ロック・version・同じ操作IDの再送を試験用コードへ移植。
+- 画面はタップ直後に在庫表示を変え、操作ID/期待version/変更内容を**保存前に端末へ記録**。成功時だけ確定表示。通信エラーでは成功/失敗が不明なので自動ロールバックや自動再送を行わず、**同じ操作IDでの明示的再送**を許す。端末保存不可なら書き込み送信自体を止める。
+- 別GASを作りやすくするため`gas-stock-trial-setup.html`を追加し、`gas/trial-stock/Code.gs`を開発プレビューへ配布。GitHub Actionsで`tests/gas-trial-stock-write.mjs`を実行する設定も追加。モックでは試験用在庫のversion2→3、同一ID再送でversion維持、旧version拒否と履歴1回追記を確認。**GoogleのWebアプリでの実保存は未実施**、CI全体の成否も未確認。
+- 実試験開始時もWebアプリのアクセス範囲は**「自分のみ」**に固定する。試験後は新規プロパティ`STOCK_UI_TRIAL_ENABLED=false`に戻す。既存の家庭用GAS/シート、既存の一回限りの試験GAS、GitHub`main`、現行PWAは変更しない。
+
+実際の導入手順と試験停止手順は`gas/trial-stock/README.md`に記載。これを本番通信方式決定や家庭データ公開の承認と混同しない。
