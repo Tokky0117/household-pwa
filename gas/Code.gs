@@ -52,6 +52,14 @@ function isolatedTrialReadPage_(){
  <input id="search" type="search" placeholder="日用品名" disabled>
  <ul id="items" aria-label="日用品一覧"></ul>
  <p id="empty" class="muted">読み取り後に表示します。</p></section>
+ <section><h3>在庫操作・即時反応テスト（保存なし）</h3>
+ <p class="muted">試験用の最初の日用品を使って、画面表示だけを切り替えます。1.2秒後の結果を模擬します。Google Sheetsには書き込みません。</p>
+ <label for="demo-outcome">模擬結果</label>
+ <select id="demo-outcome"><option value="success">保存成功を模擬</option><option value="failure">通信失敗を模擬</option></select>
+ <p id="demo-name">日用品を読み取ると操作できます。</p>
+ <button id="demo-toggle" type="button" disabled>在庫を切り替える（模擬）</button>
+ <p id="demo-status" role="status" aria-live="polite">未実行（実際の保存は行いません）</p>
+ <p class="muted">「保存成功」はシミュレーション上の成功です。実データへの保存完了を意味しません。</p></section>
  <section><button id="inspect" type="button">iPhone・PWA実行環境を確認</button><ul id="capabilities" aria-label="端末機能の確認"></ul>
  <p class="muted">APIの存在だけではオフライン動作・ホーム画面対応は保証されません。結果は送信・保存しません。</p></section>
  <p class="muted">この試作画面にはログイン・家庭切り替え機能はありません。試験用デプロイの「自分のみ」を維持してください。</p>
@@ -61,6 +69,46 @@ function isolatedTrialReadPage_(){
   var button=document.getElementById('check'),status=document.getElementById('status'),details=document.getElementById('details'),
       search=document.getElementById('search'),list=document.getElementById('items'),empty=document.getElementById('empty');
   var rows=[],serial=0;
+  var demoValue=null,demoCommitted=null,demoBusy=false,demoSerial=0;
+  var demoToggle=document.getElementById('demo-toggle'),
+      demoName=document.getElementById('demo-name'),
+      demoStatus=document.getElementById('demo-status'),
+      demoOutcome=document.getElementById('demo-outcome');
+  function demoRender(){
+   demoToggle.disabled=demoBusy||demoValue===null;
+   demoToggle.textContent=demoValue===null?'在庫を切り替える（模擬）':
+    (demoValue?'在庫あり':'在庫なし')+' → 切り替える';
+  }
+  function demoReset(item){
+   ++demoSerial;
+   demoBusy=false;
+   demoCommitted=item?Boolean(item.in_stock):null;
+   demoValue=demoCommitted;
+   demoName.textContent=item?item.name+'（模擬操作の対象）':'日用品を読み取ると操作できます。';
+   demoStatus.textContent='未実行（実際の保存は行いません）';
+   demoRender();
+  }
+  demoToggle.addEventListener('click',function(){
+   if(demoBusy||demoValue===null)return;
+   var current=++demoSerial;
+   demoBusy=true;
+   demoValue=!demoValue; // Sync: immediately update without GAS/server wait.
+   demoStatus.textContent='保存中（模擬・実際には送信していません）';
+   demoRender();
+   var outcome=demoOutcome.value;
+   setTimeout(function(){
+    if(current!==demoSerial)return;
+    demoBusy=false;
+    if(outcome==='success'){
+     demoCommitted=demoValue;
+     demoStatus.textContent='保存成功を模擬（Google Sheetsには未保存）';
+    }else{
+     demoValue=demoCommitted; // rollback only the local display
+     demoStatus.textContent='通信失敗を模擬：表示を元に戻しました（未保存）';
+    }
+    demoRender();
+   },1200);
+  });
   function render(){
    var q=search.value.normalize('NFKC').trim().toLowerCase(),filtered=rows.filter(function(row){
     return row.name.normalize('NFKC').toLowerCase().indexOf(q)!==-1;
@@ -93,11 +141,12 @@ function isolatedTrialReadPage_(){
    });
   });
   button.addEventListener('click',function(){
-   var call=++serial;button.disabled=true;search.disabled=true;status.textContent='取得中です…';details.textContent='';rows=[];render();
+   var call=++serial;button.disabled=true;search.disabled=true;status.textContent='取得中です…';details.textContent='';rows=[];demoReset(null);render();
    google.script.run.withSuccessHandler(function(result){
     if(call!==serial)return;
     button.disabled=false;search.disabled=false;
     rows=Array.isArray(result.items)?result.items:[];
+    demoReset(rows[0]||null);
     status.textContent='読み取り成功';
     details.textContent='カテゴリ '+result.categories+' 件／日用品 '+rows.length+' 件／商品 '+result.products+' 件／店舗 '+result.stores+' 件';
     render();
