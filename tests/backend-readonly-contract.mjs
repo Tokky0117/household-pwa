@@ -82,6 +82,12 @@ const isolated=structuredClone(cells);
 isolated.households.splice(2);
 isolated.users.splice(2);
 isolated.households[1][1]='[KURASHI_WRITE_TRIAL_ONLY]';
+assert.throws(()=>assertIsolatedTrialTables(isolated),/TRIAL_NOT_ISOLATED/,
+ 'A trial-marked household must not conceal rows copied from another home');
+for(const table of ['item_groups','products','stores','change_log']){
+ const houseIndex=SHEETS[table].indexOf('household_id');
+ isolated[table]=isolated[table].filter((row,i)=>i===0||row[houseIndex]==='home-A');
+}
 assert.equal(assertIsolatedTrialTables(isolated),true);
 isolated.households[1][1]='家庭データ';
 assert.throws(()=>assertIsolatedTrialTables(isolated),/TRIAL_NOT_ISOLATED/);
