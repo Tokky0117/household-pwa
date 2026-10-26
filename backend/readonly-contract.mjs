@@ -80,10 +80,15 @@ export function bootstrapFromRows(raw,claims,expectedAudience){
  * issuer, audience and expiry with Google's verifier. Never trust JWT parsing.
  */
 export function createReadOnlyHandler({origin,audience,verifyIdToken,readTables}){
- if(!origin||!/^https:\/\/[^/]+(?:\/)?$/.test(origin)||!audience||
+ let parsedOrigin;
+ try{parsedOrigin=new URL(origin)}catch{throw Error('BACKEND_CONFIG_INVALID')}
+ if(parsedOrigin.protocol!=='https:'||parsedOrigin.origin!==origin.replace(/\/$/,'')||
+  parsedOrigin.username||parsedOrigin.password||
+  (parsedOrigin.pathname!=='/'&&parsedOrigin.pathname!=='')||
+  parsedOrigin.search||parsedOrigin.hash||!audience||
   typeof verifyIdToken!=='function'||typeof readTables!=='function')
   throw Error('BACKEND_CONFIG_INVALID');
- const allowOrigin=origin.replace(/\/$/,'');
+ const allowOrigin=parsedOrigin.origin;
  return async function handle({method,path,headers={}}){
   const common={'Access-Control-Allow-Origin':allowOrigin,'Vary':'Origin'};
   if(headers.origin!==allowOrigin)return error(403,'ORIGIN_DENIED');
