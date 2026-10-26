@@ -71,5 +71,5 @@ timers.shift()();
 assert.equal(elements['demo-toggle'].textContent,current,'Stale simulated completion ignored');
 assert.equal(rpcReads,2);
 assert.equal(rpcWrites,0);
-assert.doesNotMatch(script,/\.trialReadOnlyItemList\(\)/g,undefined);
+assert.match(script,/\.trialReadOnlyItemList\(\)/);
 console.log('Optimistic UI local-only immediate, success, rollback, stale-completion PASS');
