@@ -23,6 +23,9 @@ const el=(id)=>{
 };
 const elements=Object.fromEntries(['check','status','details','search','items','empty',
  'demo-toggle','demo-name','demo-status','demo-outcome','inspect','capabilities'].map(id=>[id,el(id)]));
+// The browser honors the initial disabled attribute; the DOM mock must too.
+assert.match(html,/<button id="demo-toggle"[^>]*disabled>/);
+elements['demo-toggle'].disabled=true;
 elements['demo-outcome'].value='success';
 const timers=[];
 let rpcReads=0,rpcWrites=0;
