@@ -51,6 +51,16 @@ assert.match(html,/google\.script\.run/);
 assert.match(html,/\.trialReadOnlyItemList\(\)/);
 assert.match(html,/name\.textContent=item\.name/);
 assert.match(html,/画面表示のみ即時切替/);
+assert.match(html,/id="inspect"/);
+assert.match(html,/id="capabilities"/);
+assert.match(html,/window\.self!==window\.top/);
+assert.match(html,/display-mode: standalone/);
+assert.match(html,/serviceWorker/);
+assert.match(html,/indexedDB/);
+const inspection=html.match(/document\.getElementById\('inspect'\)\.addEventListener\('click',function\(\)\{([\s\S]*?)\n  \}\);/);
+assert.ok(inspection);
+assert.doesNotMatch(inspection[1],/fetch\(|google\.script\.run\.with|localStorage|sessionStorage|indexedDB\.open|serviceWorker\.register/);
+
 assert.match(html,/シートには一切保存しません/);
 assert.match(html,/item\.in_stock=!item\.in_stock/);
 const toggleListener=html.match(/state\.addEventListener\('click',function\(\)\{([\s\S]*?)\n    \}\);/);
