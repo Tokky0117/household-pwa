@@ -5,13 +5,14 @@ import vm from 'node:vm';
 import {createHash} from 'node:crypto';
 
 const source=readFileSync(new URL('../gas/Code.gs',import.meta.url),'utf8');
-let activeId='sandbox',trialId='sandbox',enabled=false,writeCount=0,number=0;
+let activeId='sandbox',trialId='sandbox',enabled=false,stockUiEnabled=false,writeCount=0,number=0;
 const allSheets={};
 const mock={
  PropertiesService:{getScriptProperties(){return {getProperty(name){
   if(name==='SPREADSHEET_ID')return activeId;
   if(name==='WRITE_TRIAL_SPREADSHEET_ID')return trialId;
   if(name==='ENABLE_EXPERIMENTAL_WRITES')return enabled?'true':null;
+  if(name==='STOCK_UI_TRIAL_ENABLED')return stockUiEnabled?'true':null;
   return null;
  }}}},
  SpreadsheetApp:{openById(){return {getSheetByName(name){
@@ -56,6 +57,44 @@ assert.equal(snapshot.items[0].name,'試験用・牛乳');
 assert.equal(snapshot.items[0].in_stock,false);
 assert.equal(snapshot.items[0].category,'飲食');
 assert.deepEqual(Object.keys(snapshot.items[0]).sort(),['category','in_stock','name']);
+const writeCountBeforeStock=writeCount;
+errorCode(()=>mock.trialStockRead(),'WRITES_DISABLED');
+errorCode(()=>mock.trialStockUpdate({}),'BAD_REQUEST');
+assert.equal(writeCount,writeCountBeforeStock);
+stockUiEnabled=true;
+const stockInitial=mock.trialStockRead();
+assert.equal(stockInitial.name,'試験用・牛乳');
+assert.equal(stockInitial.version,2);
+assert.equal(stockInitial.in_stock,false);
+const stockRequest={id:stockInitial.id,version:stockInitial.version,in_stock:true,operation_id:'trial-stock-00000001'};
+errorCode(()=>mock.trialStockUpdate({...stockRequest,id:'wrong-id'}),'NOT_FOUND');
+const saved=mock.trialStockUpdate(stockRequest);
+const repeated=mock.trialStockUpdate(stockRequest);
+assert.equal(saved.version,3);
+assert.equal(saved.in_stock,true);
+assert.equal(repeated.version,3);
+assert.equal(mock.scoped('change_log','trial-home').length,3);
+assert.equal(mock.scoped('processed_operations','trial-home').length,3);
+errorCode(()=>mock.trialStockUpdate({...stockRequest,operation_id:'trial-stock-00000002'}),'VERSION_CONFLICT');
+errorCode(()=>mock.trialStockUpdate({...stockRequest,in_stock:false}),'OPERATION_REUSED');
+stockUiEnabled=false;
+errorCode(()=>mock.trialStockRead(),'WRITES_DISABLED');
+errorCode(()=>mock.trialStockUpdate({...stockRequest,operation_id:'trial-stock-00000003'}),'WRITES_DISABLED');
+assert.equal(mock.doGet({parameter:{trial_read:'1'}}).title,'くらしストック・試験読取');
+stockUiEnabled=true;
+const stockPage=mock.doGet({parameter:{trial_stock:'1'}}).html;
+assert.match(stockPage,/id="toggle"/);
+assert.match(stockPage,/trialStockUpdate\(entry\)/);
+assert.match(stockPage,/localStorage\.setItem/);
+assert.match(stockPage,/保存結果が未確定/);
+stockUiEnabled=false;
+errorCode(()=>mock.doGet({parameter:{trial_stock:'1'}}),'WRITES_DISABLED');
+// Restore the original mock baseline so legacy regressions remain unchanged.
+for(const name of ['change_log','processed_operations'])allSheets[name].splice(3);
+allSheets.item_groups[1][5]=false;
+allSheets.item_groups[1][8]=2;
+writeCount=writeCountBeforeStock;
+
 const pageHtml=mock.isolatedTrialReadPage_();
 assert.match(pageHtml,/textContent=row\.name/);
 assert.match(pageHtml,/id="inspect"/);
