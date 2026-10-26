@@ -52,6 +52,8 @@ function isolatedTrialReadPage_(){
  <input id="search" type="search" placeholder="日用品名" disabled>
  <ul id="items" aria-label="日用品一覧"></ul>
  <p id="empty" class="muted">読み取り後に表示します。</p></section>
+ <section><button id="inspect" type="button">iPhone・PWA実行環境を確認</button><ul id="capabilities" aria-label="端末機能の確認"></ul>
+ <p class="muted">APIの存在だけではオフライン動作・ホーム画面対応は保証されません。結果は送信・保存しません。</p></section>
  <p class="muted">この試作画面にはログイン・家庭切り替え機能はありません。試験用デプロイの「自分のみ」を維持してください。</p>
  <script>
  (function(){
@@ -73,6 +75,23 @@ function isolatedTrialReadPage_(){
    empty.textContent=filtered.length?'':'一致する日用品がありません。';
   }
   search.addEventListener('input',render);
+  document.getElementById('inspect').addEventListener('click',function(){
+   var output=document.getElementById('capabilities');output.replaceChildren();
+   var embedded='判定不可';
+   try{embedded=window.self!==window.top?'はい':'いいえ'}catch(_){}
+   var standalone=false;
+   try{standalone=!!(window.matchMedia&&window.matchMedia('(display-mode: standalone)').matches)||navigator.standalone===true}catch(_){}
+   var findings=[
+    ['iframe内',embedded],
+    ['ホーム画面アプリとして起動',standalone?'はい':'いいえ／判定不可'],
+    ['Service Worker',('serviceWorker' in navigator)?'APIあり・GAS画面での使用は未確認':'APIなし'],
+    ['IndexedDB',('indexedDB' in window)?'APIあり・書き込みは未確認':'APIなし'],
+    ['GAS非同期通信',!!(window.google&&google.script&&google.script.run)?'あり':'なし']
+   ];
+   findings.forEach(function(pair){
+    var li=document.createElement('li');li.textContent=pair[0]+'：'+pair[1];output.appendChild(li);
+   });
+  });
   button.addEventListener('click',function(){
    var call=++serial;button.disabled=true;search.disabled=true;status.textContent='取得中です…';details.textContent='';rows=[];render();
    google.script.run.withSuccessHandler(function(result){
