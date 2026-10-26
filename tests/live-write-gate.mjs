@@ -23,14 +23,16 @@ const appCtx={
  window:{...win,KurashiGasApi:{...win.KurashiGasApi,request:async(action)=>{usedAction=action;return base}}},
  document:{getElementById:id=>id==='app'?el:null,querySelector(){return null},querySelectorAll(){return []},createElement(){return {style:{},setAttribute(){}}},body:{append(){}}},
  localStorage:{getItem:k=>store.get(k)||null,setItem:(k,v)=>store.set(k,v),removeItem:k=>store.delete(k)},
- navigator:{},location:{protocol:'file:'},crypto:{randomUUID:()=> 'random-uuid'},setTimeout,clearTimeout,Date,Intl,URL,Event:class Event{},console
+ // This test verifies the write-disabled gate, not Web Locks support.
+ navigator:{locks:{request:async(_name,_options,callback)=>callback({name:'test-lock'})}},location:{protocol:'file:'},crypto:{randomUUID:()=> 'random-uuid'},setTimeout,clearTimeout,Date,Intl,URL,Event:class Event{},console
 };
 const ctx=vm.createContext(appCtx);
 const app=vm.runInContext(appSrc+"\n({refreshLive,liveListView,openLiveEditor,liveMutate,liveWritable})",ctx);
 await app.refreshLive();
 assert.equal(usedAction,'bootstrap');
 assert.match(app.liveListView(),/<button[^>]*data-act="addLive"[^>]*disabled[^>]*>日用品を登録<\/button>/);
-assert.match(app.liveListView(),/保存.*無効/);
+assert.match(app.liveListView(),/登録・編集・在庫変更・削除は実装準備中です/);
+assert.equal(app.liveWritable(),false,'Write gate is disabled even with Web Locks available');
 await app.liveMutate('item.create',{name:'テスト',category_id:0});
 assert.equal(usedAction,'bootstrap','No item mutation may be sent');
 assert.match(app.liveListView(),/保存機能はまだ無効です/);
