@@ -21,6 +21,14 @@ row('change_log',{change_id:'C1',sequence_no:3,household_id:'home-A'});
 row('change_log',{change_id:'C2',sequence_no:14,household_id:'home-B'});
 let verified=0,read=0;
 const claims={aud:audience,sub:'12345',iss:'https://accounts.google.com',exp:now};
+for(const invalidOrigin of [
+ 'http://tokky0117.github.io','https://tokky0117.github.io/steal',
+ 'https://tokky0117.github.io?bad=1','https://user:pass@tokky0117.github.io',
+ 'https://tokky0117.github.io/#bad'
+]){
+ assert.throws(()=>createReadOnlyHandler({origin:invalidOrigin,audience,
+  verifyIdToken:async()=>claims,readTables:async()=>cells}),/BACKEND_CONFIG_INVALID/);
+}
 const handler=createReadOnlyHandler({
  origin:allowed,audience,
  async verifyIdToken(token){verified++;if(token==='bad')throw Error('INVALID_TOKEN');return claims},
