@@ -8,26 +8,44 @@ const source=readFileSync(new URL('../gas/Code.gs',import.meta.url),'utf8');
 let activeId='sandbox',trialId='sandbox',enabled=false,stockUiEnabled=false,writeCount=0,number=0;
 const allSheets={};
 const mock={
- PropertiesService:{getScriptProperties(){return {getProperty(name){
-  if(name==='SPREADSHEET_ID')return activeId;
-  if(name==='WRITE_TRIAL_SPREADSHEET_ID')return trialId;
-  if(name==='ENABLE_EXPERIMENTAL_WRITES')return enabled?'true':null;
-  if(name==='STOCK_UI_TRIAL_ENABLED')return stockUiEnabled?'true':null;
-  return null;
- }}}},
- SpreadsheetApp:{openById(){return {getSheetByName(name){
-  const cells=allSheets[name];if(!cells)return null;
-  return {getLastRow(){return cells.length},getDataRange(){return {getValues(){return cells.map(x=>x.slice())}}},
-   getRange(row,col,height,width){return {getValues(){return Array.from({length:height},(_,i)=>cells[row+i-1].slice(col-1,col-1+width))},setValues(vals){
-    assert.equal(height,1);assert.equal(col,1);assert.equal(vals[0].length,width);
-    writeCount++;
-    while(cells.length<row)cells.push([]);
-    cells[row-1]=vals[0].slice();
-   }}}
-  };
- }}}}},
+ PropertiesService:{
+  getScriptProperties(){
+   return {getProperty(name){
+    if(name==='SPREADSHEET_ID')return activeId;
+    if(name==='WRITE_TRIAL_SPREADSHEET_ID')return trialId;
+    if(name==='ENABLE_EXPERIMENTAL_WRITES')return enabled?'true':null;
+    if(name==='STOCK_UI_TRIAL_ENABLED')return stockUiEnabled?'true':null;
+    return null;
+   }};
+  }
+ },
+ SpreadsheetApp:{
+  openById(){
+   return {getSheetByName(name){
+    const cells=allSheets[name];
+    if(!cells)return null;
+    return {
+     getLastRow(){return cells.length},
+     getDataRange(){return {getValues(){return cells.map(x=>x.slice())}}},
+     getRange(row,col,height,width){
+      return {
+       getValues(){return Array.from({length:height},(_,i)=>cells[row+i-1].slice(col-1,col-1+width))},
+       setValues(vals){
+        assert.equal(height,1);assert.equal(col,1);assert.equal(vals[0].length,width);
+        writeCount++;
+        while(cells.length<row)cells.push([]);
+        cells[row-1]=vals[0].slice();
+       }
+      };
+     }
+    };
+   }};
+  }
+ },
  LockService:{getScriptLock(){return {tryLock(){return true},releaseLock(){}}}},
- Utilities:{getUuid(){return 'generated-id-'+(++number)},DigestAlgorithm:{SHA_256:'sha256'},
+ Utilities:{
+  getUuid(){return 'generated-id-'+(++number)},
+  DigestAlgorithm:{SHA_256:'sha256'},
   computeDigest(_algorithm,value){return Array.from(createHash('sha256').update(value).digest())},
   base64EncodeWebSafe(bytes){return Buffer.from(bytes).toString('base64url')}
  },
