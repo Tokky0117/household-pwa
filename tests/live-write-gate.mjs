@@ -29,7 +29,7 @@ const ctx=vm.createContext(appCtx);
 const app=vm.runInContext(appSrc+"\n({refreshLive,liveListView,openLiveEditor,liveMutate,liveWritable})",ctx);
 await app.refreshLive();
 assert.equal(usedAction,'bootstrap');
-assert.match(app.liveListView(),/日用品を登録" disabled/);
+assert.match(app.liveListView(),/<button[^>]*data-act="addLive"[^>]*disabled[^>]*>日用品を登録<\/button>/);
 assert.match(app.liveListView(),/保存.*無効/);
 await app.liveMutate('item.create',{name:'テスト',category_id:0});
 assert.equal(usedAction,'bootstrap','No item mutation may be sent');
