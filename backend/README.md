@@ -34,3 +34,21 @@
 - https://developers.google.com/identity/gsi/web/guides/verify-google-id-token
 - https://cloud.google.com/run/docs/authenticating/service-to-service
 - https://developers.google.com/workspace/sheets/api/scopes
+
+## 2026-10-26：Cloud Run費用・権限・運用の検証（公開・課金開始はしない）
+
+- **費用**：Cloud Runリクエストベース課金の無料枠は月200万リクエスト、180,000 vCPU秒、360,000 GiB秒（us-central1料金を基準にした無料枠）。リージョン別料金、CPU/メモリ、Cloud Build/Artifact Registry/ログ/ネットワーク等が別途発生し得る。**「必ず無料」と判断しない**。試験実行前に料金計算と課金アラートを確認する。
+- **Sheets API**：読み取りは1プロジェクト毎分300回、1ユーザー毎分60回が基本枠。`values.batchGet`は複数範囲でも1リクエストとしてカウントされるが、レスポンスデータ量・レイテンシは行数に比例し、各リクエストで全表を読む現在の設計はスケールしない。読み取り回数の制御・キャッシュ方針を検討する。ユーザー別データをキャッシュする場合は家庭間混在を防ぐこと。
+- **Cloud Run認証の重要点**：Cloud RunのInvoker IAM認証とアプリのGoogleログイン用IDトークン検証は**別物**。ブラウザからログインIDトークンを送るだけでは、デフォルトで非公開のCloud Runサービスを呼べるとは限らない。外部から呼べるCloud Runサービスとして設定する場合、エンドポイント自体はインターネット上に公開され、アプリのJWT確認でデータアクセスを拒否する構造になる。**公開設定の承認、レート制限、Bot対策、費用抑制を導入するまでデプロイしない**。
+- **安全枠**：将来テストするなら専用Cloudプロジェクト、請求先アラート、サービス単位の最大インスタンス制限（最初は少数）、最小インスタンス0、試験日後に削除する停止手順、専用サービスアカウント・試験シートだけ閲覧権限。最大インスタンス制限は瞬間的に超過し得るため**厳密な料金上限ではない**。
+- **実装監査**：HTTPの`Origin`は通信元制御の一助であり、クライアント認証ではない。Bearerトークンをサーバーで署名検証した後に家庭照合する。本体は試験専用家庭名マーカーに加え、他家庭の行が混入していないか全対象テーブルをチェックし、混入時は応答停止。CORSは通信が可能になる必要条件であってアプリ認可の代替ではない。
+
+参考：
+- https://cloud.google.com/run/pricing
+- https://docs.cloud.google.com/run/docs/authenticating/overview
+- https://docs.cloud.google.com/run/docs/configuring/max-instances
+- https://developers.google.com/workspace/sheets/api/limits
+
+## 暫定判断
+
+**現時点でCloud Runのデプロイは見送る。** 認証付きAPIの安全性検証を継続しつつ、個人・家庭で継続運用する場合の管理負担がGAS内画面案に見合うかを比較する。iPhoneの既存PWAを維持できるメリットと、別サーバーの費用/運用負担はトレードオフ。
