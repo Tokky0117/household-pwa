@@ -82,6 +82,11 @@ function trialPage_(){
  <p id="counts"></p></section>
  <section><label for="search">名前で検索</label><input id="search" type="search" disabled>
  <ul id="list"></ul><p id="empty"></p></section>
+ <section><h2>端末・PWA機能の確認</h2>
+ <p>現在のGAS画面の実行環境を読み取ります。診断結果は送信・保存しません。</p>
+ <button id="inspect" type="button">この画面の動作環境を確認</button>
+ <ul id="capabilities" aria-label="PWA機能診断"></ul>
+ <p><small>表示結果は機能の有無の参考です。「Service Worker対応」と表示されても、このGAS画面でオフラインアプリを実現できることを意味しません。</small></p></section>
  <script>
  (function(){
   'use strict';
@@ -112,6 +117,26 @@ function trialPage_(){
    empty.textContent=rows.length?'':'一致する日用品はありません';
   }
   search.addEventListener('input',render);
+  document.getElementById('inspect').addEventListener('click',function(){
+   var output=document.getElementById('capabilities');
+   output.replaceChildren();
+   var isEmbedded=false,frameUnknown=false;
+   try{isEmbedded=window.self!==window.top}catch(_){frameUnknown=true}
+   var standalone=false;
+   try{standalone=!!(window.matchMedia&&window.matchMedia('(display-mode: standalone)').matches)||navigator.standalone===true}catch(_){}
+   var cases=[
+    ['iframe内で動作',frameUnknown?'確認不可':isEmbedded?'はい':'いいえ'],
+    ['ホーム画面アプリとして起動',standalone?'はい':'いいえ／判定できません'],
+    ['Service Worker API',('serviceWorker' in navigator)?'APIあり（GAS画面への登録可否は未検証）':'APIなし'],
+    ['端末内保存API',('indexedDB' in window)?'APIあり（保存の可否は未検証）':'APIなし'],
+    ['GASの非同期通信',!!(window.google&&google.script&&google.script.run)?'利用可能':'利用不可']
+   ];
+   cases.forEach(function(entry){
+    var li=document.createElement('li'),name=document.createElement('span'),value=document.createElement('small');
+    name.textContent=entry[0];value.textContent=entry[1];
+    li.appendChild(name);li.appendChild(value);output.appendChild(li);
+   });
+  });
   btn.addEventListener('click',function(){
    btn.disabled=true;search.disabled=true;status.textContent='読み取り中です';items=[];counts.textContent='';render();
    google.script.run.withSuccessHandler(function(data){
