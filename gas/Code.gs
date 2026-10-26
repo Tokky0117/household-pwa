@@ -625,42 +625,9 @@ function runIsolatedItemWriteTrialOnce(){
  Logger.log('ISOLATED_ITEM_WRITE_TRIAL_OK: item_groups=1, change_log=2, processed_operations=2, version=2, replay=OK, stale=REJECTED');
  return true;
 }
-/**
- * OPTIONAL: Run MANUALLY in a NEW, independent Apps Script project.
- * Creates a brand-new isolated spreadsheet only. Never reads or modifies the
- * currently configured SPREADSHEET_ID or any household data. Does not enable
- * writes, edit Script Properties, or publish a Web App.
- * Fill the newly created users.auth_subject manually as plain text.
- */
+/** Legacy helper deliberately disabled. Existing trial sheet only. */
 function createFreshIsolatedWriteTrialSpreadsheet(){
- const label='くらしストック_書込試験専用_'+Utilities.getUuid().slice(0,8);
- const ss=SpreadsheetApp.create(label);
- const names=Object.keys(TABLES);
- const first=ss.getSheets()[0];
- first.setName(names[0]);
- for(let i=1;i<names.length;i++)ss.insertSheet(names[i]);
- for(const name of names){
-  const sh=ss.getSheetByName(name);
-  const headers=TABLES[name];
-  sh.getRange(1,1,1,headers.length).setValues([headers]);
-  sh.setFrozenRows(1);
- }
- const householdId='trial-'+Utilities.getUuid();
- ss.getSheetByName('households').appendRow([
-  householdId,TRIAL_HOUSEHOLD_LABEL,1,new Date().toISOString()
- ]);
- // The Google subject MUST be entered by the owner, in plain text. Never
- // guess it, log it, or substitute the script owner email.
- const users=ss.getSheetByName('users');
- users.getRange(2,4).setNumberFormat('@');
- users.getRange(2,1,1,3).setValues([[
-  'trial-user-'+Utilities.getUuid(),householdId,'試験ユーザー'
- ]]);
- CATEGORIES.forEach((name,i)=>ss.getSheetByName('categories').appendRow([i,name,i+1]));
- Logger.log('新しい試験専用シートを作成しました。URL: '+ss.getUrl());
- Logger.log('次に users!D2 に Google subject を文字列として入力してください。');
- Logger.log('既存家庭用のシートやスクリプトプロパティは変更していません。');
- return ss.getUrl();
+ fail('TRIAL_CREATION_DISABLED','既存の試験用シートを再利用してください');
 }
 /** Call manually on an EMPTY spreadsheet; does not insert households or users. */
 function initializeEmptySchema(){
@@ -694,10 +661,12 @@ function trialGuard_(){
   !/^[0-9]+$/.test(String(users[0].obj.auth_subject||'')))
   fail('TRIAL_NOT_ISOLATED','試験専用家庭の識別に失敗しました');
  const h=String(homes[0].obj.household_id);
- for(const name of ['item_groups','products','stores','change_log','processed_operations']){
+ for(const name of ['item_groups','products','stores','records','change_log','processed_operations']){
   if(rows(name).some(r=>String(r.obj.household_id)!==h))
    fail('TRIAL_NOT_ISOLATED','他家庭のデータが混在しています');
  }
+ for(const name of ['products','product_aliases','stores','records','record_items','receipt_rules'])
+  if(rows(name).length!==0)fail('TRIAL_NOT_ISOLATED',name+' に想定外のデータがあります');
  const items=scoped('item_groups',h);
  if(items.length!==1||items[0].obj.name!=='試験用・牛乳'||
     String(items[0].obj.is_hidden).toLowerCase()==='true')
@@ -752,7 +721,7 @@ function trialPage_(){
  function put(v){localStorage.setItem(KEY,JSON.stringify(v));if(!stored()||stored().operation_id!==v.operation_id)throw Error('JOURNAL_NOT_DURABLE')}
  function clear(v){localStorage.removeItem(KEY);if(localStorage.getItem(KEY)!==null)throw Error('JOURNAL_NOT_CLEARED')}
  function show(value){if(snapshot){item.textContent=snapshot.name+'：'+(value?'在庫あり':'在庫なし')+'（シート確定version '+snapshot.version+'）'}}
- function controls(){read.disabled=busy;toggle.disabled=busy||!snapshot||!!pending;retry.disabled=busy||!pending}
+ function controls(){read.disabled=busy;toggle.disabled=busy||!snapshot||!!pending;retry.disabled=busy||!pending||!snapshot||pending.id!==snapshot.id}
  function fail(e){status.textContent='保存結果が未確定です：'+(e&&e.message||'UNKNOWN')+'。同じ操作IDでのみ再送できます。';busy=false;controls()}
  function send(entry){
   busy=true;show(entry.in_stock);status.textContent='保存中（Google Sheetsへの反映待ち）';controls();
@@ -760,6 +729,7 @@ function trialPage_(){
    if(!pending||pending.operation_id!==entry.operation_id)return;
    try{
     if(result.id!==entry.id||typeof result.in_stock!=='boolean'||!Number.isSafeInteger(result.version))throw Error('INVALID_RESULT');
+    if(result.version!==entry.version+1||result.in_stock!==entry.in_stock)throw Error('RESULT_MISMATCH');
     clear(entry);pending=null;
     snapshot={id:result.id,name:snapshot.name,version:result.version,in_stock:result.in_stock};
     show(snapshot.in_stock);status.textContent='Google Sheetsへの保存完了';
@@ -775,6 +745,9 @@ function trialPage_(){
    if(!data||typeof data.id!=='string'||typeof data.version!=='number'){status.textContent='読み取り結果が不正です';controls();return}
    snapshot=data;show(data.in_stock);
    try{pending=stored()}catch(e){status.textContent='端末内の記録が読めません。保存を停止します。';pending={};controls();return}
+   if(pending&&(!pending.operation_id||!Number.isSafeInteger(pending.version)||typeof pending.in_stock!=='boolean'||pending.id!==data.id)){
+    status.textContent='端末の未完了操作が不正です。保存を停止しました';pending={};controls();return;
+   }
    status.textContent=pending?'未完了操作あり。同じ操作IDの確認・再送のみ可能':'読み取り成功';
    controls();
   }).withFailureHandler(function(e){busy=false;status.textContent='読み取りエラー：'+(e&&e.message||'UNKNOWN');controls()}).trialStockRead();
