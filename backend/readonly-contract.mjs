@@ -39,6 +39,14 @@ export function assertIsolatedTrialTables(raw){
     String(users[0].household_id)!==String(homes[0].household_id)||
     !validIdentifier(String(users[0].auth_subject||'')))
   throw Error('TRIAL_NOT_ISOLATED');
+ const householdId=String(homes[0].household_id);
+ // A trial-marked home is not sufficient if another household's rows were
+ // accidentally copied into this spreadsheet. Refuse the whole dataset.
+ for(const table of ['item_groups','products','stores','change_log']){
+  const records=getBody(raw[table],table);
+  if(records.some(row=>String(row.household_id)!==householdId))
+   throw Error('TRIAL_NOT_ISOLATED');
+ }
  return true;
 }
 export function bootstrapFromRows(raw,claims,expectedAudience){
