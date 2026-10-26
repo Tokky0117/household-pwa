@@ -1,0 +1,9 @@
+{
+  "name": "kurashi-readonly-trial-backend",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "engines": {"node": ">=22"},
+  "scripts": {"start": "node server.mjs", "test": "node ../tests/backend-readonly-contract.mjs"},
+  "dependencies": {"google-auth-library": "^9.15.0", "googleapis": "^144.0.0"}
+}
