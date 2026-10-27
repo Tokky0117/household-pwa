@@ -201,7 +201,7 @@ assert.match(pageHtml,/id="profile"/);
 assert.match(pageHtml,/id="profile-3"/);
 assert.match(pageHtml,/id="profile-5"/);
 assert.match(pageHtml,/比較用の読み取り専用診断/);
-assert.match(pageHtml,/\.trialStockTimingReadOnly\(\)/);
+assert.match(pageHtml,/\.trialStockTimingReadOnly\(entry\.mode\)/);
 assert.match(pageHtml,/12シート全体を計測/);
 assert.doesNotMatch(pageHtml,/innerHTML|id_token|localStorage/);
 
