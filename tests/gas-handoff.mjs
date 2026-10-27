@@ -6,7 +6,7 @@ const workflow=readFileSync(new URL('../.github/workflows/pages-previews.yml',im
 assert.match(html,/id="copy"/);
 assert.match(html,/navigator\.clipboard\.writeText\(source\.value\)/);
 assert.match(html,/fetch\('\.\/gas\/Code\.gs'/);
-assert.match(html,/initializeEmptySchema\(\)/);
+assert.match(html,/initializeEmptySchema_\(\)/);
 assert.match(html,/バックアップ/);
 assert.match(gas,/function testAllSheetsReadOnly\(\)/);
 // Verify actual file membership, not an obsolete adjacency/order assumption.
