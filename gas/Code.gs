@@ -52,6 +52,10 @@ function isolatedTrialReadPage_(){
  <section><button id="check" type="button">試験用データを読み取る</button>
  <p id="status" role="status">ボタンを押してください。</p>
  <p id="details" class="muted"></p></section>
+ <section><h3>読み込み時間を測る（保存なし）</h3>
+ <p class="muted">12シートの安全確認にかかる時間を測ります。試験用の書き込みを有効にする必要はなく、Google Sheetsの内容は変更しません。</p>
+ <button id="profile" type="button">読み込み速度を計測</button>
+ <p id="profile-result" role="status">未計測</p></section>
  <section><label for="search">日用品名で絞り込む</label>
  <input id="search" type="search" placeholder="日用品名" disabled>
  <ul id="items" aria-label="日用品一覧"></ul>
@@ -73,6 +77,29 @@ function isolatedTrialReadPage_(){
   var button=document.getElementById('check'),status=document.getElementById('status'),details=document.getElementById('details'),
       search=document.getElementById('search'),list=document.getElementById('items'),empty=document.getElementById('empty');
   var rows=[],serial=0;
+  var profileButton=document.getElementById('profile'),profileResult=document.getElementById('profile-result'),profileBusy=false;
+  function profileSeconds(ms){return (Math.max(0,ms)/1000).toFixed(2)+'秒'}
+  profileButton.addEventListener('click',function(){
+   if(profileBusy)return;
+   profileBusy=true;profileButton.disabled=true;
+   profileResult.textContent='計測中（Google Sheetsには保存しません）';
+   var started=Date.now();
+   google.script.run.withSuccessHandler(function(metrics){
+    profileBusy=false;profileButton.disabled=false;
+    if(!metrics||!Number.isFinite(metrics.server_ms)||metrics.sheet_reads!==12){
+     profileResult.textContent='計測結果が不正です';return;
+    }
+    var whole=Date.now()-started;
+    profileResult.textContent='全体 '+profileSeconds(whole)+
+     ' ／ GAS内 '+profileSeconds(metrics.server_ms)+
+     ' ／ シートを開く '+profileSeconds(metrics.open_ms)+
+     ' ／ 12シート検査 '+profileSeconds(metrics.sheet_ms)+
+     ' ／ 起動・通信等の概算 '+profileSeconds(Math.max(0,whole-metrics.server_ms));
+   }).withFailureHandler(function(error){
+    profileBusy=false;profileButton.disabled=false;
+    profileResult.textContent='計測エラー：'+(error&&error.message||'UNKNOWN');
+   }).trialStockTimingReadOnly();
+  });
   var demoValue=null,demoCommitted=null,demoBusy=false,demoSerial=0;
   var demoToggle=document.getElementById('demo-toggle'),
       demoName=document.getElementById('demo-name'),
@@ -647,13 +674,13 @@ function initializeEmptySchema_(){
  * KEEP deployment access "only myself"; no public consumer auth is provided here.
  * No separate GAS project or spreadsheet is required.
  */
-function trialGuard_(timing){
+function trialGuard_(timing,readOnlyProbe){
  const p=PropertiesService.getScriptProperties();
  if(!p.getProperty('SPREADSHEET_ID')||
   p.getProperty('SPREADSHEET_ID')!==p.getProperty('WRITE_TRIAL_SPREADSHEET_ID')||
   p.getProperty('ENABLE_EXPERIMENTAL_WRITES')==='true'||
-  p.getProperty('STOCK_UI_TRIAL_ENABLED')!=='true')
-  fail('WRITES_DISABLED','試験用の書込み設定を確認してください');
+  (!readOnlyProbe&&p.getProperty('STOCK_UI_TRIAL_ENABLED')!=='true'))
+  fail(readOnlyProbe?'TRIAL_NOT_ISOLATED':'WRITES_DISABLED','試験用の設定を確認してください');
  // Cache only inside this one guard invocation. Never persist Sheet state
  // across requests or across the separate mutation lock/revalidation.
  // Timing is optional and exists only inside the current trial RPC.
@@ -694,6 +721,17 @@ function trialGuard_(timing){
   Number(r.obj.fixed_order)!==i+1))
   fail('TRIAL_NOT_ISOLATED','カテゴリが試験用の構成ではありません');
  return {householdId:h,userId:String(users[0].obj.user_id),item:items[0].obj};
+}
+/**
+ * Read-only timing probe for the existing owner-only trial read page.
+ * Performs the full 12-sheet isolation check WITHOUT enabling stock writes.
+ * Returns counters/durations only; no row data, IDs, or tokens.
+ */
+function trialStockTimingReadOnly(){
+ const started=Date.now(),timing={sheet_reads:0,sheet_ms:0,open_ms:0};
+ trialGuard_(timing,true);
+ timing.server_ms=Date.now()-started;
+ return timing;
 }
 function trialStockRead(){
  const started=Date.now(),timing={sheet_reads:0,sheet_ms:0,open_ms:0};
