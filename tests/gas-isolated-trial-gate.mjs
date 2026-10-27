@@ -78,6 +78,19 @@ assert.equal(snapshot.items[0].in_stock,false);
 assert.equal(snapshot.items[0].category,'飲食');
 assert.deepEqual(Object.keys(snapshot.items[0]).sort(),['category','in_stock','name']);
 const writeCountBeforeStock=writeCount;
+// The existing read-only diagnostic can inspect all 12 trial sheets even
+// when the stock UI write flag is disabled.
+for(const name of Object.keys(sheetReadCounts))delete sheetReadCounts[name];
+openCount=0;
+const readOnlyTiming=mock.trialStockTimingReadOnly();
+assert.equal(readOnlyTiming.sheet_reads,12);
+assert.equal(openCount,1);
+for(const name of Object.keys(tableDefs))assert.equal(sheetReadCounts[name],1,'Profile reads each Sheet once: '+name);
+for(const metric of ['open_ms','sheet_ms','server_ms'])
+ assert.ok(Number.isFinite(readOnlyTiming[metric])&&readOnlyTiming[metric]>=0);
+assert.deepEqual(Object.keys(JSON.parse(JSON.stringify(readOnlyTiming))).sort(),
+ ['open_ms','server_ms','sheet_ms','sheet_reads']);
+assert.equal(writeCount,writeCountBeforeStock,'Read-only timing probe cannot write');
 errorCode(()=>mock.trialStockRead(),'WRITES_DISABLED');
 errorCode(()=>mock.trialStockUpdate({}),'BAD_REQUEST');
 assert.equal(writeCount,writeCountBeforeStock);
@@ -108,6 +121,7 @@ for(const [name,row] of [
 ]){
  const original=writeCount;allSheets[name].push(row);
  errorCode(()=>mock.trialStockRead(),'TRIAL_NOT_ISOLATED');
+ errorCode(()=>mock.trialStockTimingReadOnly(),'TRIAL_NOT_ISOLATED');
  errorCode(()=>mock.trialStockUpdate(stockRequest),'TRIAL_NOT_ISOLATED');
  assert.equal(writeCount,original);
  allSheets[name].pop();
@@ -163,6 +177,9 @@ assert.ok(inspectScript);
 assert.doesNotMatch(inspectScript[1],/fetch\(|google\.script\.run\.with|localStorage|sessionStorage|serviceWorker\.register|indexedDB\.open/);
 
 assert.match(pageHtml,/\.trialReadOnlyItemList\(\)/);
+assert.match(pageHtml,/id="profile"/);
+assert.match(pageHtml,/\.trialStockTimingReadOnly\(\)/);
+assert.match(pageHtml,/読み込み速度を計測/);
 assert.doesNotMatch(pageHtml,/innerHTML|id_token|localStorage/);
 
 const diag=mock.doGet({parameter:{trial_read:'1'}});
@@ -185,12 +202,14 @@ writeCount=before;
 errorCode(()=>create('牛乳','attempt-0001'),'WRITES_DISABLED');
 assert.equal(writeCount,before);
 enabled=true;
+errorCode(()=>mock.trialStockTimingReadOnly(),'TRIAL_NOT_ISOLATED');
 activeId='real-household';
 trialId='sandbox';
 errorCode(()=>mock.trialReadOnlyItemList(),'TRIAL_NOT_ISOLATED');
 errorCode(()=>create('牛乳','attempt-0002'),'WRITES_DISABLED');
 activeId='sandbox';
 trialId='real-household';
+errorCode(()=>mock.trialStockTimingReadOnly(),'TRIAL_NOT_ISOLATED');
 errorCode(()=>create('牛乳','attempt-0003'),'WRITES_DISABLED');
 trialId='sandbox';
 // Read-only trial access must keep the general experimental write gate disabled.
