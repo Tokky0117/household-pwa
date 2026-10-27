@@ -22,7 +22,8 @@ const el=(id)=>{
  return obj;
 };
 const elements=Object.fromEntries(['check','status','details','search','items','empty',
- 'demo-toggle','demo-name','demo-status','demo-outcome','inspect','capabilities','profile','profile-result'].map(id=>[id,el(id)]));
+ 'demo-toggle','demo-name','demo-status','demo-outcome','inspect','capabilities','profile','profile-result',
+ 'profile-3','profile-3-result','profile-5','profile-5-result'].map(id=>[id,el(id)]));
 // The browser honors the initial disabled attribute; the DOM mock must too.
 assert.match(html,/<button id="demo-toggle"[^>]*disabled>/);
 elements['demo-toggle'].disabled=true;
@@ -34,7 +35,11 @@ const runner={
  withSuccessHandler(fn){this.success=fn;return this},
  withFailureHandler(fn){this.failure=fn;return this},
  trialReadOnlyItemList(){rpcReads++;this.success(response)},
- trialStockTimingReadOnly(){profileReads++;this.success({sheet_reads:12,server_ms:100,open_ms:10,sheet_ms:70})}
+ trialStockTimingReadOnly(mode){
+  profileReads++;
+  const count=mode==='stock3'?3:mode==='stock5'?5:12;
+  this.success({sheet_reads:count,server_ms:100,open_ms:10,sheet_ms:70});
+ }
 };
 const context={document:{
  getElementById(id){assert.ok(elements[id],id);return elements[id]},
@@ -51,6 +56,13 @@ fire('profile');
 assert.equal(profileReads,1);
 assert.match(elements['profile-result'].textContent,/12シート検査/);
 assert.equal(elements['profile'].disabled,false);
+fire('profile-3');
+assert.equal(profileReads,2);
+assert.match(elements['profile-3-result'].textContent,/3シート検査/);
+fire('profile-5');
+assert.equal(profileReads,3);
+assert.match(elements['profile-5-result'].textContent,/5シート検査/);
+assert.equal(elements['profile-3'].disabled,false);
 assert.equal(rpcWrites,0);
 fire('check');
 assert.equal(rpcReads,1);
