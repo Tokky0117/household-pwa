@@ -22,18 +22,19 @@ const el=(id)=>{
  return obj;
 };
 const elements=Object.fromEntries(['check','status','details','search','items','empty',
- 'demo-toggle','demo-name','demo-status','demo-outcome','inspect','capabilities'].map(id=>[id,el(id)]));
+ 'demo-toggle','demo-name','demo-status','demo-outcome','inspect','capabilities','profile','profile-result'].map(id=>[id,el(id)]));
 // The browser honors the initial disabled attribute; the DOM mock must too.
 assert.match(html,/<button id="demo-toggle"[^>]*disabled>/);
 elements['demo-toggle'].disabled=true;
 elements['demo-outcome'].value='success';
 const timers=[];
-let rpcReads=0,rpcWrites=0;
+let rpcReads=0,rpcWrites=0,profileReads=0;
 const response={categories:5,products:0,stores:0,items:[{name:'試験用・牛乳',category:'飲食',in_stock:false}]};
 const runner={
  withSuccessHandler(fn){this.success=fn;return this},
  withFailureHandler(fn){this.failure=fn;return this},
- trialReadOnlyItemList(){rpcReads++;this.success(response)}
+ trialReadOnlyItemList(){rpcReads++;this.success(response)},
+ trialStockTimingReadOnly(){profileReads++;this.success({sheet_reads:12,server_ms:100,open_ms:10,sheet_ms:70})}
 };
 const context={document:{
  getElementById(id){assert.ok(elements[id],id);return elements[id]},
@@ -45,6 +46,12 @@ vm.createContext(context);
 vm.runInContext(script,context);
 const fire=(id,event='click')=>{const handler=listeners.get(id+':'+event);assert.ok(handler);handler()};
 assert.equal(elements['demo-toggle'].disabled,true);
+// Read-only profiling must not affect the simulated toggle or create mutations.
+fire('profile');
+assert.equal(profileReads,1);
+assert.match(elements['profile-result'].textContent,/12シート検査/);
+assert.equal(elements['profile'].disabled,false);
+assert.equal(rpcWrites,0);
 fire('check');
 assert.equal(rpcReads,1);
 assert.equal(elements['demo-toggle'].disabled,false);
