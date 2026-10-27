@@ -7,5 +7,5 @@ assert.match(page,/既存の試験用GAS/);
 assert.doesNotMatch(page,/script\.google\.com\/home\/projects\/create|createFreshIsolatedWriteTrialSpreadsheet/);
 const mock={SpreadsheetApp:{create(){throw Error('MUST_NOT_CREATE')}},Logger:{log(){}},Date};
 vm.createContext(mock);vm.runInContext(source,mock);
-assert.throws(()=>mock.createFreshIsolatedWriteTrialSpreadsheet(),e=>e?.code==='TRIAL_CREATION_DISABLED');
+assert.throws(()=>mock.createFreshIsolatedWriteTrialSpreadsheet_(),e=>e?.code==='TRIAL_CREATION_DISABLED');
 console.log('Legacy creator disabled and existing trial reused PASS');
