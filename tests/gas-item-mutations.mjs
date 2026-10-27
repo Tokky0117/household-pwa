@@ -174,6 +174,8 @@ assert.equal(lockHeld,false);
 // preserves household isolation and version/operation safety.
 for(let i=0;i<48;i++){
  books.item_groups.push(['other-'+i,'h2',0,'別家庭-'+i,'other-'+i,true,1,false,1,'','','']);
+ books.change_log.push(['foreign-change-'+i,i+1,'h2','item_groups','other-'+i,'item.update','']);
+ books.processed_operations.push(['h2','foreign-op-'+i,'foreign-hash','{"done":true}','']);
 }
 const candidate=rowByName('h1','ミルク');
 const readStart=readShapes.length;
@@ -188,6 +190,14 @@ assert.equal(itemReads.filter(x=>x.type==='range'&&x.width===2&&x.col===1).lengt
  'Stock update scans only ID + household columns twice, before and after journal');
 assert.equal(itemReads.filter(x=>x.type==='range'&&x.width===12&&x.height===1).length,4,
  'Header and target row are fetched separately on each guarded read');
+const journalReads=readShapes.slice(readStart).filter(x=>x.name==='processed_operations');
+assert.equal(journalReads.some(x=>x.type==='full'),false,'Large journal reads must omit the unused timestamp column');
+assert.ok(journalReads.some(x=>x.type==='range'&&x.width===4&&x.height>1),'Journal reads first four columns');
+const logReads=readShapes.slice(readStart).filter(x=>x.name==='change_log');
+assert.equal(logReads.some(x=>x.type==='full'),false,'Large change logs must not fetch the unused timestamp');
+assert.ok(logReads.some(x=>x.type==='range'&&x.width===3&&x.height>1),'Sequence only needs first three columns');
+assert.ok(logReads.some(x=>x.type==='range'&&x.width===6&&x.height>1),'Replay verification needs first six columns');
+
 const indexedReplay=execute(u1,'item.update',
  {item_group_id:candidate.item_group_id,version:candidate.version,in_stock:true},
  'indexed-stock-0001');
