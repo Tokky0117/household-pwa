@@ -234,3 +234,13 @@ GAS `google.script.run`経由の正式な書き込みAPI設計は別工程とす
 - `SPREADSHEET_ID === WRITE_TRIAL_SPREADSHEET_ID` が既存の試験用シートを指すこと、`ENABLE_EXPERIMENTAL_WRITES` は未設定または false、アクセス権は「自分のみ」を確認。試験する直前だけ `STOCK_UI_TRIAL_ENABLED=true` を設定。
 - `/exec?trial_stock=1` で試験用・牛乳を**一度だけ**切り替え、読み直して在庫・versionをGoogle Sheetsと照合。再送が必要なときだけ同じ操作IDを使い、異なる操作IDを発行し直さない。
 - 試験終了後、結果にかかわらず `STOCK_UI_TRIAL_ENABLED=false` に戻す。`runIsolatedItemWriteTrialOnce` の旧一回限り試験は再実行しない。`main`、家庭用GAS、家庭用Sheets、PWA本体を変更しない。
+
+
+## 2026-10-27：iPhone 実在庫切替の初回結果と速度課題
+
+- ユーザー報告：既存の試験用GASの在庫切替後、再読み込みしても「在庫あり」と更新後のversion表示が維持された。**UI→GAS→Sheetsの保存が成立した可能性が高い**が、Google Sheets実データの直接照合・operation_idの履歴照合は未確認。
+- ユーザー体感：読み込み・在庫ありへの切替にそれぞれ約5秒。**表示が変わるまでの時間**なのか**保存完了の通知が出るまでの時間**なのかは未切り分け。推測のみで速度達成や遅延原因を断定しない。
+- コード調査：`trialPage_()` の `send(entry)` は、画面の `show(entry.in_stock)` と「保存中」表示を同期的に実施してから、非同期の `google.script.run.trialStockUpdate` を呼ぶ。一方、初回の `load()` は `trialStockRead` の成功応答後に在庫を初表示する。
+- `trialGuard_()` は毎回複数シートの整合性・隔離確認を行い、`rows()` はスプレッドシートの取得・全行読取を繰り返す。Google側起動時間・通信・ガード検査・書込みそれぞれの実測内訳はまだない。安全ガードの省略や恒久的な信頼キャッシュによる短縮はしない。
+- 性能判断：タップ直後の画面反応（目標即時〜1秒）と保存確定までの待機時間を分けて計測する。読み込み約5秒は改善検討対象。追加費用ゼロ・既存PWA維持を優先。
+- 実機試験後は、結果にかかわらず `STOCK_UI_TRIAL_ENABLED=false` に戻す。再テストは追加の測定が必要になったときに限定し、`runIsolatedItemWriteTrialOnce_()` は再実行しない。
