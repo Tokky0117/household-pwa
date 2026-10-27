@@ -86,6 +86,9 @@ stockUiEnabled=true;
 for(const name of Object.keys(sheetReadCounts))delete sheetReadCounts[name];
 openCount=0;
 const stockInitial=mock.trialStockRead();
+assert.equal(stockInitial.timing.sheet_reads,12,'All trial safety sheets remain checked');
+for(const key of ['open_ms','sheet_ms','server_ms'])
+ assert.ok(Number.isFinite(stockInitial.timing[key])&&stockInitial.timing[key]>=0,'Read timing '+key);
 assert.equal(openCount,1,'Stock read must open the isolated Spreadsheet once');
 assert.equal(Object.values(sheetReadCounts).reduce((total,count)=>total+count,0),Object.keys(tableDefs).length,
  'One safe trial read performs one read per Sheet');
@@ -111,6 +114,13 @@ for(const [name,row] of [
 }
 const saved=mock.trialStockUpdate(stockRequest);
 const repeated=mock.trialStockUpdate(stockRequest);
+for(const result of [saved,repeated]){
+ assert.equal(result.timing.sheet_reads,12,'Save must revalidate all twelve trial Sheets');
+ for(const key of ['open_ms','sheet_ms','guard_ms','mutation_ms','server_ms'])
+  assert.ok(Number.isFinite(result.timing[key])&&result.timing[key]>=0,'Save timing '+key);
+ assert.ok(result.timing.server_ms>=result.timing.mutation_ms);
+}
+
 assert.equal(saved.version,3);
 assert.equal(saved.in_stock,true);
 assert.equal(repeated.version,3);
@@ -125,6 +135,9 @@ assert.equal(mock.doGet({parameter:{trial_read:'1'}}).title,'くらしストッ�
 stockUiEnabled=true;
 const stockPage=mock.doGet({parameter:{trial_stock:'1'}}).html;
 assert.match(stockPage,/id="toggle"/);
+assert.match(stockPage,/id="timing"/);
+assert.match(stockPage,/通信全体/);
+assert.match(stockPage,/12シート検査/);
 assert.match(stockPage,/trialStockUpdate\(entry\)/);
 assert.match(stockPage,/localStorage\.setItem/);
 assert.match(stockPage,/保存結果が未確定/);
