@@ -654,7 +654,11 @@ function trialGuard_(){
   p.getProperty('ENABLE_EXPERIMENTAL_WRITES')==='true'||
   p.getProperty('STOCK_UI_TRIAL_ENABLED')!=='true')
   fail('WRITES_DISABLED','試験用の書込み設定を確認してください');
- const homes=rows('households'),users=rows('users');
+ // Cache only inside this one guard invocation. Never persist Sheet state
+ // across requests or across the separate mutation lock/revalidation.
+ const checked=Object.create(null);
+ const readOnce=name=>checked[name]||(checked[name]=rows(name));
+ const homes=readOnce('households'),users=readOnce('users');
  if(homes.length!==1||users.length!==1||
   String(homes[0].obj.display_name)!==TRIAL_HOUSEHOLD_LABEL||
   String(users[0].obj.household_id)!==String(homes[0].obj.household_id)||
@@ -662,16 +666,18 @@ function trialGuard_(){
   fail('TRIAL_NOT_ISOLATED','試験専用家庭の識別に失敗しました');
  const h=String(homes[0].obj.household_id);
  for(const name of ['item_groups','products','stores','records','change_log','processed_operations']){
-  if(rows(name).some(r=>String(r.obj.household_id)!==h))
+  if(readOnce(name).some(r=>String(r.obj.household_id)!==h))
    fail('TRIAL_NOT_ISOLATED','他家庭のデータが混在しています');
  }
  for(const name of ['products','product_aliases','stores','records','record_items','receipt_rules'])
-  if(rows(name).length!==0)fail('TRIAL_NOT_ISOLATED',name+' に想定外のデータがあります');
- const items=scoped('item_groups',h);
+  if(readOnce(name).length!==0)fail('TRIAL_NOT_ISOLATED',name+' に想定外のデータがあります');
+ const items=readOnce('item_groups').filter(r=>
+  String(r.obj.household_id)===h&&
+  (!Object.prototype.hasOwnProperty.call(r.obj,'deleted_at')||!r.obj.deleted_at));
  if(items.length!==1||items[0].obj.name!=='試験用・牛乳'||
     String(items[0].obj.is_hidden).toLowerCase()==='true')
   fail('TRIAL_NOT_ISOLATED','対象は試験用・牛乳1件だけです');
- const categories=rows('categories');
+ const categories=readOnce('categories');
  if(categories.length!==5||categories.some((r,i)=>
   String(r.obj.name)!==CATEGORIES[i]||Number(r.obj.category_id)!==i||
   Number(r.obj.fixed_order)!==i+1))
