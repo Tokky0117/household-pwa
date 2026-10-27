@@ -21,6 +21,7 @@ books.users.push(['u1','h1','User1','sub1'],['u2','h2','User2','sub2']);
 books.categories.push(...['飲食','キッチン','洗面・風呂','洗濯・掃除','その他'].map((name,i)=>[i,name,i+1]));
 const initial=books.item_groups.map(x=>x.slice());
 let writesEnabled=false,trialSheetId='mock',writeCount=0,uuidNum=0,lockHeld=false,failOperationJournal=false;
+let externallyShiftItemDuringPrepare=false;
 const readShapes=[];
 const ctx={
  PropertiesService:{
@@ -53,6 +54,11 @@ const ctx={
        writeCount++;
        while(cells.length<row)cells.push([]);
        cells[row-1]=values[0].slice();
+       if(name==='processed_operations'&&externallyShiftItemDuringPrepare&&row===cells.length){
+        externallyShiftItemDuringPrepare=false;
+        books.item_groups.splice(1,0,
+         ['foreign-shift','h2',0,'別家庭追加','foreign-shift',false,1,false,1,'','','']);
+       }
       }};
      }
     };
@@ -186,10 +192,10 @@ assert.equal(indexed.entity.version,candidate.version+1);
 assert.equal(indexed.entity.in_stock,true);
 const itemReads=readShapes.slice(readStart).filter(x=>x.name==='item_groups');
 assert.equal(itemReads.some(x=>x.type==='full'),false,'Large stock update must not scan full 12-column item sheet');
-assert.equal(itemReads.filter(x=>x.type==='range'&&x.width===2&&x.col===1).length,2,
- 'Stock update scans only ID + household columns twice, before and after journal');
+assert.equal(itemReads.filter(x=>x.type==='range'&&x.width===2&&x.col===1).length,1,
+ 'Fresh stock update scans ID and household columns only once');
 assert.equal(itemReads.filter(x=>x.type==='range'&&x.width===12&&x.height===1).length,4,
- 'Header and target row are fetched separately on each guarded read');
+ 'Before update and final validation each fetch header and one target row');
 const journalReads=readShapes.slice(readStart).filter(x=>x.name==='processed_operations');
 assert.equal(journalReads.some(x=>x.type==='full'),false,'Large journal reads must omit the unused timestamp column');
 assert.ok(journalReads.some(x=>x.type==='range'&&x.width===4&&x.height>1),'Journal reads first four columns');
@@ -209,5 +215,24 @@ fails(u2,'item.update',
 fails(u1,'item.update',
  {item_group_id:candidate.item_group_id,version:candidate.version,in_stock:false},
  'VERSION_CONFLICT');
+// Simulate an external user inserting a row AFTER the durable prepare
+// but BEFORE the final entity write. An indexed row number must be
+// rejected rather than writing over that unrelated row.
+const movingRow=rowByName('h1','ミルク');
+externallyShiftItemDuringPrepare=true;
+const movingPayload={item_group_id:movingRow.item_group_id,version:movingRow.version,in_stock:false};
+assert.throws(
+ ()=>execute(u1,'item.update',movingPayload,'shifted-target-0001'),
+ e=>e?.code==='RECOVERY_CONFLICT','Move after prepare must not touch the wrong row'
+);
 assert.equal(lockHeld,false);
-console.log('GAS item mutations: replay, fault recovery and large-Sheet indexed stock lookup PASS');
+assert.equal(rowByName('h1','ミルク').version,movingRow.version);
+assert.equal(books.item_groups[1][0],'foreign-shift','External inserted row remains untouched');
+fails(u1,'item.update',{item_group_id:movingRow.item_group_id,version:movingRow.version,in_stock:false},
+ 'RECOVERY_REQUIRED','blocked-by-pending');
+const recoveredMove=execute(u1,'item.update',movingPayload,'shifted-target-0001');
+assert.equal(recoveredMove.entity.version,movingRow.version+1);
+assert.equal(rowByName('h1','ミルク').version,recoveredMove.entity.version);
+assert.equal(books.item_groups[1][0],'foreign-shift');
+assert.equal(lockHeld,false);
+console.log('GAS item mutations: replay, large-Sheet single index scan, moved-row recovery PASS');
