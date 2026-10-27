@@ -112,7 +112,7 @@ function isolatedTrialReadPage_(){
     }).withFailureHandler(function(error){
      profileBusy=false;profileControls();
      result.textContent='計測エラー：'+(error&&error.message||'UNKNOWN');
-    }).trialStockTimingReadOnly(entry.mode===null?undefined:entry.mode);
+    }).trialStockTimingReadOnly(entry.mode);
    });
   });
   var demoValue=null,demoCommitted=null,demoBusy=false,demoSerial=0;
@@ -743,10 +743,10 @@ function trialGuard_(timing,readOnlyProbe){
  * Returns counters/durations only; no row data, IDs, or tokens.
  */
 function trialStockTimingReadOnly(mode){
- if(mode!==undefined&&mode!=='stock3'&&mode!=='stock5')
+ if(mode!=null&&mode!=='stock3'&&mode!=='stock5')
   fail('BAD_REQUEST','計測方式を確認してください');
  const started=Date.now(),timing={sheet_reads:0,sheet_ms:0,open_ms:0};
- if(mode===undefined)trialGuard_(timing,true);
+ if(mode==null)trialGuard_(timing,true);
  else trialSubsetProfileOnly_(mode,timing);
  timing.server_ms=Date.now()-started;
  return timing;
