@@ -305,9 +305,29 @@ function itemRowById_(householdId,itemId){
   if(obj.deleted_at)return null;
   if(String(obj.item_group_id)!==itemId||String(obj.household_id)!==householdId)
    fail('RECOVERY_CONFLICT','更新対象が途中で変わりました');
-  return {row,obj};
+  return {row,obj,indexed:true};
  }
  return null;
+}
+/**
+ * Recheck the exact row located before prepare. The row data and its
+ * identity must be current when writing, not a stale cached snapshot.
+ * If a user externally moves rows during a pending operation, abort
+ * safely; identical operation_id replay locates the row afresh.
+ */
+function itemRowAt_(householdId,itemId,row){
+ const name='item_groups',headers=TABLES[name],sh=tab(name);
+ if(!Number.isSafeInteger(row)||row<2||row>sh.getLastRow())
+  fail('RECOVERY_CONFLICT','更新対象の行が移動しました');
+ const heading=sh.getRange(1,1,1,headers.length).getValues()[0];
+ if(headers.some((h,i)=>String(heading[i])!==h))
+  fail('SCHEMA_MISMATCH',name+' の列を確認してください');
+ const cells=sh.getRange(row,1,1,headers.length).getValues()[0];
+ const obj=Object.fromEntries(headers.map((h,j)=>[h,cells[j]===''?null:cells[j]]));
+ if(String(obj.item_group_id)!==itemId||String(obj.household_id)!==householdId||
+    obj.deleted_at)
+  fail('RECOVERY_CONFLICT','更新対象の行が途中で変わりました');
+ return {row,obj};
 }
 /**
  * Only scan columns used by an operation on large logs/journals.
@@ -425,7 +445,7 @@ function mutateItemSafely_(user,action,payload,operationId,localEditorTrial){
   });
   if(pending&&String(pending.obj.operation_id)!==operationId)
    fail('RECOVERY_REQUIRED','未完了の操作があります。元の操作を再送してください');
-  let plan,operationRow=previous?.row;
+  let plan,operationRow=previous?.row,preparedItemRow=null;
   if(previous){
    const stored=JSON.parse(String(previous.obj.result));
    if(stored.status!=='prepared')return stored;
@@ -451,6 +471,7 @@ function mutateItemSafely_(user,action,payload,operationId,localEditorTrial){
      items.find(x=>String(x.obj.item_group_id)===itemId);
     if(!row)fail('NOT_FOUND','日用品が見つかりません');
     assertVersion(row,payload.version);baseVersion=Number(row.obj.version);
+    if(stockOnly&&row.indexed)preparedItemRow=row.row;
     output=Object.assign({},row.obj);
     if(Object.prototype.hasOwnProperty.call(payload,'name')){
      const name=String(payload.name||'').trim();
@@ -484,7 +505,11 @@ function mutateItemSafely_(user,action,payload,operationId,localEditorTrial){
   }
   const entity=plan.entity;
   const itemId=String(entity.item_group_id);
-  const row=itemRowById_(hid,itemId);
+  // For a fresh large-Sheet stock toggle we already know the physical row.
+  // Re-read that row and verify its ID and household instead of scanning
+  // every item's ID twice. Replays must search afresh after any interruption.
+  const row=preparedItemRow!==null?
+   itemRowAt_(hid,itemId,preparedItemRow):itemRowById_(hid,itemId);
   if(row){
    if(!samePlannedItem(row.obj,entity)){
     if(action!=='item.update'||Number(row.obj.version)!==plan.base_version)
