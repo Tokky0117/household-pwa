@@ -228,9 +228,9 @@ function spreadsheet(){
  if(!id)fail('CONFIG_REQUIRED','スプレッドシートが未設定です');
  return SpreadsheetApp.openById(id);
 }
-function tab(name){const sh=spreadsheet().getSheetByName(name);if(!sh)fail('SCHEMA_MISSING',name+' シートがありません');return sh}
-function rows(name){
- const sh=tab(name),v=sh.getDataRange().getValues(),headers=TABLES[name];
+function tab(name,book){const sh=(book||spreadsheet()).getSheetByName(name);if(!sh)fail('SCHEMA_MISSING',name+' シートがありません');return sh}
+function rows(name,book){
+ const sh=tab(name,book),v=sh.getDataRange().getValues(),headers=TABLES[name];
  if(!v.length||headers.some((h,i)=>String(v[0][i])!==h))fail('SCHEMA_MISMATCH',name+' の列を確認してください');
  return v.slice(1).map((cells,i)=>({row:i+2,cells})).filter(x=>x.cells.some(c=>c!==''&&c!==null)).map(x=>({row:x.row,obj:Object.fromEntries(headers.map((h,j)=>[h,x.cells[j]===''?null:x.cells[j]]))}));
 }
@@ -656,8 +656,9 @@ function trialGuard_(){
   fail('WRITES_DISABLED','試験用の書込み設定を確認してください');
  // Cache only inside this one guard invocation. Never persist Sheet state
  // across requests or across the separate mutation lock/revalidation.
+ const book=spreadsheet();
  const checked=Object.create(null);
- const readOnce=name=>checked[name]||(checked[name]=rows(name));
+ const readOnce=name=>checked[name]||(checked[name]=rows(name,book));
  const homes=readOnce('households'),users=readOnce('users');
  if(homes.length!==1||users.length!==1||
   String(homes[0].obj.display_name)!==TRIAL_HOUSEHOLD_LABEL||
