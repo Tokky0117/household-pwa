@@ -222,3 +222,15 @@ GAS `google.script.run`経由の正式な書き込みAPI設計は別工程とす
 - 試験在庫画面のゲートは、商品・別名・店舗・レシート・レシート明細・ルールの想定外の混入を拒否する。
 - サーバー成功応答の在庫値とversionを照合してから操作記録を消す。端末記録の不正・対象不一致時は送信を停止。
 - 実GASへの更新・iPhone保存・再読み取りとSheets照合は未実施。試験後はSTOCK_UI_TRIAL_ENABLED=false。
+
+
+## 2026-10-27：実機保存試験の直前チェック（既存環境のみ）
+
+- 利用者からオフライン回帰テスト20件の成功報告を受領。成功を確認した時点の GitHub コミットは `c959c8f249dd8ddec62f8b356d45baa67e1a9ed1`（変更前の復帰参照先）。これは**実際のGAS保存成功を意味しない**。
+- 追加監査で、GAS HTML Service から内部の `write` / `append` / `mutate` 等のトップレベル関数を直接呼べる可能性を発見。通常の `doGet`・`doPost`・試験用読み書きAPIは保持し、内部の書き込み関連7関数を末尾 `_` で非公開化。これに対応する既存テストとコピー画面も変更した。
+- **非公開化後の最新コミットは別途CI成功確認が必要**。上記の旧成功コミットをそのままGASへデプロイしない。
+- 反映先はすでに読み取り成功した**既存の試験用GASプロジェクト**と**試験用Google Sheets**のみ。新しいGASやSheetsは作らない。
+- 既存のGASコード全文を端末などへ控え、現行のデプロイバージョンを記録してから変更する（Google上に新規プロジェクトは作らない）。失敗した場合は試験用GASだけ元のコード／デプロイバージョンへ戻す。
+- `SPREADSHEET_ID === WRITE_TRIAL_SPREADSHEET_ID` が既存の試験用シートを指すこと、`ENABLE_EXPERIMENTAL_WRITES` は未設定または false、アクセス権は「自分のみ」を確認。試験する直前だけ `STOCK_UI_TRIAL_ENABLED=true` を設定。
+- `/exec?trial_stock=1` で試験用・牛乳を**一度だけ**切り替え、読み直して在庫・versionをGoogle Sheetsと照合。再送が必要なときだけ同じ操作IDを使い、異なる操作IDを発行し直さない。
+- 試験終了後、結果にかかわらず `STOCK_UI_TRIAL_ENABLED=false` に戻す。`runIsolatedItemWriteTrialOnce` の旧一回限り試験は再実行しない。`main`、家庭用GAS、家庭用Sheets、PWA本体を変更しない。
