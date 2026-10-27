@@ -5,7 +5,7 @@ import vm from 'node:vm';
 import {createHash} from 'node:crypto';
 
 const source=readFileSync(new URL('../gas/Code.gs',import.meta.url),'utf8');
-let activeId='sandbox',trialId='sandbox',enabled=false,stockUiEnabled=false,writeCount=0,number=0;
+let activeId='sandbox',trialId='sandbox',enabled=false,stockUiEnabled=false,writeCount=0,number=0,openCount=0;
 const allSheets={};
 const sheetReadCounts=Object.create(null);
 const mock={
@@ -22,6 +22,7 @@ const mock={
  },
  SpreadsheetApp:{
   openById(){
+   openCount++;
    return {getSheetByName(name){
     const cells=allSheets[name];
     if(!cells)return null;
@@ -83,7 +84,9 @@ assert.equal(writeCount,writeCountBeforeStock);
 stockUiEnabled=true;
 // One request must still validate all 12 Sheets, but never re-read the same Sheet.
 for(const name of Object.keys(sheetReadCounts))delete sheetReadCounts[name];
+openCount=0;
 const stockInitial=mock.trialStockRead();
+assert.equal(openCount,1,'Stock read must open the isolated Spreadsheet once');
 assert.equal(Object.values(sheetReadCounts).reduce((total,count)=>total+count,0),Object.keys(tableDefs).length,
  'One safe trial read performs one read per Sheet');
 for(const name of Object.keys(tableDefs))assert.equal(sheetReadCounts[name],1,'Sheet read once: '+name);
