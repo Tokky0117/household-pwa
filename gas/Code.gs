@@ -647,7 +647,7 @@ function initializeEmptySchema_(){
  * KEEP deployment access "only myself"; no public consumer auth is provided here.
  * No separate GAS project or spreadsheet is required.
  */
-function trialGuard_(){
+function trialGuard_(timing){
  const p=PropertiesService.getScriptProperties();
  if(!p.getProperty('SPREADSHEET_ID')||
   p.getProperty('SPREADSHEET_ID')!==p.getProperty('WRITE_TRIAL_SPREADSHEET_ID')||
@@ -656,9 +656,19 @@ function trialGuard_(){
   fail('WRITES_DISABLED','試験用の書込み設定を確認してください');
  // Cache only inside this one guard invocation. Never persist Sheet state
  // across requests or across the separate mutation lock/revalidation.
+ // Timing is optional and exists only inside the current trial RPC.
+ const openedAt=Date.now();
  const book=spreadsheet();
+ if(timing)timing.open_ms=Date.now()-openedAt;
  const checked=Object.create(null);
- const readOnce=name=>checked[name]||(checked[name]=rows(name,book));
+ const readOnce=name=>{
+  if(!Object.prototype.hasOwnProperty.call(checked,name)){
+   const started=Date.now();
+   checked[name]=rows(name,book);
+   if(timing){timing.sheet_ms+=Date.now()-started;timing.sheet_reads++}
+  }
+  return checked[name];
+ };
  const homes=readOnce('households'),users=readOnce('users');
  if(homes.length!==1||users.length!==1||
   String(homes[0].obj.display_name)!==TRIAL_HOUSEHOLD_LABEL||
@@ -686,9 +696,11 @@ function trialGuard_(){
  return {householdId:h,userId:String(users[0].obj.user_id),item:items[0].obj};
 }
 function trialStockRead(){
- const x=trialGuard_(),o=x.item;
+ const started=Date.now(),timing={sheet_reads:0,sheet_ms:0,open_ms:0};
+ const x=trialGuard_(timing),o=x.item;
+ timing.server_ms=Date.now()-started;
  return {name:String(o.name),id:String(o.item_group_id),version:Number(o.version),
-  in_stock:o.in_stock===true||String(o.in_stock).toLowerCase()==='true'};
+  in_stock:o.in_stock===true||String(o.in_stock).toLowerCase()==='true',timing};
 }
 function trialStockUpdate(request){
  if(!request||typeof request!=='object'||Array.isArray(request)||
@@ -697,14 +709,19 @@ function trialStockUpdate(request){
   !Number.isSafeInteger(request.version)||request.version<1||
   typeof request.operation_id!=='string'||!/^[a-zA-Z0-9_-]{8,128}$/.test(request.operation_id))
   fail('BAD_REQUEST','試験用の操作データが不正です');
- const user=trialGuard_();
+ const started=Date.now(),timing={sheet_reads:0,sheet_ms:0,open_ms:0};
+ const user=trialGuard_(timing);
  if(request.id!==String(user.item.item_group_id))
   fail('NOT_FOUND','試験用の日用品ではありません');
+ timing.guard_ms=Date.now()-started;
+ const mutationStarted=Date.now();
  const result=mutateItemSafely_({householdId:user.householdId,userId:user.userId},
   'item.update',{item_group_id:request.id,version:request.version,in_stock:request.in_stock},
   request.operation_id,true);
+ timing.mutation_ms=Date.now()-mutationStarted;
+ timing.server_ms=Date.now()-started;
  return {id:String(result.entity.item_group_id),version:Number(result.entity.version),
-  in_stock:result.entity.in_stock===true||String(result.entity.in_stock).toLowerCase()==='true'};
+  in_stock:result.entity.in_stock===true||String(result.entity.in_stock).toLowerCase()==='true',timing};
 }
 function trialPage_(){
  return `<!doctype html><html lang="ja"><head><base target="_top">
@@ -716,6 +733,7 @@ function trialPage_(){
  <button id="toggle" type="button" disabled>在庫を切り替える</button>
  <button id="retry" type="button" disabled>同じ操作IDで保存結果を確認・再送</button>
  <p id="status" role="status" aria-live="polite">読み取り待ち</p>
+ <p id="timing" aria-label="通信時間の計測結果"><small>通信時間：未計測</small></p>
  <small>保存先は試験用シートです。通信エラー時、サーバーで保存済みか不明なため、勝手に元に戻したり別操作を送信しません。</small></section>
  <script>
  (function(){
@@ -723,7 +741,20 @@ function trialPage_(){
  var KEY='kurashi_stock_trial_pending_v1',snapshot=null,busy=false,pending=null;
  var item=document.getElementById('item'),status=document.getElementById('status'),
      read=document.getElementById('read'),toggle=document.getElementById('toggle'),
-     retry=document.getElementById('retry');
+     retry=document.getElementById('retry'),timingText=document.getElementById('timing');
+ function seconds(ms){return (Math.max(0,ms)/1000).toFixed(2)+'秒'}
+ function showTiming(kind,started,timing){
+  var whole=Date.now()-started;
+  var label=kind+'：通信全体 '+seconds(whole);
+  if(timing&&Number.isFinite(timing.server_ms)){
+   label+=' / GAS処理 '+seconds(timing.server_ms);
+   if(Number.isFinite(timing.open_ms))label+=' / シートを開く '+seconds(timing.open_ms);
+   if(Number.isFinite(timing.sheet_ms))label+=' / 12シート検査 '+seconds(timing.sheet_ms);
+   if(Number.isFinite(timing.mutation_ms))label+=' / 保存処理 '+seconds(timing.mutation_ms);
+   if(Number.isFinite(timing.sheet_reads))label+='（検査 '+timing.sheet_reads+'シート）';
+  }
+  timingText.textContent=label;
+ }
  function stored(){var raw=localStorage.getItem(KEY);return raw?JSON.parse(raw):null}
  function put(v){localStorage.setItem(KEY,JSON.stringify(v));if(!stored()||stored().operation_id!==v.operation_id)throw Error('JOURNAL_NOT_DURABLE')}
  function clear(v){localStorage.removeItem(KEY);if(localStorage.getItem(KEY)!==null)throw Error('JOURNAL_NOT_CLEARED')}
@@ -732,7 +763,9 @@ function trialPage_(){
  function fail(e){status.textContent='保存結果が未確定です：'+(e&&e.message||'UNKNOWN')+'。同じ操作IDでのみ再送できます。';busy=false;controls()}
  function send(entry){
   busy=true;show(entry.in_stock);status.textContent='保存中（Google Sheetsへの反映待ち）';controls();
+  var started=Date.now();
   google.script.run.withSuccessHandler(function(result){
+   showTiming('保存',started,result&&result.timing);
    if(!pending||pending.operation_id!==entry.operation_id)return;
    try{
     if(result.id!==entry.id||typeof result.in_stock!=='boolean'||!Number.isSafeInteger(result.version))throw Error('INVALID_RESULT');
@@ -742,12 +775,14 @@ function trialPage_(){
     show(snapshot.in_stock);status.textContent='Google Sheetsへの保存完了';
    }catch(e){fail(e);return}
    busy=false;controls();
-  }).withFailureHandler(fail).trialStockUpdate(entry);
+  }).withFailureHandler(function(e){showTiming('保存（結果未確定）',started,null);fail(e)}).trialStockUpdate(entry);
  }
  function load(){
   if(busy)return;
   busy=true;controls();status.textContent='読み取り中';
+  var started=Date.now();
   google.script.run.withSuccessHandler(function(data){
+   showTiming('読み取り',started,data&&data.timing);
    busy=false;
    if(!data||typeof data.id!=='string'||typeof data.version!=='number'){status.textContent='読み取り結果が不正です';controls();return}
    snapshot=data;show(data.in_stock);
@@ -757,7 +792,7 @@ function trialPage_(){
    }
    status.textContent=pending?'未完了操作あり。同じ操作IDの確認・再送のみ可能':'読み取り成功';
    controls();
-  }).withFailureHandler(function(e){busy=false;status.textContent='読み取りエラー：'+(e&&e.message||'UNKNOWN');controls()}).trialStockRead();
+  }).withFailureHandler(function(e){showTiming('読み取り（失敗）',started,null);busy=false;status.textContent='読み取りエラー：'+(e&&e.message||'UNKNOWN');controls()}).trialStockRead();
  }
  read.addEventListener('click',load);
  toggle.addEventListener('click',function(){
