@@ -9,6 +9,13 @@ assert.match(html,/fetch\('\.\/gas\/Code\.gs'/);
 assert.match(html,/initializeEmptySchema\(\)/);
 assert.match(html,/バックアップ/);
 assert.match(gas,/function testAllSheetsReadOnly\(\)/);
-assert.match(workflow,/gas-setup\.html gas\/Code\.gs/);
+// Verify actual file membership, not an obsolete adjacency/order assumption.
+const fileDeclaration=workflow.match(/^\s*files=\(([^\n)]*)\)/m);
+assert.ok(fileDeclaration,'Preview file list is declared');
+const packagedFiles=new Set(fileDeclaration[1].trim().split(/\s+/));
+for(const requiredFile of ['gas-setup.html','gas-trial-setup.html','gas/Code.gs'])
+ assert.ok(packagedFiles.has(requiredFile),'Preview must package '+requiredFile);
+assert.match(workflow,/git show "\$ref:\$file" > "\$dest\/\$file"/);
+
 assert.match(workflow,/mkdir -p "\$\(dirname "\$dest\/\$file"\)"/);
 console.log('iPhone GAS copy page packaging checks PASS');
