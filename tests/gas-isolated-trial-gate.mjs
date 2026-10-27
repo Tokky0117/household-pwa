@@ -7,6 +7,7 @@ import {createHash} from 'node:crypto';
 const source=readFileSync(new URL('../gas/Code.gs',import.meta.url),'utf8');
 let activeId='sandbox',trialId='sandbox',enabled=false,stockUiEnabled=false,writeCount=0,number=0;
 const allSheets={};
+const sheetReadCounts=Object.create(null);
 const mock={
  PropertiesService:{
   getScriptProperties(){
@@ -26,7 +27,7 @@ const mock={
     if(!cells)return null;
     return {
      getLastRow(){return cells.length},
-     getDataRange(){return {getValues(){return cells.map(x=>x.slice())}}},
+     getDataRange(){return {getValues(){sheetReadCounts[name]=(sheetReadCounts[name]||0)+1;return cells.map(x=>x.slice())}}},
      getRange(row,col,height,width){
       return {
        getValues(){return Array.from({length:height},(_,i)=>cells[row+i-1].slice(col-1,col-1+width))},
@@ -80,7 +81,12 @@ errorCode(()=>mock.trialStockRead(),'WRITES_DISABLED');
 errorCode(()=>mock.trialStockUpdate({}),'BAD_REQUEST');
 assert.equal(writeCount,writeCountBeforeStock);
 stockUiEnabled=true;
+// One request must still validate all 12 Sheets, but never re-read the same Sheet.
+for(const name of Object.keys(sheetReadCounts))delete sheetReadCounts[name];
 const stockInitial=mock.trialStockRead();
+assert.equal(Object.values(sheetReadCounts).reduce((total,count)=>total+count,0),Object.keys(tableDefs).length,
+ 'One safe trial read performs one read per Sheet');
+for(const name of Object.keys(tableDefs))assert.equal(sheetReadCounts[name],1,'Sheet read once: '+name);
 assert.equal(stockInitial.name,'試験用・牛乳');
 assert.equal(stockInitial.version,2);
 assert.equal(stockInitial.in_stock,false);
