@@ -280,7 +280,35 @@ function write_(name,row,obj){
  const sh=tab(name),h=TABLES[name];
  sh.getRange(row,1,1,h.length).setValues([h.map(k=>obj[k]===null||obj[k]===undefined?'':obj[k])]);
 }
-function append_(name,obj){write_(name,tab(name).getLastRow()+1,obj)}
+function append_(name,obj){
+ const row=tab(name).getLastRow()+1;
+ write_(name,row,obj);
+ return row;
+}
+/**
+ * Lookup by ID for an item mutation. Large Sheets: scan only the ID and
+ * household columns, then fetch the one matched full row. Small Sheets
+ * retain one getDataRange call, avoiding extra requests for tiny lists.
+ * No cross-request cache or change to optimistic version/operation checks.
+ */
+function itemRowById_(householdId,itemId){
+ const name='item_groups',sh=tab(name),headers=TABLES[name],last=sh.getLastRow();
+ if(last<=32)return scoped(name,householdId).find(x=>String(x.obj.item_group_id)===itemId);
+ const header=sh.getRange(1,1,1,headers.length).getValues()[0];
+ if(headers.some((h,i)=>String(header[i])!==h))
+  fail('SCHEMA_MISMATCH',name+' の列を確認してください');
+ const ids=sh.getRange(2,1,last-1,2).getValues();
+ for(let i=0;i<ids.length;i++){
+  if(String(ids[i][0])!==itemId||String(ids[i][1])!==householdId)continue;
+  const row=i+2,cells=sh.getRange(row,1,1,headers.length).getValues()[0];
+  const obj=Object.fromEntries(headers.map((h,j)=>[h,cells[j]===''?null:cells[j]]));
+  if(obj.deleted_at)return null;
+  if(String(obj.item_group_id)!==itemId||String(obj.household_id)!==householdId)
+   fail('RECOVERY_CONFLICT','更新対象が途中で変わりました');
+  return {row,obj};
+ }
+ return null;
+}
 function scoped(name,householdId){
  return rows(name).filter(r=>String(r.obj.household_id)===householdId&&(!Object.prototype.hasOwnProperty.call(r.obj,'deleted_at')||!r.obj.deleted_at));
 }
@@ -384,7 +412,9 @@ function mutateItemSafely_(user,action,payload,operationId,localEditorTrial){
    plan=stored;
   }else{
    const now=new Date().toISOString();
-   const items=scoped('item_groups',hid);
+   const stockOnly=action==='item.update'&&
+    Object.keys(payload).sort().join(',')==='in_stock,item_group_id,version';
+   const items=stockOnly?null:scoped('item_groups',hid);
    let output,baseVersion=null;
    if(action==='item.create'){
     const name=String(payload.name||'').trim();validCategory(payload.category_id);
@@ -397,7 +427,8 @@ function mutateItemSafely_(user,action,payload,operationId,localEditorTrial){
      version:1,created_at:now,updated_at:now,deleted_at:null};
    }else{
     const itemId=requiredId(payload.item_group_id);
-    const row=items.find(x=>String(x.obj.item_group_id)===itemId);
+    const row=stockOnly?itemRowById_(hid,itemId):
+     items.find(x=>String(x.obj.item_group_id)===itemId);
     if(!row)fail('NOT_FOUND','日用品が見つかりません');
     assertVersion(row,payload.version);baseVersion=Number(row.obj.version);
     output=Object.assign({},row.obj);
@@ -415,7 +446,9 @@ function mutateItemSafely_(user,action,payload,operationId,localEditorTrial){
      if(typeof payload[key]!=='boolean')fail('BAD_REQUEST',key+'が不正です');
      output[key]=payload[key];
     }
-    if(output.is_hidden===false&&items.some(x=>x.row!==row.row&&!x.obj.is_hidden&&normalized(x.obj.name)===normalized(output.name)))
+    // A stock-only update never changes the name or hidden state, so the
+    // expensive full-table duplicate-name check cannot find a new conflict.
+    if(!stockOnly&&output.is_hidden===false&&items.some(x=>x.row!==row.row&&!x.obj.is_hidden&&normalized(x.obj.name)===normalized(output.name)))
      fail('DUPLICATE','同じ名前の日用品があります');
     if(Object.prototype.hasOwnProperty.call(payload,'sort_order')){
      if(!Number.isSafeInteger(payload.sort_order)||payload.sort_order<1)fail('BAD_REQUEST','表示順が不正です');
@@ -426,14 +459,12 @@ function mutateItemSafely_(user,action,payload,operationId,localEditorTrial){
    const sequence=currentSequence(hid)+1;
    plan={status:'prepared',action:action,entity:output,sequence_no:sequence,base_version:baseVersion};
    // Crucial: prepare durable replay data FIRST.
-   append_('processed_operations',{household_id:hid,operation_id:operationId,
+   operationRow=append_('processed_operations',{household_id:hid,operation_id:operationId,
     request_hash:digest,result:JSON.stringify(plan),processed_at:now});
-   operationRow=scoped('processed_operations',hid).find(x=>String(x.obj.operation_id)===operationId)?.row;
-   if(!operationRow)fail('RECOVERY_REQUIRED','操作の事前記録を確認できません');
   }
   const entity=plan.entity;
   const itemId=String(entity.item_group_id);
-  const row=scoped('item_groups',hid).find(x=>String(x.obj.item_group_id)===itemId);
+  const row=itemRowById_(hid,itemId);
   if(row){
    if(!samePlannedItem(row.obj,entity)){
     if(action!=='item.update'||Number(row.obj.version)!==plan.base_version)
@@ -444,13 +475,15 @@ function mutateItemSafely_(user,action,payload,operationId,localEditorTrial){
    if(action!=='item.create')fail('RECOVERY_CONFLICT','更新対象が消えています');
    append_('item_groups',entity);
   }
-  const existingLog=scoped('change_log',hid).find(x=>String(x.obj.change_id)===operationId);
+  const householdLogs=scoped('change_log',hid);
+  const existingLog=householdLogs.find(x=>String(x.obj.change_id)===operationId);
   if(existingLog){
    if(Number(existingLog.obj.sequence_no)!==plan.sequence_no||
       String(existingLog.obj.entity_id)!==itemId||
       String(existingLog.obj.action)!==action)fail('RECOVERY_CONFLICT','操作履歴が一致しません');
   }else{
-   if(currentSequence(hid)>=plan.sequence_no)fail('RECOVERY_CONFLICT','同期番号が競合しています');
+   if(householdLogs.some(x=>Number(x.obj.sequence_no)>=plan.sequence_no))
+    fail('RECOVERY_CONFLICT','同期番号が競合しています');
    append_('change_log',{change_id:operationId,sequence_no:plan.sequence_no,household_id:hid,
     entity_type:'item_groups',entity_id:itemId,action:action,occurred_at:entity.updated_at});
   }
