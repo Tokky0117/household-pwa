@@ -265,3 +265,14 @@ GAS `google.script.run`経由の正式な書き込みAPI設計は別工程とす
 - **現在の安全条件を維持：** `STOCK_UI_TRIAL_ENABLED` が `true` でないと、この試験画面・試験用読み書きAPIは使えない。テストのためだけに恒常的に有効化しない。以前の一回限りの書込み試験も再実行しない。いまはGitHub作業ブランチの変更のみで、既存GASへは未反映。
 - 実機測定は新しい試験GASやシートを作らず、必要なときに既存環境で読み取りを複数回比較し、保存速度は自然な次回の許可された試験がある場合に限り確認する。実機試験終了後は許可を `false` に戻す。
 - **次の判断：** `sheet_ms` が大きいなら、現在の12シート検証と等価な `Sheets API values.batchGet` を比較する。`mutation_ms` が大きいなら、個別の在庫変更が必要とする `item_groups` / `processed_operations` / `change_log` と認証・隔離条件を分けて再設計する。`server_ms` に対し端末の全体時間が大きいなら、RPC・起動・配信経路を優先する。推定値だけで移行しない。
+
+
+## 2026-10-28：書き込みを無効のまま12シート読み込みを計測
+
+- 以前の実機観測（読み込み約5秒、在庫表示即時、保存通知約5秒）と計測方針を引き継ぐ。ただし今回の新しい性能測定の**実機値は未取得**。
+- 既存 `/exec?trial_read=1` の画面へ「読み込み速度を計測」ボタンを追加。`google.script.run.trialStockTimingReadOnly()` を呼び、全体時間・GAS関数内時間・シートを開く時間・12シートの安全検査時間・残差（起動／通信／待機を含む概算）を表示する。端末・GASの時刻そのものは突き合わせず、それぞれの経過時間を使う。
+- `trialStockTimingReadOnly()` は `STOCK_UI_TRIAL_ENABLED=false` でも利用できる**読み取り専用RPC**。既存の試験用SheetsID一致、一般書き込み許可が無効、単一試験家庭・本人・12シートの全隔離条件を検証する。結果は件数とミリ秒の数値のみで、家庭ID・GoogleID・操作ID・商品情報・認証情報を返さない。Sheetsへの書き込み、プロパティ変更、通信外部送信、端末保存は行わない。
+- `trialStockRead` / `trialStockUpdate` と `/exec?trial_stock=1` の**試験専用書込フラグ条件は従来どおり**。読み込み計測のために在庫を書き換えたり `STOCK_UI_TRIAL_ENABLED=true` にする必要はない。従来の `?trial_read=1` の日用品読取・模擬在庫UIも維持。
+- 既存の `tests/gas-isolated-trial-gate.mjs` と `tests/gas-optimistic-ui-demo.mjs` を拡充し、フラグOFFでの12シート毎回検証と書き込み0件、異物混入時拒否、既存の模擬UI維持、計測表示を確認する。テスト環境はモックのみ、実Sheets接続なし。
+- ユーザーの作業は、必要時に既存試験用GASへ最新版Code.gsを反映・新バージョンへ更新し、`?trial_read=1` で1〜2回計測するだけ。新しい試験GAS／Sheetsは作らない。本番GAS、`main`、家庭用Sheets、既存PWAは変更しない。
+- 数値が出てから `values.batchGet` と必要最小限シート方式を比較する。計測値なしで書き込み安全対策を簡略化したり、結果を過大評価したりしない。
