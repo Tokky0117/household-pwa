@@ -54,8 +54,13 @@ function isolatedTrialReadPage_(){
  <p id="details" class="muted"></p></section>
  <section><h3>読み込み時間を測る（保存なし）</h3>
  <p class="muted">12シートの安全確認にかかる時間を測ります。試験用の書き込みを有効にする必要はなく、Google Sheetsの内容は変更しません。</p>
- <button id="profile" type="button">読み込み速度を計測</button>
- <p id="profile-result" role="status">未計測</p></section>
+ <button id="profile" type="button">12シート全体を計測</button>
+ <p id="profile-result" role="status">未計測</p>
+ <button id="profile-3" type="button">在庫読み込み想定・3シートを計測</button>
+ <p id="profile-3-result" role="status">未計測</p>
+ <button id="profile-5" type="button">在庫更新想定・5シートを計測（保存なし）</button>
+ <p id="profile-5-result" role="status">未計測</p>
+ <p class="muted">3・5シートは比較用の読み取り専用診断です。12シート全体の安全確認に代わるものではなく、実際の在庫保存速度を表しません。</p></section>
  <section><label for="search">日用品名で絞り込む</label>
  <input id="search" type="search" placeholder="日用品名" disabled>
  <ul id="items" aria-label="日用品一覧"></ul>
@@ -77,28 +82,38 @@ function isolatedTrialReadPage_(){
   var button=document.getElementById('check'),status=document.getElementById('status'),details=document.getElementById('details'),
       search=document.getElementById('search'),list=document.getElementById('items'),empty=document.getElementById('empty');
   var rows=[],serial=0;
-  var profileButton=document.getElementById('profile'),profileResult=document.getElementById('profile-result'),profileBusy=false;
+  var profileModes=[
+   {button:'profile',result:'profile-result',count:12,mode:null},
+   {button:'profile-3',result:'profile-3-result',count:3,mode:'stock3'},
+   {button:'profile-5',result:'profile-5-result',count:5,mode:'stock5'}
+  ];
+  var profileBusy=false;
   function profileSeconds(ms){return (Math.max(0,ms)/1000).toFixed(2)+'秒'}
-  profileButton.addEventListener('click',function(){
-   if(profileBusy)return;
-   profileBusy=true;profileButton.disabled=true;
-   profileResult.textContent='計測中（Google Sheetsには保存しません）';
-   var started=Date.now();
-   google.script.run.withSuccessHandler(function(metrics){
-    profileBusy=false;profileButton.disabled=false;
-    if(!metrics||!Number.isFinite(metrics.server_ms)||metrics.sheet_reads!==12){
-     profileResult.textContent='計測結果が不正です';return;
-    }
-    var whole=Date.now()-started;
-    profileResult.textContent='全体 '+profileSeconds(whole)+
-     ' ／ GAS内 '+profileSeconds(metrics.server_ms)+
-     ' ／ シートを開く '+profileSeconds(metrics.open_ms)+
-     ' ／ 12シート検査 '+profileSeconds(metrics.sheet_ms)+
-     ' ／ 起動・通信等の概算 '+profileSeconds(Math.max(0,whole-metrics.server_ms));
-   }).withFailureHandler(function(error){
-    profileBusy=false;profileButton.disabled=false;
-    profileResult.textContent='計測エラー：'+(error&&error.message||'UNKNOWN');
-   }).trialStockTimingReadOnly();
+  function profileControls(){profileModes.forEach(function(x){document.getElementById(x.button).disabled=profileBusy})}
+  profileModes.forEach(function(entry){
+   var button=document.getElementById(entry.button),result=document.getElementById(entry.result);
+   button.addEventListener('click',function(){
+    if(profileBusy)return;
+    profileBusy=true;profileControls();
+    result.textContent='計測中（Google Sheetsには保存しません）';
+    var started=Date.now();
+    google.script.run.withSuccessHandler(function(metrics){
+     profileBusy=false;profileControls();
+     if(!metrics||!Number.isFinite(metrics.server_ms)||metrics.sheet_reads!==entry.count||
+        !Number.isFinite(metrics.open_ms)||!Number.isFinite(metrics.sheet_ms)){
+      result.textContent='計測結果が不正です';return;
+     }
+     var whole=Date.now()-started;
+     result.textContent='全体 '+profileSeconds(whole)+
+      ' ／ GAS内 '+profileSeconds(metrics.server_ms)+
+      ' ／ シートを開く '+profileSeconds(metrics.open_ms)+
+      ' ／ '+entry.count+'シート検査 '+profileSeconds(metrics.sheet_ms)+
+      ' ／ 起動・通信等の概算 '+profileSeconds(Math.max(0,whole-metrics.server_ms));
+    }).withFailureHandler(function(error){
+     profileBusy=false;profileControls();
+     result.textContent='計測エラー：'+(error&&error.message||'UNKNOWN');
+    }).trialStockTimingReadOnly(entry.mode===null?undefined:entry.mode);
+   });
   });
   var demoValue=null,demoCommitted=null,demoBusy=false,demoSerial=0;
   var demoToggle=document.getElementById('demo-toggle'),
@@ -727,11 +742,51 @@ function trialGuard_(timing,readOnlyProbe){
  * Performs the full 12-sheet isolation check WITHOUT enabling stock writes.
  * Returns counters/durations only; no row data, IDs, or tokens.
  */
-function trialStockTimingReadOnly(){
+function trialStockTimingReadOnly(mode){
+ if(mode!==undefined&&mode!=='stock3'&&mode!=='stock5')
+  fail('BAD_REQUEST','計測方式を確認してください');
  const started=Date.now(),timing={sheet_reads:0,sheet_ms:0,open_ms:0};
- trialGuard_(timing,true);
+ if(mode===undefined)trialGuard_(timing,true);
+ else trialSubsetProfileOnly_(mode,timing);
  timing.server_ms=Date.now()-started;
  return timing;
+}
+/**
+ * DIAGNOSTIC ONLY: compares 3/5 Sheet reads against the full 12-Sheet gate.
+ * This is NOT an isolation certificate and MUST NEVER authorize any item
+ * read or write. Do not use it in trialStockRead/trialStockUpdate.
+ * The response contains only elapsed durations, no Spreadsheet contents.
+ */
+function trialSubsetProfileOnly_(mode,timing){
+ const p=PropertiesService.getScriptProperties();
+ const active=p.getProperty('SPREADSHEET_ID');
+ if(!active||active!==p.getProperty('WRITE_TRIAL_SPREADSHEET_ID')||
+    p.getProperty('ENABLE_EXPERIMENTAL_WRITES')==='true')
+  fail('TRIAL_NOT_ISOLATED','計測対象が試験用シートではありません');
+ const openedAt=Date.now(),book=spreadsheet();
+ timing.open_ms=Date.now()-openedAt;
+ const pick=name=>{
+  const started=Date.now(),value=rows(name,book);
+  timing.sheet_ms+=Date.now()-started;
+  timing.sheet_reads++;
+  return value;
+ };
+ const homes=pick('households'),users=pick('users'),items=pick('item_groups');
+ if(homes.length!==1||users.length!==1||items.length!==1||
+    String(homes[0].obj.display_name)!==TRIAL_HOUSEHOLD_LABEL||
+    String(users[0].obj.household_id)!==String(homes[0].obj.household_id)||
+    !/^[0-9]+$/.test(String(users[0].obj.auth_subject||''))||
+    String(items[0].obj.household_id)!==String(homes[0].obj.household_id)||
+    String(items[0].obj.name)!=='試験用・牛乳'||
+    String(items[0].obj.is_hidden).toLowerCase()==='true'||
+    !!items[0].obj.deleted_at)
+  fail('TRIAL_NOT_ISOLATED','計測対象が試験用の構成ではありません');
+ if(mode==='stock5'){
+  const householdId=String(homes[0].obj.household_id);
+  for(const name of ['processed_operations','change_log'])
+   if(pick(name).some(x=>String(x.obj.household_id)!==householdId))
+    fail('TRIAL_NOT_ISOLATED','計測対象に他家庭の履歴があります');
+ }
 }
 function trialStockRead(){
  const started=Date.now(),timing={sheet_reads:0,sheet_ms:0,open_ms:0};
