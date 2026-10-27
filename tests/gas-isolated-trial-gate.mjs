@@ -91,6 +91,26 @@ for(const metric of ['open_ms','sheet_ms','server_ms'])
 assert.deepEqual(Object.keys(JSON.parse(JSON.stringify(readOnlyTiming))).sort(),
  ['open_ms','server_ms','sheet_ms','sheet_reads']);
 assert.equal(writeCount,writeCountBeforeStock,'Read-only timing probe cannot write');
+// Compare the three- and five-Sheet candidate costs without touching any
+// write endpoint. They are diagnostics, not replacements for the full gate.
+for(const [mode,names] of [
+ ['stock3',['households','users','item_groups']],
+ ['stock5',['households','users','item_groups','processed_operations','change_log']]
+]){
+ for(const key of Object.keys(sheetReadCounts))delete sheetReadCounts[key];
+ openCount=0;
+ const result=mock.trialStockTimingReadOnly(mode);
+ assert.equal(result.sheet_reads,names.length);
+ assert.equal(openCount,1);
+ assert.deepEqual(Object.keys(JSON.parse(JSON.stringify(sheetReadCounts))).sort(),names.sort());
+ for(const name of names)assert.equal(sheetReadCounts[name],1,'Each requested Sheet read once: '+name);
+ for(const metric of ['open_ms','sheet_ms','server_ms'])
+  assert.ok(Number.isFinite(result[metric])&&result[metric]>=0,'Profile metric '+metric);
+ assert.deepEqual(Object.keys(JSON.parse(JSON.stringify(result))).sort(),
+  ['open_ms','server_ms','sheet_ms','sheet_reads'],'No IDs, rows, or user details leak');
+ assert.equal(writeCount,writeCountBeforeStock,'Subset diagnostics never write');
+}
+errorCode(()=>mock.trialStockTimingReadOnly('none'),'BAD_REQUEST');
 errorCode(()=>mock.trialStockRead(),'WRITES_DISABLED');
 errorCode(()=>mock.trialStockUpdate({}),'BAD_REQUEST');
 assert.equal(writeCount,writeCountBeforeStock);
@@ -178,8 +198,11 @@ assert.doesNotMatch(inspectScript[1],/fetch\(|google\.script\.run\.with|localSto
 
 assert.match(pageHtml,/\.trialReadOnlyItemList\(\)/);
 assert.match(pageHtml,/id="profile"/);
+assert.match(pageHtml,/id="profile-3"/);
+assert.match(pageHtml,/id="profile-5"/);
+assert.match(pageHtml,/比較用の読み取り専用診断/);
 assert.match(pageHtml,/\.trialStockTimingReadOnly\(\)/);
-assert.match(pageHtml,/読み込み速度を計測/);
+assert.match(pageHtml,/12シート全体を計測/);
 assert.doesNotMatch(pageHtml,/innerHTML|id_token|localStorage/);
 
 const diag=mock.doGet({parameter:{trial_read:'1'}});
@@ -203,6 +226,8 @@ errorCode(()=>create('牛乳','attempt-0001'),'WRITES_DISABLED');
 assert.equal(writeCount,before);
 enabled=true;
 errorCode(()=>mock.trialStockTimingReadOnly(),'TRIAL_NOT_ISOLATED');
+errorCode(()=>mock.trialStockTimingReadOnly('stock3'),'TRIAL_NOT_ISOLATED');
+errorCode(()=>mock.trialStockTimingReadOnly('stock5'),'TRIAL_NOT_ISOLATED');
 activeId='real-household';
 trialId='sandbox';
 errorCode(()=>mock.trialReadOnlyItemList(),'TRIAL_NOT_ISOLATED');
@@ -210,6 +235,8 @@ errorCode(()=>create('牛乳','attempt-0002'),'WRITES_DISABLED');
 activeId='sandbox';
 trialId='real-household';
 errorCode(()=>mock.trialStockTimingReadOnly(),'TRIAL_NOT_ISOLATED');
+errorCode(()=>mock.trialStockTimingReadOnly('stock3'),'TRIAL_NOT_ISOLATED');
+errorCode(()=>mock.trialStockTimingReadOnly('stock5'),'TRIAL_NOT_ISOLATED');
 errorCode(()=>create('牛乳','attempt-0003'),'WRITES_DISABLED');
 trialId='sandbox';
 // Read-only trial access must keep the general experimental write gate disabled.
