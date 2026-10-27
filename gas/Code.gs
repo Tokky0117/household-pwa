@@ -358,7 +358,7 @@ function bootstrap(user){
   sequence_no:currentSequence(householdId)
  };
 }
-function currentSequence(hid){return scopedPrefix_('change_log',hid,3).reduce((n,x)=>Math.max(n,Number(x.obj.sequence_no)||0),0)}
+function currentSequence(hid){return rows('change_log').filter(x=>String(x.obj.household_id)===hid).reduce((n,x)=>Math.max(n,Number(x.obj.sequence_no)||0),0)}
 function changes(user,payload){
  const cursor=Number(payload.after_sequence||0);
  if(!Number.isSafeInteger(cursor)||cursor<0)fail('BAD_REQUEST','同期番号が不正です');
@@ -476,7 +476,7 @@ function mutateItemSafely_(user,action,payload,operationId,localEditorTrial){
     }
     output.version=baseVersion+1;output.updated_at=now;
    }
-   const sequence=currentSequence(hid)+1;
+   const sequence=scopedPrefix_('change_log',hid,3).reduce((n,x)=>Math.max(n,Number(x.obj.sequence_no)||0),0)+1;
    plan={status:'prepared',action:action,entity:output,sequence_no:sequence,base_version:baseVersion};
    // Crucial: prepare durable replay data FIRST.
    operationRow=append_('processed_operations',{household_id:hid,operation_id:operationId,
