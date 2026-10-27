@@ -57,7 +57,7 @@ function harness(){
  const userA={householdId:'family-1',userId:'alice'};
  const userB={householdId:'family-1',userId:'bob'};
  const userOther={householdId:'family-2',userId:'outside'};
- const execute=(user,action,payload,id)=>context.mutate(user,action,payload,id);
+ const execute=(user,action,payload,id)=>context.mutate_(user,action,payload,id);
  const records=(table,household='family-1')=>context.scoped(table,household).map(x=>x.obj);
  return {execute,records,userA,userB,userOther,
   setFault(name,phase){faults={name,phase}},isLocked:()=>locked,writes:()=>writeCount
