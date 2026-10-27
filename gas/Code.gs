@@ -276,13 +276,13 @@ function rows(name,book){
  if(!v.length||headers.some((h,i)=>String(v[0][i])!==h))fail('SCHEMA_MISMATCH',name+' の列を確認してください');
  return v.slice(1).map((cells,i)=>({row:i+2,cells})).filter(x=>x.cells.some(c=>c!==''&&c!==null)).map(x=>({row:x.row,obj:Object.fromEntries(headers.map((h,j)=>[h,x.cells[j]===''?null:x.cells[j]]))}));
 }
-function write_(name,row,obj){
- const sh=tab(name),h=TABLES[name];
+function write_(name,row,obj,existingSheet){
+ const sh=existingSheet||tab(name),h=TABLES[name];
  sh.getRange(row,1,1,h.length).setValues([h.map(k=>obj[k]===null||obj[k]===undefined?'':obj[k])]);
 }
 function append_(name,obj){
- const row=tab(name).getLastRow()+1;
- write_(name,row,obj);
+ const sh=tab(name),row=sh.getLastRow()+1;
+ write_(name,row,obj,sh);
  return row;
 }
 /**
