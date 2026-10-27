@@ -21,6 +21,7 @@ books.users.push(['u1','h1','User1','sub1'],['u2','h2','User2','sub2']);
 books.categories.push(...['飲食','キッチン','洗面・風呂','洗濯・掃除','その他'].map((name,i)=>[i,name,i+1]));
 const initial=books.item_groups.map(x=>x.slice());
 let writesEnabled=false,trialSheetId='mock',writeCount=0,uuidNum=0,lockHeld=false,failOperationJournal=false;
+const readShapes=[];
 const ctx={
  PropertiesService:{
   getScriptProperties(){
@@ -40,10 +41,13 @@ const ctx={
     const cells=books[name];
     return {
      getLastRow(){return cells.length},
-     getDataRange(){return {getValues(){return cells.map(row=>row.slice())}}},
+     getDataRange(){return {getValues(){readShapes.push({name,type:'full'});return cells.map(row=>row.slice())}}},
      getRange(row,col,height,width){
-      assert.equal(col,1);assert.equal(height,1);
-      return {setValues(values){
+      return {getValues(){
+       readShapes.push({name,type:'range',row,col,height,width});
+       return Array.from({length:height},(_,i)=>cells[row+i-1].slice(col-1,col-1+width));
+      },setValues(values){
+       assert.equal(col,1);assert.equal(height,1);
        assert.equal(values[0].length,width);
        if(name==='processed_operations'&&failOperationJournal&&row<=cells.length)throw Error('INJECTED_JOURNAL_FAILURE');
        writeCount++;
@@ -165,4 +169,35 @@ const updated=execute(u1,'item.update',faultUpdate,'fault-update-123');
 assert.equal(updated.entity.version,prevVersion);
 assert.equal(updated.entity.in_stock,false);
 assert.equal(lockHeld,false);
-console.log('GAS item mutations: journal-finalization faults recover by identical operation ID, no duplicate writes PASS');
+// A large shared household sheet must not be read in full just to flip one
+// known item's stock. Scanning (ID, household) and fetching the matched row
+// preserves household isolation and version/operation safety.
+for(let i=0;i<48;i++){
+ books.item_groups.push(['other-'+i,'h2',0,'別家庭-'+i,'other-'+i,true,1,false,1,'','','']);
+}
+const candidate=rowByName('h1','ミルク');
+const readStart=readShapes.length;
+const indexed=execute(u1,'item.update',
+ {item_group_id:candidate.item_group_id,version:candidate.version,in_stock:true},
+ 'indexed-stock-0001');
+assert.equal(indexed.entity.version,candidate.version+1);
+assert.equal(indexed.entity.in_stock,true);
+const itemReads=readShapes.slice(readStart).filter(x=>x.name==='item_groups');
+assert.equal(itemReads.some(x=>x.type==='full'),false,'Large stock update must not scan full 12-column item sheet');
+assert.equal(itemReads.filter(x=>x.type==='range'&&x.width===2&&x.col===1).length,2,
+ 'Stock update scans only ID + household columns twice, before and after journal');
+assert.equal(itemReads.filter(x=>x.type==='range'&&x.width===12&&x.height===1).length,4,
+ 'Header and target row are fetched separately on each guarded read');
+const indexedReplay=execute(u1,'item.update',
+ {item_group_id:candidate.item_group_id,version:candidate.version,in_stock:true},
+ 'indexed-stock-0001');
+assert.equal(indexedReplay.entity.version,indexed.entity.version);
+assert.equal(rowByName('h1','ミルク').version,indexed.entity.version);
+fails(u2,'item.update',
+ {item_group_id:candidate.item_group_id,version:indexed.entity.version,in_stock:false},
+ 'NOT_FOUND');
+fails(u1,'item.update',
+ {item_group_id:candidate.item_group_id,version:candidate.version,in_stock:false},
+ 'VERSION_CONFLICT');
+assert.equal(lockHeld,false);
+console.log('GAS item mutations: replay, fault recovery and large-Sheet indexed stock lookup PASS');
