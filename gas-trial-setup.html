@@ -10,11 +10,13 @@
 </section>
 <section class="panel"><h2>更新手順</h2>
 <ol><li>以前の<strong>試験用GASプロジェクト</strong>を開く。新規作成やスプレッドシート初期化は不要です。</li>
+<li><strong>反映前の復旧準備：</strong>現在の試験用 <code>Code.gs</code> を端末内のテキストファイルなどに控え、現在のWebアプリのデプロイバージョンを記録する。新規GASプロジェクトを作ってバックアップしない。</li>
+<li>既存のスクリプトプロパティで <code>SPREADSHEET_ID</code> と <code>WRITE_TRIAL_SPREADSHEET_ID</code> が同じ<strong>既存の試験用Sheets</strong>を指すことを確認する。ID自体をチャットに送らない。</li>
 <li>既存の <code>Code.gs</code> をこのコード全文で更新し、保存。既存プロパティのシートIDは変えません。</li>
-<li><strong>試験専用</strong>プロパティ <code>STOCK_UI_TRIAL_ENABLED=true</code> を追加する。ただし、<code>ENABLE_EXPERIMENTAL_WRITES</code>は未設定またはfalseのまま維持します。</li>
+<li>まず <code>STOCK_UI_TRIAL_ENABLED=false</code> を維持し、<strong>実機保存操作の直前だけtrueに変更する</strong>。ただし、<code>ENABLE_EXPERIMENTAL_WRITES</code>は未設定またはfalseのまま維持します。</li>
 <li>既存Webアプリの「デプロイを管理」で新バージョンに更新。実行ユーザー「自分」、アクセス「自分のみ」を維持します。</li>
 <li>以前の試験用 <code>/exec</code> の末尾に <code>?trial_stock=1</code> を付けて開きます。</li>
-<li>「試験用の在庫を読み取る」→「在庫を切り替える」で試験用シートへの保存を確認。結果が不明な場合は<strong>同じ操作IDでの再送</strong>だけを使います。</li></ol>
+<li>「試験用の在庫を読み取る」→「在庫を切り替える」で試験用シートへの保存を確認。再読み取りして表示・versionとシート上の値を照合する。結果が不明な場合は<strong>同じ操作IDでの再送</strong>だけを使います。</li></ol>
 <p class="notice"><strong>重要：</strong>一回限りの <code>runIsolatedItemWriteTrialOnce_</code> は再実行しません。実験が終わったら <code>STOCK_UI_TRIAL_ENABLED=false</code> に戻してください。</p>
 <p><small>端末内ジャーナルに保存できなければ、安全のため送信を停止します。一般ユーザー向けの公開はまだ行いません。</small></p></section>
 <p><a href="./">アプリに戻る</a></p>
