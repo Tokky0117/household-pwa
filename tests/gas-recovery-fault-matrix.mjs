@@ -11,8 +11,13 @@ const columns={
  change_log:['change_id','sequence_no','household_id','entity_type','entity_id','action','occurred_at'],
  processed_operations:['household_id','operation_id','request_hash','result','processed_at']
 };
-function harness(){
+function harness(large=false){
  const tables=Object.fromEntries(Object.entries(columns).map(([k,v])=>[k,[v]]));
+ if(large)for(let i=0;i<48;i++){
+  tables.item_groups.push(['other-'+i,'family-2',0,'別家庭'+i,'foreign-'+i,true,1,false,1,'','','']);
+  tables.change_log.push(['foreign-'+i,i+1,'family-2','item_groups','other-'+i,'item.update','']);
+  tables.processed_operations.push(['family-2','finished-'+i,'hash','{"status":"completed"}','']);
+ }
  let faults=null,serial=0,writeCount=0,locked=false;
  const failAt=(name,phase)=>{if(faults?.name===name&&faults.phase===phase){
    faults=null;throw Error('POWER_LOSS_'+name+'_'+phase);
@@ -27,8 +32,11 @@ function harness(){
    return {
     getLastRow(){return cells.length},
     getDataRange(){return {getValues(){return cells.map(row=>row.slice())}}},
-    getRange(row,first,height,width){assert.equal(first,1);assert.equal(height,1);
-     return {setValues(values){
+    getRange(row,first,height,width){
+     return {getValues(){
+      return Array.from({length:height},(_,i)=>cells[row+i-1].slice(first-1,first-1+width));
+     },setValues(values){
+      assert.equal(first,1);assert.equal(height,1);
       assert.equal(values[0].length,width);
       const stage=name==='processed_operations'?(row>cells.length?'journal.prepare':'journal.finalize'):
        name==='item_groups'?'entity.write':name==='change_log'?'change.write':name;
@@ -119,4 +127,28 @@ for(const [point,phase] of faultCases){
  assert.equal(h.records('item_groups','family-2').length,0);
  assert.deepEqual(Array.from(h.records('change_log','family-1'),x=>x.sequence_no),[1,2,3]);
 }
-console.log('GAS 16 item fault cases + stale multi-device version and household boundary PASS');
+// Repeat representative crash points with 48 unrelated rows on EACH table.
+// This exercises narrow index/column reads and household isolation during
+// the exact same durable replay protocol used by small-sheet mutations.
+for(const [point,phase] of [
+ ['journal.prepare','after'],['entity.write','after'],
+ ['change.write','after'],['journal.finalize','after']
+]){
+ const h=harness(true);
+ const initial=h.execute(h.userA,'item.create',{name:'牛乳',category_id:0},'large-create').entity;
+ const payload={item_group_id:initial.item_group_id,version:1,in_stock:false};
+ h.setFault(point,phase);
+ assert.throws(()=>h.execute(h.userB,'item.update',payload,'large-stock-update'),/POWER_LOSS/);
+ assert.equal(h.isLocked(),false);
+ const result=h.execute(h.userB,'item.update',payload,'large-stock-update');
+ assert.equal(result.entity.version,2,'Large replay must not increment twice');
+ assert.equal(result.entity.in_stock,false);
+ assert.equal(h.records('item_groups').length,1);
+ assert.equal(h.records('change_log').length,2);
+ assert.equal(h.records('processed_operations').length,2);
+ assert.equal(h.records('item_groups','family-2').length,48,'Other household must remain untouched');
+ const before=h.writes();
+ assert.equal(h.execute(h.userB,'item.update',payload,'large-stock-update').entity.version,2);
+ assert.equal(h.writes(),before,'Confirmed replay should not write again');
+}
+console.log('GAS 16 small + 4 large fault recoveries, concurrency, and household isolation PASS');
