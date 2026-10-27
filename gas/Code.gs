@@ -218,7 +218,7 @@ function doPost(e){
   if(action==='bootstrap')return jsonReply({ok:true,data:bootstrap(user)});
   if(action==='sync')return jsonReply({ok:true,data:changes(user,payload)});
   if(!['item.create','item.update','product.create','product.update','product.move'].includes(action))fail('UNSUPPORTED','未対応の操作です');
-  return jsonReply({ok:true,data:mutate(user,action,payload,input.operation_id)});
+  return jsonReply({ok:true,data:mutate_(user,action,payload,input.operation_id)});
  }catch(err){
   return jsonReply({ok:false,error:{code:err.code||'SERVER_ERROR',message:err.code?err.message:'処理できませんでした'}});
  }
@@ -234,11 +234,11 @@ function rows(name){
  if(!v.length||headers.some((h,i)=>String(v[0][i])!==h))fail('SCHEMA_MISMATCH',name+' の列を確認してください');
  return v.slice(1).map((cells,i)=>({row:i+2,cells})).filter(x=>x.cells.some(c=>c!==''&&c!==null)).map(x=>({row:x.row,obj:Object.fromEntries(headers.map((h,j)=>[h,x.cells[j]===''?null:x.cells[j]]))}));
 }
-function write(name,row,obj){
+function write_(name,row,obj){
  const sh=tab(name),h=TABLES[name];
  sh.getRange(row,1,1,h.length).setValues([h.map(k=>obj[k]===null||obj[k]===undefined?'':obj[k])]);
 }
-function append(name,obj){write(name,tab(name).getLastRow()+1,obj)}
+function append_(name,obj){write_(name,tab(name).getLastRow()+1,obj)}
 function scoped(name,householdId){
  return rows(name).filter(r=>String(r.obj.household_id)===householdId&&(!Object.prototype.hasOwnProperty.call(r.obj,'deleted_at')||!r.obj.deleted_at));
 }
@@ -317,7 +317,7 @@ function requireIsolatedWriteTrial(localEditorTrial){
  // the deliberate, single-household trial marker.
  assertIsolatedTrialIdentity();
 }
-function mutateItemSafely(user,action,payload,operationId,localEditorTrial){
+function mutateItemSafely_(user,action,payload,operationId,localEditorTrial){
  requiredId(operationId);
  if(!/^[A-Za-z0-9_-]{8,128}$/.test(operationId))fail('BAD_REQUEST','操作IDが不正です');
  const lock=LockService.getScriptLock();
@@ -384,7 +384,7 @@ function mutateItemSafely(user,action,payload,operationId,localEditorTrial){
    const sequence=currentSequence(hid)+1;
    plan={status:'prepared',action:action,entity:output,sequence_no:sequence,base_version:baseVersion};
    // Crucial: prepare durable replay data FIRST.
-   append('processed_operations',{household_id:hid,operation_id:operationId,
+   append_('processed_operations',{household_id:hid,operation_id:operationId,
     request_hash:digest,result:JSON.stringify(plan),processed_at:now});
    operationRow=scoped('processed_operations',hid).find(x=>String(x.obj.operation_id)===operationId)?.row;
    if(!operationRow)fail('RECOVERY_REQUIRED','操作の事前記録を確認できません');
@@ -396,11 +396,11 @@ function mutateItemSafely(user,action,payload,operationId,localEditorTrial){
    if(!samePlannedItem(row.obj,entity)){
     if(action!=='item.update'||Number(row.obj.version)!==plan.base_version)
      fail('RECOVERY_CONFLICT','更新済みデータと再送内容が一致しません');
-    write('item_groups',row.row,entity);
+    write_('item_groups',row.row,entity);
    }
   }else{
    if(action!=='item.create')fail('RECOVERY_CONFLICT','更新対象が消えています');
-   append('item_groups',entity);
+   append_('item_groups',entity);
   }
   const existingLog=scoped('change_log',hid).find(x=>String(x.obj.change_id)===operationId);
   if(existingLog){
@@ -409,17 +409,17 @@ function mutateItemSafely(user,action,payload,operationId,localEditorTrial){
       String(existingLog.obj.action)!==action)fail('RECOVERY_CONFLICT','操作履歴が一致しません');
   }else{
    if(currentSequence(hid)>=plan.sequence_no)fail('RECOVERY_CONFLICT','同期番号が競合しています');
-   append('change_log',{change_id:operationId,sequence_no:plan.sequence_no,household_id:hid,
+   append_('change_log',{change_id:operationId,sequence_no:plan.sequence_no,household_id:hid,
     entity_type:'item_groups',entity_id:itemId,action:action,occurred_at:entity.updated_at});
   }
   const result={entity:publicRow(entity),sequence_no:plan.sequence_no};
-  write('processed_operations',operationRow,{household_id:hid,operation_id:operationId,
+  write_('processed_operations',operationRow,{household_id:hid,operation_id:operationId,
    request_hash:digest,result:JSON.stringify(result),processed_at:entity.updated_at});
   return result;
  }finally{lock.releaseLock()}
 }
-function mutate(user,action,payload,operationId){
- if(action==='item.create'||action==='item.update')return mutateItemSafely(user,action,payload,operationId);
+function mutate_(user,action,payload,operationId){
+ if(action==='item.create'||action==='item.update')return mutateItemSafely_(user,action,payload,operationId);
  // Product writes retain the old non-transactional implementation: do not expose it.
  fail('WRITES_DISABLED','商品の書き込みは安全確認中です');
  requiredId(operationId);
@@ -445,7 +445,7 @@ function mutate(user,action,payload,operationId){
    entityId=Utilities.getUuid();entityType='item_groups';
    const sort=Math.max(0,...items.filter(x=>String(x.obj.category_id)===String(payload.category_id)).map(x=>Number(x.obj.sort_order)||0))+1;
    output={item_group_id:entityId,household_id:hid,category_id:payload.category_id,name:name,normalized_name:normalized(name),in_stock:true,sort_order:sort,is_hidden:false,version:1,created_at:now,updated_at:now,deleted_at:null};
-   append('item_groups',output);
+   append_('item_groups',output);
   }else if(action==='item.update'){
    const row=items.find(x=>String(x.obj.item_group_id)===requiredId(payload.item_group_id));if(!row)fail('NOT_FOUND','日用品が見つかりません');
    assertVersion(row,payload.version);output=Object.assign({},row.obj);
@@ -458,14 +458,14 @@ function mutate(user,action,payload,operationId){
    for(const field of ['in_stock','is_hidden'])if(Object.prototype.hasOwnProperty.call(payload,field)){if(typeof payload[field]!=='boolean')fail('BAD_REQUEST',field+'が不正です');output[field]=payload[field]}
    if(output.is_hidden===false&&items.some(x=>x.row!==row.row&&!x.obj.is_hidden&&normalized(x.obj.name)===normalized(output.name)))fail('DUPLICATE','同じ名前の日用品があります');
    if(Object.prototype.hasOwnProperty.call(payload,'sort_order')){if(!Number.isSafeInteger(payload.sort_order)||payload.sort_order<1)fail('BAD_REQUEST','表示順が不正です');output.sort_order=payload.sort_order}
-   output.version=Number(output.version)+1;output.updated_at=now;entityId=output.item_group_id;entityType='item_groups';write('item_groups',row.row,output);
+   output.version=Number(output.version)+1;output.updated_at=now;entityId=output.item_group_id;entityType='item_groups';write_('item_groups',row.row,output);
   }else if(action==='product.create'){
    const shape=productShape(payload);entityId=Utilities.getUuid();entityType='products';
    if(payload.item_group_id!==null&&payload.item_group_id!==undefined&&!items.some(x=>String(x.obj.item_group_id)===String(payload.item_group_id)))fail('NOT_FOUND','登録先が見つかりません');
    const group=payload.item_group_id||null;
    const order=group?Math.max(0,...products.filter(x=>String(x.obj.item_group_id)===String(group)).map(x=>Number(x.obj.item_group_order)||0))+1:null;
    output=Object.assign({product_id:entityId,household_id:hid,item_group_id:group,item_group_order:order,version:1,created_at:now,updated_at:now,deleted_at:null},shape);
-   append('products',output);
+   append_('products',output);
   }else{
    const row=products.find(x=>String(x.obj.product_id)===requiredId(payload.product_id));if(!row)fail('NOT_FOUND','商品が見つかりません');
    assertVersion(row,payload.version);output=Object.assign({},row.obj);entityId=output.product_id;entityType='products';
@@ -479,12 +479,12 @@ function mutate(user,action,payload,operationId){
      output.item_group_order=next?Math.max(0,...products.filter(x=>String(x.obj.item_group_id)===next).map(x=>Number(x.obj.item_group_order)||0))+1:null;
     }
    }
-   output.version=Number(output.version)+1;output.updated_at=now;write('products',row.row,output);
+   output.version=Number(output.version)+1;output.updated_at=now;write_('products',row.row,output);
   }
   const seq=currentSequence(hid)+1;
-  append('change_log',{change_id:Utilities.getUuid(),sequence_no:seq,household_id:hid,entity_type:entityType,entity_id:entityId,action:action,occurred_at:now});
+  append_('change_log',{change_id:Utilities.getUuid(),sequence_no:seq,household_id:hid,entity_type:entityType,entity_id:entityId,action:action,occurred_at:now});
   const result={entity:publicRow(output),sequence_no:seq};
-  append('processed_operations',{household_id:hid,operation_id:operationId,request_hash:digest,result:JSON.stringify(result),processed_at:now});
+  append_('processed_operations',{household_id:hid,operation_id:operationId,request_hash:digest,result:JSON.stringify(result),processed_at:now});
   return result;
  }finally{lock.releaseLock()}
 }
@@ -590,7 +590,7 @@ function testIsolatedTrialResultReadOnly(){
  * It DOES create/update test-only rows. Run only after the READ-ONLY preflight.
  * Endpoint doPost cannot call this helper; it only dispatches allowlisted actions.
  */
-function runIsolatedItemWriteTrialOnce(){
+function runIsolatedItemWriteTrialOnce_(){
  if(PropertiesService.getScriptProperties().getProperty('ENABLE_EXPERIMENTAL_WRITES')==='true')
   fail('TRIAL_GATE_OPEN','公開用の書き込み許可を先に無効にしてください');
  testIsolatedWriteTrialPreflightReadOnly();
@@ -599,20 +599,20 @@ function runIsolatedItemWriteTrialOnce(){
  const user={householdId:String(household.household_id),userId:String(member.user_id)};
  const prefix='localtrial-'+Utilities.getUuid().replace(/-/g,'').slice(0,24);
  const createPayload={name:'試験用・牛乳',category_id:0};
- const first=mutateItemSafely(user,'item.create',createPayload,prefix+'-create',true);
- const duplicate=mutateItemSafely(user,'item.create',createPayload,prefix+'-create',true);
+ const first=mutateItemSafely_(user,'item.create',createPayload,prefix+'-create',true);
+ const duplicate=mutateItemSafely_(user,'item.create',createPayload,prefix+'-create',true);
  if(first.entity.item_group_id!==duplicate.entity.item_group_id||
     Number(first.entity.version)!==1||Number(first.sequence_no)!==1)
   fail('TRIAL_ASSERT_FAILED','初回登録・再送の検証に失敗しました');
  const updatePayload={item_group_id:first.entity.item_group_id,version:1,in_stock:false};
- const second=mutateItemSafely(user,'item.update',updatePayload,prefix+'-update',true);
- const repeated=mutateItemSafely(user,'item.update',updatePayload,prefix+'-update',true);
+ const second=mutateItemSafely_(user,'item.update',updatePayload,prefix+'-update',true);
+ const repeated=mutateItemSafely_(user,'item.update',updatePayload,prefix+'-update',true);
  if(Number(second.entity.version)!==2||second.entity.in_stock!==false||
     Number(repeated.entity.version)!==2||Number(second.sequence_no)!==2)
   fail('TRIAL_ASSERT_FAILED','在庫更新・再送の検証に失敗しました');
  let staleRejected=false;
  try{
-  mutateItemSafely(user,'item.update',
+  mutateItemSafely_(user,'item.update',
    {item_group_id:first.entity.item_group_id,version:1,in_stock:true},prefix+'-stale',true);
  }catch(err){if(err.code==='VERSION_CONFLICT')staleRejected=true;else throw err}
  if(!staleRejected)fail('TRIAL_ASSERT_FAILED','古いバージョンの更新が拒否されません');
@@ -626,11 +626,11 @@ function runIsolatedItemWriteTrialOnce(){
  return true;
 }
 /** Legacy helper deliberately disabled. Existing trial sheet only. */
-function createFreshIsolatedWriteTrialSpreadsheet(){
+function createFreshIsolatedWriteTrialSpreadsheet_(){
  fail('TRIAL_CREATION_DISABLED','既存の試験用シートを再利用してください');
 }
 /** Call manually on an EMPTY spreadsheet; does not insert households or users. */
-function initializeEmptySchema(){
+function initializeEmptySchema_(){
  const ss=spreadsheet();
  Object.keys(TABLES).forEach(name=>{
   let sheet=ss.getSheetByName(name);if(!sheet)sheet=ss.insertSheet(name);
@@ -693,7 +693,7 @@ function trialStockUpdate(request){
  const user=trialGuard_();
  if(request.id!==String(user.item.item_group_id))
   fail('NOT_FOUND','試験用の日用品ではありません');
- const result=mutateItemSafely({householdId:user.householdId,userId:user.userId},
+ const result=mutateItemSafely_({householdId:user.householdId,userId:user.userId},
   'item.update',{item_group_id:request.id,version:request.version,in_stock:request.in_stock},
   request.operation_id,true);
  return {id:String(result.entity.item_group_id),version:Number(result.entity.version),
