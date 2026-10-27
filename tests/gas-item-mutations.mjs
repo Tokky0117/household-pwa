@@ -74,7 +74,7 @@ ctx.assertIsolatedTrialIdentity=()=>{};
 const u1={householdId:'h1',userId:'u1'},u2={householdId:'h2',userId:'u2'};
 let opNum=0;
 const op=()=> 'test-op-'+(++opNum);
-const execute=(user,action,payload,operationId=op())=>ctx.mutate(user,action,payload,operationId);
+const execute=(user,action,payload,operationId=op())=>ctx.mutate_(user,action,payload,operationId);
 const fails=(user,action,payload,code,operationId=op())=>assert.throws(
  ()=>execute(user,action,payload,operationId),err=>err?.code===code,'Expected '+code
 );
