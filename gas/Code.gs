@@ -748,6 +748,8 @@ function trialPage_(){
   var label=kind+'：通信全体 '+seconds(whole);
   if(timing&&Number.isFinite(timing.server_ms)){
    label+=' / GAS処理 '+seconds(timing.server_ms);
+   label+=' / 起動・通信等（概算）'+seconds(Math.max(0,whole-timing.server_ms));
+   if(Number.isFinite(timing.guard_ms))label+=' / 安全確認 '+seconds(timing.guard_ms);
    if(Number.isFinite(timing.open_ms))label+=' / シートを開く '+seconds(timing.open_ms);
    if(Number.isFinite(timing.sheet_ms))label+=' / 12シート検査 '+seconds(timing.sheet_ms);
    if(Number.isFinite(timing.mutation_ms))label+=' / 保存処理 '+seconds(timing.mutation_ms);
