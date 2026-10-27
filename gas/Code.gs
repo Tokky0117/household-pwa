@@ -309,6 +309,26 @@ function itemRowById_(householdId,itemId){
  }
  return null;
 }
+/**
+ * Only scan columns used by an operation on large logs/journals.
+ * All schema headers are still validated; no persistent index/cache.
+ * Small sheets use the normal one-call path to avoid extra RPCs.
+ */
+function scopedPrefix_(name,householdId,width){
+ const sh=tab(name),headers=TABLES[name],last=sh.getLastRow();
+ if(last<=32)return scoped(name,householdId);
+ if(!Number.isInteger(width)||width<1||width>headers.length)
+  fail('BAD_REQUEST','読み取り範囲が不正です');
+ const header=sh.getRange(1,1,1,headers.length).getValues()[0];
+ if(headers.some((h,i)=>String(header[i])!==h))
+  fail('SCHEMA_MISMATCH',name+' の列を確認してください');
+ const fields=headers.slice(0,width);
+ return sh.getRange(2,1,last-1,width).getValues()
+  .map((cells,i)=>({row:i+2,obj:Object.fromEntries(
+   fields.map((h,j)=>[h,cells[j]===''?null:cells[j]]))}))
+  .filter(x=>String(x.obj.household_id)===householdId&&
+   (!Object.prototype.hasOwnProperty.call(x.obj,'deleted_at')||!x.obj.deleted_at));
+}
 function scoped(name,householdId){
  return rows(name).filter(r=>String(r.obj.household_id)===householdId&&(!Object.prototype.hasOwnProperty.call(r.obj,'deleted_at')||!r.obj.deleted_at));
 }
@@ -338,7 +358,7 @@ function bootstrap(user){
   sequence_no:currentSequence(householdId)
  };
 }
-function currentSequence(hid){return rows('change_log').filter(x=>String(x.obj.household_id)===hid).reduce((n,x)=>Math.max(n,Number(x.obj.sequence_no)||0),0)}
+function currentSequence(hid){return scopedPrefix_('change_log',hid,3).reduce((n,x)=>Math.max(n,Number(x.obj.sequence_no)||0),0)}
 function changes(user,payload){
  const cursor=Number(payload.after_sequence||0);
  if(!Number.isSafeInteger(cursor)||cursor<0)fail('BAD_REQUEST','同期番号が不正です');
@@ -397,7 +417,7 @@ function mutateItemSafely_(user,action,payload,operationId,localEditorTrial){
   const hid=user.householdId;
   const digest=Utilities.base64EncodeWebSafe(Utilities.computeDigest(
    Utilities.DigestAlgorithm.SHA_256,JSON.stringify({action:action,payload:payload})));
-  const operations=scoped('processed_operations',hid);
+  const operations=scopedPrefix_('processed_operations',hid,4);
   const previous=operations.find(x=>String(x.obj.operation_id)===operationId);
   if(previous&&String(previous.obj.request_hash)!==digest)fail('OPERATION_REUSED','操作IDが再利用されています');
   const pending=operations.find(x=>{
@@ -475,7 +495,7 @@ function mutateItemSafely_(user,action,payload,operationId,localEditorTrial){
    if(action!=='item.create')fail('RECOVERY_CONFLICT','更新対象が消えています');
    append_('item_groups',entity);
   }
-  const householdLogs=scoped('change_log',hid);
+  const householdLogs=scopedPrefix_('change_log',hid,6);
   const existingLog=householdLogs.find(x=>String(x.obj.change_id)===operationId);
   if(existingLog){
    if(Number(existingLog.obj.sequence_no)!==plan.sequence_no||
