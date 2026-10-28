@@ -119,7 +119,7 @@ function createCase(otherCount,ownCount){
 }
 const scenarios=[
  [20,0],[250,0],[250,2],[250,20],
- [1500,0],[1500,2],[1500,20]
+ [1500,0],[1500,2],[1500,20],[0,1500]
 ];
 const outputs=scenarios.map(([other,own])=>createCase(other,own));
 for(const x of outputs)console.log(
@@ -132,4 +132,4 @@ for(const x of outputs)console.log(
 // This benchmark only measures the quantity fetched, not actual Google
 // service/network latency. It deliberately does not assume fewer cells
 // guarantee lower wall-clock time, or that a persistent index is necessary.
-console.log('Synthetic 7-scenario GAS read-volume profile and write safety PASS');
+console.log('Synthetic 8-scenario GAS read-volume profile and write safety PASS');
