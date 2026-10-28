@@ -26,13 +26,14 @@ function createCase(otherCount,ownCount){
   tables.processed_operations.push([hid,'history-'+i,'hash-own',
    JSON.stringify({entity:{name:'過去履歴-'+i},sequence_no:i+1}),'']);
  }
- const reads=[],writes=[],lock={held:false};
+ const reads=[],writes=[],lock={held:false};let opens=0;
  const context={
   PropertiesService:{getScriptProperties(){return {getProperty(k){
    return k==='SPREADSHEET_ID'||k==='WRITE_TRIAL_SPREADSHEET_ID'?'fake-only':
     k==='ENABLE_EXPERIMENTAL_WRITES'?'true':null;
   }}}},
   SpreadsheetApp:{openById(id){
+   opens++;
    assert.equal(id,'fake-only');
    return {getSheetByName(name){
     const cells=tables[name];
@@ -86,6 +87,7 @@ function createCase(otherCount,ownCount){
  assert.equal(result.entity.household_id,hid);
  assert.equal(result.sequence_no,1);
  assert.equal(lock.held,false);
+ assert.equal(opens,1,'One locked mutation must open its Spreadsheet only once');
  assert.deepEqual(writes.map(x=>x.name),
   ['processed_operations','item_groups','change_log','processed_operations'],
   'Durable journal, entity, change log, final receipt order unchanged');
@@ -97,7 +99,7 @@ function createCase(otherCount,ownCount){
   cells:x.reduce((sum,a)=>sum+a.cells,0),
   ranges:x.filter(a=>a.kind==='range').map(a=>a.width+'x'+a.rows)
  });
- const metrics={otherCount,ownCount,operations:stats(ops),items:stats(items),logs:stats(logs),
+ const metrics={otherCount,ownCount,spreadsheetOpens:opens,operations:stats(ops),items:stats(items),logs:stats(logs),
   totalCalls:reads.length,totalCells:reads.reduce((n,r)=>n+r.cells,0)};
  if(otherCount>=64){
   assert.equal(items.some(x=>x.kind==='full'),false,'Large stock toggle must avoid full item-group scan');
@@ -124,7 +126,7 @@ const scenarios=[
 const outputs=scenarios.map(([other,own])=>createCase(other,own));
 for(const x of outputs)console.log(
  'synthetic other='+x.otherCount+' own='+x.ownCount+
- ' readCalls='+x.totalCalls+' cells='+x.totalCells+
+ ' opens='+x.spreadsheetOpens+' readCalls='+x.totalCalls+' cells='+x.totalCells+
  ' journal='+x.operations.calls+'/'+x.operations.cells+
  ' items='+x.items.calls+'/'+x.items.cells+
  ' log='+x.logs.calls+'/'+x.logs.cells
