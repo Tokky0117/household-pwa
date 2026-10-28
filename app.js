@@ -324,6 +324,19 @@ function validateLiveSnapshot(data){
   data.categories.length===CATS.length&&data.categories.every((c,i)=>String(c.name)===CATS[i]);
 }
 
+// Only display bounded, user-actionable errors; a thrown message might contain
+// an endpoint, token or other private diagnostic information.
+function liveReadErrorMessage(err){
+ const code=String(err?.apiCode||err?.message||'');
+ if(code==='LOGIN_REQUIRED')return 'Googleログインが必要です。再ログイン後に読み取ってください';
+ if(code==='GAS_NOT_CONFIGURED')return 'Google Sheetsの接続先が設定されていません';
+ if(err?.name==='AbortError')return '時間内に読み取りが完了しませんでした';
+ if(err?.name==='TypeError')return '通信に失敗しました（ネットワーク・CORS・アクセス権限など原因は未確定です）';
+ if(code==='GAS_RESPONSE_INVALID'||code==='RESPONSE_SHAPE_INVALID')return '応答の形式を確認できませんでした（ログイン画面などの可能性があります）';
+ if(code==='GAS_RESPONSE_TOO_LARGE')return '受信データが上限を超えました';
+ if(/^GAS_HTTP_[0-9]{3}$/.test(code))return '接続先がHTTP '+code.slice(9)+'を返しました';
+ return '読み取りに失敗しました。接続先・認証・通信状況を確認してください';
+}
 function liveListView(){
  const groups=liveSnapshot?.item_groups||[],products=liveSnapshot?.products||[],stores=liveSnapshot?.stores||[];
  // Build the product-to-item lookup once per render. Previously every item
@@ -337,7 +350,15 @@ function liveListView(){
  }
  const canEdit=liveWritable()&&!liveWriteBusy&&livePending().status==='none';
  const allEmpty=groups.length===0&&products.length===0&&stores.length===0;
- const label=allEmpty?'取得成功：Google Sheetsに登録データはまだありません':'取得成功：Google Sheetsからデータを読み取りました';
+ const readFailed=liveStatus.startsWith('取得失敗：');
+ const readCancelled=liveStatus==='画面切替により読み取りを中断しました';
+ const label=liveBusy?'再取得中：前回取得したデータを表示しています':
+  readFailed?'再取得できませんでした：前回取得したデータを表示しています':
+  readCancelled?'再取得を中断しました：前回取得したデータを表示しています':
+  allEmpty?'取得成功：Google Sheetsに登録データはまだありません':'取得成功：Google Sheetsからデータを読み取りました';
+ const readNotice=liveBusy?'再取得しています。前回のデータは引き続き確認できます。':
+  readFailed?liveStatus+'。自動再試行はしません。必要なら再読み込みしてください。':
+  readCancelled?'画面を切り替えたため前の読み取り結果は反映しません。必要なら再読み込みしてください。':'';
  const rows=CATS.map((cat,category)=>{
   const matching=groups.filter(i=>!i.is_hidden&&Number(i.category_id)===category).sort((a,b)=>Number(a.sort_order||0)-Number(b.sort_order||0));
   return `<section class="category"><div class="cathead"><strong>${esc(cat)}</strong><span class="count">${matching.length}点</span></div>${matching.map(i=>{
@@ -349,7 +370,7 @@ function liveListView(){
  <button type="button" class="secondary" data-act="hideLive" data-live-id="${esc(i.item_group_id)}" ${canEdit?'':'disabled'}>非表示</button></div></div>`;
   }).join('')||'<p class="hint">登録なし</p>'}</section>`;
  }).join('');
- return `${head('日用品','Google Sheets・読み取り専用')}<main><div class="panel"><strong>${label}</strong><p class="hint">カテゴリ ${liveSnapshot?.categories?.length||0} 件の読み取りを確認しました。日用品・商品・店舗はシートの登録件数を表示しています。</p>${allEmpty?'<p class="hint">この家庭のデータは空です。試作データを確認する場合は「試作データに戻る」を押してください。</p>':''}<p class="hint">この画面では追加・編集・在庫変更はできません。端末内の試作データは変更されません。</p><p class="hint">日用品 ${groups.length} 件 ／ 商品 ${products.length} 件 ／ 店舗 ${stores.length} 件</p><button class="secondary" data-act="refreshLive" ${liveBusy?'disabled':''}>再読み込み</button><button class="secondary" data-act="leaveLive">試作データに戻る</button><p class="hint" role="status">${esc(liveWriteStatus)}</p><button type="button" class="secondary" data-act="addLive" ${canEdit?'':'disabled'}>日用品を登録</button><p class="hint">${liveWritable()?'登録・編集・在庫変更が利用できます。':'登録・編集・在庫変更・削除は実装準備中です。安全確認が終わるまで無効です。'}</p></div>${liveRecoveryView()}${liveEditForm()}${rows}<div class="panel"><h2>店舗（読み取り専用）</h2><p class="hint">${stores.length?esc(stores.map(x=>x.canonical_name).join('、')):'登録なし'}</p></div></main>${nav()}`;
+ return `${head('日用品','Google Sheets・読み取り専用')}<main><div class="panel"><strong>${label}</strong>${readNotice?'<p class="hint" role="'+(readFailed?'alert':'status')+'">'+esc(readNotice)+'</p>':''}<p class="hint">カテゴリ ${liveSnapshot?.categories?.length||0} 件の読み取りを確認しました。日用品・商品・店舗はシートの登録件数を表示しています。</p>${allEmpty?'<p class="hint">この家庭のデータは空です。試作データを確認する場合は「試作データに戻る」を押してください。</p>':''}<p class="hint">この画面では追加・編集・在庫変更はできません。端末内の試作データは変更されません。</p><p class="hint">日用品 ${groups.length} 件 ／ 商品 ${products.length} 件 ／ 店舗 ${stores.length} 件</p><button class="secondary" data-act="refreshLive" ${liveBusy?'disabled':''}>${liveBusy?'再取得中…':'再読み込み'}</button><button class="secondary" data-act="leaveLive">試作データに戻る</button><p class="hint" role="status">${esc(liveWriteStatus)}</p><button type="button" class="secondary" data-act="addLive" ${canEdit?'':'disabled'}>日用品を登録</button><p class="hint">${liveWritable()?'登録・編集・在庫変更が利用できます。':'登録・編集・在庫変更・削除は実装準備中です。安全確認が終わるまで無効です。'}</p></div>${liveRecoveryView()}${liveEditForm()}${rows}<div class="panel"><h2>店舗（読み取り専用）</h2><p class="hint">${stores.length?esc(stores.map(x=>x.canonical_name).join('、')):'登録なし'}</p></div></main>${nav()}`;
 }
 async function refreshLive(){
  if(liveBusy||liveWriteBusy)return;
@@ -366,7 +387,7 @@ async function refreshLive(){
   liveSnapshot=data;liveOwnerSubject=subject;liveMode=true;
   liveStatus='取得成功';tab='items';page='list';selected=null;openSwipeId=null;
  }catch(err){
-  if(sameLiveSession(subject,epoch))liveStatus='取得失敗：'+String(err?.message||'UNKNOWN');
+  if(sameLiveSession(subject,epoch))liveStatus='取得失敗：'+liveReadErrorMessage(err);
  }finally{
   if(epoch===liveSessionEpoch){liveRequestSubject=null;liveBusy=false;render()}
  }
@@ -577,7 +598,7 @@ function budgetView(){
  return `${head('家計簿','くらしストック')}<main class="preview-budget-page"><p class="sample-price-notice">※ サンプルと端末内の試作記録。値札は集計対象外です。</p><div class="budget-month"><button type="button" class="iconbtn" data-act="prevMonth" aria-label="前月">${chevron('left')}</button><strong>${esc(budgetMonth.replace('-', '年'))}月</strong><button type="button" class="iconbtn" data-act="nextMonth" aria-label="翌月">${chevron('right')}</button></div><div class="budget-total"><span>税込合計</span><strong>${yen(total)}</strong></div><div class="budget-category-list">${categoryRows.map(([name,value])=>`<div class="budget-category-row"><span>${esc(name)}</span><strong>${yen(value)}</strong></div>`).join('')}</div></main>${nav()}`;
 }
 function stub(title,icon,desc){return `${head(title,'くらしストック')}<main><div class="panel placeholder"><div class="bubble">${icon}</div><h2>${title}画面</h2><p>${desc}</p></div><div class="alert">この画面は共通UIの確認用です。データ処理や同期はまだ行いません。</div></main>${nav()}`}
-function settingsView(){const auth=window.KurashiAuth?.status?.()||{configured:false,signedIn:false};const loginPanel=`<div class="panel"><h2>Googleログイン（接続準備）</h2><p class="hint">${auth.signedIn?'この端末でログイン済みです。実データの同期はまだ無効です。':auth.configured?'初回のみGoogleアカウントでログインします。期限切れ時は再ログインが必要です。':'Googleログインの接続設定を準備中です。現時点では試作データだけを利用できます。'}</p>${auth.signedIn?'<button type="button" class="secondary" data-act="googleSignOut">ログアウト</button>':auth.configured?'<div id="google-login-button"></div>':''}</div>`;return `${head('設定','くらしストック')}<main>${loginPanel}<div class="panel"><h2>Google Sheets読み取り</h2><p class="hint">状態：${esc(liveStatus)}。ログイン後、日用品・商品・店舗を読み取れます。保存や同期はまだ行いません。</p><button class="secondary" data-act="refreshLive" style="width:100%" ${auth.signedIn&&!liveBusy?'':'disabled'}>Google Sheetsから読み取る</button>${liveMode?'<button class="secondary" data-act="leaveLive" style="width:100%">試作データに戻る</button>':''}</div><div class="panel"><h2>試作版の操作</h2><p class="hint">変更内容はこの端末の localStorage のみに保存され、夫婦間では共有されません。</p><button class="secondary danger" data-act="reset">仮データを初期状態に戻す</button></div><div class="panel"><h2>今後の実装</h2><p class="hint">レシート／値札のチェーン照合、Google Apps Script 接続、認証、オフライン差分同期を追加予定です。</p></div></main>${nav()}`}
+function settingsView(){const auth=window.KurashiAuth?.status?.()||{configured:false,signedIn:false};const loginPanel=`<div class="panel"><h2>Googleログイン（接続準備）</h2><p class="hint">${auth.signedIn?'この端末でログイン済みです。実データの同期はまだ無効です。':auth.configured?'初回のみGoogleアカウントでログインします。期限切れ時は再ログインが必要です。':'Googleログインの接続設定を準備中です。現時点では試作データだけを利用できます。'}</p>${auth.signedIn?'<button type="button" class="secondary" data-act="googleSignOut">ログアウト</button>':auth.configured?'<div id="google-login-button"></div>':''}</div>`;return `${head('設定','くらしストック')}<main>${loginPanel}<div class="panel"><h2>Google Sheets読み取り</h2><p class="hint" role="${liveStatus.startsWith('取得失敗：')?'alert':'status'}">状態：${esc(liveStatus)}。ログイン後、日用品・商品・店舗を読み取れます。保存や同期はまだ行いません。${liveStatus.startsWith('取得失敗：')?'自動再試行はしません。必要ならもう一度読み取ってください。':''}</p><button class="secondary" data-act="refreshLive" style="width:100%" ${auth.signedIn&&!liveBusy?'':'disabled'}>${liveBusy?'読み取り中…':liveStatus.startsWith('取得失敗：')?'もう一度読み取る':'Google Sheetsから読み取る'}</button>${liveMode?'<button class="secondary" data-act="leaveLive" style="width:100%">試作データに戻る</button>':''}</div><div class="panel"><h2>試作版の操作</h2><p class="hint">変更内容はこの端末の localStorage のみに保存され、夫婦間では共有されません。</p><button class="secondary danger" data-act="reset">仮データを初期状態に戻す</button></div><div class="panel"><h2>今後の実装</h2><p class="hint">レシート／値札のチェーン照合、Google Apps Script 接続、認証、オフライン差分同期を追加予定です。</p></div></main>${nav()}`}
 // All confirmation dialogs share one DOM and CSS. A Japanese full stop ends a paragraph line.
 function dialogView(){
  if(!dialog)return '';
