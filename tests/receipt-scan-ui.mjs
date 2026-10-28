@@ -20,7 +20,7 @@ const ctx=vm.createContext({window,document:doc,localStorage:storageApi,navigato
  FormData:class FormData{constructor(){throw Error('Mock form not provided')}}});
 const ui=vm.runInContext(source+`
 ({receiptView,scanReceiptPhoto,receiptScanReview,savePreviewReceiptScan,discardReceiptScan,
-  state:()=>({receiptScan,receiptScanBusy,previewRecords})})
+  state:()=>({receiptScan,receiptScanBusy,previewRecords}),setReceiptTab(){tab='receipt';page='list'}})
 `,ctx);
 assert.match(html,/receipt-ocr\.js\?v=57/);
 assert.match(sw,/receipt-ocr\.js\?v=57/);
@@ -28,6 +28,7 @@ assert.match(ui.receiptView(),/カメラで撮影/);
 assert.match(ui.receiptView(),/写真を選択/);
 assert.match(ui.receiptView(),/image\/jpeg,image\/png,image\/webp/);
 assert.equal(ui.state().previewRecords.records.length,0);
+ui.setReceiptTab();
 await ui.scanReceiptPhoto({type:'image/jpeg',size:20000});
 assert.equal(ui.state().receiptScanBusy,false);
 assert.equal(ui.state().receiptScan.items.length,2);
