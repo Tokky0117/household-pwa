@@ -460,5 +460,5 @@ GAS `google.script.run`経由の正式な書き込みAPI設計は別工程とす
 - `gas/Code.gs` の `doPost` 認証済み読み取り `bootstrap` / `sync` について、`authenticate` はGoogle ID tokenの検証成功**後**に1回だけSpreadsheetを開き、認証用 `users` / `households` とその後の同一リクエスト内の読み取りへ参照を渡す。未認証ユーザーに対してはシートを開かない。リクエスト間のキャッシュはなし。ヘッダー確認・家庭別の行の抽出は従来どおり。
 - **模擬アクセス回数（実経過秒数ではない）**：旧 `bootstrap` は認証2回＋各表5回＝7回、旧 `sync` は認証2回＋変更履歴1回＝3回。改修後は認証と実データを合わせて各1回。書き込みはロック内で**別に**Spreadsheetを開いて本人・試験用家庭を再確認するので、認証済み読み取りの参照を無条件に再利用しない。安全性のため必要な行データ読み取りは削らない。
 - `users.auth_subject` が複数行に該当した場合、または所属する `households.household_id` が0／複数行の場合は `FORBIDDEN`。以前の `.find` による1行目の暗黙選択を停止。既に取得した行で判断するため追加RPCはない。
-- `tests/gas-auth-isolation.mjs` で、読み取り1リクエストにつきSpreadsheetオープンが1回以下、トークンのaudience不正時は0回、ユーザーID／家庭IDの多重登録時の認可拒否、家庭間分離、既存の同期・変更履歴読み取り範囲を検証。`tests/gas-transport.mjs` で、CORSを含み得るネットワークエラー、HTTPエラー、HTML応答、応答サイズ超過、GASのアプリケーションエラー、15秒AbortSignalのすべてで**自動リトライを行わない**ことを確認。
+- `tests/gas-auth-isolation.mjs` で、読み取り1リクエストにつきSpreadsheetオープンが1回以下、トークンのaudience不正時は0回、Google subject／家庭IDの多重登録時の認可拒否、家庭間分離、既存の同期・変更履歴読み取り範囲を検証。`tests/gas-transport.mjs` で、CORSを含み得るネットワークエラー、HTTPエラー、HTML応答、応答サイズ超過、GASのアプリケーションエラー、15秒AbortSignalのすべてで**自動リトライを行わない**ことを確認。
 - HTTP契約 `POST /exec` のJSON本文・レスポンスと、試験専用 `google.script.run` の契約、明示同一操作IDの再送ルールは変えていない。**実GASでの速度改善と、通常のGitHub Pages PWAからのCORS解消は未確認**。試験UIの成功だけを一般PWAの通信完成とみなさず、書き込みフラグは変更しない。
