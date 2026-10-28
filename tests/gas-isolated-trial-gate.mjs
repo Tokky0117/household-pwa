@@ -182,6 +182,25 @@ for(const result of [saved,repeated]){
  assert.ok(result.timing.server_ms>=result.timing.mutation_ms);
 }
 
+// Only a guarded actual trial SAVE returns detailed millisecond stages.
+// Replays short-circuit after the operation lookup (no additional writes).
+const allowed=[
+ 'lock_wait_ms','isolation_check_ms','operation_lookup_ms','item_prepare_ms',
+ 'sequence_lookup_ms','journal_prepare_write_ms','item_apply_ms',
+ 'change_lookup_ms','change_append_write_ms','journal_finalize_write_ms'
+];
+const savedDetails=JSON.parse(JSON.stringify(saved.timing.mutation_details));
+assert.deepEqual(Object.keys(savedDetails).sort(),allowed.slice().sort());
+for(const [key,value] of Object.entries(savedDetails)){
+ assert.ok(Number.isFinite(value)&&value>=0,'Numeric profile: '+key);
+}
+assert.deepEqual(Object.keys(JSON.parse(JSON.stringify(repeated.timing.mutation_details))).sort(),
+ ['isolation_check_ms','lock_wait_ms','operation_lookup_ms'],
+ 'Completed replay must not run entity/change/journal append stages');
+const detailsSerialized=JSON.stringify(savedDetails);
+assert.doesNotMatch(detailsSerialized,/trial-home|test-user|trial-stock|試験用|item_group_id|operation_id|request_hash|name|spreadsheet/i);
+assert.equal(saved.timing.sheet_reads,12);
+assert.equal(writeCount,writeCountBeforeStock+4,'Confirmed save writes exactly four rows/steps; replay writes nothing');
 assert.equal(saved.version,3);
 assert.equal(saved.in_stock,true);
 assert.equal(repeated.version,3);
@@ -199,6 +218,11 @@ assert.match(stockPage,/id="toggle"/);
 assert.match(stockPage,/id="timing"/);
 assert.match(stockPage,/通信全体/);
 assert.match(stockPage,/12シート検査/);
+assert.match(stockPage,/保存処理の内訳/);
+assert.match(stockPage,/操作履歴の検索/);
+assert.match(stockPage,/変更履歴の検索/);
+assert.match(stockPage,/操作履歴の確定/);
+assert.match(stockPage,/style="white-space:pre-line"/);
 assert.match(stockPage,/trialStockUpdate\(entry\)/);
 assert.match(stockPage,/localStorage\.setItem/);
 assert.match(stockPage,/保存結果が未確定/);
