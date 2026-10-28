@@ -176,7 +176,27 @@ function load(){try{const d=JSON.parse(localStorage.getItem(key));return Array.i
 // Read-only remote snapshot lives in memory only. Local preview data is never overwritten.
 let liveSnapshot=null,liveStatus='未取得',liveBusy=false,liveMode=false;
 let liveEditor=null,liveWriteBusy=false,liveWriteStatus='';
+let liveOwnerSubject=null,liveSessionEpoch=0;
 const liveWritable=()=>window.KurashiGasApi?.writeEnabled?.()===true;
+// Auth state is the source of truth, not a previously received Sheet snapshot.
+// A cancelled/stale read must never repopulate a different user's view.
+function sameLiveSession(subject,epoch){
+ const auth=window.KurashiAuth?.status?.();
+ return auth?.signedIn===true&&auth.subject===subject&&epoch===liveSessionEpoch;
+}
+function leaveRemoteView(message='未取得'){
+ liveSessionEpoch++;
+ liveSnapshot=null;liveOwnerSubject=null;liveMode=false;liveEditor=null;
+ liveBusy=false;liveWriteStatus='';liveStatus=message;
+}
+function onLiveAuthChange(auth){
+ if(auth?.signedIn===true&&(!liveOwnerSubject||auth.subject===liveOwnerSubject))return;
+ liveSessionEpoch++;
+ if(liveSnapshot||liveMode||liveEditor){
+  leaveRemoteView('Googleログインが必要です');
+  render();
+ }
+}
 function livePending(){
  const subject=window.KurashiAuth?.status?.()?.subject;
  const householdId=liveSnapshot?.household_id;
@@ -226,25 +246,43 @@ async function withLiveWriteLock(work){
 async function sendPendingLive(entry){
  if(!liveWritable()||liveWriteBusy){liveWriteStatus='書き込みは無効です';render();return}
  const pending=livePending();
- if(pending.status!=='pending'||pending.entry.operationId!==entry.operationId){
+ if(pending.status!=='pending'||pending.entry.operationId!==entry.operationId||
+    liveOwnerSubject!==entry.subject){
   liveWriteStatus='操作記録とログイン中の家庭が一致しません';render();return
  }
+ const epoch=liveSessionEpoch,subject=entry.subject;
  liveWriteBusy=true;liveWriteStatus='保存操作を確認中';render();
  try{
   await window.KurashiGasApi.request(entry.action,entry.payload,{operationId:entry.operationId});
+  // Even after logout, a confirmed receipt should clear only this durable ID.
+  // Do not restore any snapshot to a different or signed-out account.
   window.KurashiLiveJournal.complete(entry.operationId);
+  if(!sameLiveSession(subject,epoch)||!liveMode)return;
   liveEditor=null;
   liveWriteStatus='保存が確定しました。データを更新しています。';
   try{
    const data=await window.KurashiGasApi.request('bootstrap');
-   if(!validateLiveSnapshot(data)||data.household_id!==entry.householdId)throw Error('RESPONSE_SHAPE_INVALID');
+   if(!sameLiveSession(subject,epoch)||!liveMode)return;
+   if(!validateLiveSnapshot(data)||data.household_id!==entry.householdId)
+    throw Error('RESPONSE_SHAPE_INVALID');
    liveSnapshot=data;liveWriteStatus='保存しました';liveStatus='取得成功';
-  }catch(_){liveWriteStatus='保存は確定しましたが、一覧の再取得に失敗しました。再読み込みしてください。';}
+  }catch(_){
+   if(sameLiveSession(subject,epoch)&&liveMode)
+    liveWriteStatus='保存は確定しましたが、一覧の再取得に失敗しました。再読み込みしてください。';
+  }
  }catch(err){
   try{window.KurashiLiveJournal.markUncertain(entry.operationId)}
-  catch(_){liveWriteStatus='操作記録を更新できません。新しい保存を行わず、端末の設定を確認してください。';return}
-  liveWriteStatus='保存結果が未確定です（'+String(err?.message||'UNKNOWN')+'）。同じ操作を確認・再送してください。新しい操作は開始できません。';
- }finally{liveWriteBusy=false;render()}
+  catch(_){
+   if(sameLiveSession(subject,epoch)&&liveMode)
+    liveWriteStatus='操作記録を更新できません。新しい保存を行わず、端末の設定を確認してください。';
+   return
+  }
+  if(sameLiveSession(subject,epoch)&&liveMode)
+   liveWriteStatus='保存結果が未確定です（'+String(err?.message||'UNKNOWN')+'）。同じ操作を確認・再送してください。新しい操作は開始できません。';
+ }finally{
+  liveWriteBusy=false;
+  if(sameLiveSession(subject,epoch)&&liveMode)render();
+ }
 }
 async function liveMutate(action,payload){
  return withLiveWriteLock(async()=>{
@@ -292,15 +330,22 @@ function liveListView(){
  return `${head('日用品','Google Sheets・読み取り専用')}<main><div class="panel"><strong>${label}</strong><p class="hint">カテゴリ ${liveSnapshot?.categories?.length||0} 件の読み取りを確認しました。日用品・商品・店舗はシートの登録件数を表示しています。</p>${allEmpty?'<p class="hint">この家庭のデータは空です。試作データを確認する場合は「試作データに戻る」を押してください。</p>':''}<p class="hint">この画面では追加・編集・在庫変更はできません。端末内の試作データは変更されません。</p><p class="hint">日用品 ${groups.length} 件 ／ 商品 ${products.length} 件 ／ 店舗 ${stores.length} 件</p><button class="secondary" data-act="refreshLive" ${liveBusy?'disabled':''}>再読み込み</button><button class="secondary" data-act="leaveLive">試作データに戻る</button><p class="hint" role="status">${esc(liveWriteStatus)}</p><button type="button" class="secondary" data-act="addLive" ${liveWritable()&&livePending().status==='none'?'':'disabled'}>日用品を登録</button><p class="hint">${liveWritable()?'登録・編集・在庫変更が利用できます。':'登録・編集・在庫変更・削除は実装準備中です。安全確認が終わるまで無効です。'}</p></div>${liveRecoveryView()}${liveEditForm()}${rows}<div class="panel"><h2>店舗（読み取り専用）</h2><p class="hint">${stores.length?esc(stores.map(x=>x.canonical_name).join('、')):'登録なし'}</p></div></main>${nav()}`;
 }
 async function refreshLive(){
- if(liveBusy)return;
- if(!window.KurashiAuth?.status?.().signedIn){liveStatus='Googleログインが必要です';render();return}
+ if(liveBusy||liveWriteBusy)return;
+ const auth=window.KurashiAuth?.status?.();
+ if(!auth?.signedIn||!auth.subject){liveStatus='Googleログインが必要です';render();return}
+ const epoch=++liveSessionEpoch,subject=auth.subject;
  liveBusy=true;liveStatus='取得中';render();
  try{
   const data=await window.KurashiGasApi.request('bootstrap');
+  if(!sameLiveSession(subject,epoch))return;
   if(!validateLiveSnapshot(data))throw Error('RESPONSE_SHAPE_INVALID');
-  liveSnapshot=data;liveMode=true;liveStatus='取得成功';tab='items';page='list';selected=null;openSwipeId=null;
- }catch(err){liveStatus='取得失敗：'+String(err?.message||'UNKNOWN')}
- finally{liveBusy=false;render()}
+  liveSnapshot=data;liveOwnerSubject=subject;liveMode=true;
+  liveStatus='取得成功';tab='items';page='list';selected=null;openSwipeId=null;
+ }catch(err){
+  if(sameLiveSession(subject,epoch))liveStatus='取得失敗：'+String(err?.message||'UNKNOWN');
+ }finally{
+  if(epoch===liveSessionEpoch){liveBusy=false;render()}
+ }
 }
 let items=load(),tab='items',page='list',selected=null,query='',onlyOut=false,collapsed=new Set(),menu=false,dialog=null,toast='',period='1y',priceScope='product',periodMenu=false;
 const app=document.getElementById('app');
@@ -538,6 +583,12 @@ function pageView(){
  }
 }
 function render(){
+ // Expired tokens also invalidate the remote view on the next UI render,
+ // even when the provider emitted no explicit logout notification.
+ if(liveOwnerSubject){
+  const auth=window.KurashiAuth?.status?.();
+  if(!auth?.signedIn||auth.subject!==liveOwnerSubject)leaveRemoteView('Googleログインが必要です');
+ }
  const currentModal=page==='add'||page==='edit'||page==='productEdit'||page==='productPick'||page==='recordAdd';
  const wasModal=previousPage==='add'||previousPage==='edit'||previousPage==='productEdit'||previousPage==='productPick'||previousPage==='recordAdd';
  const scrollReset=!currentModal&&!wasModal&&(page!==previousPage||(page==='compare'&&selected!==previousSelected));
@@ -760,7 +811,7 @@ if(['stockLive','hideLive'].includes(el.dataset.act)){
  liveMutate('item.update',payload);return
 }
 if(el.dataset.act==='refreshLive'){refreshLive();return}
-if(el.dataset.act==='leaveLive'){liveMode=false;liveSnapshot=null;liveEditor=null;liveStatus='試作データ表示';tab='items';page='list';render();return}
+if(el.dataset.act==='leaveLive'){leaveRemoteView('試作データ表示');tab='items';page='list';render();return}
 if(liveMode&&tab==='items'&&page==='list'&&!el.dataset.tab){return}
 if(el.dataset.tab){tab=el.dataset.tab;page='list';openSwipeId=null;menu=false;render();return}if(el.dataset.cat!==undefined){if(onlyOut)return;const c=Number(el.dataset.cat);collapsed.has(c)?collapsed.delete(c):collapsed.add(c);render();return}if(el.dataset.stock){const i=items.find(x=>x.id===el.dataset.stock);i.inStock=!i.inStock;i.version++;persist();render();return}if(el.dataset.open){if(openSwipeId){setOpenSwipe(null);return}listScrollPosition=window.scrollY;selected=el.dataset.open;page='compare';period='1y';priceScope='product';initializeCompare();periodMenu=false;menu=false;openSwipeId=null;render();return}if(el.dataset.pedit){openSwipeId=null;const p=catalogue.products.find(x=>x.id===el.dataset.pedit);if(p&&p.itemGroupId===selected){editingProductId=p.id;page='productEdit';render()}return}
 if(el.dataset.premove){openSwipeId=null;
@@ -816,7 +867,7 @@ if(action==='prevMonth'||action==='nextMonth'){
  const [year,month]=budgetMonth.split('-').map(Number);const d=new Date(year,month-1+(action==='prevMonth'?-1:1),1);
  budgetMonth=[d.getFullYear(),String(d.getMonth()+1).padStart(2,'0')].join('-');render();return;
 }
-if(action==='googleSignOut'){window.KurashiAuth?.signOut?.();liveMode=false;liveSnapshot=null;liveStatus='未取得';render();return}if(action==='sync'){inlineActionNotice(el,'同期は未接続です');return}if(action==='reset'){dialog={title:'仮データを初期化しますか？',message:'この端末で行った変更がすべて消え、最初のサンプル状態に戻ります。',buttons:[{id:'cancel',label:'キャンセル'},{id:'resetYes',label:'初期化する',primary:true,danger:true}]}}render()});
+if(action==='googleSignOut'){window.KurashiAuth?.signOut?.();leaveRemoteView();render();return}if(action==='sync'){inlineActionNotice(el,'同期は未接続です');return}if(action==='reset'){dialog={title:'仮データを初期化しますか？',message:'この端末で行った変更がすべて消え、最初のサンプル状態に戻ります。',buttons:[{id:'cancel',label:'キャンセル'},{id:'resetYes',label:'初期化する',primary:true,danger:true}]}}render()});
 // Shared dismissal behavior: menus close when focus moves to the rest of the page.
 // Do not rerender the whole screen: that would discard form contents and search focus.
 function closeAllDropdowns(){
@@ -1046,3 +1097,10 @@ app.addEventListener('touchcancel',e=>{
   if(detailSwipe&&[...e.changedTouches].some(t=>t.identifier===detailSwipe.identifier))
     detailSwipe=null;
 },{passive:true});
+
+// A Google account change must clear private remote data immediately.
+window.KurashiAuth?.subscribe?.(onLiveAuthChange);
+window.addEventListener?.('focus',()=>onLiveAuthChange(window.KurashiAuth?.status?.()));
+document.addEventListener?.('visibilitychange',()=>{
+ if(!document.hidden)onLiveAuthChange(window.KurashiAuth?.status?.());
+});
