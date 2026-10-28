@@ -176,7 +176,7 @@ function load(){try{const d=JSON.parse(localStorage.getItem(key));return Array.i
 // Read-only remote snapshot lives in memory only. Local preview data is never overwritten.
 let liveSnapshot=null,liveStatus='未取得',liveBusy=false,liveMode=false;
 let liveEditor=null,liveWriteBusy=false,liveWriteStatus='';
-let liveOwnerSubject=null,liveSessionEpoch=0;
+let liveOwnerSubject=null,liveRequestSubject=null,liveSessionEpoch=0;
 const liveWritable=()=>window.KurashiGasApi?.writeEnabled?.()===true;
 // Auth state is the source of truth, not a previously received Sheet snapshot.
 // A cancelled/stale read must never repopulate a different user's view.
@@ -186,16 +186,19 @@ function sameLiveSession(subject,epoch){
 }
 function leaveRemoteView(message='未取得'){
  liveSessionEpoch++;
- liveSnapshot=null;liveOwnerSubject=null;liveMode=false;liveEditor=null;
- liveBusy=false;liveWriteStatus='';liveStatus=message;
+ liveSnapshot=null;liveOwnerSubject=null;liveRequestSubject=null;
+ liveMode=false;liveEditor=null;liveBusy=false;
+ liveWriteStatus='';liveStatus=message;
 }
 function onLiveAuthChange(auth){
- if(auth?.signedIn===true&&(!liveOwnerSubject||auth.subject===liveOwnerSubject))return;
- liveSessionEpoch++;
- if(liveSnapshot||liveMode||liveEditor){
-  leaveRemoteView('Googleログインが必要です');
-  render();
- }
+ const mismatch=auth?.signedIn!==true||
+  (liveOwnerSubject!==null&&auth.subject!==liveOwnerSubject)||
+  (liveRequestSubject!==null&&auth.subject!==liveRequestSubject);
+ if(!mismatch)return;
+ const wasShowingRemote=!!liveSnapshot||liveMode||!!liveEditor;
+ // Invalidate even a pending request that has not yet returned any data.
+ leaveRemoteView('Googleログインが必要です');
+ if(wasShowingRemote)render();
 }
 function livePending(){
  const subject=window.KurashiAuth?.status?.()?.subject;
@@ -334,6 +337,7 @@ async function refreshLive(){
  const auth=window.KurashiAuth?.status?.();
  if(!auth?.signedIn||!auth.subject){liveStatus='Googleログインが必要です';render();return}
  const epoch=++liveSessionEpoch,subject=auth.subject;
+ liveRequestSubject=subject;
  liveBusy=true;liveStatus='取得中';render();
  try{
   const data=await window.KurashiGasApi.request('bootstrap');
@@ -344,7 +348,7 @@ async function refreshLive(){
  }catch(err){
   if(sameLiveSession(subject,epoch))liveStatus='取得失敗：'+String(err?.message||'UNKNOWN');
  }finally{
-  if(epoch===liveSessionEpoch){liveBusy=false;render()}
+  if(epoch===liveSessionEpoch){liveRequestSubject=null;liveBusy=false;render()}
  }
 }
 let items=load(),tab='items',page='list',selected=null,query='',onlyOut=false,collapsed=new Set(),menu=false,dialog=null,toast='',period='1y',priceScope='product',periodMenu=false;
