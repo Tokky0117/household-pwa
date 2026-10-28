@@ -12,18 +12,20 @@ const window={
  KurashiReceiptOCR:{async readImage(file){return {store:'ライフ',date:'2026-10-29',items:[
  {name:'牛乳',quantity:2,amount:396},{name:'たまご',quantity:1,amount:218}]}}}
 };
-const doc={getElementById(id){return id==='app'?app:null},querySelector(){return null},querySelectorAll(){return []},
+let draftForm=null;
+const mockCamera={clicks:0,click(){this.clicks++}};
+const doc={getElementById(id){return id==='app'?app:id==='receiptScanForm'?draftForm:id==='receipt-camera'?mockCamera:null},querySelector(){return null},querySelectorAll(){return []},
  createElement(){return {classList:{},style:{},setAttribute(){}}},body:{append(){}}};
 const storageApi={getItem:k=>storage.get(k)??null,setItem(k,v){storage.set(k,v)},removeItem(k){storage.delete(k)}};
 const ctx=vm.createContext({window,document:doc,localStorage:storageApi,navigator:{},location:{protocol:'file:'},
  crypto:{randomUUID:()=>String(storage.size)+'-random'},setTimeout:()=>1,clearTimeout(){},Date,Intl,URL,console,
- FormData:class FormData{constructor(){throw Error('Mock form not provided')}}});
+ FormData:class FormData{constructor(form){this.values=form?.values||{}}get(key){return this.values[key]??null}}});
 const ui=vm.runInContext(source+`
 ({receiptView,scanReceiptPhoto,receiptScanReview,savePreviewReceiptScan,discardReceiptScan,
   state:()=>({receiptScan,receiptScanBusy,previewRecords}),setReceiptTab(){tab='receipt';page='list'}})
 `,ctx);
-assert.match(html,/receipt-ocr\.js\?v=57/);
-assert.match(sw,/receipt-ocr\.js\?v=57/);
+assert.match(html,/receipt-ocr\.js\?v=58/);
+assert.match(sw,/receipt-ocr\.js\?v=58/);
 assert.match(ui.receiptView(),/カメラで撮影/);
 assert.match(ui.receiptView(),/写真を選択/);
 assert.match(ui.receiptView(),/image\/jpeg,image\/png,image\/webp/);
@@ -77,3 +79,32 @@ await inflight;
 assert.equal(ui.state().receiptScan,null,'Discard ignores a late OCR result');
 assert.equal(ui.state().previewRecords.records.length,1);
 console.log('Receipt scan UI: choose photo, review only, grouped local save, discard and stale-result isolation PASS');
+
+// Exercise the actual delegated button and submit handlers, not just helpers.
+function press(action){
+ const el={dataset:{act:action},hasAttribute(){return false}};
+ const target={classList:{contains(){return false}},closest(selector){
+  return selector.includes('[data-tab]')?el:null;
+ }};
+ actions.click[0]({target,preventDefault(){},stopPropagation(){}});
+}
+press('scanReceiptCamera');
+assert.equal(mockCamera.clicks,1,'Camera button opens the file picker');
+window.KurashiReceiptOCR.readImage=async()=>({store:'ライフ',date:'2026-10-29',items:[
+ {name:'牛乳',quantity:1,amount:198},{name:'卵',quantity:2,amount:300}
+]});
+await ui.scanReceiptPhoto({type:'image/jpeg',size:20000});
+const savedBeforeClick=ui.state().previewRecords.records.length;
+draftForm={id:'receiptScanForm',values:{
+ chain:'c-life',date:'2026-10-29',
+ 'name-0':'牛乳','quantity-0':'1','amount-0':'198','product-0':'','category-0':'',
+ 'name-1':'卵','quantity-1':'2','amount-1':'300','product-1':'','category-1':''
+}};
+actions.submit[0]({target:draftForm,preventDefault(){}});
+assert.equal(ui.state().previewRecords.records.length,savedBeforeClick+1,
+ 'Actual form submission saves once after review');
+assert.equal(ui.state().receiptScan,null,'Image memory is cleared after save');
+const latest=JSON.parse(storage.get('household_pwa_records_preview_v1'));
+assert.equal(latest.record_items.length,4);
+assert.ok(!JSON.stringify(latest).includes('blob:'));
+console.log('Receipt delegated camera and reviewed multi-line form submit PASS');
