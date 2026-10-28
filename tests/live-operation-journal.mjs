@@ -63,6 +63,9 @@ assert.equal(second.app.livePending().status,'different-account');
 await second.app.retryLive();
 assert.equal(mutationCalls.length,1);
 subject='1234567890';
+// Returning to a prior Google account requires a fresh authenticated snapshot
+// before a pending operation can be retransmitted under that household.
+await second.app.refreshLive();
 await second.app.retryLive();
 assert.equal(mutationCalls.length,2);
 assert.equal(mutationCalls[0].operationId,mutationCalls[1].operationId);
