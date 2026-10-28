@@ -8,6 +8,7 @@ const source=readFileSync(new URL('../gas/Code.gs',import.meta.url),'utf8');
 let activeId='sandbox',trialId='sandbox',enabled=false,stockUiEnabled=false,writeCount=0,number=0,openCount=0;
 const allSheets={};
 const sheetReadCounts=Object.create(null);
+const rangeReadShapes=[];
 const mock={
  PropertiesService:{
   getScriptProperties(){
@@ -31,7 +32,7 @@ const mock={
      getDataRange(){return {getValues(){sheetReadCounts[name]=(sheetReadCounts[name]||0)+1;return cells.map(x=>x.slice())}}},
      getRange(row,col,height,width){
       return {
-       getValues(){return Array.from({length:height},(_,i)=>cells[row+i-1].slice(col-1,col-1+width))},
+       getValues(){rangeReadShapes.push({name,row,col,height,width});return Array.from({length:height},(_,i)=>cells[row+i-1].slice(col-1,col-1+width))},
        setValues(vals){
         assert.equal(height,1);assert.equal(col,1);assert.equal(vals[0].length,width);
         writeCount++;
@@ -109,6 +110,32 @@ for(const [mode,names] of [
  assert.deepEqual(Object.keys(JSON.parse(JSON.stringify(result))).sort(),
   ['open_ms','server_ms','sheet_ms','sheet_reads'],'No IDs, rows, or user details leak');
  assert.equal(writeCount,writeCountBeforeStock,'Subset diagnostics never write');
+}
+// Compare the same five logical Sheets with just the needed journal/key
+// columns. The read-only diagnostic must not change any write permissions.
+for(const key of Object.keys(sheetReadCounts))delete sheetReadCounts[key];
+rangeReadShapes.length=0;openCount=0;
+const narrowTiming=mock.trialStockTimingReadOnly('stock5-narrow');
+assert.equal(narrowTiming.sheet_reads,5);
+assert.equal(openCount,1);
+assert.deepEqual(Object.keys(JSON.parse(JSON.stringify(sheetReadCounts))).sort(),
+ ['households','item_groups','users'],'Only singleton identity/item Sheets are read fully');
+assert.ok(rangeReadShapes.some(x=>x.name==='processed_operations'&&x.width===2&&x.row===2));
+assert.ok(rangeReadShapes.some(x=>x.name==='change_log'&&x.width===3&&x.row===2));
+assert.equal(rangeReadShapes.filter(x=>x.name==='processed_operations'&&x.width===5&&x.row===2).length,0,
+ 'Never retrieve full journal payload columns');
+for(const metric of ['open_ms','sheet_ms','server_ms'])
+ assert.ok(Number.isFinite(narrowTiming[metric])&&narrowTiming[metric]>=0);
+assert.deepEqual(Object.keys(JSON.parse(JSON.stringify(narrowTiming))).sort(),
+ ['open_ms','server_ms','sheet_ms','sheet_reads'],'No names, IDs, or rows leave the diagnostic');
+assert.equal(writeCount,writeCountBeforeStock,'Narrow-column timing never writes');
+for(const [name,foreignRow] of [
+ ['processed_operations',['foreign','foreign-op','hash','result','']],
+ ['change_log',['foreign-change',99,'foreign','item_groups','i','item.update','']]
+]){
+ allSheets[name].push(foreignRow);
+ errorCode(()=>mock.trialStockTimingReadOnly('stock5-narrow'),'TRIAL_NOT_ISOLATED');
+ allSheets[name].pop();
 }
 errorCode(()=>mock.trialStockTimingReadOnly('none'),'BAD_REQUEST');
 errorCode(()=>mock.trialStockRead(),'WRITES_DISABLED');
@@ -200,6 +227,8 @@ assert.match(pageHtml,/\.trialReadOnlyItemList\(\)/);
 assert.match(pageHtml,/id="profile"/);
 assert.match(pageHtml,/id="profile-3"/);
 assert.match(pageHtml,/id="profile-5"/);
+assert.match(pageHtml,/id="profile-5-narrow"/);
+assert.match(pageHtml,/mode:'stock5-narrow'/);
 assert.match(pageHtml,/比較用の読み取り専用診断/);
 assert.match(pageHtml,/\.trialStockTimingReadOnly\(entry\.mode\)/);
 assert.match(pageHtml,/12シート全体を計測/);
@@ -228,6 +257,7 @@ enabled=true;
 errorCode(()=>mock.trialStockTimingReadOnly(),'TRIAL_NOT_ISOLATED');
 errorCode(()=>mock.trialStockTimingReadOnly('stock3'),'TRIAL_NOT_ISOLATED');
 errorCode(()=>mock.trialStockTimingReadOnly('stock5'),'TRIAL_NOT_ISOLATED');
+errorCode(()=>mock.trialStockTimingReadOnly('stock5-narrow'),'TRIAL_NOT_ISOLATED');
 activeId='real-household';
 trialId='sandbox';
 errorCode(()=>mock.trialReadOnlyItemList(),'TRIAL_NOT_ISOLATED');
