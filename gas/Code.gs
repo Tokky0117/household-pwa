@@ -538,17 +538,29 @@ function requireIsolatedWriteTrial(localEditorTrial){
  // the deliberate, single-household trial marker.
  assertIsolatedTrialIdentity();
 }
-function mutateItemSafely_(user,action,payload,operationId,localEditorTrial){
+/**
+ * Optional elapsed-time counters are used ONLY for the owner-only trial
+ * stock SAVE endpoint. They do not change writes, read ranges or retries.
+ * No IDs, cell values, hash, token, or operation payload enter the counters.
+ */
+function mutateItemSafely_(user,action,payload,operationId,localEditorTrial,trialTiming){
  requiredId(operationId);
  if(!/^[A-Za-z0-9_-]{8,128}$/.test(operationId))fail('BAD_REQUEST','操作IDが不正です');
- const lock=LockService.getScriptLock();
+ const profile=localEditorTrial===true&&trialTiming&&typeof trialTiming==='object'?
+  trialTiming:null;
+ const waitStarted=profile?Date.now():0,lock=LockService.getScriptLock();
  if(!lock.tryLock(20000))fail('BUSY','しばらくして再試行してください');
+ if(profile)profile.lock_wait_ms=Date.now()-waitStarted;
  try{
+  const isolationStarted=profile?Date.now():0;
   requireIsolatedWriteTrial(localEditorTrial);
+  if(profile)profile.isolation_check_ms=Date.now()-isolationStarted;
   const hid=user.householdId;
   const digest=Utilities.base64EncodeWebSafe(Utilities.computeDigest(
    Utilities.DigestAlgorithm.SHA_256,JSON.stringify({action:action,payload:payload})));
+  const operationStarted=profile?Date.now():0;
   const operations=operationRowsForHousehold_(hid);
+  if(profile)profile.operation_lookup_ms=Date.now()-operationStarted;
   const previous=operations.find(x=>String(x.obj.operation_id)===operationId);
   if(previous&&String(previous.obj.request_hash)!==digest)fail('OPERATION_REUSED','操作IDが再利用されています');
   const pending=operations.find(x=>{
@@ -565,6 +577,7 @@ function mutateItemSafely_(user,action,payload,operationId,localEditorTrial){
    const now=new Date().toISOString();
    const stockOnly=action==='item.update'&&
     Object.keys(payload).sort().join(',')==='in_stock,item_group_id,version';
+   const itemPrepareStarted=profile?Date.now():0;
    const items=stockOnly?null:scoped('item_groups',hid);
    let output,baseVersion=null;
    if(action==='item.create'){
@@ -608,12 +621,18 @@ function mutateItemSafely_(user,action,payload,operationId,localEditorTrial){
     }
     output.version=baseVersion+1;output.updated_at=now;
    }
+   if(profile)profile.item_prepare_ms=Date.now()-itemPrepareStarted;
+   const sequenceStarted=profile?Date.now():0;
    const sequence=scopedPrefix_('change_log',hid,3).reduce((n,x)=>Math.max(n,Number(x.obj.sequence_no)||0),0)+1;
+   if(profile)profile.sequence_lookup_ms=Date.now()-sequenceStarted;
    plan={status:'prepared',action:action,entity:output,sequence_no:sequence,base_version:baseVersion};
    // Crucial: prepare durable replay data FIRST.
+   const prepareWriteStarted=profile?Date.now():0;
    operationRow=append_('processed_operations',{household_id:hid,operation_id:operationId,
     request_hash:digest,result:JSON.stringify(plan),processed_at:now});
+   if(profile)profile.journal_prepare_write_ms=Date.now()-prepareWriteStarted;
   }
+  const applyStarted=profile?Date.now():0;
   const entity=plan.entity;
   const itemId=String(entity.item_group_id);
   // For a fresh large-Sheet stock toggle we already know the physical row.
@@ -631,9 +650,12 @@ function mutateItemSafely_(user,action,payload,operationId,localEditorTrial){
    if(action!=='item.create')fail('RECOVERY_CONFLICT','更新対象が消えています');
    append_('item_groups',entity);
   }
+  if(profile)profile.item_apply_ms=Date.now()-applyStarted;
   // Read only (change ID, sequence, household) for all history entries.
   // Entity ID and action are needed only if recovering an already logged op.
+  const changeLookupStarted=profile?Date.now():0;
   const householdLogs=scopedPrefix_('change_log',hid,3);
+  if(profile)profile.change_lookup_ms=Date.now()-changeLookupStarted;
   const existingLog=householdLogs.find(x=>String(x.obj.change_id)===operationId);
   if(existingLog){
    const detail=changeReplayDetails_(existingLog);
@@ -643,12 +665,16 @@ function mutateItemSafely_(user,action,payload,operationId,localEditorTrial){
   }else{
    if(householdLogs.some(x=>Number(x.obj.sequence_no)>=plan.sequence_no))
     fail('RECOVERY_CONFLICT','同期番号が競合しています');
+   const changeWriteStarted=profile?Date.now():0;
    append_('change_log',{change_id:operationId,sequence_no:plan.sequence_no,household_id:hid,
     entity_type:'item_groups',entity_id:itemId,action:action,occurred_at:entity.updated_at});
+   if(profile)profile.change_append_write_ms=Date.now()-changeWriteStarted;
   }
   const result={entity:publicRow(entity),sequence_no:plan.sequence_no};
+  const finalizeStarted=profile?Date.now():0;
   write_('processed_operations',operationRow,{household_id:hid,operation_id:operationId,
    request_hash:digest,result:JSON.stringify(result),processed_at:entity.updated_at});
+  if(profile)profile.journal_finalize_write_ms=Date.now()-finalizeStarted;
   return result;
  }finally{lock.releaseLock()}
 }
@@ -1019,11 +1045,13 @@ function trialStockUpdate(request){
  if(request.id!==String(user.item.item_group_id))
   fail('NOT_FOUND','試験用の日用品ではありません');
  timing.guard_ms=Date.now()-started;
- const mutationStarted=Date.now();
+ const mutationStarted=Date.now(),mutationDetails=Object.create(null);
  const result=mutateItemSafely_({householdId:user.householdId,userId:user.userId},
   'item.update',{item_group_id:request.id,version:request.version,in_stock:request.in_stock},
-  request.operation_id,true);
+  request.operation_id,true,mutationDetails);
  timing.mutation_ms=Date.now()-mutationStarted;
+ // Only numeric phase durations. Do not return sheet IDs, row values, or operation IDs.
+ timing.mutation_details=mutationDetails;
  timing.server_ms=Date.now()-started;
  return {id:String(result.entity.item_group_id),version:Number(result.entity.version),
   in_stock:result.entity.in_stock===true||String(result.entity.in_stock).toLowerCase()==='true',timing};
