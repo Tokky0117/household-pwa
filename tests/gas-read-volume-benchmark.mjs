@@ -110,8 +110,10 @@ function createCase(otherCount,ownCount){
    'Sparse journal should not download other households results');
  }
  if(otherCount>=64&&ownCount>2){
-  assert.ok(ops.some(x=>x.width===4&&x.rows>otherCount),
-   'Dense journal deliberately falls back to bulk, despite preliminary key scan');
+  assert.ok(ops.some(x=>x.width===4&&x.rows===ownCount),
+   'Contiguous household history should be fetched in one grouped range');
+  assert.equal(ops.some(x=>x.width===4&&x.rows>otherCount),false,
+   'Grouped journal should not fetch other households large receipt results');
  }
  return metrics;
 }
