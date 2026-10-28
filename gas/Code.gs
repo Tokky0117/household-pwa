@@ -297,21 +297,28 @@ function append_(name,obj,book){
  */
 function itemRowById_(householdId,itemId,book){
  const name='item_groups',sh=tab(name,book),headers=TABLES[name],last=sh.getLastRow();
- if(last<=32)return scoped(name,householdId,book).find(x=>String(x.obj.item_group_id)===itemId);
+ if(last<=32){
+  const found=scoped(name,householdId,book).filter(x=>String(x.obj.item_group_id)===itemId);
+  if(found.length>1)fail('RECOVERY_CONFLICT','日用品IDが重複しています');
+  return found[0];
+ }
  const header=sh.getRange(1,1,1,headers.length).getValues()[0];
  if(headers.some((h,i)=>String(header[i])!==h))
   fail('SCHEMA_MISMATCH',name+' の列を確認してください');
  const ids=sh.getRange(2,1,last-1,2).getValues();
+ let matchRow=null;
  for(let i=0;i<ids.length;i++){
   if(String(ids[i][0])!==itemId||String(ids[i][1])!==householdId)continue;
-  const row=i+2,cells=sh.getRange(row,1,1,headers.length).getValues()[0];
-  const obj=Object.fromEntries(headers.map((h,j)=>[h,cells[j]===''?null:cells[j]]));
-  if(obj.deleted_at)return null;
-  if(String(obj.item_group_id)!==itemId||String(obj.household_id)!==householdId)
-   fail('RECOVERY_CONFLICT','更新対象が途中で変わりました');
-  return {row,obj,indexed:true};
+  if(matchRow!==null)fail('RECOVERY_CONFLICT','日用品IDが重複しています');
+  matchRow=i+2;
  }
- return null;
+ if(matchRow===null)return null;
+ const cells=sh.getRange(matchRow,1,1,headers.length).getValues()[0];
+ const obj=Object.fromEntries(headers.map((h,j)=>[h,cells[j]===''?null:cells[j]]));
+ if(String(obj.item_group_id)!==itemId||String(obj.household_id)!==householdId)
+  fail('RECOVERY_CONFLICT','更新対象が途中で変わりました');
+ if(obj.deleted_at)return null;
+ return {row:matchRow,obj,indexed:true};
 }
 /**
  * Recheck the exact row located before prepare. The row data and its
@@ -563,6 +570,14 @@ function mutateItemSafely_(user,action,payload,operationId,localEditorTrial,tria
   const operationStarted=profile?Date.now():0;
   const operations=operationRowsForHousehold_(hid,book);
   if(profile)profile.operation_lookup_ms=Date.now()-operationStarted;
+  // A duplicate operation ID makes idempotent replay ambiguous; refuse all
+  // writes rather than selecting the first potentially inconsistent receipt.
+  const observedIds=new Set();
+  for(const entry of operations){
+   const id=String(entry.obj.operation_id);
+   if(observedIds.has(id))fail('RECOVERY_CONFLICT','操作IDが重複しています');
+   observedIds.add(id);
+  }
   const previous=operations.find(x=>String(x.obj.operation_id)===operationId);
   if(previous&&String(previous.obj.request_hash)!==digest)fail('OPERATION_REUSED','操作IDが再利用されています');
   const pending=operations.find(x=>{
