@@ -31,4 +31,60 @@ testAPI.leave();
 assert.match(testAPI.listView(),/ローカル牛乳/);
 assert.match(html,/KurashiGasApi\.configure\("https:\/\/script\.google\.com\/macros\/s\//);
 assert.match(html,/kurashi-gis-ready/);
+// A slow bootstrap response must not resurrect a household after leaving
+// the live view, a logout, or even a quick account A→B→A switch.
+const snapshot=(household,name)=>({
+ household_id:household,
+ categories:['飲食','キッチン','洗面・風呂','洗濯・掃除','その他'].map(name=>({name})),
+ item_groups:[{item_group_id:'item-'+household,household_id:household,category_id:0,name,
+  in_stock:true,sort_order:1}],products:[],stores:[]
+});
+let finishFetch;
+context.window.KurashiGasApi.request=async action=>{
+ assert.equal(action,'bootstrap');
+ return new Promise(resolve=>{finishFetch=resolve});
+};
+let pending=testAPI.refreshLive();
+assert.equal(testAPI.previewState().liveBusy,true);
+testAPI.leave();
+finishFetch(snapshot('h-a','PRIVATE-A'));
+await pending;
+assert.equal(testAPI.previewState().liveMode,false,'Leaving view invalidates old GET response');
+assert.equal(testAPI.previewState().liveSnapshot,null);
+assert.doesNotMatch(testAPI.listView(),/PRIVATE-A/);
+// Re-login with the same subject after a brief switch must still invalidate
+// the pending request; comparing subject at completion alone is insufficient.
+pending=testAPI.refreshLive();
+currentAuth={configured:true,signedIn:true,subject:'subject-B'};
+authListener(currentAuth);
+currentAuth={configured:true,signedIn:true,subject:'subject-A'};
+authListener(currentAuth);
+finishFetch(snapshot('h-a','REPLAY-OF-OLD-REQUEST'));
+await pending;
+assert.equal(testAPI.previewState().liveSnapshot,null,'A→B→A must invalidate the old request');
+assert.equal(testAPI.previewState().liveBusy,false,'Account change must unblock next read');
+// The signed-in second account can fetch its own household only.
+currentAuth={configured:true,signedIn:true,subject:'subject-B'};
+authListener(currentAuth);
+context.window.KurashiGasApi.request=async()=>snapshot('h-b','PRIVATE-B');
+await testAPI.refreshLive();
+assert.equal(testAPI.previewState().liveSnapshot.household_id,'h-b');
+assert.match(testAPI.listView(),/PRIVATE-B/);
+// Signing out removes the old household immediately (before any network call).
+currentAuth={configured:true,signedIn:false,subject:null};
+authListener(currentAuth);
+assert.equal(testAPI.previewState().liveSnapshot,null);
+assert.equal(testAPI.previewState().liveMode,false);
+assert.doesNotMatch(testAPI.listView(),/PRIVATE-B/);
+assert.match(testAPI.listView(),/ローカル牛乳/);
+// Token expiry does not necessarily emit a callback. The next render
+// must also erase a remote view when status() reports expiration.
+currentAuth={configured:true,signedIn:true,subject:'subject-B'};
+await testAPI.refreshLive();
+currentAuth={configured:true,signedIn:false,subject:'subject-B'};
+testAPI.render();
+assert.equal(testAPI.previewState().liveSnapshot,null);
+assert.doesNotMatch(testAPI.listView(),/PRIVATE-B/);
+assert.equal(testAPI.previewState().items[0].name,'ローカル牛乳');
+console.log('Remote snapshot auth isolation: logout, A→B→A, stale responses and token expiry PASS');
 console.log('Read-only live data display and local preview isolation PASS');
