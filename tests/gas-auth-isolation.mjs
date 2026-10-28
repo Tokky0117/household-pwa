@@ -22,9 +22,18 @@ const books={
 let claims={aud:'client-test',iss:'https://accounts.google.com',sub:'subject-a',exp:Math.floor(Date.now()/1000)+3600};
 let responseCode=200;let urlCalls=0;let writeCalls=0;
 const readsByTable=Object.create(null);
+const readShapes=[];
 const ctx={
  PropertiesService:{getScriptProperties(){return {getProperty(k){return ({SPREADSHEET_ID:'sheet-test',GOOGLE_CLIENT_ID:'client-test'})[k]||null}}}},
- SpreadsheetApp:{openById(id){assert.equal(id,'sheet-test');return {getSheetByName(name){const cells=books[name];if(!cells)return null;return {getDataRange(){return {getValues(){readsByTable[name]=(readsByTable[name]||0)+1;return cells}}},getRange(){writeCalls++;throw Error('writes prohibited')},appendRow(){writeCalls++;throw Error('writes prohibited')}}}}}},
+ SpreadsheetApp:{openById(id){assert.equal(id,'sheet-test');return {getSheetByName(name){const cells=books[name];if(!cells)return null;return {
+ getLastRow(){return cells.length},
+ getDataRange(){return {getValues(){readsByTable[name]=(readsByTable[name]||0)+1;readShapes.push({name,type:'full'});return cells}}},
+ getRange(row,col,height,width){return {
+  getValues(){readShapes.push({name,type:'range',row,col,height,width});return Array.from({length:height},(_,i)=>cells[row+i-1].slice(col-1,col-1+width))},
+  setValues(){writeCalls++;throw Error('writes prohibited')}
+ }},
+ appendRow(){writeCalls++;throw Error('writes prohibited')}
+}}}}},
  UrlFetchApp:{fetch(url){urlCalls++;assert.match(url,/^https:\/\/oauth2\.googleapis\.com\/tokeninfo\?id_token=/);return {getResponseCode(){return responseCode},getContentText(){return JSON.stringify(claims)}}}},
  ContentService:{MimeType:{JSON:'json'},createTextOutput(s){return {setMimeType(){return s}}}},
  Date,JSON
@@ -54,6 +63,46 @@ assert.deepEqual(Array.from(out.data.item_groups,x=>x.item_group_id),['i-b']);
 assert.deepEqual(Array.from(out.data.products,x=>x.product_id),['p-b']);
 assert.deepEqual(Array.from(out.data.stores,x=>x.chain_id),['s-b']);
 out=request('sync',{after_sequence:0});assert.deepEqual(Array.from(out.data.changes,x=>x.entity_id),['i-b']);
+// Large interleaved history: scanning first three columns + one changed row
+// avoids fetching timestamps and unrelated households' full rows.
+for(let i=0;i<48;i++)books.change_log.push(['foreign-'+i,i+20,'h-b','item_groups','other-'+i,'item.update','']);
+books.change_log.push(['c-a-2',2,'h-a','item_groups','i-a','item.update','2026-10-28']);
+claims.sub='subject-a';
+let start=readShapes.length;
+out=request('sync',{after_sequence:1});
+assert.equal(out.ok,true);
+assert.deepEqual(Array.from(out.data.changes,x=>x.change_id),['c-a-2']);
+assert.equal(out.data.sequence_no,2);
+let shape=readShapes.slice(start).filter(x=>x.name==='change_log');
+assert.equal(shape.some(x=>x.type==='full'),false,'Sparse incremental sync should not read full large log');
+assert.equal(shape.filter(x=>x.type==='range'&&x.width===3&&x.height>1).length,1);
+assert.equal(shape.filter(x=>x.type==='range'&&x.width===7&&x.height===1).length,2,
+ 'One header and one changed row are read in full');
+start=readShapes.length;
+out=request('sync',{after_sequence:2});
+assert.equal(out.ok,true);
+assert.equal(out.data.changes.length,0);
+assert.equal(out.data.sequence_no,2);
+shape=readShapes.slice(start).filter(x=>x.name==='change_log');
+assert.equal(shape.some(x=>x.type==='full'),false,'No-change sync should read only three columns');
+assert.equal(shape.filter(x=>x.type==='range'&&x.width===3).length,1);
+for(let i=3;i<=8;i++)books.change_log.push(['c-a-'+i,i,'h-a','item_groups','i-a','item.update','']);
+start=readShapes.length;
+out=request('sync',{after_sequence:1});
+assert.equal(out.ok,true);
+assert.equal(out.data.sequence_no,8);
+assert.deepEqual(Array.from(out.data.changes,x=>x.sequence_no),[2,3,4,5,6,7,8]);
+shape=readShapes.slice(start).filter(x=>x.name==='change_log');
+assert.equal(shape.filter(x=>x.type==='full').length,1,
+ 'Bulk catch-up should fall back to a single complete log read');
+start=readShapes.length;
+out=request('sync',{after_sequence:0});
+assert.equal(out.ok,true);
+assert.equal(out.data.changes.length,8);
+assert.equal(out.data.sequence_no,8);
+shape=readShapes.slice(start).filter(x=>x.name==='change_log');
+assert.equal(shape.filter(x=>x.type==='full').length,1,
+ 'Initial synchronization should read the log once');
 claims.sub='outsider';assert.equal(request('bootstrap').error.code,'FORBIDDEN');
 claims.sub='subject-a';claims.aud='untrusted-client';assert.equal(request('bootstrap').error.code,'UNAUTHORIZED');
 claims.aud='client-test';claims.exp=Math.floor(Date.now()/1000)-60;assert.equal(request('bootstrap').error.code,'UNAUTHORIZED');
