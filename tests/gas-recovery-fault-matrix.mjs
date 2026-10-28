@@ -12,8 +12,9 @@ const columns={
  processed_operations:['household_id','operation_id','request_hash','result','processed_at']
 };
 function harness(large=false){
+ const reads=[],journalMoves={enabled:false};
  const tables=Object.fromEntries(Object.entries(columns).map(([k,v])=>[k,[v]]));
- if(large)for(let i=0;i<48;i++){
+ if(large)for(let i=0;i<(large==='sparse'?120:48);i++){
   tables.item_groups.push(['other-'+i,'family-2',0,'別家庭'+i,'foreign-'+i,true,1,false,1,'','','']);
   tables.change_log.push(['foreign-'+i,i+1,'family-2','item_groups','other-'+i,'item.update','']);
   tables.processed_operations.push(['family-2','finished-'+i,'hash','{"status":"completed"}','']);
@@ -31,9 +32,14 @@ function harness(large=false){
    if(!cells)return null;
    return {
     getLastRow(){return cells.length},
-    getDataRange(){return {getValues(){return cells.map(row=>row.slice())}}},
+    getDataRange(){return {getValues(){reads.push({name,width:columns[name]?.length||0,full:true});return cells.map(row=>row.slice())}}},
     getRange(row,first,height,width){
      return {getValues(){
+      reads.push({name,width,height,first,full:false});
+      if(name==='processed_operations'&&journalMoves.enabled&&width===4&&height===1){
+       journalMoves.enabled=false;
+       cells.splice(1,0,['family-2','shift-foreign','hash','{"status":"done"}','']);
+      }
       return Array.from({length:height},(_,i)=>cells[row+i-1].slice(first-1,first-1+width));
      },setValues(values){
       assert.equal(first,1);assert.equal(height,1);
@@ -68,7 +74,10 @@ function harness(large=false){
  const execute=(user,action,payload,id)=>context.mutate_(user,action,payload,id);
  const records=(table,household='family-1')=>context.scoped(table,household).map(x=>x.obj);
  return {execute,records,userA,userB,userOther,
-  setFault(name,phase){faults={name,phase}},isLocked:()=>locked,writes:()=>writeCount
+  setFault(name,phase){faults={name,phase}},
+  moveJournalBeforeDetailRead(){journalMoves.enabled=true},
+  readsSince(index){return reads.slice(index)},readCount(){return reads.length},
+  isLocked:()=>locked,writes:()=>writeCount
  };
 }
 const faultCases=[
@@ -151,4 +160,57 @@ for(const [point,phase] of [
  assert.equal(h.execute(h.userB,'item.update',payload,'large-stock-update').entity.version,2);
  assert.equal(h.writes(),before,'Confirmed replay should not write again');
 }
-console.log('GAS 16 small + 4 large fault recoveries, concurrency, and household isolation PASS');
+// Very large shared journal, but only 0-2 operations for this household:
+// read all household/operation IDs, then only this household's full receipts.
+// No results or hashes belonging to other households should be fetched.
+{
+ const h=harness('sparse');
+ const from=h.readCount();
+ const first=h.execute(h.userA,'item.create',{name:'牛乳',category_id:0},'sparse-create-001');
+ assert.equal(first.entity.household_id,'family-1');
+ let reads=h.readsSince(from).filter(x=>x.name==='processed_operations');
+ assert.equal(reads.filter(x=>x.width===2&&x.height>1).length,1,
+  'Sparse journal should scan only household+operation ID columns');
+ assert.equal(reads.filter(x=>x.width===4&&x.height>1).length,0,
+  'No other household result payloads should be loaded');
+ const fromAgain=h.readCount();
+ const duplicate=h.execute(h.userA,'item.create',{name:'牛乳',category_id:0},'sparse-create-001');
+ assert.equal(duplicate.sequence_no,first.sequence_no);
+ reads=h.readsSince(fromAgain).filter(x=>x.name==='processed_operations');
+ assert.equal(reads.filter(x=>x.width===4&&x.height===1).length,1,
+  'Only the existing matching household operation should be read in full');
+ const saveBefore=h.writes();
+ assert.equal(h.execute(h.userA,'item.create',{name:'牛乳',category_id:0},'sparse-create-001').sequence_no,first.sequence_no);
+ assert.equal(h.writes(),saveBefore,'Replay must not cause writes');
+ // The second receipt is left prepared by a simulated crash.
+ h.setFault('journal.finalize','before');
+ const payload={item_group_id:first.entity.item_group_id,version:1,in_stock:false};
+ assert.throws(()=>h.execute(h.userB,'item.update',payload,'sparse-update-001'),/POWER_LOSS/);
+ assert.throws(()=>h.execute(h.userA,'item.create',{name:'卵',category_id:0},'sparse-blocked'),
+  err=>err?.code==='RECOVERY_REQUIRED','Pending operation blocks later writes');
+ const afterRecovery=h.execute(h.userB,'item.update',payload,'sparse-update-001');
+ assert.equal(afterRecovery.entity.version,2);
+ assert.equal(h.records('processed_operations').length,2);
+ assert.equal(h.records('processed_operations','family-2').length,120);
+ // The second of two household receipts can be moved by a concurrent
+ // external Sheet editor between the index scan and detail fetch.
+ h.moveJournalBeforeDetailRead();
+ assert.throws(()=>h.execute(h.userB,'item.update',payload,'sparse-update-001'),
+  err=>err?.code==='RECOVERY_CONFLICT','Moved journal row must fail closed');
+ assert.equal(h.isLocked(),false);
+ assert.equal(h.execute(h.userB,'item.update',payload,'sparse-update-001').entity.version,2,
+  'Retry must re-find the correct existing journal row');
+ assert.equal(h.records('processed_operations','family-2').length,121);
+ const fromMany=h.readCount();
+ const created=h.execute(h.userA,'item.create',{name:'卵',category_id:0},'sparse-create-002');
+ assert.equal(created.entity.household_id,'family-1');
+ // With three existing operations, one bulk prefix read is preferred to
+ // many individual service calls. The third is appended in this call.
+ const fromBulk=h.readCount();
+ h.execute(h.userA,'item.create',{name:'粉',category_id:0},'sparse-create-003');
+ reads=h.readsSince(fromBulk).filter(x=>x.name==='processed_operations');
+ assert.ok(reads.some(x=>x.width===4&&x.height>1),
+  'Many local operations should fall back to a single prefix bulk read');
+ assert.equal(h.records('processed_operations').length,4);
+}
+console.log('GAS 16 small + 4 large fault cases and sparse multi-household journal replay PASS');
