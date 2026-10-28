@@ -382,13 +382,48 @@ function currentSequence(hid){return rows('change_log').filter(x=>String(x.obj.h
 function changes(user,payload){
  const cursor=Number(payload.after_sequence||0);
  if(!Number.isSafeInteger(cursor)||cursor<0)fail('BAD_REQUEST','同期番号が不正です');
- // A sync request needs each matching change AND the current sequence.
- // Derive both from the same read, preserving full change rows/timestamps.
- const householdChanges=rows('change_log').filter(x=>String(x.obj.household_id)===user.householdId);
- const sequence=householdChanges.reduce((n,x)=>Math.max(n,Number(x.obj.sequence_no)||0),0);
- const next=householdChanges.filter(x=>Number(x.obj.sequence_no)>cursor)
-  .sort((a,b)=>Number(a.obj.sequence_no)-Number(b.obj.sequence_no));
- return {sequence_no:sequence,changes:next.map(x=>publicRow(x.obj))};
+ const name='change_log',headers=TABLES[name],sh=tab(name),last=sh.getLastRow();
+ // Small logs and initial/full synchronization: one full read is cheaper
+ // than a prefix read plus potentially many individual row requests.
+ if(last<=32||cursor===0){
+  const householdChanges=rows(name).filter(x=>String(x.obj.household_id)===user.householdId);
+  const sequence=householdChanges.reduce((n,x)=>Math.max(n,Number(x.obj.sequence_no)||0),0);
+  const next=householdChanges.filter(x=>Number(x.obj.sequence_no)>cursor)
+   .sort((a,b)=>Number(a.obj.sequence_no)-Number(b.obj.sequence_no));
+  return {sequence_no:sequence,changes:next.map(x=>publicRow(x.obj))};
+ }
+ // Incremental sync on a large log: scan only ID, sequence and household.
+ // This is a per-request scan (not a persistent, possibly stale index).
+ const heading=sh.getRange(1,1,1,headers.length).getValues()[0];
+ if(headers.some((h,i)=>String(heading[i])!==h))
+  fail('SCHEMA_MISMATCH',name+' の列を確認してください');
+ const prefixes=sh.getRange(2,1,last-1,3).getValues();
+ let sequence=0;
+ const selected=[];
+ for(let i=0;i<prefixes.length;i++){
+  const cells=prefixes[i];
+  if(String(cells[2])!==user.householdId)continue;
+  const n=Number(cells[1])||0;
+  sequence=Math.max(sequence,n);
+  if(Number(cells[1])>cursor)selected.push({row:i+2,id:cells[0],sequence:cells[1],household:cells[2]});
+ }
+ if(!selected.length)return {sequence_no:sequence,changes:[]};
+ // With several changes, one full read avoids excessive per-row RPC calls.
+ if(selected.length>4){
+  const all=rows(name).filter(x=>String(x.obj.household_id)===user.householdId&&
+   Number(x.obj.sequence_no)>cursor).sort((a,b)=>Number(a.obj.sequence_no)-Number(b.obj.sequence_no));
+  return {sequence_no:sequence,changes:all.map(x=>publicRow(x.obj))};
+ }
+ const next=selected.map(ref=>{
+  const cells=sh.getRange(ref.row,1,1,headers.length).getValues()[0];
+  if(String(cells[0])!==String(ref.id)||
+     String(cells[1])!==String(ref.sequence)||
+     String(cells[2])!==String(ref.household))
+   fail('RECOVERY_CONFLICT','同期対象が読み取り中に移動しました');
+  return Object.fromEntries(headers.map((h,j)=>[h,cells[j]===''?null:cells[j]]));
+ });
+ next.sort((a,b)=>Number(a.sequence_no)-Number(b.sequence_no));
+ return {sequence_no:sequence,changes:next.map(x=>publicRow(x))};
 }
 function normalized(s){return String(s||'').normalize('NFKC').trim().toLowerCase().replace(/\s+/g,' ')}
 function requiredId(s){if(typeof s!=='string'||!s||s.length>128)fail('BAD_REQUEST','IDが不正です');return s}
