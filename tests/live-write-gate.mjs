@@ -7,7 +7,7 @@ const base={household_id:'test',categories:['飲食','キッチン','洗面・�
 let sent=0,usedAction='';
 const win={
  scrollTo(){},scrollY:0,addEventListener(){},
- KurashiAuth:{status:()=>({signedIn:true,configured:true}),subscribe(){},getToken:()=> 'not-a-real-token'},
+ KurashiAuth:{status:()=>({signedIn:true,configured:true,subject:'subject-A'}),subscribe(){},getToken:()=> 'not-a-real-token'},
  fetch:async()=>{sent++;throw Error('Request unexpectedly sent')}
 };
 const context={window:win,URL,AbortController,setTimeout,clearTimeout,console};
