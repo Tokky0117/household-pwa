@@ -1,6 +1,20 @@
-# GAS API 初期実装（実験用・未デプロイ）
+# くらしストック GAS API — 現行状態と初期実装履歴
 
-更新：2026-10-25。対象ブランチ：`stage-a-ui-handoff-review`。
+更新：2026-10-28。対象ブランチ：`stage-a-ui-handoff-review`。
+
+> **通信仕様の正本は [TRANSPORT_DESIGN.md](./TRANSPORT_DESIGN.md) 冒頭の「2026-10-28 時点の通信契約」**。実測・採否の記録は [TRANSPORT_DECISION.md](./TRANSPORT_DECISION.md)。以下の「実装済み」「未実装／接続ブロッカー」等は **2026-10-25当時の履歴** であり、その後の実装や試験結果を反映していない。
+
+## 現行状態（2026-10-28）
+
+- **GAS＋Google Sheetsの当初構成を継続**。GitHub Pagesの通常PWAは `gas-api.js` にHTTP `POST` のアダプタを持つが、通常の保存機能は `LIVE_WRITE_ENABLED=false` のまま。試験GASに成功した `google.script.run` は別オリジンのGitHub Pages `fetch` の接続成功を保証しない。
+- **既存の所有者限定・試験用GAS** には `/exec?trial_read=1` のHTML Serviceをデプロイ済み。読み取り、5シート従来／必要列方式の実機比較を実施。GitHubリポジトリ内の最新 `gas/Code.gs` は、その後の**保存工程別時間計測・Spreadsheetの単一オープン・重複ID検出**も含むが、ユーザーが再反映するまでは**既存デプロイへ自動反映されない**。
+- GASの `item.create` / `item.update` は準備ジャーナル・同一操作ID再送・version検証・ロック・復旧安全停止のオフライン試験を実装。商品書き込み、レシート／値札書き込み、一般家庭の本番同期・公開は未承認。試験環境の所有者限定と、通常PWA／GASの書き込み禁止設定は維持。
+- 新しいGAS／Sheets／サーバーを作らない。本番環境へのデプロイや設定変更は、別途明示的な承認が必要。
+
+---
+
+## 以下は2026-10-25時点の実装メモ（履歴）
+
 
 ## 実装済み
 `gas/Code.gs` に12シートのヘッダー定義と空シート初期化、Google IDトークン照合、`users.auth_subject` と `households` による家庭認可、`bootstrap`、`sync`、`item.create`、`item.update`、`product.create`、`product.update`、`product.move` を追加。
