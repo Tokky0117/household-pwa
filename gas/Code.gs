@@ -60,7 +60,10 @@ function isolatedTrialReadPage_(){
  <p id="profile-3-result" role="status">未計測</p>
  <button id="profile-5" type="button">在庫更新想定・5シートを計測（保存なし）</button>
  <p id="profile-5-result" role="status">未計測</p>
- <p class="muted">3・5シートは比較用の読み取り専用診断です。12シート全体の安全確認に代わるものではなく、実際の在庫保存速度を表しません。</p></section>
+ <button id="profile-5-narrow" type="button">5シート・履歴は必要列だけ計測（保存なし）</button>
+ <p id="profile-5-narrow-result" role="status">未計測</p>
+ <p class="muted">新しい計測では家庭・ユーザー・試験用日用品の3シートを従来どおり読み、操作履歴は先頭2列、変更履歴は先頭3列を読みます。試験用シートはデータが少ないため、処理時間の差は大量データ時の予測には使えません。</p>
+ <p class="muted">3・5シート方式はいずれも比較用の読み取り専用診断です。12シート全体の安全確認に代わるものではなく、実際の在庫保存速度を表しません。</p></section>
  <section><label for="search">日用品名で絞り込む</label>
  <input id="search" type="search" placeholder="日用品名" disabled>
  <ul id="items" aria-label="日用品一覧"></ul>
@@ -85,7 +88,8 @@ function isolatedTrialReadPage_(){
   var profileModes=[
    {button:'profile',result:'profile-result',count:12,mode:null},
    {button:'profile-3',result:'profile-3-result',count:3,mode:'stock3'},
-   {button:'profile-5',result:'profile-5-result',count:5,mode:'stock5'}
+   {button:'profile-5',result:'profile-5-result',count:5,mode:'stock5'},
+   {button:'profile-5-narrow',result:'profile-5-narrow-result',count:5,mode:'stock5-narrow'}
   ];
   var profileBusy=false;
   function profileSeconds(ms){return (Math.max(0,ms)/1000).toFixed(2)+'秒'}
@@ -931,7 +935,7 @@ function trialGuard_(timing,readOnlyProbe){
  * Returns counters/durations only; no row data, IDs, or tokens.
  */
 function trialStockTimingReadOnly(mode){
- if(mode!=null&&mode!=='stock3'&&mode!=='stock5')
+ if(mode!=null&&mode!=='stock3'&&mode!=='stock5'&&mode!=='stock5-narrow')
   fail('BAD_REQUEST','計測方式を確認してください');
  const started=Date.now(),timing={sheet_reads:0,sheet_ms:0,open_ms:0};
  if(mode==null)trialGuard_(timing,true);
@@ -969,11 +973,31 @@ function trialSubsetProfileOnly_(mode,timing){
     String(items[0].obj.is_hidden).toLowerCase()==='true'||
     !!items[0].obj.deleted_at)
   fail('TRIAL_NOT_ISOLATED','計測対象が試験用の構成ではありません');
- if(mode==='stock5'){
+ if(mode==='stock5'||mode==='stock5-narrow'){
   const householdId=String(homes[0].obj.household_id);
-  for(const name of ['processed_operations','change_log'])
-   if(pick(name).some(x=>String(x.obj.household_id)!==householdId))
-    fail('TRIAL_NOT_ISOLATED','計測対象に他家庭の履歴があります');
+  for(const name of ['processed_operations','change_log']){
+   if(mode==='stock5'){
+    if(pick(name).some(x=>String(x.obj.household_id)!==householdId))
+     fail('TRIAL_NOT_ISOLATED','計測対象に他家庭の履歴があります');
+   }else{
+    // This comparison is intentionally diagnostic-only. It does NOT check
+    // every column, journal payload, or 12-sheet trial isolation condition,
+    // and it is NEVER used to authorize trial reads or writes.
+    const started=Date.now(),sh=tab(name,book),headers=TABLES[name];
+    const header=sh.getRange(1,1,1,headers.length).getValues()[0];
+    if(headers.some((h,i)=>String(header[i])!==h))
+     fail('SCHEMA_MISMATCH',name+' の列を確認してください');
+    const last=sh.getLastRow(),width=name==='processed_operations'?2:3;
+    if(last>1){
+     const keys=sh.getRange(2,1,last-1,width).getValues();
+     const hidIndex=name==='processed_operations'?0:2;
+     if(keys.some(cells=>cells.some(c=>c!==''&&c!==null)&&
+       String(cells[hidIndex])!==householdId))
+      fail('TRIAL_NOT_ISOLATED','計測対象に他家庭の履歴があります');
+    }
+    timing.sheet_ms+=Date.now()-started;timing.sheet_reads++;
+   }
+  }
  }
 }
 function trialStockRead(){
