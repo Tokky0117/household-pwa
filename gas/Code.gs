@@ -284,8 +284,8 @@ function write_(name,row,obj,existingSheet){
  const sh=existingSheet||tab(name),h=TABLES[name];
  sh.getRange(row,1,1,h.length).setValues([h.map(k=>obj[k]===null||obj[k]===undefined?'':obj[k])]);
 }
-function append_(name,obj){
- const sh=tab(name),row=sh.getLastRow()+1;
+function append_(name,obj,book){
+ const sh=tab(name,book),row=sh.getLastRow()+1;
  write_(name,row,obj,sh);
  return row;
 }
@@ -295,9 +295,9 @@ function append_(name,obj){
  * retain one getDataRange call, avoiding extra requests for tiny lists.
  * No cross-request cache or change to optimistic version/operation checks.
  */
-function itemRowById_(householdId,itemId){
- const name='item_groups',sh=tab(name),headers=TABLES[name],last=sh.getLastRow();
- if(last<=32)return scoped(name,householdId).find(x=>String(x.obj.item_group_id)===itemId);
+function itemRowById_(householdId,itemId,book){
+ const name='item_groups',sh=tab(name,book),headers=TABLES[name],last=sh.getLastRow();
+ if(last<=32)return scoped(name,householdId,book).find(x=>String(x.obj.item_group_id)===itemId);
  const header=sh.getRange(1,1,1,headers.length).getValues()[0];
  if(headers.some((h,i)=>String(header[i])!==h))
   fail('SCHEMA_MISMATCH',name+' の列を確認してください');
@@ -319,8 +319,8 @@ function itemRowById_(householdId,itemId){
  * If a user externally moves rows during a pending operation, abort
  * safely; identical operation_id replay locates the row afresh.
  */
-function itemRowAt_(householdId,itemId,row){
- const name='item_groups',headers=TABLES[name],sh=tab(name);
+function itemRowAt_(householdId,itemId,row,book){
+ const name='item_groups',headers=TABLES[name],sh=tab(name,book);
  if(!Number.isSafeInteger(row)||row<2||row>sh.getLastRow())
   fail('RECOVERY_CONFLICT','更新対象の行が移動しました');
  const heading=sh.getRange(1,1,1,headers.length).getValues()[0];
@@ -338,9 +338,9 @@ function itemRowAt_(householdId,itemId,row){
  * All schema headers are still validated; no persistent index/cache.
  * Small sheets use the normal one-call path to avoid extra RPCs.
  */
-function scopedPrefix_(name,householdId,width){
- const sh=tab(name),headers=TABLES[name],last=sh.getLastRow();
- if(last<=32)return scoped(name,householdId);
+function scopedPrefix_(name,householdId,width,book){
+ const sh=tab(name,book),headers=TABLES[name],last=sh.getLastRow();
+ if(last<=32)return scoped(name,householdId,book);
  if(!Number.isInteger(width)||width<1||width>headers.length)
   fail('BAD_REQUEST','読み取り範囲が不正です');
  const header=sh.getRange(1,1,1,headers.length).getValues()[0];
@@ -362,10 +362,10 @@ function scopedPrefix_(name,householdId,width){
  * This is deliberately NOT a permanent index: every mutation still checks
  * every pending operation for the authenticated household on this request.
  */
-function operationRowsForHousehold_(householdId){
+function operationRowsForHousehold_(householdId,book){
  const name='processed_operations',headers=TABLES[name];
- const sh=tab(name),last=sh.getLastRow();
- if(last<=64)return scopedPrefix_(name,householdId,4);
+ const sh=tab(name,book),last=sh.getLastRow();
+ if(last<=64)return scopedPrefix_(name,householdId,4,book);
  const heading=sh.getRange(1,1,1,headers.length).getValues()[0];
  if(headers.some((h,i)=>String(heading[i])!==h))
   fail('SCHEMA_MISMATCH',name+' の列を確認してください');
@@ -385,7 +385,7 @@ function operationRowsForHousehold_(householdId){
   else runs.push([ref]);
  }
  if(runs.length>3||selected.length>(last-1)/2)
-  return scopedPrefix_(name,householdId,4);
+  return scopedPrefix_(name,householdId,4,book);
  const result=[];
  for(const run of runs){
   const cellsList=sh.getRange(run[0].row,1,run.length,4).getValues();
@@ -406,9 +406,9 @@ function operationRowsForHousehold_(householdId){
  * The rare matching operation replay alone needs entity/action details. Before
  * accepting those details, verify the physical row has not moved or changed.
  */
-function changeReplayDetails_(entry){
+function changeReplayDetails_(entry,book){
  if(Object.prototype.hasOwnProperty.call(entry.obj,'entity_id'))return entry.obj;
- const cells=tab('change_log').getRange(entry.row,1,1,6).getValues()[0];
+ const cells=tab('change_log',book).getRange(entry.row,1,1,6).getValues()[0];
  if(String(cells[0])!==String(entry.obj.change_id)||
     String(cells[1])!==String(entry.obj.sequence_no)||
     String(cells[2])!==String(entry.obj.household_id))
@@ -416,8 +416,8 @@ function changeReplayDetails_(entry){
  return Object.fromEntries(TABLES.change_log.slice(0,6).map(
   (field,i)=>[field,cells[i]===''?null:cells[i]]));
 }
-function scoped(name,householdId){
- return rows(name).filter(r=>String(r.obj.household_id)===householdId&&(!Object.prototype.hasOwnProperty.call(r.obj,'deleted_at')||!r.obj.deleted_at));
+function scoped(name,householdId,book){
+ return rows(name,book).filter(r=>String(r.obj.household_id)===householdId&&(!Object.prototype.hasOwnProperty.call(r.obj,'deleted_at')||!r.obj.deleted_at));
 }
 function authenticate(idToken){
  if(typeof idToken!=='string'||idToken.length<100||idToken.length>6000)fail('UNAUTHORIZED','認証が必要です');
@@ -519,8 +519,8 @@ function samePlannedItem(actual,planned){
  return fields.every(key=>String(actual[key]===null?'':actual[key])===String(planned[key]===null?'':planned[key]));
 }
 const TRIAL_HOUSEHOLD_LABEL='[KURASHI_WRITE_TRIAL_ONLY]';
-function assertIsolatedTrialIdentity(){
- const families=rows('households'),members=rows('users');
+function assertIsolatedTrialIdentity(book){
+ const families=rows('households',book),members=rows('users',book);
  if(families.length!==1||members.length!==1||
     String(families[0].obj.display_name)!==TRIAL_HOUSEHOLD_LABEL||
     String(members[0].obj.household_id)!==String(families[0].obj.household_id)||
@@ -534,9 +534,11 @@ function requireIsolatedWriteTrial(localEditorTrial){
  if(!configured||!isolated||configured!==isolated||
     (!localEditorTrial&&props.getProperty('ENABLE_EXPERIMENTAL_WRITES')!=='true'))
   fail('WRITES_DISABLED','テスト用の書き込み許可が確認できません');
- // Even editor-only trials must pass both independently configured IDs and
- // the deliberate, single-household trial marker.
- assertIsolatedTrialIdentity();
+ // One Spreadsheet handle per locked mutation. Sheets ranges and records are
+ // still freshly read at every safety boundary; nothing is cached across calls.
+ const book=spreadsheet();
+ assertIsolatedTrialIdentity(book);
+ return book;
 }
 /**
  * Optional elapsed-time counters are used ONLY for the owner-only trial
@@ -553,13 +555,13 @@ function mutateItemSafely_(user,action,payload,operationId,localEditorTrial,tria
  if(profile)profile.lock_wait_ms=Date.now()-waitStarted;
  try{
   const isolationStarted=profile?Date.now():0;
-  requireIsolatedWriteTrial(localEditorTrial);
+  const book=requireIsolatedWriteTrial(localEditorTrial);
   if(profile)profile.isolation_check_ms=Date.now()-isolationStarted;
   const hid=user.householdId;
   const digest=Utilities.base64EncodeWebSafe(Utilities.computeDigest(
    Utilities.DigestAlgorithm.SHA_256,JSON.stringify({action:action,payload:payload})));
   const operationStarted=profile?Date.now():0;
-  const operations=operationRowsForHousehold_(hid);
+  const operations=operationRowsForHousehold_(hid,book);
   if(profile)profile.operation_lookup_ms=Date.now()-operationStarted;
   const previous=operations.find(x=>String(x.obj.operation_id)===operationId);
   if(previous&&String(previous.obj.request_hash)!==digest)fail('OPERATION_REUSED','操作IDが再利用されています');
@@ -578,7 +580,7 @@ function mutateItemSafely_(user,action,payload,operationId,localEditorTrial,tria
    const stockOnly=action==='item.update'&&
     Object.keys(payload).sort().join(',')==='in_stock,item_group_id,version';
    const itemPrepareStarted=profile?Date.now():0;
-   const items=stockOnly?null:scoped('item_groups',hid);
+   const items=stockOnly?null:scoped('item_groups',hid,book);
    let output,baseVersion=null;
    if(action==='item.create'){
     const name=String(payload.name||'').trim();validCategory(payload.category_id);
@@ -591,7 +593,7 @@ function mutateItemSafely_(user,action,payload,operationId,localEditorTrial,tria
      version:1,created_at:now,updated_at:now,deleted_at:null};
    }else{
     const itemId=requiredId(payload.item_group_id);
-    const row=stockOnly?itemRowById_(hid,itemId):
+    const row=stockOnly?itemRowById_(hid,itemId,book):
      items.find(x=>String(x.obj.item_group_id)===itemId);
     if(!row)fail('NOT_FOUND','日用品が見つかりません');
     assertVersion(row,payload.version);baseVersion=Number(row.obj.version);
@@ -623,13 +625,13 @@ function mutateItemSafely_(user,action,payload,operationId,localEditorTrial,tria
    }
    if(profile)profile.item_prepare_ms=Date.now()-itemPrepareStarted;
    const sequenceStarted=profile?Date.now():0;
-   const sequence=scopedPrefix_('change_log',hid,3).reduce((n,x)=>Math.max(n,Number(x.obj.sequence_no)||0),0)+1;
+   const sequence=scopedPrefix_('change_log',hid,3,book).reduce((n,x)=>Math.max(n,Number(x.obj.sequence_no)||0),0)+1;
    if(profile)profile.sequence_lookup_ms=Date.now()-sequenceStarted;
    plan={status:'prepared',action:action,entity:output,sequence_no:sequence,base_version:baseVersion};
    // Crucial: prepare durable replay data FIRST.
    const prepareWriteStarted=profile?Date.now():0;
    operationRow=append_('processed_operations',{household_id:hid,operation_id:operationId,
-    request_hash:digest,result:JSON.stringify(plan),processed_at:now});
+    request_hash:digest,result:JSON.stringify(plan),processed_at:now},book);
    if(profile)profile.journal_prepare_write_ms=Date.now()-prepareWriteStarted;
   }
   const applyStarted=profile?Date.now():0;
@@ -639,26 +641,26 @@ function mutateItemSafely_(user,action,payload,operationId,localEditorTrial,tria
   // Re-read that row and verify its ID and household instead of scanning
   // every item's ID twice. Replays must search afresh after any interruption.
   const row=preparedItemRow!==null?
-   itemRowAt_(hid,itemId,preparedItemRow):itemRowById_(hid,itemId);
+   itemRowAt_(hid,itemId,preparedItemRow,book):itemRowById_(hid,itemId,book);
   if(row){
    if(!samePlannedItem(row.obj,entity)){
     if(action!=='item.update'||Number(row.obj.version)!==plan.base_version)
      fail('RECOVERY_CONFLICT','更新済みデータと再送内容が一致しません');
-    write_('item_groups',row.row,entity);
+    write_('item_groups',row.row,entity,tab('item_groups',book));
    }
   }else{
    if(action!=='item.create')fail('RECOVERY_CONFLICT','更新対象が消えています');
-   append_('item_groups',entity);
+   append_('item_groups',entity,book);
   }
   if(profile)profile.item_apply_ms=Date.now()-applyStarted;
   // Read only (change ID, sequence, household) for all history entries.
   // Entity ID and action are needed only if recovering an already logged op.
   const changeLookupStarted=profile?Date.now():0;
-  const householdLogs=scopedPrefix_('change_log',hid,3);
+  const householdLogs=scopedPrefix_('change_log',hid,3,book);
   if(profile)profile.change_lookup_ms=Date.now()-changeLookupStarted;
   const existingLog=householdLogs.find(x=>String(x.obj.change_id)===operationId);
   if(existingLog){
-   const detail=changeReplayDetails_(existingLog);
+   const detail=changeReplayDetails_(existingLog,book);
    if(Number(detail.sequence_no)!==plan.sequence_no||
       String(detail.entity_id)!==itemId||
       String(detail.action)!==action)fail('RECOVERY_CONFLICT','操作履歴が一致しません');
@@ -667,13 +669,13 @@ function mutateItemSafely_(user,action,payload,operationId,localEditorTrial,tria
     fail('RECOVERY_CONFLICT','同期番号が競合しています');
    const changeWriteStarted=profile?Date.now():0;
    append_('change_log',{change_id:operationId,sequence_no:plan.sequence_no,household_id:hid,
-    entity_type:'item_groups',entity_id:itemId,action:action,occurred_at:entity.updated_at});
+    entity_type:'item_groups',entity_id:itemId,action:action,occurred_at:entity.updated_at},book);
    if(profile)profile.change_append_write_ms=Date.now()-changeWriteStarted;
   }
   const result={entity:publicRow(entity),sequence_no:plan.sequence_no};
   const finalizeStarted=profile?Date.now():0;
   write_('processed_operations',operationRow,{household_id:hid,operation_id:operationId,
-   request_hash:digest,result:JSON.stringify(result),processed_at:entity.updated_at});
+   request_hash:digest,result:JSON.stringify(result),processed_at:entity.updated_at},tab('processed_operations',book));
   if(profile)profile.journal_finalize_write_ms=Date.now()-finalizeStarted;
   return result;
  }finally{lock.releaseLock()}
