@@ -429,3 +429,14 @@ GAS `google.script.run`経由の正式な書き込みAPI設計は別工程とす
 - **セキュリティと正確性**：計測では `Date.now()` の差をローカルな数値オブジェクトに書くだけで、シート再読込・追加書込み・ログID・家庭ID・商品名・操作ID・トークン・ハッシュ・セル内容は含めない。書込みフラグがオフなら既存どおり `WRITES_DISABLED`。正常な保存順序は prepare→商品→change_log→journal finalize、同一ID再送で2度書かないこと、全12シート隔離ゲートは維持。
 - オフライン回帰 `tests/gas-isolated-trial-gate.mjs` で**新規保存時は許可された10種類の数値工程のみ**、再送時はロック・隔離・操作履歴検索の3工程のみ、書込み回数が再送では増えないこと、画面表示の文言、12シート安全確認を検証。 `tests/gas-item-mutations.mjs`、`tests/gas-recovery-fault-matrix.mjs` の再送・衝突・障害復旧テストも継続。
 - **重要な運用制約**：このプロファイルは実際に保存された試験用更新の結果を表示するため、`STOCK_UI_TRIAL_ENABLED=true` のときにしか実測できない。無断で有効化したり、読み取り専用 `?trial_read=1` の診断で保存を発生させたりしない。既存の試験用GAS/Sheetsを使い、新規アプリ・管理シートを作らない。GitHub開発ブランチの変更は利用者による既存GASへの手動コピーと再デプロイまでは**実機に反映されない**。今回、本番環境のデプロイやSheet書き込みなし。
+
+
+## 2026-10-28：保存中のSpreadsheetオープン集約とID重複時の安全停止
+
+- 利用者の継続指示に従い、当初構成 **PWA＋GAS＋Google Sheets** を維持。自宅サーバー、MCPサーバー、Cloudflareなどへの移行作業は行わない。変更は `stage-a-ui-handoff-review` の開発ブランチのみ。
+- **実装上の余分なサービス呼び出しを削減**：以前の `mutateItemSafely_()` は、操作履歴の検索、商品の検索・再確認、変更履歴の検索・追加、保存ジャーナル確定などの処理ごとに `tab(name)` → `spreadsheet()` → `SpreadsheetApp.openById()` を繰り返していた。ロック取得後の `requireIsolatedWriteTrial()` が試験用の2つのシートIDを照合してから **Spreadsheetオブジェクトを1回だけ開き**、`assertIsolatedTrialIdentity(book)` に同じオブジェクトを渡すよう変更。続くすべての在庫更新・履歴記録・復旧処理へその参照を引き回す。
+- **キャッシュの範囲**：共有するのはSpreadsheetハンドルのみ。各 `getRange()/getValues()/getLastRow()` は従来どおりその都度実行し、在庫行の更新直前の再確認、ヘッダー確認、操作ID再送の判定、ロック・version、履歴の再検証は削らない。リクエストをまたぐグローバルキャッシュ、行番号キャッシュ、追加Sheetや外部APIは作らない。
+- **試験用の12シート安全ゲートは別扱い**：`trialStockUpdate()` はまず `trialGuard_()` が全12シートを1回開いて検査し、保存処理では別途ロック取得後に1回だけ開いて安全性を再確認する。再送でも新たに検証する。つまり試験用の1保存リクエストでは **計2回のSpreadsheetオープン**（全12シートゲート1回＋ロック内保存1回）。これらを無理に同一キャッシュに統合して試験用の隔離確認や競合検査を弱めない。
+- **安全性を追加**：`processed_operations` で同一家庭に操作IDが重複しているときは、先頭の結果を安易に採用せず `RECOVERY_CONFLICT` で書き込みを拒否。`item_groups` でも同一家庭に同じ日用品IDが複数あるときは、32行以下の全行経路／33行以上のID列スキャン経路の両方で `RECOVERY_CONFLICT` を返し、ジャーナル準備以前に停止。これらは**すでに取得するデータを検査する**だけで、重複判定のための追加Sheets取得なし。
+- **オフライン検証**：`tests/gas-read-volume-benchmark.mjs` では従来の8負荷条件を使い、モック `SpreadsheetApp.openById()` が各1操作あたり必ず1回であることを確認。`tests/gas-isolated-trial-gate.mjs` では正常な保存と操作ID再送それぞれで2回（試験用12シートゲート＋ロック下の保存）であることを確認。`tests/gas-recovery-fault-matrix.mjs` には小規模・大規模両方の重複ID混入を追加し、書込み0回、ロック解放、他家庭の隔離、既存障害復旧テストを維持。21件の既存オフライン回帰テストを使用。
+- **性能評価の限界**：節約できたのはモックで確認した `openById` 呼び出し回数で、実Google Sheetsの経過時間・通信全体の改善幅は**未計測**。GASの内部実装次第で同じSpreadsheetを繰り返し開く処理がどの程度遅くなるかは違う。手動の実GAS再デプロイを行うまでは試験用GASにも未反映。一般公開GAS・本番Sheets・本番PWA・`main` は変更しない。
