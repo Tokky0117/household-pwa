@@ -3,7 +3,8 @@ import {readFileSync} from 'node:fs';
 import vm from 'node:vm';
 const src=readFileSync(new URL('../app.js',import.meta.url),'utf8');
 const html=readFileSync(new URL('../index.html',import.meta.url),'utf8');
-const app={innerHTML:'',addEventListener(){},insertAdjacentHTML(){}};
+const clickListeners=[];
+const app={innerHTML:'',addEventListener(type,fn){if(type==='click')clickListeners.push(fn)},insertAdjacentHTML(){}};
 const storage=new Map([['household_pwa_ui_v3',JSON.stringify([{id:'local-1',name:'ローカル牛乳',category:0,inStock:true,hidden:false,order:0,version:1}])]]);
 let currentAuth={configured:true,signedIn:true,subject:'subject-A'};
 let authListener=null;
@@ -14,7 +15,7 @@ const context={
  navigator:{},location:{protocol:'file:'},crypto:{randomUUID(){return 'uuid-test'}},setTimeout(){return 1},clearTimeout(){},Date,Intl,URL,Event:class Event{},console
 };
 const vmContext=vm.createContext(context);
-const testAPI=vm.runInContext(src+"\n({settingsView,listView,refreshLive,liveListView,previewState:()=>({items,liveMode,liveSnapshot,liveStatus,liveBusy}),setSettings(){tab='settings';page='list'},leave(){leaveRemoteView('試作データ表示')},render})",vmContext);
+const testAPI=vm.runInContext(src+"\n({settingsView,listView,refreshLive,liveListView,previewState:()=>({items,liveMode,liveSnapshot,liveStatus,liveBusy,tab,page}),setSettings(){tab='settings';page='list'},leave(){leaveRemoteView('試作データ表示')},render})",vmContext);
 assert.match(testAPI.settingsView(),/Google Sheetsから読み取る/);
 assert.equal(testAPI.previewState().items[0].name,'ローカル牛乳');
 await testAPI.refreshLive();
@@ -113,3 +114,61 @@ assert.doesNotMatch(denseView,/削除済み商品/);
 assert.equal(testAPI.previewState().items[0].name,'ローカル牛乳');
 console.log('Large live-view list: linear product association lookup and deleted-product filtering PASS');
 console.log('Read-only live data display and local preview isolation PASS');
+
+// A read started in Settings must not navigate back to Items after a tab
+// change, nor overwrite a more recent read if its response arrives last.
+function switchTab(destination){
+ const link={dataset:{tab:destination},hasAttribute(){return false}};
+ const target={classList:{contains(){return false}},closest(selector){
+  return selector.includes('[data-tab]')?link:null;
+ }};
+ assert.ok(clickListeners.length>0,'Tab handler must be registered');
+ clickListeners[0]({target,preventDefault(){},stopPropagation(){}});
+}
+testAPI.leave();testAPI.setSettings();testAPI.render();
+let completeOld,completeFresh;
+context.window.KurashiGasApi.request=async()=>new Promise(resolve=>{completeOld=resolve});
+const oldRead=testAPI.refreshLive();
+assert.equal(testAPI.previewState().liveBusy,true);
+switchTab('receipt');
+assert.equal(testAPI.previewState().tab,'receipt');
+assert.equal(testAPI.previewState().liveBusy,false,'Tab switch releases UI loading state immediately');
+assert.equal(testAPI.previewState().liveSnapshot,null);
+switchTab('settings');
+context.window.KurashiGasApi.request=async()=>new Promise(resolve=>{completeFresh=resolve});
+const freshRead=testAPI.refreshLive();
+completeFresh(snapshot('h-b','LATEST-READ'));
+await freshRead;
+assert.equal(testAPI.previewState().tab,'items');
+assert.match(testAPI.listView(),/LATEST-READ/);
+completeOld(snapshot('h-b','STALE-READ'));
+await oldRead;
+assert.match(testAPI.listView(),/LATEST-READ/);
+assert.doesNotMatch(testAPI.listView(),/STALE-READ/);
+// A remote refresh abandoned via navigation must retain the prior confirmed
+// snapshot and must never bring the user back to the Items tab.
+let completeRemoteRefresh;
+context.window.KurashiGasApi.request=async()=>new Promise(resolve=>{completeRemoteRefresh=resolve});
+const remoteRefresh=testAPI.refreshLive();
+switchTab('settings');
+assert.equal(testAPI.previewState().liveBusy,false);
+completeRemoteRefresh(snapshot('h-b','LATE-REMOTE-READ'));
+await remoteRefresh;
+assert.equal(testAPI.previewState().tab,'settings');
+assert.match(testAPI.liveListView(),/LATEST-READ/);
+assert.doesNotMatch(testAPI.liveListView(),/LATE-REMOTE-READ/);
+// Some token changes are observed on render before the GIS notification.
+// Pending requests (not only already visible snapshots) must be invalidated.
+testAPI.leave();testAPI.setSettings();testAPI.render();
+let completeUnannounced;
+context.window.KurashiGasApi.request=async()=>new Promise(resolve=>{completeUnannounced=resolve});
+const unannouncedRead=testAPI.refreshLive();
+currentAuth={configured:true,signedIn:true,subject:'subject-C'};
+testAPI.render();
+assert.equal(testAPI.previewState().liveBusy,false,'Render must invalidate a pending read owned by another subject');
+assert.equal(testAPI.previewState().liveSnapshot,null);
+completeUnannounced(snapshot('h-b','UNANNOUNCED-OLD-OWNER'));
+await unannouncedRead;
+assert.equal(testAPI.previewState().liveSnapshot,null);
+assert.doesNotMatch(testAPI.listView(),/UNANNOUNCED-OLD-OWNER/);
+console.log('Read navigation race: no surprise screen switch, old response discarded, silent auth change protected PASS');

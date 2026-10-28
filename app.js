@@ -190,6 +190,15 @@ function leaveRemoteView(message='未取得'){
  liveMode=false;liveEditor=null;liveBusy=false;
  liveWriteStatus='';liveStatus=message;
 }
+// Stop presenting a pending read when the user navigates away. The HTTP
+// request may still finish, but its response is invalidated immediately.
+function abandonLiveReadOnNavigation(){
+ if(!liveBusy||liveWriteBusy)return;
+ liveSessionEpoch++;
+ liveRequestSubject=null;
+ liveBusy=false;
+ liveStatus='画面切替により読み取りを中断しました';
+}
 function onLiveAuthChange(auth){
  const mismatch=auth?.signedIn!==true||
   (liveOwnerSubject!==null&&auth.subject!==liveOwnerSubject)||
@@ -346,12 +355,13 @@ async function refreshLive(){
  if(liveBusy||liveWriteBusy)return;
  const auth=window.KurashiAuth?.status?.();
  if(!auth?.signedIn||!auth.subject){liveStatus='Googleログインが必要です';render();return}
- const epoch=++liveSessionEpoch,subject=auth.subject;
+ const epoch=++liveSessionEpoch,subject=auth.subject,requestTab=tab,requestPage=page;
  liveRequestSubject=subject;
  liveBusy=true;liveStatus='取得中';render();
  try{
   const data=await window.KurashiGasApi.request('bootstrap');
-  if(!sameLiveSession(subject,epoch))return;
+  // Never steal focus or restore a read after leaving its original screen.
+  if(!sameLiveSession(subject,epoch)||tab!==requestTab||page!==requestPage)return;
   if(!validateLiveSnapshot(data))throw Error('RESPONSE_SHAPE_INVALID');
   liveSnapshot=data;liveOwnerSubject=subject;liveMode=true;
   liveStatus='取得成功';tab='items';page='list';selected=null;openSwipeId=null;
@@ -599,9 +609,12 @@ function pageView(){
 function render(){
  // Expired tokens also invalidate the remote view on the next UI render,
  // even when the provider emitted no explicit logout notification.
- if(liveOwnerSubject){
+ if(liveOwnerSubject!==null||liveRequestSubject!==null){
   const auth=window.KurashiAuth?.status?.();
-  if(!auth?.signedIn||auth.subject!==liveOwnerSubject)leaveRemoteView('Googleログインが必要です');
+  if(auth?.signedIn!==true||
+     (liveOwnerSubject!==null&&auth.subject!==liveOwnerSubject)||
+     (liveRequestSubject!==null&&auth.subject!==liveRequestSubject))
+   leaveRemoteView('Googleログインが必要です');
  }
  const currentModal=page==='add'||page==='edit'||page==='productEdit'||page==='productPick'||page==='recordAdd';
  const wasModal=previousPage==='add'||previousPage==='edit'||previousPage==='productEdit'||previousPage==='productPick'||previousPage==='recordAdd';
@@ -827,7 +840,7 @@ if(['stockLive','hideLive'].includes(el.dataset.act)){
 if(el.dataset.act==='refreshLive'){refreshLive();return}
 if(el.dataset.act==='leaveLive'){leaveRemoteView('試作データ表示');tab='items';page='list';render();return}
 if(liveMode&&tab==='items'&&page==='list'&&!el.dataset.tab){return}
-if(el.dataset.tab){tab=el.dataset.tab;page='list';openSwipeId=null;menu=false;render();return}if(el.dataset.cat!==undefined){if(onlyOut)return;const c=Number(el.dataset.cat);collapsed.has(c)?collapsed.delete(c):collapsed.add(c);render();return}if(el.dataset.stock){const i=items.find(x=>x.id===el.dataset.stock);i.inStock=!i.inStock;i.version++;persist();render();return}if(el.dataset.open){if(openSwipeId){setOpenSwipe(null);return}listScrollPosition=window.scrollY;selected=el.dataset.open;page='compare';period='1y';priceScope='product';initializeCompare();periodMenu=false;menu=false;openSwipeId=null;render();return}if(el.dataset.pedit){openSwipeId=null;const p=catalogue.products.find(x=>x.id===el.dataset.pedit);if(p&&p.itemGroupId===selected){editingProductId=p.id;page='productEdit';render()}return}
+if(el.dataset.tab){if(el.dataset.tab!==tab||page!=='list')abandonLiveReadOnNavigation();tab=el.dataset.tab;page='list';openSwipeId=null;menu=false;render();return}if(el.dataset.cat!==undefined){if(onlyOut)return;const c=Number(el.dataset.cat);collapsed.has(c)?collapsed.delete(c):collapsed.add(c);render();return}if(el.dataset.stock){const i=items.find(x=>x.id===el.dataset.stock);i.inStock=!i.inStock;i.version++;persist();render();return}if(el.dataset.open){if(openSwipeId){setOpenSwipe(null);return}listScrollPosition=window.scrollY;selected=el.dataset.open;page='compare';period='1y';priceScope='product';initializeCompare();periodMenu=false;menu=false;openSwipeId=null;render();return}if(el.dataset.pedit){openSwipeId=null;const p=catalogue.products.find(x=>x.id===el.dataset.pedit);if(p&&p.itemGroupId===selected){editingProductId=p.id;page='productEdit';render()}return}
 if(el.dataset.premove){openSwipeId=null;
  const p=catalogue.products.find(x=>x.id===el.dataset.premove);
  if(p&&p.itemGroupId===selected){dialog={title:'商品の登録解除',message:`「${productTitle(p)}」の登録を解除します。過去の最安値集計対象からも外れます。`,buttons:[{id:'cancel',label:'キャンセル'},{id:'confirmProductUnlink',label:'解除する',critical:true}],pending:{productId:p.id}};renderDialogOnly()}return;
