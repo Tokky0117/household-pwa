@@ -382,8 +382,13 @@ function currentSequence(hid){return rows('change_log').filter(x=>String(x.obj.h
 function changes(user,payload){
  const cursor=Number(payload.after_sequence||0);
  if(!Number.isSafeInteger(cursor)||cursor<0)fail('BAD_REQUEST','同期番号が不正です');
- const log=rows('change_log').filter(x=>String(x.obj.household_id)===user.householdId&&Number(x.obj.sequence_no)>cursor).sort((a,b)=>Number(a.obj.sequence_no)-Number(b.obj.sequence_no));
- return {sequence_no:currentSequence(user.householdId),changes:log.map(x=>publicRow(x.obj))};
+ // A sync request needs each matching change AND the current sequence.
+ // Derive both from the same read, preserving full change rows/timestamps.
+ const householdChanges=rows('change_log').filter(x=>String(x.obj.household_id)===user.householdId);
+ const sequence=householdChanges.reduce((n,x)=>Math.max(n,Number(x.obj.sequence_no)||0),0);
+ const next=householdChanges.filter(x=>Number(x.obj.sequence_no)>cursor)
+  .sort((a,b)=>Number(a.obj.sequence_no)-Number(b.obj.sequence_no));
+ return {sequence_no:sequence,changes:next.map(x=>publicRow(x.obj))};
 }
 function normalized(s){return String(s||'').normalize('NFKC').trim().toLowerCase().replace(/\s+/g,' ')}
 function requiredId(s){if(typeof s!=='string'||!s||s.length>128)fail('BAD_REQUEST','IDが不正です');return s}
