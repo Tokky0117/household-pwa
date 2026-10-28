@@ -452,3 +452,13 @@ GAS `google.script.run`経由の正式な書き込みAPI設計は別工程とす
 - **安全性を追加**：`processed_operations` で同一家庭に操作IDが重複しているときは、先頭の結果を安易に採用せず `RECOVERY_CONFLICT` で書き込みを拒否。`item_groups` でも同一家庭に同じ日用品IDが複数あるときは、32行以下の全行経路／33行以上のID列スキャン経路の両方で `RECOVERY_CONFLICT` を返し、ジャーナル準備以前に停止。これらは**すでに取得するデータを検査する**だけで、重複判定のための追加Sheets取得なし。
 - **オフライン検証**：`tests/gas-read-volume-benchmark.mjs` では従来の8負荷条件を使い、モック `SpreadsheetApp.openById()` が各1操作あたり必ず1回であることを確認。`tests/gas-isolated-trial-gate.mjs` では正常な保存と操作ID再送それぞれで2回（試験用12シートゲート＋ロック下の保存）であることを確認。`tests/gas-recovery-fault-matrix.mjs` には小規模・大規模両方の重複ID混入を追加し、書込み0回、ロック解放、他家庭の隔離、既存障害復旧テストを維持。21件の既存オフライン回帰テストを使用。
 - **性能評価の限界**：節約できたのはモックで確認した `openById` 呼び出し回数で、実Google Sheetsの経過時間・通信全体の改善幅は**未計測**。GASの内部実装次第で同じSpreadsheetを繰り返し開く処理がどの程度遅くなるかは違う。手動の実GAS再デプロイを行うまでは試験用GASにも未反映。一般公開GAS・本番Sheets・本番PWA・`main` は変更しない。
+
+
+## 2026-10-28：認証付き読み取りのシート参照共有と通信失敗の再送禁止テスト
+
+- ユーザーの「進めて」に基づき、当初構成 **GitHub Pages PWA＋GAS＋Google Sheets** を変更せず、開発ブランチの既存コードを保守。本番・試験用のデプロイは行わない。
+- `gas/Code.gs` の `doPost` 認証済み読み取り `bootstrap` / `sync` について、`authenticate` はGoogle ID tokenの検証成功**後**に1回だけSpreadsheetを開き、認証用 `users` / `households` とその後の同一リクエスト内の読み取りへ参照を渡す。未認証ユーザーに対してはシートを開かない。リクエスト間のキャッシュはなし。ヘッダー確認・家庭別の行の抽出は従来どおり。
+- **模擬アクセス回数（実経過秒数ではない）**：旧 `bootstrap` は認証2回＋各表5回＝7回、旧 `sync` は認証2回＋変更履歴1回＝3回。改修後は認証と実データを合わせて各1回。書き込みはロック内で**別に**Spreadsheetを開いて本人・試験用家庭を再確認するので、認証済み読み取りの参照を無条件に再利用しない。安全性のため必要な行データ読み取りは削らない。
+- `users.auth_subject` が複数行に該当した場合、または所属する `households.household_id` が0／複数行の場合は `FORBIDDEN`。以前の `.find` による1行目の暗黙選択を停止。既に取得した行で判断するため追加RPCはない。
+- `tests/gas-auth-isolation.mjs` で、読み取り1リクエストにつきSpreadsheetオープンが1回以下、トークンのaudience不正時は0回、ユーザーID／家庭IDの多重登録時の認可拒否、家庭間分離、既存の同期・変更履歴読み取り範囲を検証。`tests/gas-transport.mjs` で、CORSを含み得るネットワークエラー、HTTPエラー、HTML応答、応答サイズ超過、GASのアプリケーションエラー、15秒AbortSignalのすべてで**自動リトライを行わない**ことを確認。
+- HTTP契約 `POST /exec` のJSON本文・レスポンスと、試験専用 `google.script.run` の契約、明示同一操作IDの再送ルールは変えていない。**実GASでの速度改善と、通常のGitHub Pages PWAからのCORS解消は未確認**。試験UIの成功だけを一般PWAの通信完成とみなさず、書き込みフラグは変更しない。
