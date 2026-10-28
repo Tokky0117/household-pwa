@@ -173,8 +173,13 @@ for(const [name,row] of [
  assert.equal(writeCount,original);
  allSheets[name].pop();
 }
+// Trial save deliberately opens once for its full 12-sheet read-only guard
+// and once inside the mutation lock for freshly validated storage access.
+openCount=0;
 const saved=mock.trialStockUpdate(stockRequest);
+assert.equal(openCount,2,'Trial save: one full trial gate plus one locked mutation Spreadsheet open');
 const repeated=mock.trialStockUpdate(stockRequest);
+assert.equal(openCount,4,'Completed replay also rechecks the guard under lock with a single handle');
 for(const result of [saved,repeated]){
  assert.equal(result.timing.sheet_reads,12,'Save must revalidate all twelve trial Sheets');
  for(const key of ['open_ms','sheet_ms','guard_ms','mutation_ms','server_ms'])
