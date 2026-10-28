@@ -16,7 +16,8 @@
 <li>まず <code>STOCK_UI_TRIAL_ENABLED=false</code> を維持し、<strong>実機保存操作の直前だけtrueに変更する</strong>。ただし、<code>ENABLE_EXPERIMENTAL_WRITES</code>は未設定またはfalseのまま維持します。</li>
 <li>既存Webアプリの「デプロイを管理」で新バージョンに更新。実行ユーザー「自分」、アクセス「自分のみ」を維持します。</li>
 <li>以前の試験用 <code>/exec</code> の末尾に <code>?trial_stock=1</code> を付けて開きます。</li>
-<li>「試験用の在庫を読み取る」→「在庫を切り替える」で試験用シートへの保存を確認。再読み取りして表示・versionとシート上の値を照合する。結果が不明な場合は<strong>同じ操作IDでの再送</strong>だけを使います。</li></ol>
+<li>「試験用の在庫を読み取る」→「在庫を切り替える」で試験用シートへの保存を確認。再読み取りして表示・versionとシート上の値を照合する。結果が不明な場合は<strong>同じ操作IDでの再送</strong>だけを使います。正常に保存できた際には「通信全体」「12シート検査」「保存処理」に加えて、ロック待ち、操作履歴検索、対象商品確認、変更履歴検索、各書き込み工程の時間を表示します。</li></ol>
+<p class="notice"><strong>計測の区別：</strong>読み込み比較の <code>?trial_read=1</code> は引き続き書き込みゼロの診断です。保存処理の詳細時間は <code>?trial_stock=1</code> で<strong>既存の試験用保存が実行された場合のみ</strong>測定できます。速度計測のためだけに保存許可を有効化しないでください。サーバー内部の数値だけを返し、操作IDや家庭IDは計測結果に含めません。</p>
 <p class="notice"><strong>重要：</strong>一回限りの <code>runIsolatedItemWriteTrialOnce_</code> は再実行しません。実験が終わったら <code>STOCK_UI_TRIAL_ENABLED=false</code> に戻してください。</p>
 <p><small>端末内ジャーナルに保存できなければ、安全のため送信を停止します。一般ユーザー向けの公開はまだ行いません。</small></p></section>
 <section class="panel"><h2>読み込み速度だけを計測する（今回の目的）</h2>
