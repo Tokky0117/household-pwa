@@ -462,3 +462,13 @@ GAS `google.script.run`経由の正式な書き込みAPI設計は別工程とす
 - `users.auth_subject` が複数行に該当した場合、または所属する `households.household_id` が0／複数行の場合は `FORBIDDEN`。以前の `.find` による1行目の暗黙選択を停止。既に取得した行で判断するため追加RPCはない。
 - `tests/gas-auth-isolation.mjs` で、読み取り1リクエストにつきSpreadsheetオープンが1回以下、トークンのaudience不正時は0回、Google subject／家庭IDの多重登録時の認可拒否、家庭間分離、既存の同期・変更履歴読み取り範囲を検証。`tests/gas-transport.mjs` で、CORSを含み得るネットワークエラー、HTTPエラー、HTML応答、応答サイズ超過、GASのアプリケーションエラー、15秒AbortSignalのすべてで**自動リトライを行わない**ことを確認。
 - HTTP契約 `POST /exec` のJSON本文・レスポンスと、試験専用 `google.script.run` の契約、明示同一操作IDの再送ルールは変えていない。**実GASでの速度改善と、通常のGitHub Pages PWAからのCORS解消は未確認**。試験UIの成功だけを一般PWAの通信完成とみなさず、書き込みフラグは変更しない。
+
+
+## 2026-10-28：既存試験接続画面のGET／POST判定を正確化（実機未実施）
+
+- GAS＋Sheets＋既存PWAの当初構成は維持。追加のGAS・シート・中継サーバーなし。所有者限定の既存試験用GASも未デプロイ／未変更。
+- `gas-trial-connection.html` の**読み取り専用**GET診断は、以前はHTTP 200のHTML（Googleログイン等）でも「HTTP応答を読めました」と表示しがちだったため、応答の内容種類と `POST_REQUIRED` JSONエラーを区別。**明示的なGASの `POST_REQUIRED` 以外はGAS API到達を確定しない**。CORS／認証／ネットワーク失敗は原因未確定のまま表示し、公開権限やトークン搬送の緩和を勧めない。
+- 診断は通信全体の所要時間（ブラウザ側 `Date.now()` 差）のみ表示し、GAS処理時間や厳密なRTTではない。GETリクエストはトークンを送らない。ログイン付きPOSTは既存の `KurashiGasApi.request('bootstrap')` のみで、5カテゴリと表示用件数を検証する。書き込みAPIや追加の自動再送は行わない。
+- URL変更／ログアウト時は保留中の古い非同期応答を現在の画面へ反映しない。URLは画面メモリ内のみで、localStorage・URLクエリ・ログへ保存しない。
+- `tests/gas-trial-connection-page.mjs` にブラウザスクリプトの模擬実行を追加。JSON `POST_REQUIRED` の認識、HTTP 200のログインHTMLを成功扱いしないこと、ネットワーク失敗時の非断定表現、GET・POST途中のURL変更時に古い結果を表示しないこと、GETに認証情報・書き込みを乗せないことを確認。
+- この改修では **iPhone実機からの `fetch` 成功はまだ立証していない**。GitHub Pagesからの直接通信が技術的に不可の場合、診断画面だけを改善してもCORS／GAS公開権限の問題は解消しない。書き込みゲートは引き続き無効。本番GAS、本番Sheets、`main` は未変更。
