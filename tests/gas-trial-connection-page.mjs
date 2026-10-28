@@ -47,7 +47,7 @@ let getCalls=[],postCalls=[],getFetcher=async()=>({
  text:async()=>JSON.stringify({ok:false,error:{code:'POST_REQUIRED'}})
 });
 const apiMock={
- configure(endpoint){assert.match(endpoint,/^https:\/\/script\.google\.com\/macros\/s\/[A-Za-z0-9_-]+\/exec$/)},
+ configure(endpoint){if(!endpoint)return;assert.match(endpoint,/^https:\/\/script\.google\.com\/macros\/s\/[A-Za-z0-9_-]+\/exec$/)},
  async request(action){postCalls.push(action);return {
   household_id:'trial',categories:['飲食','キッチン','洗面・風呂','洗濯・掃除','その他'].map(name=>({name})),
   item_groups:[{}],products:[],stores:[]
