@@ -21,9 +21,10 @@ const books={
 };
 let claims={aud:'client-test',iss:'https://accounts.google.com',sub:'subject-a',exp:Math.floor(Date.now()/1000)+3600};
 let responseCode=200;let urlCalls=0;let writeCalls=0;
+const readsByTable=Object.create(null);
 const ctx={
  PropertiesService:{getScriptProperties(){return {getProperty(k){return ({SPREADSHEET_ID:'sheet-test',GOOGLE_CLIENT_ID:'client-test'})[k]||null}}}},
- SpreadsheetApp:{openById(id){assert.equal(id,'sheet-test');return {getSheetByName(name){const cells=books[name];if(!cells)return null;return {getDataRange(){return {getValues(){return cells}}},getRange(){writeCalls++;throw Error('writes prohibited')},appendRow(){writeCalls++;throw Error('writes prohibited')}}}}}},
+ SpreadsheetApp:{openById(id){assert.equal(id,'sheet-test');return {getSheetByName(name){const cells=books[name];if(!cells)return null;return {getDataRange(){return {getValues(){readsByTable[name]=(readsByTable[name]||0)+1;return cells}}},getRange(){writeCalls++;throw Error('writes prohibited')},appendRow(){writeCalls++;throw Error('writes prohibited')}}}}}},
  UrlFetchApp:{fetch(url){urlCalls++;assert.match(url,/^https:\/\/oauth2\.googleapis\.com\/tokeninfo\?id_token=/);return {getResponseCode(){return responseCode},getContentText(){return JSON.stringify(claims)}}}},
  ContentService:{MimeType:{JSON:'json'},createTextOutput(s){return {setMimeType(){return s}}}},
  Date,JSON
@@ -37,8 +38,16 @@ assert.deepEqual(Array.from(out.data.products,x=>x.product_id),['p-a']);
 assert.deepEqual(Array.from(out.data.stores,x=>x.chain_id),['s-a']);
 assert.equal(out.data.categories.length,5);
 assert.equal(out.data.sequence_no,1);
+const beforeSyncReads=readsByTable.change_log||0;
 out=request('sync',{after_sequence:0});assert.equal(out.ok,true);
 assert.deepEqual(Array.from(out.data.changes,x=>x.entity_id),['i-a']);
+assert.equal(out.data.sequence_no,1);
+assert.equal(readsByTable.change_log-beforeSyncReads,1,'Sync should not reread change_log for sequence number');
+const beforeEmptySync=readsByTable.change_log;
+out=request('sync',{after_sequence:100});assert.equal(out.ok,true);
+assert.equal(out.data.changes.length,0,'Future cursor has no changes');
+assert.equal(out.data.sequence_no,1,'Future cursor still reports current max sequence');
+assert.equal(readsByTable.change_log-beforeEmptySync,1,'Empty sync also reads log once');
 assert.equal(request('sync',{after_sequence:-1}).error.code,'BAD_REQUEST');
 claims.sub='subject-b';out=request('bootstrap');assert.equal(out.data.household_id,'h-b');
 assert.deepEqual(Array.from(out.data.item_groups,x=>x.item_group_id),['i-b']);
