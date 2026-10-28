@@ -410,9 +410,13 @@ function changes(user,payload){
  if(!selected.length)return {sequence_no:sequence,changes:[]};
  // With several changes, one full read avoids excessive per-row RPC calls.
  if(selected.length>4){
-  const all=rows(name).filter(x=>String(x.obj.household_id)===user.householdId&&
-   Number(x.obj.sequence_no)>cursor).sort((a,b)=>Number(a.obj.sequence_no)-Number(b.obj.sequence_no));
-  return {sequence_no:sequence,changes:all.map(x=>publicRow(x.obj))};
+  const allHousehold=rows(name).filter(x=>String(x.obj.household_id)===user.householdId);
+  // Full fallback is a separate snapshot. Derive the sequence from that
+  // same read so an append between the two reads cannot return stale metadata.
+  const latest=allHousehold.reduce((n,x)=>Math.max(n,Number(x.obj.sequence_no)||0),0);
+  const all=allHousehold.filter(x=>Number(x.obj.sequence_no)>cursor)
+   .sort((a,b)=>Number(a.obj.sequence_no)-Number(b.obj.sequence_no));
+  return {sequence_no:latest,changes:all.map(x=>publicRow(x.obj))};
  }
  const next=selected.map(ref=>{
   const cells=sh.getRange(ref.row,1,1,headers.length).getValues()[0];
