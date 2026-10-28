@@ -1045,7 +1045,7 @@ function trialStockUpdate(request){
  if(request.id!==String(user.item.item_group_id))
   fail('NOT_FOUND','試験用の日用品ではありません');
  timing.guard_ms=Date.now()-started;
- const mutationStarted=Date.now(),mutationDetails=Object.create(null);
+ const mutationStarted=Date.now(),mutationDetails={};
  const result=mutateItemSafely_({householdId:user.householdId,userId:user.userId},
   'item.update',{item_group_id:request.id,version:request.version,in_stock:request.in_stock},
   request.operation_id,true,mutationDetails);
@@ -1066,7 +1066,7 @@ function trialPage_(){
  <button id="toggle" type="button" disabled>在庫を切り替える</button>
  <button id="retry" type="button" disabled>同じ操作IDで保存結果を確認・再送</button>
  <p id="status" role="status" aria-live="polite">読み取り待ち</p>
- <p id="timing" aria-label="通信時間の計測結果"><small>通信時間：未計測</small></p>
+ <p id="timing" aria-label="通信時間の計測結果" style="white-space:pre-line"><small>通信時間：未計測</small></p>
  <small>保存先は試験用シートです。通信エラー時、サーバーで保存済みか不明なため、勝手に元に戻したり別操作を送信しません。</small></section>
  <script>
  (function(){
@@ -1087,6 +1087,29 @@ function trialPage_(){
    if(Number.isFinite(timing.sheet_ms))label+=' / 12シート検査 '+seconds(timing.sheet_ms);
    if(Number.isFinite(timing.mutation_ms))label+=' / 保存処理 '+seconds(timing.mutation_ms);
    if(Number.isFinite(timing.sheet_reads))label+='（検査 '+timing.sheet_reads+'シート）';
+   // Optional metrics are emitted only by the guarded trial save endpoint.
+   // No row data, names, IDs, tokens or operation payloads are displayed.
+   var parts=timing.mutation_details;
+   if(kind==='保存'&&parts&&typeof parts==='object'){
+    var labels=[
+     ['lock_wait_ms','ロック待ち'],
+     ['isolation_check_ms','試験用安全確認'],
+     ['operation_lookup_ms','操作履歴の検索'],
+     ['item_prepare_ms','対象商品の準備'],
+     ['sequence_lookup_ms','同期番号の検索'],
+     ['journal_prepare_write_ms','操作履歴の事前記録'],
+     ['item_apply_ms','商品の確認と保存'],
+     ['change_lookup_ms','変更履歴の検索'],
+     ['change_append_write_ms','変更履歴の追加'],
+     ['journal_finalize_write_ms','操作履歴の確定']
+    ];
+    var lines=[];
+    labels.forEach(function(pair){
+     if(Number.isFinite(parts[pair[0]])&&parts[pair[0]]>=0)
+      lines.push(pair[1]+' '+seconds(parts[pair[0]]));
+    });
+    if(lines.length)label+='\n保存処理の内訳（実行された工程のみ）\n'+lines.join('\n');
+   }
   }
   timingText.textContent=label;
  }
