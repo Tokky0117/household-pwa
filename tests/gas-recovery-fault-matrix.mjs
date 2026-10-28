@@ -12,7 +12,7 @@ const columns={
  processed_operations:['household_id','operation_id','request_hash','result','processed_at']
 };
 function harness(large=false){
- const reads=[],journalMoves={enabled:false};
+ const reads=[],journalMoves={enabled:false},changeMoves={enabled:false};
  const tables=Object.fromEntries(Object.entries(columns).map(([k,v])=>[k,[v]]));
  if(large)for(let i=0;i<(large==='sparse'?120:48);i++){
   tables.item_groups.push(['other-'+i,'family-2',0,'別家庭'+i,'foreign-'+i,true,1,false,1,'','','']);
@@ -39,6 +39,10 @@ function harness(large=false){
       if(name==='processed_operations'&&journalMoves.enabled&&width===4&&height===1){
        journalMoves.enabled=false;
        cells.splice(1,0,['family-2','shift-foreign','hash','{"status":"done"}','']);
+      }
+      if(name==='change_log'&&changeMoves.enabled&&width===6&&height===1){
+       changeMoves.enabled=false;
+       cells.splice(1,0,['shift-log',1000,'family-2','item_groups','other-new','item.update','']);
       }
       return Array.from({length:height},(_,i)=>cells[row+i-1].slice(first-1,first-1+width));
      },setValues(values){
@@ -76,6 +80,7 @@ function harness(large=false){
  return {execute,records,userA,userB,userOther,
   setFault(name,phase){faults={name,phase}},
   moveJournalBeforeDetailRead(){journalMoves.enabled=true},
+  moveChangeBeforeDetailRead(){changeMoves.enabled=true},
   readsSince(index){return reads.slice(index)},readCount(){return reads.length},
   isLocked:()=>locked,writes:()=>writeCount
  };
@@ -159,6 +164,36 @@ for(const [point,phase] of [
  const before=h.writes();
  assert.equal(h.execute(h.userB,'item.update',payload,'large-stock-update').entity.version,2);
  assert.equal(h.writes(),before,'Confirmed replay should not write again');
+}
+// In a recovered write where the change log was appended before the crash,
+// read just one full log row to verify entity/action. Never fetch those
+// columns for every unrelated household record. If that one row moves,
+// stop without confirming the journal, then retry by operation ID.
+{
+ const h=harness(true);
+ const initial=h.execute(h.userA,'item.create',{name:'牛乳',category_id:0},'log-detail-create').entity;
+ const payload={item_group_id:initial.item_group_id,version:1,in_stock:false};
+ h.setFault('change.write','after');
+ assert.throws(()=>h.execute(h.userB,'item.update',payload,'log-detail-resume'),/POWER_LOSS/);
+ const begin=h.readCount();
+ h.moveChangeBeforeDetailRead();
+ assert.throws(()=>h.execute(h.userB,'item.update',payload,'log-detail-resume'),
+  err=>err?.code==='RECOVERY_CONFLICT','Moved change log detail must fail closed');
+ assert.equal(h.isLocked(),false);
+ let logReads=h.readsSince(begin).filter(x=>x.name==='change_log');
+ assert.ok(logReads.some(x=>x.width===6&&x.height===1),'Replay checks the matching log detail');
+ assert.equal(logReads.some(x=>x.width===6&&x.height>1),false,
+  'Replay must not fetch full detail columns for unrelated log rows');
+ const before=h.writes();
+ const confirmed=h.execute(h.userB,'item.update',payload,'log-detail-resume');
+ assert.equal(confirmed.entity.version,2);
+ assert.equal(confirmed.entity.in_stock,false);
+ assert.equal(h.records('change_log').length,2,'No duplicate change after replay');
+ assert.equal(h.writes()-before,1,'Only pending journal finalization writes on replay');
+ assert.equal(h.records('change_log','family-2').length,49);
+ const again=h.writes();
+ assert.equal(h.execute(h.userB,'item.update',payload,'log-detail-resume').entity.version,2);
+ assert.equal(h.writes(),again,'Confirmed replay does not write again');
 }
 // Very large shared journal, but only 0-2 operations for this household:
 // read all household/operation IDs, then only this household's full receipts.
