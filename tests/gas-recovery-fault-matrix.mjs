@@ -14,11 +14,14 @@ const columns={
 function harness(large=false){
  const reads=[],journalMoves={enabled:false},changeMoves={enabled:false};
  const tables=Object.fromEntries(Object.entries(columns).map(([k,v])=>[k,[v]]));
- if(large)for(let i=0;i<(large==='sparse'?120:48);i++){
+ if(large)for(let i=0;i<(['sparse','scattered'].includes(large)?120:48);i++){
   tables.item_groups.push(['other-'+i,'family-2',0,'別家庭'+i,'foreign-'+i,true,1,false,1,'','','']);
   tables.change_log.push(['foreign-'+i,i+1,'family-2','item_groups','other-'+i,'item.update','']);
   tables.processed_operations.push(['family-2','finished-'+i,'hash','{"status":"completed"}','']);
  }
+ if(large==='scattered')for(let i=0;i<4;i++)
+  tables.processed_operations.splice(12+i*30,0,
+   ['family-1','scattered-history-'+i,'hash','{"status":"done"}','']);
  let faults=null,serial=0,writeCount=0,locked=false;
  const failAt=(name,phase)=>{if(faults?.name===name&&faults.phase===phase){
    faults=null;throw Error('POWER_LOSS_'+name+'_'+phase);
@@ -36,7 +39,7 @@ function harness(large=false){
     getRange(row,first,height,width){
      return {getValues(){
       reads.push({name,width,height,first,full:false});
-      if(name==='processed_operations'&&journalMoves.enabled&&width===4&&height===1){
+      if(name==='processed_operations'&&journalMoves.enabled&&width===4&&height>=1){
        journalMoves.enabled=false;
        cells.splice(1,0,['family-2','shift-foreign','hash','{"status":"done"}','']);
       }
@@ -239,13 +242,30 @@ for(const [point,phase] of [
  const fromMany=h.readCount();
  const created=h.execute(h.userA,'item.create',{name:'卵',category_id:0},'sparse-create-002');
  assert.equal(created.entity.household_id,'family-1');
- // With three existing operations, one bulk prefix read is preferred to
- // many individual service calls. The third is appended in this call.
- const fromBulk=h.readCount();
+ // Three adjacent receipts are fetched together as one 4-column range,
+ // without fetching the other household's 120 result payloads.
+ const fromGrouped=h.readCount();
  h.execute(h.userA,'item.create',{name:'粉',category_id:0},'sparse-create-003');
- reads=h.readsSince(fromBulk).filter(x=>x.name==='processed_operations');
- assert.ok(reads.some(x=>x.width===4&&x.height>1),
-  'Many local operations should fall back to a single prefix bulk read');
+ reads=h.readsSince(fromGrouped).filter(x=>x.name==='processed_operations');
+ assert.ok(reads.some(x=>x.width===4&&x.height===3),
+  'Three adjacent receipts should be fetched in one contiguous range');
+ assert.equal(reads.some(x=>x.width===4&&x.height>100),false,
+  'Grouped household reads must not load other households result payloads');
  assert.equal(h.records('processed_operations').length,4);
 }
-console.log('GAS 16 small + 4 large fault cases and sparse multi-household journal replay PASS');
+// Four scattered household receipts force fallback to a single bulk prefix
+// read rather than four disjoint RPCs. Same lock/journal rules apply.
+{
+ const h=harness('scattered');
+ const begin=h.readCount();
+ const result=h.execute(h.userA,'item.create',{name:'卵',category_id:0},'scattered-fallback-001');
+ assert.equal(result.entity.name,'卵');
+ const reads=h.readsSince(begin).filter(x=>x.name==='processed_operations');
+ assert.ok(reads.some(x=>x.width===2&&x.height>=120),
+  'Fragmented journal first scans only family and operation IDs');
+ assert.ok(reads.some(x=>x.width===4&&x.height>=120),
+  'Fragmented journal safely falls back to one bulk request');
+ assert.equal(h.records('processed_operations').length,5);
+ assert.equal(h.records('processed_operations','family-2').length,120);
+}
+console.log('GAS 16 small + 4 large fault cases and grouped/fragmented journal replay PASS');
