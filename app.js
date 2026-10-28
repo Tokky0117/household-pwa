@@ -694,9 +694,14 @@ function receiptScanReview(){
 }
 function receiptView(){
  const rows=previewRecords.records.slice().reverse().map(r=>{
- const item=previewRecords.record_items.find(x=>x.record_id===r.record_id);
- const p=catalogue.products.find(x=>x.id===item?.product_id);
- return `<div class="panel preview-record-row"><strong>${esc(r.record_type==='receipt'?'レシート':'値札')} · ${esc(r.record_date)}</strong><span>${esc(chainLabel(r.chain_id))}／${esc(p?.name||item?.raw_name||'未照合')}</span><span>${yen(item?.amount_tax_included??null)} · ${esc(item?.quantity??'—')}個</span></div>`;
+ const lines=previewRecords.record_items.filter(x=>x.record_id===r.record_id&&!x.deleted_at)
+  .sort((a,b)=>Number(a.line_order||0)-Number(b.line_order||0));
+ const sum=lines.reduce((total,x)=>total+Number(x.amount_tax_included||0),0);
+ const details=lines.map(item=>{
+  const p=catalogue.products.find(x=>x.id===item.product_id);
+  return `<li><span>${esc(p?.name||item.raw_name||'商品未照合')} · ${esc(item.quantity)}個</span><strong>${yen(item.amount_tax_included??null)}</strong></li>`;
+ }).join('');
+ return `<details class="panel preview-record-row"><summary><strong>${esc(r.record_type==='receipt'?'レシート':'値札')} · ${esc(r.record_date)}</strong><span>${esc(chainLabel(r.chain_id))} ／ ${lines.length}明細 ／ ${yen(sum)}</span></summary><ul class="receipt-record-lines">${details}</ul></details>`;
  }).join('')||'<div class="empty">この端末の記録はまだありません</div>';
  return `${head('レシート','くらしストック')}<main class="preview-record-page"><p class="sample-price-notice">写真の文字認識は端末内で行い、結果を確認してから試作保存できます。GAS・Sheets・夫婦間同期は未接続です。</p><section class="panel receipt-scan-start"><h2>レシート写真を読み込む</h2><p class="hint">OCR実行時のみ無料の認識ライブラリ・日本語データをネットから取得します。写真そのものは送信・保存しません。通信がない場合は手入力できます。</p><div class="record-entry-actions"><button type="button" class="secondary" data-act="scanReceiptCamera">カメラで撮影</button><button type="button" class="secondary" data-act="scanReceiptPhoto">写真を選択</button></div><input id="receipt-camera" type="file" accept="image/jpeg,image/png,image/webp" capture="environment" hidden><input id="receipt-photo" type="file" accept="image/jpeg,image/png,image/webp" hidden></section>${receiptScanReview()}<div class="record-entry-actions"><button class="secondary" data-act="newReceipt">${miniIcon('plus')}<span>レシート明細</span></button><button class="secondary" data-act="newShelf">${miniIcon('plus')}<span>値札</span></button></div><h2 class="sectiontitle">この端末の記録</h2>${rows}</main>${nav()}`;
 }

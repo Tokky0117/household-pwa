@@ -2238,3 +2238,12 @@ main>.ui-search + .filterrow{margin-bottom:5px}
 .receipt-review-numbers { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .receipt-review-numbers .formfield { min-width: 0; }
 .receipt-scan-save { width: 100%; margin-top: 16px; }
+
+/* A stored photo scan is one receipt header with multiple reviewable lines. */
+details.preview-record-row { display: block; }
+.preview-record-row summary { display: flex; flex-direction: column; gap: 4px; cursor: pointer; list-style-position: inside; min-height: 44px; }
+.preview-record-row summary:focus-visible { outline: 3px solid #80b5e5; outline-offset: 2px; }
+.receipt-record-lines { list-style: none; padding: 0; margin: 12px 0 0; border-top: 1px solid var(--line); }
+.receipt-record-lines li { display: flex; justify-content: space-between; align-items: start; gap: 8px; padding: 9px 0; border-bottom: 1px solid var(--line); }
+.receipt-record-lines li span { flex: 1; overflow-wrap: anywhere; }
+.receipt-record-lines li strong { font-size: 13px; white-space: nowrap; }
