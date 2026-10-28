@@ -371,16 +371,31 @@ function operationRowsForHousehold_(householdId){
   if(String(ids[i][0])===householdId)
    selected.push({row:i+2,operationId:ids[i][1]});
  }
- if(selected.length>2)return scopedPrefix_(name,householdId,4);
- return selected.map(ref=>{
-  // Fetch household and operation ID again along with request hash and
-  // stored intent. Fail closed if an external row move invalidated the scan.
-  const cells=sh.getRange(ref.row,1,1,4).getValues()[0];
-  if(String(cells[0])!==householdId||String(cells[1])!==String(ref.operationId))
-   fail('RECOVERY_CONFLICT','操作履歴が読み取り中に移動しました');
-  return {row:ref.row,obj:Object.fromEntries(headers.slice(0,4).map(
-   (field,i)=>[field,cells[i]===''?null:cells[i]]))};
- });
+ // Group adjacent household receipts into at most three range reads.
+ // If a household dominates the sheet or its rows are fragmented, use the
+ // original full-prefix path instead of issuing many small range requests.
+ const runs=[];
+ for(const ref of selected){
+  const run=runs[runs.length-1];
+  if(run&&run[run.length-1].row+1===ref.row)run.push(ref);
+  else runs.push([ref]);
+ }
+ if(runs.length>3||selected.length>(last-1)/2)
+  return scopedPrefix_(name,householdId,4);
+ const result=[];
+ for(const run of runs){
+  const cellsList=sh.getRange(run[0].row,1,run.length,4).getValues();
+  for(let i=0;i<run.length;i++){
+   const cells=cellsList[i],ref=run[i];
+   // Revalidate each row after the key scan: never read another household's
+   // result or accept a journal ID moved by an external Sheet editor.
+   if(String(cells[0])!==householdId||String(cells[1])!==String(ref.operationId))
+    fail('RECOVERY_CONFLICT','操作履歴が読み取り中に移動しました');
+   result.push({row:ref.row,obj:Object.fromEntries(headers.slice(0,4).map(
+    (field,j)=>[field,cells[j]===''?null:cells[j]]))});
+  }
+ }
+ return result;
 }
 /**
  * On large change logs we first check only change ID, sequence and household.
