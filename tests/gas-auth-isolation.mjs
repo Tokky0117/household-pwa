@@ -20,13 +20,13 @@ const books={
  ['c-a',1,'h-a','item_groups','i-a','item.update',''],['c-b',4,'h-b','item_groups','i-b','item.update','']]
 };
 let claims={aud:'client-test',iss:'https://accounts.google.com',sub:'subject-a',exp:Math.floor(Date.now()/1000)+3600};
-let responseCode=200;let urlCalls=0;let writeCalls=0;
+let responseCode=200;let urlCalls=0;let writeCalls=0;let spreadsheetOpens=0;
 const readsByTable=Object.create(null);
 const readShapes=[];
 let shiftDuringSparseRead=false;
 const ctx={
  PropertiesService:{getScriptProperties(){return {getProperty(k){return ({SPREADSHEET_ID:'sheet-test',GOOGLE_CLIENT_ID:'client-test'})[k]||null}}}},
- SpreadsheetApp:{openById(id){assert.equal(id,'sheet-test');return {getSheetByName(name){const cells=books[name];if(!cells)return null;return {
+ SpreadsheetApp:{openById(id){spreadsheetOpens++;assert.equal(id,'sheet-test');return {getSheetByName(name){const cells=books[name];if(!cells)return null;return {
  getLastRow(){return cells.length},
  getDataRange(){return {getValues(){readsByTable[name]=(readsByTable[name]||0)+1;readShapes.push({name,type:'full'});return cells}}},
  getRange(row,col,height,width){return {
@@ -48,15 +48,24 @@ const ctx={
 };
 vm.createContext(ctx);vm.runInContext(source,ctx,{filename:'Code.gs'});
 const token='x'.repeat(110);
-const request=(action,payload={})=>JSON.parse(ctx.doPost({postData:{contents:JSON.stringify({id_token:token,action,payload})}}));
-let out=request('bootstrap');assert.equal(out.ok,true);assert.equal(out.data.household_id,'h-a');
+const request=(action,payload={})=>{
+ const before=spreadsheetOpens;
+ const result=JSON.parse(ctx.doPost({postData:{contents:JSON.stringify({id_token:token,action,payload})}}));
+ assert.ok(spreadsheetOpens-before<=1,
+  'No authenticated read/denied request may open Spreadsheet more than once: '+action);
+ return result;
+};
+let out=request('bootstrap');
+assert.equal(spreadsheetOpens,1,'Authentication and five-table bootstrap share the same Spreadsheet handle');assert.equal(out.ok,true);assert.equal(out.data.household_id,'h-a');
 assert.deepEqual(Array.from(out.data.item_groups,x=>x.item_group_id),['i-a']);
 assert.deepEqual(Array.from(out.data.products,x=>x.product_id),['p-a']);
 assert.deepEqual(Array.from(out.data.stores,x=>x.chain_id),['s-a']);
 assert.equal(out.data.categories.length,5);
 assert.equal(out.data.sequence_no,1);
 const beforeSyncReads=readsByTable.change_log||0;
+const beforeFirstSyncOpen=spreadsheetOpens;
 out=request('sync',{after_sequence:0});assert.equal(out.ok,true);
+assert.equal(spreadsheetOpens-beforeFirstSyncOpen,1,'Authentication and change-log sync share one handle');
 assert.deepEqual(Array.from(out.data.changes,x=>x.entity_id),['i-a']);
 assert.equal(out.data.sequence_no,1);
 assert.equal(readsByTable.change_log-beforeSyncReads,1,'Sync should not reread change_log for sequence number');
@@ -129,8 +138,19 @@ assert.equal(out.data.sequence_no,8);
 shape=readShapes.slice(start).filter(x=>x.name==='change_log');
 assert.equal(shape.some(x=>x.type==='full'),false,'Large bootstrap should not read full change history');
 assert.ok(shape.some(x=>x.type==='range'&&x.width===3&&x.height>1));
+// Colliding Google subject/household identifiers must fail closed. Only the
+// originally selected household's rows would otherwise be returned.
+books.users.push(['u-duplicate','h-b','Other','subject-a']);
+assert.equal(request('bootstrap').error.code,'FORBIDDEN');
+books.users.pop();
+books.households.push(['h-a','Cloned household',1,'']);
+assert.equal(request('bootstrap').error.code,'FORBIDDEN');
+books.households.pop();
 claims.sub='outsider';assert.equal(request('bootstrap').error.code,'FORBIDDEN');
-claims.sub='subject-a';claims.aud='untrusted-client';assert.equal(request('bootstrap').error.code,'UNAUTHORIZED');
+claims.sub='subject-a';claims.aud='untrusted-client';
+const beforeBadTokenOpen=spreadsheetOpens;
+assert.equal(request('bootstrap').error.code,'UNAUTHORIZED');
+assert.equal(spreadsheetOpens,beforeBadTokenOpen,'Never access Sheets when Google token claims fail');
 claims.aud='client-test';claims.exp=Math.floor(Date.now()/1000)-60;assert.equal(request('bootstrap').error.code,'UNAUTHORIZED');
 claims.exp=Math.floor(Date.now()/1000)+3600;responseCode=403;assert.equal(request('bootstrap').error.code,'UNAUTHORIZED');
 assert.equal(JSON.parse(ctx.doPost({postData:{contents:JSON.stringify({action:'bootstrap'})}})).error.code,'UNAUTHORIZED');
