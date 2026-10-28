@@ -21,7 +21,7 @@ const ctx=vm.createContext({window,document:doc,localStorage:storageApi,navigato
  crypto:{randomUUID:()=>String(storage.size)+'-random'},setTimeout:()=>1,clearTimeout(){},Date,Intl,URL,console,
  FormData:class FormData{constructor(form){this.values=form?.values||{}}get(key){return this.values[key]??null}}});
 const ui=vm.runInContext(source+`
-({receiptView,scanReceiptPhoto,receiptScanReview,savePreviewReceiptScan,discardReceiptScan,
+({receiptView,scanReceiptPhoto,receiptScanReview,savePreviewReceiptScan,savePreviewRecord,discardReceiptScan,
   state:()=>({receiptScan,receiptScanBusy,previewRecords}),setReceiptTab(){tab='receipt';page='list'}})
 `,ctx);
 assert.match(html,/receipt-ocr\.js\?v=58/);
@@ -107,4 +107,16 @@ assert.equal(ui.state().receiptScan,null,'Image memory is cleared after save');
 const latest=JSON.parse(storage.get('household_pwa_records_preview_v1'));
 assert.equal(latest.record_items.length,4);
 assert.ok(!JSON.stringify(latest).includes('blob:'));
+// Manual receipt and shelf recording use the same fail-closed local persistence.
+const beforeManual=ui.state().previewRecords.records.length;
+const manual={type:'receipt',chainId:'c-life',date:'2026-10-29',
+ productId:'',rawName:'バナナ',quantity:'1',amount:'139',category:''};
+storageApi.setItem=()=>{throw Error('storage-blocked')};
+assert.equal(ui.savePreviewRecord(manual),false,'Manual save reports storage failure');
+assert.equal(ui.state().previewRecords.records.length,beforeManual,'Failed write does not create a phantom row');
+storageApi.setItem=savedSet;
+assert.equal(ui.savePreviewRecord(manual),true);
+assert.equal(ui.state().previewRecords.records.length,beforeManual+1);
+assert.match(ui.receiptView(),/バナナ/);
 console.log('Receipt delegated camera and reviewed multi-line form submit PASS');
+console.log('Manual receipt local storage failure rolls back without false success PASS');

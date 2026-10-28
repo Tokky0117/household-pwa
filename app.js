@@ -176,8 +176,10 @@ function savePreviewRecord(input){
  product_id:input.productId||null,quantity,amount_tax_included:amount,
  category_id:input.type==='receipt'?(input.category===''?null:Number(input.category)):null,
  price_eligible:Boolean(input.productId),created_at:now,updated_at:now,version:1,deleted_at:null};
- previewRecords.records.push(header);previewRecords.record_items.push(detail);
- localStorage.setItem(previewRecordsKey,JSON.stringify(previewRecords));return true;
+ const next={records:previewRecords.records.concat([header]),record_items:previewRecords.record_items.concat([detail])};
+ try{localStorage.setItem(previewRecordsKey,JSON.stringify(next));}
+ catch{return false;}
+ previewRecords=next;return true;
 }
 const recordJoin=(records,detail)=>detail.flatMap(line=>{
  const record=records.find(r=>r.record_id===line.record_id);
