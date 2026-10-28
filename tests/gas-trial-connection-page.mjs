@@ -31,7 +31,7 @@ assert.match(api,/const LIVE_WRITE_ENABLED=false/);
 assert.match(html,/この画面から書き込み処理は呼び出しません/);
 // Execute the actual inline browser script against a minimal in-memory DOM.
 // These are diagnostic GET and authenticated READ mocks; no real GAS/Sheets.
-const inline=html.match(/<script>([\\s\\S]*?)<\\/script>/)?.[1];
+const inline=html.split('<script>')[1]?.split('</script>')[0];
 assert.ok(inline,'Embedded trial diagnostics must have a script');
 assert.doesNotThrow(()=>new Function(inline));
 const elements=new Map();
