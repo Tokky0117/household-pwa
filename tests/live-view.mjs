@@ -87,4 +87,29 @@ assert.equal(testAPI.previewState().liveSnapshot,null);
 assert.doesNotMatch(testAPI.listView(),/PRIVATE-B/);
 assert.equal(testAPI.previewState().items[0].name,'ローカル牛乳');
 console.log('Remote snapshot auth isolation: logout, A→B→A, stale responses and token expiry PASS');
+// Product rendering should scale with rows, not multiply the item and
+// product counts. A getter exposes how often each product association is read.
+currentAuth={configured:true,signedIn:true,subject:'subject-B'};
+const large=snapshot('h-b','大量テスト');
+large.item_groups=Array.from({length:80},(_,i)=>({
+ item_group_id:'item-'+i,household_id:'h-b',category_id:i%5,
+ name:'日用品'+i,in_stock:true,sort_order:i+1
+}));
+let associationReads=0;
+large.products=Array.from({length:400},(_,i)=>({
+ product_id:'p-'+i,name:'商品'+i,
+ get item_group_id(){associationReads++;return 'item-'+(i%80)}
+}));
+large.products.push({deleted_at:'2026-01-01',name:'削除済み商品',
+ get item_group_id(){throw Error('Deleted product must not be indexed')}});
+context.window.KurashiGasApi.request=async action=>{assert.equal(action,'bootstrap');return large};
+await testAPI.refreshLive();
+const beforeAssociations=associationReads;
+const denseView=testAPI.liveListView();
+assert.equal(associationReads-beforeAssociations,400,
+ 'Each active product association is read once, not once per item');
+assert.match(denseView,/商品0、商品80、商品160、商品240、商品320/);
+assert.doesNotMatch(denseView,/削除済み商品/);
+assert.equal(testAPI.previewState().items[0].name,'ローカル牛乳');
+console.log('Large live-view list: linear product association lookup and deleted-product filtering PASS');
 console.log('Read-only live data display and local preview isolation PASS');
