@@ -26,9 +26,13 @@ const api={
 };
 function launch(){
  const app={innerHTML:'',addEventListener(){},insertAdjacentHTML(){}};
+ let signedIn=true,authListener=null;
  const window={
   scrollTo(){},scrollY:0,addEventListener(){},
-  KurashiAuth:{status:()=>({signedIn:true,configured:true,subject}),subscribe(){}},
+  KurashiAuth:{
+   status:()=>({signedIn,configured:true,subject}),
+   subscribe(fn){authListener=fn}
+  },
   KurashiGasApi:api
  };
  const document={
@@ -39,8 +43,10 @@ function launch(){
   navigator:{locks},location:{protocol:'file:'},crypto:{randomUUID:()=> 'test-op-123'},
   setTimeout:()=>1,clearTimeout(){},Date,Intl,URL,Event:class Event{},console});
  vm.runInContext(journalSrc,context);
- return {app:vm.runInContext(appSrc+"\n({refreshLive,liveMutate,retryLive,livePending,liveListView})",context),
-  journal:window.KurashiLiveJournal};
+ return {app:vm.runInContext(appSrc+"\n({refreshLive,liveMutate,retryLive,livePending,liveListView,previewState:()=>({liveSnapshot,liveMode})})",context),
+  journal:window.KurashiLiveJournal,
+  signOut(){signedIn=false;authListener?.(window.KurashiAuth.status())}};
+
 }
 const first=launch();
 await first.app.refreshLive();
@@ -113,4 +119,29 @@ assert.equal(mutationCalls.length,firstCallCount+1);
 assert.equal(unsupported.journal.read(),null);
 assert.match(unsupported.app.liveListView(),/このブラウザでは同時保存の安全確認ができません/);
 locks.request=lockRequest;
+// Logging out during a mutation must immediately clear remote household
+// data. If a late server success arrives, its operation receipt is completed
+// but no old household data may be revived in the signed-out view.
+let finishMutation;
+let replayCalls=0;
+api.request=async (action,payload,opts)=>{
+ if(action==='bootstrap'){replayCalls++;return sheet}
+ mutationCalls.push({action,payload,operationId:opts.operationId});
+ return new Promise(resolve=>{finishMutation=resolve});
+};
+const leaving=launch();
+await leaving.app.refreshLive();
+const beforeSignOut=mutationCalls.length;
+const saveInFlight=leaving.app.liveMutate('item.create',{name:'非公開の日用品',category_id:0});
+await Promise.resolve();await Promise.resolve();
+assert.equal(mutationCalls.length,beforeSignOut+1,'Test must have a real pending mocked mutation');
+leaving.signOut();
+assert.equal(leaving.app.previewState().liveMode,false,'Logout clears live view immediately');
+assert.equal(leaving.app.previewState().liveSnapshot,null,'Logout clears all household rows');
+finishMutation({entity:{item_group_id:'late-item',name:'非公開の日用品'},sequence_no:3});
+await saveInFlight;
+assert.equal(leaving.journal.read(),null,'A confirmed operation clears its own durable journal');
+assert.equal(leaving.app.previewState().liveSnapshot,null,'Late confirmed write cannot restore old household');
+assert.equal(replayCalls,1,'Do not make a post-logout bootstrap');
+console.log('Late save acknowledgement after signout: journal cleared, no private snapshot restored PASS');
 console.log('Durable explicit-retry journal: cross-account protection, reload, no auto-send, tab lock PASS');
