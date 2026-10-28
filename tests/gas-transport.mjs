@@ -36,6 +36,45 @@ assert.equal(data.categories[0].name,'飲食');
 assert.equal(calls,1);
 await assert.rejects(api.request('bootstrap',{}, {token:'test-id-token',fetcher:async()=>({ok:true,text:async()=>'{invalid json'} )}),/GAS_RESPONSE_INVALID/);
 await assert.rejects(api.request('bootstrap',{}, {fetcher:async()=>({ok:true,text:async()=>JSON.stringify({ok:false,error:{code:'FORBIDDEN'}})})}),/FORBIDDEN/);
+// Browser errors, failed HTTP responses, and malformed/oversized responses
+// must never trigger hidden automatic retries. A write may have committed
+// before a network timeout, so the caller must retain the SAME operation ID.
+let attempts=0;
+await assert.rejects(api.request('bootstrap',{}, {fetcher:async()=>{
+ attempts++;throw new TypeError('Network request failed');
+}}),/Network request failed/);
+assert.equal(attempts,1,'CORS/network errors must not cause automatic retries');
+await assert.rejects(api.request('sync',{after_sequence:2}, {fetcher:async()=>{
+ attempts++;return {ok:false,status:503};
+}}),/GAS_HTTP_503/);
+assert.equal(attempts,2,'HTTP failures must not cause automatic retries');
+await assert.rejects(api.request('bootstrap',{}, {fetcher:async()=>{
+ attempts++;return {ok:true,text:async()=>'<html>Google sign in</html>'};
+}}),/GAS_RESPONSE_INVALID/);
+assert.equal(attempts,3,'An HTML login/error page is not successful JSON');
+await assert.rejects(api.request('bootstrap',{}, {fetcher:async()=>{
+ attempts++;return {ok:true,text:async()=> 'x'.repeat(1024*1024+1)};
+}}),/GAS_RESPONSE_TOO_LARGE/);
+assert.equal(attempts,4,'Oversized responses cannot be treated as data');
+await assert.rejects(api.request('bootstrap',{}, {fetcher:async()=>{
+ attempts++;return {ok:true,text:async()=>JSON.stringify({ok:false,error:{code:'RECOVERY_REQUIRED'}})};
+}}),/RECOVERY_REQUIRED/);
+assert.equal(attempts,5,'Server-side recovery errors are surfaced without an automatic retry');
+// Replace the timeout clock with a deterministic fake to test the actual
+// AbortSignal path without waiting 15 seconds.
+const originalSetTimeout=ctx.setTimeout,originalClearTimeout=ctx.clearTimeout;
+let timerDelay=null,cleared=false;
+ctx.setTimeout=(callback,ms)=>{timerDelay=ms;callback();return 99};
+ctx.clearTimeout=id=>{assert.equal(id,99);cleared=true};
+await assert.rejects(api.request('bootstrap',{}, {fetcher:async(_url,opts)=>{
+ attempts++;
+ assert.equal(opts.signal.aborted,true);
+ throw new Error('ABORTED_BY_CLIENT_TIMEOUT');
+}}),/ABORTED_BY_CLIENT_TIMEOUT/);
+assert.equal(attempts,6,'Aborted requests are never auto-retried');
+assert.equal(timerDelay,15000,'Existing 15-second timeout is kept');
+assert.equal(cleared,true,'Timer is always cleaned up');
+ctx.setTimeout=originalSetTimeout;ctx.clearTimeout=originalClearTimeout;
 api.configure('');
 assert.equal(api.status().configured,false);
 console.log('GAS transport adapter offline checks PASS');
