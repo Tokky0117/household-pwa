@@ -56,8 +56,8 @@ assert.ok(saved.has('household-ui-v55'),'Main cache must survive preview activat
 assert.ok(saved.has('household-preview-other-v56'),'Other preview cache must survive');
 assert.ok(saved.has('unrelated-site-cache'),'Other application cache must survive');
 assert.ok(calls.claimed);
-const script={method:'GET',url:new URL('app.js?v=57',entry).href};
-assert.equal((await emit('fetch',script))?.key,'./app.js?v=57');
+const script={method:'GET',url:new URL('app.js?v=58',entry).href};
+assert.equal((await emit('fetch',script))?.key,'./app.js?v=58');
 assert.equal((await emit('fetch',{method:'GET',url:entry,mode:'navigate'}))?.key,'./');
 const otherVersion=await emit('fetch',{method:'GET',url:new URL('app.js?v=59',entry).href});
 assert.equal(otherVersion?.type,'error','Do not mix older JS into newer app shell');
