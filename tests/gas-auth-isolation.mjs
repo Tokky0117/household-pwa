@@ -23,13 +23,21 @@ let claims={aud:'client-test',iss:'https://accounts.google.com',sub:'subject-a',
 let responseCode=200;let urlCalls=0;let writeCalls=0;
 const readsByTable=Object.create(null);
 const readShapes=[];
+let shiftDuringSparseRead=false;
 const ctx={
  PropertiesService:{getScriptProperties(){return {getProperty(k){return ({SPREADSHEET_ID:'sheet-test',GOOGLE_CLIENT_ID:'client-test'})[k]||null}}}},
  SpreadsheetApp:{openById(id){assert.equal(id,'sheet-test');return {getSheetByName(name){const cells=books[name];if(!cells)return null;return {
  getLastRow(){return cells.length},
  getDataRange(){return {getValues(){readsByTable[name]=(readsByTable[name]||0)+1;readShapes.push({name,type:'full'});return cells}}},
  getRange(row,col,height,width){return {
-  getValues(){readShapes.push({name,type:'range',row,col,height,width});return Array.from({length:height},(_,i)=>cells[row+i-1].slice(col-1,col-1+width))},
+  getValues(){
+   readShapes.push({name,type:'range',row,col,height,width});
+   if(name==='change_log'&&shiftDuringSparseRead&&row>1&&height===1&&width===7){
+    shiftDuringSparseRead=false;
+    books.change_log.splice(1,0,['foreign-shift',77,'h-b','item_groups','i-b','item.update','']);
+   }
+   return Array.from({length:height},(_,i)=>cells[row+i-1].slice(col-1,col-1+width));
+  },
   setValues(){writeCalls++;throw Error('writes prohibited')}
  }},
  appendRow(){writeCalls++;throw Error('writes prohibited')}
@@ -86,6 +94,16 @@ assert.equal(out.data.sequence_no,2);
 shape=readShapes.slice(start).filter(x=>x.name==='change_log');
 assert.equal(shape.some(x=>x.type==='full'),false,'No-change sync should read only three columns');
 assert.equal(shape.filter(x=>x.type==='range'&&x.width===3).length,1);
+// If an external Sheets edit moves the target between the prefix scan
+// and the full-row read, return an error instead of another household's row.
+shiftDuringSparseRead=true;
+out=request('sync',{after_sequence:1});
+assert.equal(out.ok,false);
+assert.equal(out.error.code,'RECOVERY_CONFLICT');
+assert.equal(shiftDuringSparseRead,false);
+out=request('sync',{after_sequence:1});
+assert.equal(out.ok,true,'Same cursor succeeds once the moved row is located afresh');
+assert.deepEqual(Array.from(out.data.changes,x=>x.change_id),['c-a-2']);
 for(let i=3;i<=8;i++)books.change_log.push(['c-a-'+i,i,'h-a','item_groups','i-a','item.update','']);
 start=readShapes.length;
 out=request('sync',{after_sequence:1});
@@ -103,6 +121,14 @@ assert.equal(out.data.sequence_no,8);
 shape=readShapes.slice(start).filter(x=>x.name==='change_log');
 assert.equal(shape.filter(x=>x.type==='full').length,1,
  'Initial synchronization should read the log once');
+// Bootstrap only needs the latest sequence, not every timestamp/entry.
+start=readShapes.length;
+out=request('bootstrap');
+assert.equal(out.ok,true);
+assert.equal(out.data.sequence_no,8);
+shape=readShapes.slice(start).filter(x=>x.name==='change_log');
+assert.equal(shape.some(x=>x.type==='full'),false,'Large bootstrap should not read full change history');
+assert.ok(shape.some(x=>x.type==='range'&&x.width===3&&x.height>1));
 claims.sub='outsider';assert.equal(request('bootstrap').error.code,'FORBIDDEN');
 claims.sub='subject-a';claims.aud='untrusted-client';assert.equal(request('bootstrap').error.code,'UNAUTHORIZED');
 claims.aud='client-test';claims.exp=Math.floor(Date.now()/1000)-60;assert.equal(request('bootstrap').error.code,'UNAUTHORIZED');
