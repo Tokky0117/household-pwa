@@ -201,8 +201,10 @@ assert.equal(journalReads.some(x=>x.type==='full'),false,'Large journal reads mu
 assert.ok(journalReads.some(x=>x.type==='range'&&x.width===4&&x.height>1),'Journal reads first four columns');
 const logReads=readShapes.slice(readStart).filter(x=>x.name==='change_log');
 assert.equal(logReads.some(x=>x.type==='full'),false,'Large change logs must not fetch the unused timestamp');
-assert.ok(logReads.some(x=>x.type==='range'&&x.width===3&&x.height>1),'Sequence only needs first three columns');
-assert.ok(logReads.some(x=>x.type==='range'&&x.width===6&&x.height>1),'Replay verification needs first six columns');
+assert.equal(logReads.filter(x=>x.type==='range'&&x.width===3&&x.height>1).length,2,
+ 'Both sequence calculation and replay lookup need only first three columns');
+assert.equal(logReads.some(x=>x.type==='range'&&x.width===6&&x.height>1),false,
+ 'Fresh stock update must not fetch all entities/actions from change log');
 
 const indexedReplay=execute(u1,'item.update',
  {item_group_id:candidate.item_group_id,version:candidate.version,in_stock:true},
