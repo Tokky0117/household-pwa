@@ -18,7 +18,7 @@
 |---|---|
 | リクエスト | HTTPS `POST /macros/s/{deploymentId}/exec`、本文はUTF-8 JSON文字列、Content-Type `text/plain;charset=utf-8` |
 | リクエスト本文 | `{id_token, action, payload}`。日用品の書き込み時は `operation_id` を追加 |
-| 認証・認可 | GASがGoogle ID tokenを検証し、`users.auth_subject` のGoogle `sub` と所属 `households` を照合。家庭を越えて返さない |
+| 認証・認可 | GASがGoogle ID tokenを検証し、`users.auth_subject` のGoogle `sub` と所属 `households` を照合。該当ユーザー・家庭が各1行でない場合は拒否。家庭を越えて返さない |
 | 応答 | 成功 `{ok:true,data:{...}}` ／失敗 `{ok:false,error:{code,message}}`。HTTP 200でも `ok:false` をエラー扱い |
 | `bootstrap` | `household_id`、`categories`、`item_groups`、`products`、`stores`、`sequence_no`。家庭で絞る |
 | `sync` | `payload.after_sequence` を受け取り、`{sequence_no,changes:[...]}` を返す。対象家庭の変更のみ、番号順 |
@@ -34,8 +34,15 @@
 2. 日用品の更新は**同じ `operation_id` と同じ `action/payload`** のみ再送可能。端末側の未完了操作はGoogle `sub` と家庭に紐づけたジャーナルに保持し、勝手に自動再送しない。異なる家庭・アカウント、記録破損、端末内保存不可なら拒否する。
 3. GASのロック・`version` 競合検査・`processed_operations` の要求ハッシュで二重保存を防止する。`prepared` ジャーナルを**商品更新より先に保存**し、日用品→`change_log`→ジャーナル確定の順で処理。同じ家庭に未完了があれば別の操作を拒否し、元のIDで復旧する。
 4. 日用品ID・操作IDの重複、変更途中の物理行移動、version・シーケンス番号不整合時は `RECOVERY_CONFLICT` 等で**安全停止**。勝手に別行を更新しない。
-5. **通常の在庫保存中に** `SpreadsheetApp.openById` はロック下で1回開き、その**同じSpreadsheetオブジェクト**を使う。一方、各安全確認の行・範囲は必要な時点で**再読み取り**し、リクエストをまたぐ恒久キャッシュは使わない。小規模シートは全列一括、大規模では必要行・列を優先し、断片化時は一括へ戻す。
+5. **認証付きの読み取り `bootstrap` / `sync` では、Googleトークン検証の後に`SpreadsheetApp.openById` を1回だけ実行**し、認証用 `users` / `households` と読み取りデータの各シートで参照を共有する。従来は `bootstrap` で計7回、`sync` で計3回（認証を含む）だったが、モックでは双方とも1回になった。1件ごとのセル取得回数は減らしておらず、シート内容は都度取得する。
+6. **通常の在庫保存中に** `SpreadsheetApp.openById` はロック下で再度1回開き、その**同じSpreadsheetオブジェクト**を使う。認証時の参照はロック下で再利用しない。各安全確認の行・範囲は必要な時点で**再読み取り**し、リクエストをまたぐ恒久キャッシュは使わない。小規模シートは全列一括、大規模では必要行・列を優先し、断片化時は一括へ戻す。
 6. 上記の保存方式・試験は主に**オフラインモック＋隔離試験**での確認。一般ユーザー向けの書き込み許可、端末間リアルタイム同期、レシート／値札保存、商品更新APIはまだ完成していない。
+
+### PWA側の通信失敗・タイムアウトの扱い
+
+- `gas-api.js` の読み取り通信は15秒のAbortControllerによるタイムアウトを維持。CORS／ネットワーク拒否、HTTP 503、JSONではないログインHTML、過大レスポンス、GASのエラー（例：`RECOVERY_REQUIRED`）、AbortSignalによる中断のすべてで、**アダプタが勝手にリトライしない**ことをオフライン試験で確認した。
+- ネットワーク遮断はCORSに限らず起こるため、エラー名だけで根本原因は確定できない。特に保存リクエストは失敗応答や通信切断が起きてもGAS側で確定済みの可能性がある。端末ジャーナルを維持し、ユーザーが同じ操作IDで明示的に結果確認・再送する方針を変えない。
+- **変更は通信契約を維持した内部最適化と回帰試験の追加のみ**。リトライ機能や新しい中継サーバーは導入しない。HTTP送信自体のiPhone実機での恒常的な成功は別途確認する。
 
 ### GASオリジンの試験画面（通常PWAと**別**の通信契約）
 
