@@ -349,6 +349,39 @@ function scopedPrefix_(name,householdId,width){
   .filter(x=>String(x.obj.household_id)===householdId&&
    (!Object.prototype.hasOwnProperty.call(x.obj,'deleted_at')||!x.obj.deleted_at));
 }
+/**
+ * On a large shared operation journal, read the household and operation IDs
+ * first. If this household has very few entries, fetch only those complete
+ * entries; never download other households' potentially large stored results.
+ * With many entries, one conventional bulk read costs fewer service calls.
+ *
+ * This is deliberately NOT a permanent index: every mutation still checks
+ * every pending operation for the authenticated household on this request.
+ */
+function operationRowsForHousehold_(householdId){
+ const name='processed_operations',headers=TABLES[name];
+ const sh=tab(name),last=sh.getLastRow();
+ if(last<=64)return scopedPrefix_(name,householdId,4);
+ const heading=sh.getRange(1,1,1,headers.length).getValues()[0];
+ if(headers.some((h,i)=>String(heading[i])!==h))
+  fail('SCHEMA_MISMATCH',name+' の列を確認してください');
+ const ids=sh.getRange(2,1,last-1,2).getValues();
+ const selected=[];
+ for(let i=0;i<ids.length;i++){
+  if(String(ids[i][0])===householdId)
+   selected.push({row:i+2,operationId:ids[i][1]});
+ }
+ if(selected.length>2)return scopedPrefix_(name,householdId,4);
+ return selected.map(ref=>{
+  // Fetch household and operation ID again along with request hash and
+  // stored intent. Fail closed if an external row move invalidated the scan.
+  const cells=sh.getRange(ref.row,1,1,4).getValues()[0];
+  if(String(cells[0])!==householdId||String(cells[1])!==String(ref.operationId))
+   fail('RECOVERY_CONFLICT','操作履歴が読み取り中に移動しました');
+  return {row:ref.row,obj:Object.fromEntries(headers.slice(0,4).map(
+   (field,i)=>[field,cells[i]===''?null:cells[i]]))};
+ });
+}
 function scoped(name,householdId){
  return rows(name).filter(r=>String(r.obj.household_id)===householdId&&(!Object.prototype.hasOwnProperty.call(r.obj,'deleted_at')||!r.obj.deleted_at));
 }
@@ -481,7 +514,7 @@ function mutateItemSafely_(user,action,payload,operationId,localEditorTrial){
   const hid=user.householdId;
   const digest=Utilities.base64EncodeWebSafe(Utilities.computeDigest(
    Utilities.DigestAlgorithm.SHA_256,JSON.stringify({action:action,payload:payload})));
-  const operations=scopedPrefix_('processed_operations',hid,4);
+  const operations=operationRowsForHousehold_(hid);
   const previous=operations.find(x=>String(x.obj.operation_id)===operationId);
   if(previous&&String(previous.obj.request_hash)!==digest)fail('OPERATION_REUSED','操作IDが再利用されています');
   const pending=operations.find(x=>{
