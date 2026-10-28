@@ -1108,7 +1108,7 @@ function trialPage_(){
      if(Number.isFinite(parts[pair[0]])&&parts[pair[0]]>=0)
       lines.push(pair[1]+' '+seconds(parts[pair[0]]));
     });
-    if(lines.length)label+='\n保存処理の内訳（実行された工程のみ）\n'+lines.join('\n');
+    if(lines.length)label+='\\n保存処理の内訳（実行された工程のみ）\\n'+lines.join('\\n');
    }
   }
   timingText.textContent=label;
