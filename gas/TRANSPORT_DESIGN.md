@@ -1,5 +1,64 @@
-# GitHub Pages PWA ↔ GAS 通信方式（接続前設計）
-更新: 2026-10-24 / 対象: テスト環境のみ
+# くらしストック：GAS通信仕様（開発・試験用）と設計履歴
+
+更新：2026-10-28 ／ 対象ブランチ：`stage-a-ui-handoff-review`
+
+> **現行仕様はこの冒頭を優先**。後半の「接続前設計」「v50〜v56」等は当時の検討履歴で、実際に接続成功した範囲・書き込み方式・未実装状況が現在とは異なる。実装は `gas/Code.gs`、`gas-api.js`、`live-operation-journal.js`、安全境界と測定結果は `TRANSPORT_DECISION.md` を確認する。
+
+## 2026-10-28 時点の通信契約（現行）
+
+### 採用構成と優先順位
+
+- **構成を維持**：PWA（GitHub Pagesの既存画面）＋Google Apps Script（GAS）＋Google Sheets（12シート）。自宅サーバー／独自MCP／別の有料APIサーバー／別DBへの移行は行わない。優先順位は**追加費用なし、画面の即時反応、家庭データの安全性**。無料枠は無制限ではない。
+- **現在実機で確認済み**：試験専用GASのHTML Service画面（`/exec?trial_read=1`）から `google.script.run` で試験Sheetsの読み取りと5シート計測が成功。以前、試験GASの隔離データへの在庫変更も別途成功。これらは **GASオリジンの試験UI** の結果。
+- **別経路は未解決**：GitHub Pagesの通常PWA `fetch` → 試験GAS `/exec` は過去にCORS／ネットワーク制限エラーを観測。別のデプロイで読取成功した報告もあるが、同一設定・同一条件の恒常的な通信成功とは扱わない。**本番のGitHub Pages版PWAが常時安全にGASと同期できると主張しない**。試験用HTML ServiceをそのままPWA一般公開方式として採用したわけでもない。
+
+### 通常PWA ↔ GAS のコード上のHTTP契約（本番接続未承認）
+
+| 項目 | 現在のコード上の仕様 |
+|---|---|
+| リクエスト | HTTPS `POST /macros/s/{deploymentId}/exec`、本文はUTF-8 JSON文字列、Content-Type `text/plain;charset=utf-8` |
+| リクエスト本文 | `{id_token, action, payload}`。日用品の書き込み時は `operation_id` を追加 |
+| 認証・認可 | GASがGoogle ID tokenを検証し、`users.auth_subject` のGoogle `sub` と所属 `households` を照合。家庭を越えて返さない |
+| 応答 | 成功 `{ok:true,data:{...}}` ／失敗 `{ok:false,error:{code,message}}`。HTTP 200でも `ok:false` をエラー扱い |
+| `bootstrap` | `household_id`、`categories`、`item_groups`、`products`、`stores`、`sequence_no`。家庭で絞る |
+| `sync` | `payload.after_sequence` を受け取り、`{sequence_no,changes:[...]}` を返す。対象家庭の変更のみ、番号順 |
+| `item.create` / `item.update` | GASには復旧可能なジャーナル方式を実装済み。ただしクライアントの `LIVE_WRITE_ENABLED=false`、通常GASの `ENABLE_EXPERIMENTAL_WRITES` は未設定／falseを維持。**通常PWAからは送らない** |
+| `product.create` / `product.update` / `product.move` | GASの入口に名前は残るが、実行経路は `WRITES_DISABLED` で拒否。通信・保存を完成扱いしない |
+| 端末側の保護 | Google ID tokenはメモリ中のみ、URL・端末の未完了操作記録に含めない。15秒タイムアウト、1MiB相当の文字列長上限をアダプタに設定。`no-cors`、JSONP、トークン付きブラウザURLを採用しない |
+
+`text/plain` はプリフライト回避の可能性があるだけで、CORS応答の読み取り保証ではない。クライアント実装は `mode:'cors'`、`credentials:'omit'`、リダイレクト追従。GAS ContentServiceはレスポンスを別URLへリダイレクトする場合がある。
+
+### 保存・失敗・同期の契約（コードと試験で確認する内容）
+
+1. **先にUIを反映**し、非同期保存の結果が確定するまで「保存済み」とは表示しない。端末の通信異常・タイムアウトをもって未保存と断定しない。
+2. 日用品の更新は**同じ `operation_id` と同じ `action/payload`** のみ再送可能。端末側の未完了操作はGoogle `sub` と家庭に紐づけたジャーナルに保持し、勝手に自動再送しない。異なる家庭・アカウント、記録破損、端末内保存不可なら拒否する。
+3. GASのロック・`version` 競合検査・`processed_operations` の要求ハッシュで二重保存を防止する。`prepared` ジャーナルを**商品更新より先に保存**し、日用品→`change_log`→ジャーナル確定の順で処理。同じ家庭に未完了があれば別の操作を拒否し、元のIDで復旧する。
+4. 日用品ID・操作IDの重複、変更途中の物理行移動、version・シーケンス番号不整合時は `RECOVERY_CONFLICT` 等で**安全停止**。勝手に別行を更新しない。
+5. **通常の在庫保存中に** `SpreadsheetApp.openById` はロック下で1回開き、その**同じSpreadsheetオブジェクト**を使う。一方、各安全確認の行・範囲は必要な時点で**再読み取り**し、リクエストをまたぐ恒久キャッシュは使わない。小規模シートは全列一括、大規模では必要行・列を優先し、断片化時は一括へ戻す。
+6. 上記の保存方式・試験は主に**オフラインモック＋隔離試験**での確認。一般ユーザー向けの書き込み許可、端末間リアルタイム同期、レシート／値札保存、商品更新APIはまだ完成していない。
+
+### GASオリジンの試験画面（通常PWAと**別**の通信契約）
+
+| 経路 | 内容 | 安全条件 |
+|---|---|---|
+| `GET /exec?trial_read=1` | 所有者向けHTML Service診断。内部で `google.script.run` を使用して読み取り。全12シート、在庫想定3／5シート、5シート必要列（2／3列）計測 | `SPREADSHEET_ID===WRITE_TRIAL_SPREADSHEET_ID`、`ENABLE_EXPERIMENTAL_WRITES` 無効。診断では書き込みしない。3／5シート測定は全12シート隔離監査の代替ではない |
+| `GET /exec?trial_stock=1` | 試験用・牛乳1件の保存UI。シートの読み取り・在庫変更、同一操作IDで明示再送、時間内訳の表示 | 所有者のみの試験GAS、`STOCK_UI_TRIAL_ENABLED=true` の明示許可、全12シートの隔離確認とロック下の再確認。普段はフラグfalse |
+| `trialStockTimingReadOnly(mode)` | `null`／`stock3`／`stock5`／`stock5-narrow` の時間・シート数のみ返す | 読み取り専用。家庭ID・日用品名・トークンやシート内容を返さない |
+| `trialStockUpdate(request)` | `{id,version,in_stock,operation_id}` を受け取り、成功時に確定versionと `timing`（必要なら `mutation_details` の工程別ミリ秒数）を返す | 更新前に試験用家庭・対象1件を検査。時間計測だけのために書込フラグを変更しない |
+
+**試験専用の例外**：`trialStockUpdate` は12シート安全確認用に1回、ロック内の再確認・保存用に1回、Spreadsheetを開く。これは通常APIの1回と矛盾しない。HTML Serviceの `google.script.run` 公開関数を本番に公開する場合は別途認証・認可レビューが必要で、現行の「自分のみ」試験環境から公開範囲を広げない。
+
+### 仕様変更とみなす条件・残作業
+
+- 通常PWAとGASの接続方式（オリジン／認証／CORS対応）の**本番採用**、本番への書き込み解禁、一般家庭向けのGAS HTML Service提供、APIアクション追加・応答形式変更、エラー分類・リトライ契約変更は、**通信仕様の改訂＋実機確認＋明示承認**が必要。
+- 同じGAS内の不要なシート取得・列幅・オープン回数を減らす変更で、`POST` 本文・応答・家庭境界・再送規則が同じなら**内部最適化**であり、ブラウザとの通信仕様は変更しない。
+- 実Google Sheets上での段階別保存時間／再送／二端末競合／大規模データの比較は未完。オフライン21件のCI成功を、実GAS接続・本番安全性の実証と混同しない。
+- **この文書の更新のみではGASは再デプロイされない**。作業ブランチのコードは、ユーザーが既存の試験用GASへ反映するまで実機には反映されない。
+
+---
+
+## 以下は履歴：当時の接続前設計・試験記録（2026-10-24〜26）
+
 
 ## 制約の確認
 - Google Apps Script ContentService は返答を `script.googleusercontent.com` の一時URLへリダイレクトする。公式資料: https://developers.google.com/apps-script/guides/content
