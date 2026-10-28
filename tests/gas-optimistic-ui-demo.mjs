@@ -23,7 +23,7 @@ const el=(id)=>{
 };
 const elements=Object.fromEntries(['check','status','details','search','items','empty',
  'demo-toggle','demo-name','demo-status','demo-outcome','inspect','capabilities','profile','profile-result',
- 'profile-3','profile-3-result','profile-5','profile-5-result'].map(id=>[id,el(id)]));
+ 'profile-3','profile-3-result','profile-5','profile-5-result','profile-5-narrow','profile-5-narrow-result'].map(id=>[id,el(id)]));
 // The browser honors the initial disabled attribute; the DOM mock must too.
 assert.match(html,/<button id="demo-toggle"[^>]*disabled>/);
 elements['demo-toggle'].disabled=true;
@@ -37,7 +37,7 @@ const runner={
  trialReadOnlyItemList(){rpcReads++;this.success(response)},
  trialStockTimingReadOnly(mode){
   profileReads++;
-  const count=mode==='stock3'?3:mode==='stock5'?5:12;
+  const count=mode==='stock3'?3:mode==='stock5'||mode==='stock5-narrow'?5:12;
   this.success({sheet_reads:count,server_ms:100,open_ms:10,sheet_ms:70});
  }
 };
@@ -63,6 +63,10 @@ fire('profile-5');
 assert.equal(profileReads,3);
 assert.match(elements['profile-5-result'].textContent,/5シート検査/);
 assert.equal(elements['profile-3'].disabled,false);
+fire('profile-5-narrow');
+assert.equal(profileReads,4);
+assert.match(elements['profile-5-narrow-result'].textContent,/5シート検査/);
+assert.equal(elements['profile-5-narrow'].disabled,false);
 assert.equal(rpcWrites,0);
 fire('check');
 assert.equal(rpcReads,1);
