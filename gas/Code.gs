@@ -382,6 +382,21 @@ function operationRowsForHousehold_(householdId){
    (field,i)=>[field,cells[i]===''?null:cells[i]]))};
  });
 }
+/**
+ * On large change logs we first check only change ID, sequence and household.
+ * The rare matching operation replay alone needs entity/action details. Before
+ * accepting those details, verify the physical row has not moved or changed.
+ */
+function changeReplayDetails_(entry){
+ if(Object.prototype.hasOwnProperty.call(entry.obj,'entity_id'))return entry.obj;
+ const cells=tab('change_log').getRange(entry.row,1,1,6).getValues()[0];
+ if(String(cells[0])!==String(entry.obj.change_id)||
+    String(cells[1])!==String(entry.obj.sequence_no)||
+    String(cells[2])!==String(entry.obj.household_id))
+  fail('RECOVERY_CONFLICT','変更履歴が読み取り中に移動しました');
+ return Object.fromEntries(TABLES.change_log.slice(0,6).map(
+  (field,i)=>[field,cells[i]===''?null:cells[i]]));
+}
 function scoped(name,householdId){
  return rows(name).filter(r=>String(r.obj.household_id)===householdId&&(!Object.prototype.hasOwnProperty.call(r.obj,'deleted_at')||!r.obj.deleted_at));
 }
@@ -597,12 +612,15 @@ function mutateItemSafely_(user,action,payload,operationId,localEditorTrial){
    if(action!=='item.create')fail('RECOVERY_CONFLICT','更新対象が消えています');
    append_('item_groups',entity);
   }
-  const householdLogs=scopedPrefix_('change_log',hid,6);
+  // Read only (change ID, sequence, household) for all history entries.
+  // Entity ID and action are needed only if recovering an already logged op.
+  const householdLogs=scopedPrefix_('change_log',hid,3);
   const existingLog=householdLogs.find(x=>String(x.obj.change_id)===operationId);
   if(existingLog){
-   if(Number(existingLog.obj.sequence_no)!==plan.sequence_no||
-      String(existingLog.obj.entity_id)!==itemId||
-      String(existingLog.obj.action)!==action)fail('RECOVERY_CONFLICT','操作履歴が一致しません');
+   const detail=changeReplayDetails_(existingLog);
+   if(Number(detail.sequence_no)!==plan.sequence_no||
+      String(detail.entity_id)!==itemId||
+      String(detail.action)!==action)fail('RECOVERY_CONFLICT','操作履歴が一致しません');
   }else{
    if(householdLogs.some(x=>Number(x.obj.sequence_no)>=plan.sequence_no))
     fail('RECOVERY_CONFLICT','同期番号が競合しています');
