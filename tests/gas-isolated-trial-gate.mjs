@@ -223,6 +223,11 @@ assert.match(stockPage,/操作履歴の検索/);
 assert.match(stockPage,/変更履歴の検索/);
 assert.match(stockPage,/操作履歴の確定/);
 assert.match(stockPage,/style="white-space:pre-line"/);
+const stockPageScript=stockPage.match(/<script>([\\s\\S]*?)<\\/script>/)?.[1];
+assert.ok(stockPageScript,'Trial stock page must embed a script');
+assert.doesNotThrow(()=>new Function(stockPageScript),
+ 'Rendered GAS HTML must contain valid JavaScript string escapes');
+
 assert.match(stockPage,/trialStockUpdate\(entry\)/);
 assert.match(stockPage,/localStorage\.setItem/);
 assert.match(stockPage,/保存結果が未確定/);
