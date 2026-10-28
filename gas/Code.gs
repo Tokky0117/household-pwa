@@ -258,11 +258,14 @@ function doPost(e){
   try{input=JSON.parse(String(e&&e.postData&&e.postData.contents||''))}
   catch(_){fail('BAD_REQUEST','JSON形式を確認してください')}
   if(!input||typeof input!=='object'||Array.isArray(input))fail('BAD_REQUEST','入力が不正です');
-  const user=authenticate(input.id_token);
+  // The authenticated request may reuse this Spreadsheet handle for reads.
+  // Mutations still reopen and revalidate INSIDE their own script lock.
+  const readContext={};
+  const user=authenticate(input.id_token,readContext);
   const action=String(input.action||'');
   const payload=input.payload||{};
-  if(action==='bootstrap')return jsonReply({ok:true,data:bootstrap(user)});
-  if(action==='sync')return jsonReply({ok:true,data:changes(user,payload)});
+  if(action==='bootstrap')return jsonReply({ok:true,data:bootstrap(user,readContext.book)});
+  if(action==='sync')return jsonReply({ok:true,data:changes(user,payload,readContext.book)});
   if(!['item.create','item.update','product.create','product.update','product.move'].includes(action))fail('UNSUPPORTED','未対応の操作です');
   return jsonReply({ok:true,data:mutate_(user,action,payload,input.operation_id)});
  }catch(err){
@@ -426,7 +429,7 @@ function changeReplayDetails_(entry,book){
 function scoped(name,householdId,book){
  return rows(name,book).filter(r=>String(r.obj.household_id)===householdId&&(!Object.prototype.hasOwnProperty.call(r.obj,'deleted_at')||!r.obj.deleted_at));
 }
-function authenticate(idToken){
+function authenticate(idToken,readContext){
  if(typeof idToken!=='string'||idToken.length<100||idToken.length>6000)fail('UNAUTHORIZED','認証が必要です');
  const aud=PropertiesService.getScriptProperties().getProperty('GOOGLE_CLIENT_ID');
  if(!aud)fail('CONFIG_REQUIRED','認証設定がありません');
@@ -434,33 +437,42 @@ function authenticate(idToken){
  if(res.getResponseCode()!==200)fail('UNAUTHORIZED','認証情報を確認できません');
  const claims=JSON.parse(res.getContentText());
  if(claims.aud!==aud||!['accounts.google.com','https://accounts.google.com'].includes(claims.iss)||!claims.sub||Number(claims.exp)*1000<=Date.now())fail('UNAUTHORIZED','認証情報が無効です');
- const member=rows('users').find(x=>String(x.obj.auth_subject)===String(claims.sub));
- if(!member||!member.obj.household_id)fail('FORBIDDEN','この家庭にはアクセスできません');
- const household=rows('households').find(x=>String(x.obj.household_id)===String(member.obj.household_id));
- if(!household)fail('FORBIDDEN','家庭が存在しません');
+ // Open only after Google has accepted the token; do not memoize across RPCs.
+ const book=spreadsheet();
+ const members=rows('users',book).filter(x=>String(x.obj.auth_subject)===String(claims.sub));
+ if(members.length!==1||!members[0].obj.household_id)
+  fail('FORBIDDEN','この家庭にはアクセスできません');
+ const member=members[0];
+ const homes=rows('households',book).filter(x=>String(x.obj.household_id)===String(member.obj.household_id));
+ if(homes.length!==1)fail('FORBIDDEN','家庭の登録を確認できません');
+ if(readContext)readContext.book=book;
  return {userId:String(member.obj.user_id),householdId:String(member.obj.household_id)};
 }
 function publicRow(obj){return JSON.parse(JSON.stringify(obj))}
-function bootstrap(user){
+function bootstrap(user,book){
+ // A single request uses one handle for all five logical Sheet reads.
+ // Do not cache rows: household and schema checks remain per-request.
+ const activeBook=book||spreadsheet();
  const householdId=user.householdId;
  return {
   household_id:householdId,
-  categories:rows('categories').map(x=>publicRow(x.obj)),
-  item_groups:scoped('item_groups',householdId).map(x=>publicRow(x.obj)),
-  products:scoped('products',householdId).map(x=>publicRow(x.obj)),
-  stores:rows('stores').filter(x=>String(x.obj.household_id)===householdId).map(x=>publicRow(x.obj)),
-  sequence_no:currentSequence(householdId)
+  categories:rows('categories',activeBook).map(x=>publicRow(x.obj)),
+  item_groups:scoped('item_groups',householdId,activeBook).map(x=>publicRow(x.obj)),
+  products:scoped('products',householdId,activeBook).map(x=>publicRow(x.obj)),
+  stores:rows('stores',activeBook).filter(x=>String(x.obj.household_id)===householdId).map(x=>publicRow(x.obj)),
+  sequence_no:currentSequence(householdId,activeBook)
  };
 }
-function currentSequence(hid){return scopedPrefix_('change_log',hid,3).reduce((n,x)=>Math.max(n,Number(x.obj.sequence_no)||0),0)}
-function changes(user,payload){
+function currentSequence(hid,book){return scopedPrefix_('change_log',hid,3,book).reduce((n,x)=>Math.max(n,Number(x.obj.sequence_no)||0),0)}
+function changes(user,payload,book){
  const cursor=Number(payload.after_sequence||0);
  if(!Number.isSafeInteger(cursor)||cursor<0)fail('BAD_REQUEST','同期番号が不正です');
- const name='change_log',headers=TABLES[name],sh=tab(name),last=sh.getLastRow();
+ const name='change_log',headers=TABLES[name],activeBook=book||spreadsheet(),
+  sh=tab(name,activeBook),last=sh.getLastRow();
  // Small logs and initial/full synchronization: one full read is cheaper
  // than a prefix read plus potentially many individual row requests.
  if(last<=32||cursor===0){
-  const householdChanges=rows(name).filter(x=>String(x.obj.household_id)===user.householdId);
+  const householdChanges=rows(name,activeBook).filter(x=>String(x.obj.household_id)===user.householdId);
   const sequence=householdChanges.reduce((n,x)=>Math.max(n,Number(x.obj.sequence_no)||0),0);
   const next=householdChanges.filter(x=>Number(x.obj.sequence_no)>cursor)
    .sort((a,b)=>Number(a.obj.sequence_no)-Number(b.obj.sequence_no));
@@ -484,7 +496,7 @@ function changes(user,payload){
  if(!selected.length)return {sequence_no:sequence,changes:[]};
  // With several changes, one full read avoids excessive per-row RPC calls.
  if(selected.length>4){
-  const allHousehold=rows(name).filter(x=>String(x.obj.household_id)===user.householdId);
+  const allHousehold=rows(name,activeBook).filter(x=>String(x.obj.household_id)===user.householdId);
   // Full fallback is a separate snapshot. Derive the sequence from that
   // same read so an append between the two reads cannot return stale metadata.
   const latest=allHousehold.reduce((n,x)=>Math.max(n,Number(x.obj.sequence_no)||0),0);
