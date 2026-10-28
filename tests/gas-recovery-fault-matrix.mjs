@@ -84,6 +84,7 @@ function harness(large=false){
   setFault(name,phase){faults={name,phase}},
   moveJournalBeforeDetailRead(){journalMoves.enabled=true},
   moveChangeBeforeDetailRead(){changeMoves.enabled=true},
+  injectRow(name,row){assert.ok(tables[name]);tables[name].push(row.slice())},
   readsSince(index){return reads.slice(index)},readCount(){return reads.length},
   isLocked:()=>locked,writes:()=>writeCount
  };
@@ -253,6 +254,31 @@ for(const [point,phase] of [
   'Grouped household reads must not load other households result payloads');
  assert.equal(h.records('processed_operations').length,4);
 }
+// A duplicated journal operation ID cannot be trusted for replay/pending
+// detection. Abort without writing to any table, whether small or large.
+for(const size of [false,true]){
+ const h=harness(size);
+ h.injectRow('processed_operations',['family-1','reused-duplicate','hash','{"status":"done"}','']);
+ h.injectRow('processed_operations',['family-1','reused-duplicate','hash','{"status":"done"}','']);
+ const before=h.writes();
+ assert.throws(()=>h.execute(h.userA,'item.create',{name:'牛乳',category_id:0},'create-with-duplicate'), 
+  err=>err?.code==='RECOVERY_CONFLICT','Duplicate operation ID must fail closed');
+ assert.equal(h.writes(),before);
+ assert.equal(h.isLocked(),false);
+}
+// A duplicate item ID within the same household must also stop stock writes,
+// even when the large-sheet lookup could otherwise pick the first matching row.
+for(const size of [false,true]){
+ const h=harness(size);
+ const item=h.execute(h.userA,'item.create',{name:'牛乳',category_id:0},'duplicate-item-create').entity;
+ h.injectRow('item_groups',[item.item_group_id,'family-1',0,'偽物','duplicate',true,1,false,1,'','','']);
+ const before=h.writes();
+ assert.throws(()=>h.execute(h.userA,'item.update',
+  {item_group_id:item.item_group_id,version:1,in_stock:false},'duplicate-item-update'),
+  err=>err?.code==='RECOVERY_CONFLICT','Duplicate item ID must fail closed');
+ assert.equal(h.writes(),before,'Must not even prepare the journal');
+ assert.equal(h.isLocked(),false);
+}
 // Four scattered household receipts force fallback to a single bulk prefix
 // read rather than four disjoint RPCs. Same lock/journal rules apply.
 {
@@ -268,4 +294,4 @@ for(const [point,phase] of [
  assert.equal(h.records('processed_operations').length,5);
  assert.equal(h.records('processed_operations','family-2').length,120);
 }
-console.log('GAS 16 small + 4 large fault cases and grouped/fragmented journal replay PASS');
+console.log('GAS 16 small + 4 large fault cases, duplicated-ID safety, grouped/fragmented replay PASS');
