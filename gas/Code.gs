@@ -378,7 +378,7 @@ function bootstrap(user){
   sequence_no:currentSequence(householdId)
  };
 }
-function currentSequence(hid){return rows('change_log').filter(x=>String(x.obj.household_id)===hid).reduce((n,x)=>Math.max(n,Number(x.obj.sequence_no)||0),0)}
+function currentSequence(hid){return scopedPrefix_('change_log',hid,3).reduce((n,x)=>Math.max(n,Number(x.obj.sequence_no)||0),0)}
 function changes(user,payload){
  const cursor=Number(payload.after_sequence||0);
  if(!Number.isSafeInteger(cursor)||cursor<0)fail('BAD_REQUEST','同期番号が不正です');
