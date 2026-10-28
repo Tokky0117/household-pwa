@@ -1,0 +1,66 @@
+// UI wiring and receipt saving tests: no real photos or GAS calls.
+import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
+import vm from 'node:vm';
+const source=readFileSync(new URL('../app.js',import.meta.url),'utf8');
+const html=readFileSync(new URL('../index.html',import.meta.url),'utf8');
+const sw=readFileSync(new URL('../sw.js',import.meta.url),'utf8');
+const actions={},storage=new Map(),revoked=[];
+const app={innerHTML:'',addEventListener(kind,fn){(actions[kind]??=[]).push(fn)},insertAdjacentHTML(){}};
+const window={
+ scrollTo(){},scrollY:0,URL:{createObjectURL(){return 'blob:local-test'},revokeObjectURL(v){revoked.push(v)}},
+ KurashiReceiptOCR:{async readImage(file){return {store:'ライフ',date:'2026-10-29',items:[
+ {name:'牛乳',quantity:2,amount:396},{name:'たまご',quantity:1,amount:218}]}}}
+};
+const doc={getElementById(id){return id==='app'?app:null},querySelector(){return null},querySelectorAll(){return []},
+ createElement(){return {classList:{},style:{},setAttribute(){}}},body:{append(){}}};
+const storageApi={getItem:k=>storage.get(k)??null,setItem(k,v){storage.set(k,v)},removeItem(k){storage.delete(k)}};
+const ctx=vm.createContext({window,document:doc,localStorage:storageApi,navigator:{},location:{protocol:'file:'},
+ crypto:{randomUUID:()=>String(storage.size)+'-random'},setTimeout:()=>1,clearTimeout(){},Date,Intl,URL,console,
+ FormData:class FormData{constructor(){throw Error('Mock form not provided')}}});
+const ui=vm.runInContext(source+`
+({receiptView,scanReceiptPhoto,receiptScanReview,savePreviewReceiptScan,discardReceiptScan,
+  state:()=>({receiptScan,receiptScanBusy,previewRecords})})
+`,ctx);
+assert.match(html,/receipt-ocr\.js\?v=57/);
+assert.match(sw,/receipt-ocr\.js\?v=57/);
+assert.match(ui.receiptView(),/カメラで撮影/);
+assert.match(ui.receiptView(),/写真を選択/);
+assert.match(ui.receiptView(),/image\/jpeg,image\/png,image\/webp/);
+assert.equal(ui.state().previewRecords.records.length,0);
+await ui.scanReceiptPhoto({type:'image/jpeg',size:20000});
+assert.equal(ui.state().receiptScanBusy,false);
+assert.equal(ui.state().receiptScan.items.length,2);
+assert.equal(ui.state().receiptScan.date,'2026-10-29');
+assert.match(ui.receiptView(),/店舗名候補：ライフ/);
+assert.match(ui.receiptView(),/確認した2明細をこの端末に試作保存/);
+assert.equal(ui.state().previewRecords.records.length,0,'OCR never saves automatically');
+assert.equal(storage.get('household_pwa_records_preview_v1'),undefined);
+const prepared=JSON.parse(JSON.stringify(ui.state().receiptScan));
+prepared.chainId='c-life';
+assert.equal(ui.savePreviewReceiptScan(prepared),true);
+const saved=JSON.parse(storage.get('household_pwa_records_preview_v1'));
+assert.equal(saved.records.length,1,'One receipt header for the whole scan');
+assert.equal(saved.record_items.length,2);
+assert.equal(saved.record_items[0].line_order,1);
+assert.equal(saved.record_items[1].line_order,2);
+assert.equal(saved.record_items[0].record_id,saved.record_items[1].record_id);
+assert.equal(saved.record_items[0].raw_name,'牛乳');
+assert.equal(saved.record_items[0].price_eligible,false);
+assert.ok(!JSON.stringify(saved).includes('blob:'));
+const invalid=JSON.parse(JSON.stringify(prepared));
+invalid.items[1].amount='broken';
+assert.equal(ui.savePreviewReceiptScan(invalid),false);
+assert.equal(JSON.parse(storage.get('household_pwa_records_preview_v1')).records.length,1);
+ui.discardReceiptScan();
+assert.equal(ui.state().receiptScan,null);
+assert.deepEqual(revoked,['blob:local-test']);
+let resolveLate;
+window.KurashiReceiptOCR.readImage=()=>new Promise(resolve=>{resolveLate=resolve});
+const inflight=ui.scanReceiptPhoto({type:'image/jpeg',size:1000});
+ui.discardReceiptScan();
+resolveLate({store:'別店舗',date:'2026-10-29',items:[{name:'秘密',quantity:1,amount:100}]});
+await inflight;
+assert.equal(ui.state().receiptScan,null,'Discard ignores a late OCR result');
+assert.equal(ui.state().previewRecords.records.length,1);
+console.log('Receipt scan UI: choose photo, review only, grouped local save, discard and stale-result isolation PASS');

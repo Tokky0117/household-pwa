@@ -45,7 +45,7 @@ async function emit(type,request){
 await emit('install');
 assert.equal(calls.skipped,true);
 const versioned=[...index.matchAll(/(?:src|href)="([^"]+\?v=[0-9]+)"/g)].map(m=>m[1]);
-assert.equal(versioned.length,5);
+assert.equal(versioned.length,6);
 for(const uri of versioned){
  assert.ok(calls.precache.includes('./'+uri),'Cached version matches index: '+uri);
  assert.ok(cacheRows.has(new URL(uri,entry).href));

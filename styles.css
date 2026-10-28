@@ -2223,3 +2223,18 @@ main>.ui-search + .filterrow{margin-bottom:5px}
 /* Contextual notices remain visible until the next relevant action. */
 .ui-action-notice{margin:6px 8px 10px;padding:9px 12px;border-radius:10px;border:1px solid var(--line);background:var(--card);color:var(--ink);font-size:13px;line-height:1.4}
 .ui-action-notice-floating{position:fixed;z-index:90;max-width:min(240px,calc(100vw - 20px));box-shadow:0 5px 18px #0002;margin:0}
+
+/* Receipt-photo OCR review uses existing form fields, cards and buttons. */
+.receipt-scan-start .record-entry-actions,.receipt-scan-panel .record-entry-actions {
+  display: grid;
+  grid-template-columns: repeat(2,minmax(0,1fr));
+  gap: 10px;
+}
+.receipt-scan-panel { margin-top: 14px; }
+.receipt-scan-photo { display: block; max-width: 100%; max-height: 280px; object-fit: contain; margin: 12px auto; border-radius: 10px; }
+.receipt-review-line { padding: 14px 0; border-top: 1px solid var(--line); }
+.receipt-review-line-title { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+.receipt-review-line-title .secondary { min-height: 36px; padding: 5px 12px; }
+.receipt-review-numbers { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.receipt-review-numbers .formfield { min-width: 0; }
+.receipt-scan-save { width: 100%; margin-top: 16px; }

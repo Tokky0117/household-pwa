@@ -6,6 +6,7 @@ const ASSETS=[
  './','./index.html',
  './styles.css?v=57','./app.js?v=57','./auth.js?v=57',
  './gas-api.js?v=57','./live-operation-journal.js?v=57',
+ './receipt-ocr.js?v=57',
  './manifest.webmanifest','./icon.svg'
 ];
 const CACHE_FAMILY=CACHE.replace(/v[0-9]+$/,'v');
