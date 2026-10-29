@@ -116,7 +116,7 @@ engine.createWorker=async()=>({
  async setParameters(values){parameters.push(values.tessedit_pageseg_mode)},
  async recognize(image){
   secondCall++;
-  return {data:{text:secondCall===1?'誤認識だけ':'ライフ\\n2026-01-27\\n豆腐 ¥98\\n卵 ¥238'}};
+  return {data:{text:secondCall===1?'誤認識だけ':'ライフ\n2026-01-27\n豆腐 ¥98\n卵 ¥238'}};
  },
  async terminate(){stats.stopped++;}
 });
