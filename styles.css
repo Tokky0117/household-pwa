@@ -2252,3 +2252,29 @@ details.preview-record-row { display: block; }
 .receipt-scan-confirm{display:flex;align-items:center;gap:12px;margin:20px 0 12px;line-height:1.5;font-weight:650;cursor:pointer}
 .receipt-scan-confirm input{width:22px;height:22px;flex:none;accent-color:var(--accent)}
 .preview-record-row .danger{margin:14px 0 0;min-height:44px}
+
+/* Unsaved OCR diagnostics: long unstructured Tesseract output must fit mobile. */
+.receipt-ocr-diagnostic{
+  border:1px solid var(--line);
+  border-radius:10px;
+  padding:12px;
+  margin:12px 0;
+  max-width:100%;
+  overflow:hidden;
+}
+.receipt-ocr-diagnostic summary{
+  cursor:pointer;
+  min-height:32px;
+  font-size:14px;
+  font-weight:600;
+}
+.receipt-ocr-diagnostic pre{
+  max-height:230px;
+  width:100%;
+  overflow:auto;
+  white-space:pre-wrap;
+  overflow-wrap:anywhere;
+  font-size:12px;
+  line-height:1.55;
+  user-select:text;
+}

@@ -92,7 +92,7 @@ assert.equal(scripts.length,1,'Engine loads only after readImage');
 window.Tesseract=engine;
 scripts[0].onload();
 const output=await pending;
-assert.equal(stats.progress,50);
+assert.equal(stats.progress,100,'Completed OCR reports success rather than partial percent');
 assert.equal(output.items[0].name,'納豆');
 assert.equal(stats.started,1);assert.equal(stats.stopped,1);
 assert.equal(stats.files[0],file,'Only in-memory File goes to local OCR worker');
