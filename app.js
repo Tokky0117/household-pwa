@@ -103,6 +103,8 @@ async function scanReceiptPhoto(file){
   receiptScan={status:result.items.length?'読取候補を確認・修正してください':'明細を自動抽出できませんでした。下の「＋ 明細を追加」から写真を見ながら入力できます。',
    store:result.store,date:result.date||daysFromDate(new Date()),chainId:'',
    receiptTotal:Number.isSafeInteger(result.receiptTotal)?result.receiptTotal:null,
+   rawPreview:String(result.rawPreview||'').slice(0,4000),
+   recognizedCharacters:Number(result.recognizedCharacters)||0,
    items:result.items.map(item=>({rawName:item.name,quantity:String(item.quantity),amount:String(item.amount),category:'',productId:''}))};
  }catch(error){
   if(epoch!==receiptScanEpoch||tab!=='receipt')return;
@@ -696,6 +698,9 @@ function receiptScanReview(){
  <p class="hint">OCRの候補は自動確定しません。レシート原本と照合して、不要な候補を除外してください。チェーンが一覧になければ試作保存しないでください。</p>
  ${scan.store?'<p class="hint">店舗名候補：'+esc(scan.store)+'（チェーンは必ず選択してください）</p>':''}
  ${receiptPhotoUrl?'<img class="receipt-scan-photo" alt="選択したレシート写真（端末内のみ）" src="'+esc(receiptPhotoUrl)+'">':''}
+ ${!receiptScanBusy?`<details class="receipt-ocr-diagnostic"><summary>OCRが読み取った文字を確認（診断用・未保存）</summary>
+ <p class="hint">端末内で認識した文字を表示します。会員番号などの個人情報も含まれる可能性があるため、共有する場合は伏せてください。</p>
+ <pre>${esc(scan.rawPreview||'文字を認識できませんでした。写真を切り抜く・明るく撮り直すと改善する場合があります。')}</pre></details>`:''}
  ${!receiptScanBusy?`<form id="receiptScanForm">
  ${UI.formField({id:'scan-chain',name:'chain',label:'チェーン（確認必須）',control:'select',value:scan.chainId,options})}
  ${UI.formField({id:'scan-date',name:'date',label:'購入日（確認必須）',type:'date',value:scan.date,required:true})}

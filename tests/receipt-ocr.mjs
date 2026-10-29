@@ -100,4 +100,30 @@ assert.equal(scripts.length,1);
 engine.createWorker=async()=>({async recognize(){throw Error('OCR_FAILED')},async terminate(){stats.stopped++}});
 await assert.rejects(ocr.readImage(file),/OCR_FAILED/);
 assert.equal(stats.stopped,2,'Always release OCR worker');
+// Test automatic receipt cropping with a synthetic photo: pale paper on wood.
+const w=120,h=180,rgba=new Uint8ClampedArray(w*h*4);
+for(let y=0;y<h;y++)for(let x=0;x<w;x++){
+ const i=(y*w+x)*4,paper=x>=29&&x<91;
+ rgba[i]=paper?233:178;rgba[i+1]=paper?221:105;rgba[i+2]=paper?195:48;rgba[i+3]=255;
+}
+const cropped=ocr.receiptBounds(rgba,w,h);
+assert.ok(cropped.left>=22&&cropped.left<=29,'Paper left edge identified');
+assert.ok(cropped.width<90&&cropped.width>60,'Wood background excluded');
+const raw=ocr.receiptBounds(new Uint8ClampedArray(4*w*h),w,h);
+assert.equal(raw.width,w,'Low-confidence detection does not crop');
+let secondCall=0,parameters=[];
+engine.createWorker=async()=>({
+ async setParameters(values){parameters.push(values.tessedit_pageseg_mode)},
+ async recognize(image){
+  secondCall++;
+  return {data:{text:secondCall===1?'誤認識だけ':'ライフ\\n2026-01-27\\n豆腐 ¥98\\n卵 ¥238'}};
+ },
+ async terminate(){stats.stopped++;}
+});
+const secondResult=await ocr.readImage(file);
+assert.equal(secondCall,2,'Sparse-text fallback is attempted only when too few items');
+assert.equal(secondResult.items.length,2);
+assert.match(secondResult.rawPreview,/豆腐/);
+assert.deepEqual(parameters,['6','11']);
+console.log('Receipt OCR diagnostics, paper crop and sparse-text fallback PASS');
 console.log('Receipt OCR: Japanese parsing, no remote receipt upload, deferred engine, worker cleanup PASS');

@@ -24,8 +24,8 @@ const ui=vm.runInContext(source+`
 ({receiptView,scanReceiptPhoto,receiptScanReview,savePreviewReceiptScan,savePreviewRecord,deletePreviewRecord,discardReceiptScan,
   state:()=>({receiptScan,receiptScanBusy,previewRecords}),setReceiptTab(){tab='receipt';page='list'}})
 `,ctx);
-assert.match(html,/receipt-ocr\.js\?v=60/);
-assert.match(sw,/receipt-ocr\.js\?v=60/);
+assert.match(html,/receipt-ocr\.js\?v=61/);
+assert.match(sw,/receipt-ocr\.js\?v=61/);
 assert.match(ui.receiptView(),/カメラで撮影/);
 assert.match(ui.receiptView(),/写真を選択/);
 assert.match(ui.receiptView(),/Google Sheetsには未保存/);
@@ -37,6 +37,7 @@ assert.equal(ui.state().receiptScanBusy,false);
 assert.equal(ui.state().receiptScan.items.length,2);
 assert.equal(ui.state().receiptScan.date,'2026-10-29');
 assert.match(ui.receiptView(),/店舗名候補：ライフ/);
+assert.match(ui.receiptView(),/OCRが読み取った文字を確認/);
 assert.match(ui.receiptView(),/確認した2明細をこのSafariに試作保存/);
 assert.match(ui.receiptView(),/name="confirmed" value="yes" required/);
 assert.match(ui.receiptView(),/Googleログインは一時停止/);

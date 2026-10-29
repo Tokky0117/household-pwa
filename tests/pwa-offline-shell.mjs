@@ -7,7 +7,7 @@ const index=readFileSync(new URL('../index.html',import.meta.url),'utf8');
 const workflow=readFileSync(new URL('../.github/workflows/pages-previews.yml',import.meta.url),'utf8');
 const entry='https://tokky0117.github.io/household-pwa/previews/stage-a-ui-handoff-review/';
 const preview='stage-a-ui-handoff-review';
-const activeSource=source.replace("const CACHE='household-ui-v60';",
+const activeSource=source.replace("const CACHE='household-ui-v61';",
  "const CACHE='household-preview-"+preview+"-v60';");
 assert.notEqual(activeSource,source,'Preview build must have a scoped cache name');
 const calls={},listeners={},saved=new Map();
@@ -56,10 +56,10 @@ assert.ok(saved.has('household-ui-v55'),'Main cache must survive preview activat
 assert.ok(saved.has('household-preview-other-v56'),'Other preview cache must survive');
 assert.ok(saved.has('unrelated-site-cache'),'Other application cache must survive');
 assert.ok(calls.claimed);
-const script={method:'GET',url:new URL('app.js?v=60',entry).href};
-assert.equal((await emit('fetch',script))?.key,'./app.js?v=60');
+const script={method:'GET',url:new URL('app.js?v=61',entry).href};
+assert.equal((await emit('fetch',script))?.key,'./app.js?v=61');
 assert.equal((await emit('fetch',{method:'GET',url:entry,mode:'navigate'}))?.key,'./');
-const otherVersion=await emit('fetch',{method:'GET',url:new URL('app.js?v=61',entry).href});
+const otherVersion=await emit('fetch',{method:'GET',url:new URL('app.js?v=62',entry).href});
 assert.equal(otherVersion?.type,'error','Do not mix older JS into newer app shell');
 assert.equal(calls.put||0,0,'No offline cache writes');
 await emit('fetch',{method:'POST',url:entry});
