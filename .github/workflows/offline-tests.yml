@@ -33,6 +33,8 @@ jobs:
           node --check /tmp/kurashi-gas-check.js
           cp gas/trial-readonly/Code.gs /tmp/kurashi-trial-readonly-check.js
           node --check /tmp/kurashi-trial-readonly-check.js
+      - name: Check recognition-only OCR accuracy metrics
+        run: python3 tests/receipt-ocr-accuracy.py --self-test
       - name: Run all offline regression tests and report every failure
         shell: bash
         run: |
