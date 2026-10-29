@@ -16,7 +16,7 @@ const sampleCatalogue=()=>({
   {id:'p-tea-1',name:'麦茶ティーバッグ',packageQuantity:54,packageUnit:'個',itemGroupId:'demo-2',itemGroupOrder:1,aliases:[]},
   {id:'p-wash-1',name:'液体洗濯洗剤',packageQuantity:900,packageUnit:'mL',itemGroupId:'demo-11',itemGroupOrder:1,aliases:[]}
  ],
- chains:[{id:'c-a',name:'スーパー青空'},{id:'c-b',name:'ドラッグひかり'},{id:'c-c',name:'スーパーみどり'},{id:'c-life',name:'ライフ'},{id:'c-konomiya',name:'コノミヤ'},{id:'c-mandai',name:'万代'},{id:'c-aeon',name:'イオン'},{id:'c-sugi',name:'スギ薬局'}],
+ chains:[{id:'c-a',name:'スーパー青空'},{id:'c-b',name:'ドラッグひかり'},{id:'c-c',name:'スーパーみどり'},{id:'c-life',name:'ライフ'},{id:'c-konomiya',name:'コノミヤ'},{id:'c-mandai',name:'万代'},{id:'c-aeon',name:'イオン'},{id:'c-sugi',name:'スギ薬局'},{id:'c-costco',name:'コストコ'}],
  branches:[{id:'s-a1',chainId:'c-a',name:'駅前店'},{id:'s-a2',chainId:'c-a',name:'中央店'},{id:'s-b1',chainId:'c-b',name:'本町店'}]
 });
 function loadCatalogue(){try{const o=JSON.parse(localStorage.getItem(catalogueKey));if(o&&Array.isArray(o.products)&&Array.isArray(o.chains)&&Array.isArray(o.branches)){for(const c of sampleCatalogue().chains)if(!o.chains.some(x=>x.id===c.id))o.chains.push(c);return o}}catch{}return sampleCatalogue()}
@@ -109,6 +109,14 @@ async function scanReceiptPhoto(file){
  }finally{
   if(epoch===receiptScanEpoch){receiptScanBusy=false;render();}
  }
+}
+function deletePreviewRecord(recordId){
+ if(!previewRecords.records.some(r=>r.record_id===recordId))return false;
+ const next={records:previewRecords.records.filter(r=>r.record_id!==recordId),
+  record_items:previewRecords.record_items.filter(item=>item.record_id!==recordId)};
+ try{localStorage.setItem(previewRecordsKey,JSON.stringify(next));}
+ catch{return false;}
+ previewRecords=next;return true;
 }
 function savePreviewReceiptScan(input){
  if(!input||!Array.isArray(input.items)||input.items.length<1||input.items.length>30||
@@ -680,8 +688,9 @@ function receiptScanReview(){
  ${UI.formField({id:'scan-product-'+i,name:'product-'+i,label:'登録済み商品との対応（任意）',control:'select',value:item.productId,options:products})}
  ${UI.formField({id:'scan-category-'+i,name:'category-'+i,label:'家計簿カテゴリ',control:'select',value:item.category,options:categories})}
  </section>`).join('');
- return `<section class="panel receipt-scan-panel"><h2>写真の読み取り結果</h2>
+ return `<section class="panel receipt-scan-panel"><h2>写真の読み取り結果（保存前）</h2>
  <p class="hint" id="receipt-scan-progress" role="status">${esc(scan.status)}</p>
+ <p class="hint">OCRの候補は自動確定しません。レシート原本と照合して、不要な候補を除外してください。チェーンが一覧になければ試作保存しないでください。</p>
  ${scan.store?'<p class="hint">店舗名候補：'+esc(scan.store)+'（チェーンは必ず選択してください）</p>':''}
  ${receiptPhotoUrl?'<img class="receipt-scan-photo" alt="選択したレシート写真（端末内のみ）" src="'+esc(receiptPhotoUrl)+'">':''}
  ${!receiptScanBusy&&scan.items.length?`<form id="receiptScanForm">
@@ -689,8 +698,9 @@ function receiptScanReview(){
  ${UI.formField({id:'scan-date',name:'date',label:'購入日（確認必須）',type:'date',value:scan.date,required:true})}
  ${items}
  <button type="button" class="secondary" data-act="addReceiptScanItem" ${scan.items.length>=30?'disabled':''}>＋ 明細を追加</button>
- <button type="submit" class="primary receipt-scan-save">確認した${scan.items.length}明細をこの端末に試作保存</button>
- <p class="sample-price-notice">OCRの誤読、合計金額、税・割引、数量を必ず修正してください。画像・読み取り元テキストは保存されません。Google Sheetsへの送信はしません。</p></form>`:''}
+ <label class="receipt-scan-confirm"><input type="checkbox" name="confirmed" value="yes" required><span>レシート原本と明細・購入日・チェーン・金額を確認しました</span></label>
+ <button type="submit" class="primary receipt-scan-save">確認した${scan.items.length}明細をこのSafariに試作保存</button>
+ <p class="sample-price-notice">保存先：このSafariのWebサイトデータのみ。Google Sheets・Google Drive・ファイルには保存しません。OCR誤読、合計金額、税・割引、数量を必ず確認してください。</p></form>`:''}
  <button type="button" class="secondary" data-act="discardReceiptScan">写真の確認を終了</button>
  </section>`;
 }
@@ -703,9 +713,9 @@ function receiptView(){
   const p=catalogue.products.find(x=>x.id===item.product_id);
   return `<li><span>${esc(p?.name||item.raw_name||'商品未照合')} · ${esc(item.quantity)}個</span><strong>${yen(item.amount_tax_included??null)}</strong></li>`;
  }).join('');
- return `<details class="panel preview-record-row"><summary><strong>${esc(r.record_type==='receipt'?'レシート':'値札')} · ${esc(r.record_date)}</strong><span>${esc(chainLabel(r.chain_id))} ／ ${lines.length}明細 ／ ${yen(sum)}</span></summary><ul class="receipt-record-lines">${details}</ul></details>`;
+ return `<details class="panel preview-record-row"><summary><strong>${esc(r.record_type==='receipt'?'レシート':'値札')} · ${esc(r.record_date)}</strong><span>${esc(chainLabel(r.chain_id))} ／ ${lines.length}明細 ／ ${yen(sum)}</span></summary><ul class="receipt-record-lines">${details}</ul><button type="button" class="secondary danger" data-act="deletePreviewReceipt" data-record-id="${esc(r.record_id)}">この試作記録を削除</button></details>`;
  }).join('')||'<div class="empty">この端末の記録はまだありません</div>';
- return `${head('レシート','くらしストック')}<main class="preview-record-page"><p class="sample-price-notice">写真の文字認識は端末内で行い、結果を確認してから試作保存できます。GAS・Sheets・夫婦間同期は未接続です。</p><section class="panel receipt-scan-start"><h2>レシート写真を読み込む</h2><p class="hint">OCR実行時のみ無料の認識ライブラリ・日本語データをネットから取得します。写真そのものは送信・保存しません。通信がない場合は手入力できます。</p><div class="record-entry-actions"><button type="button" class="secondary" data-act="scanReceiptCamera">カメラで撮影</button><button type="button" class="secondary" data-act="scanReceiptPhoto">写真を選択</button></div><input id="receipt-camera" type="file" accept="image/jpeg,image/png,image/webp" capture="environment" hidden><input id="receipt-photo" type="file" accept="image/jpeg,image/png,image/webp" hidden></section>${receiptScanReview()}<div class="record-entry-actions"><button class="secondary" data-act="newReceipt">${miniIcon('plus')}<span>レシート明細</span></button><button class="secondary" data-act="newShelf">${miniIcon('plus')}<span>値札</span></button></div><h2 class="sectiontitle">この端末の記録</h2>${rows}</main>${nav()}`;
+ return `${head('レシート','くらしストック')}<main class="preview-record-page"><p class="sample-price-notice">写真の文字認識は端末内で行い、結果を確認してから試作保存できます。GAS・Sheets・夫婦間同期は未接続です。</p><section class="panel receipt-scan-start"><h2>レシート写真を読み込む</h2><p class="hint">OCR実行時のみ無料の認識ライブラリ・日本語データをネットから取得します。写真そのものは送信・保存しません。通信がない場合は手入力できます。</p><div class="record-entry-actions"><button type="button" class="secondary" data-act="scanReceiptCamera">カメラで撮影</button><button type="button" class="secondary" data-act="scanReceiptPhoto">写真を選択</button></div><input id="receipt-camera" type="file" accept="image/jpeg,image/png,image/webp" capture="environment" hidden><input id="receipt-photo" type="file" accept="image/jpeg,image/png,image/webp" hidden></section>${receiptScanReview()}<div class="record-entry-actions"><button class="secondary" data-act="newReceipt">${miniIcon('plus')}<span>レシート明細</span></button><button class="secondary" data-act="newShelf">${miniIcon('plus')}<span>値札</span></button></div><h2 class="sectiontitle">このSafari内の試作記録（Google Sheetsには未保存）</h2><p class="hint">保存した記録はこのブラウザのWebサイトデータにあります。Google Sheets・Google Drive・ファイルアプリには保存されません。ブラウザデータを消すと記録も失われます。</p>${rows}</main>${nav()}`;
 }
 function budgetView(){
  const {total,byCategory}=budgetTotals(allPreviewRecords(),allPreviewItems(),budgetMonth);
@@ -929,9 +939,10 @@ app.addEventListener('change',e=>{if(['receipt-camera','receipt-photo'].includes
 }if(e.target.id==='onlyOut'){const wasOut=onlyOut;onlyOut=e.target.checked;if(wasOut&&!onlyOut)collapsed.clear();render()}});
 app.addEventListener('submit',e=>{e.preventDefault();const form=e.target;const d=new FormData(form);
 if(form.id==='receiptScanForm'){
+ if(d.get('confirmed')!=='yes'){fieldNotice(form,'原本と明細を確認してチェックしてください','scan-chain');return;}
  receiptScanFormValues();
  if(!savePreviewReceiptScan(receiptScan)){fieldNotice(form,'チェーン・日付・各明細の品名・数量・税込金額を確認してください','scan-chain');return}
- discardReceiptScan();page='list';tab='receipt';render();say('レシート明細をこの端末に試作保存しました');return;
+ discardReceiptScan();page='list';tab='receipt';render();say('このSafariに試作保存しました。Google Sheetsには保存していません。');return;
 }
 if(form.id==='recordForm'){
  const input={type:newRecordType,chainId:String(d.get('chain')||''),date:String(d.get('date')||''),productId:String(d.get('product')||''),rawName:String(d.get('raw')||''),quantity:String(d.get('quantity')||''),amount:String(d.get('amount')||''),category:String(d.get('category')||'')};
@@ -1003,6 +1014,13 @@ if(el.dataset.pick){
 }
 if(el.dataset.dialog){if(el.dataset.dialog==='cancel'&&(dialog?.title==='変更を破棄しますか？'||dialog?.title==='比較単位について')){dialog=null;document.querySelector('.dialog-back')?.remove();return}const action=el.dataset.dialog,p=dialog?.pending;dialog=null;
 
+if(action==='confirmDeletePreviewReceipt'&&p){
+ const removed=deletePreviewRecord(p.recordId);
+ render();
+ if(!removed)say('記録を削除できませんでした');
+ else say('このSafari内の試作記録を削除しました');
+ return;
+}
 if(action==='confirmProductUnlink'&&p){
  const product=catalogue.products.find(x=>x.id===p.productId);
  if(product&&product.itemGroupId===selected)setProductGroup(product,null);
@@ -1035,7 +1053,16 @@ if(action==='restoreItem'||action==='showExistingItem'){
 if(action==='back'){back();return}if(action==='add'){duplicateItemId=null;selected=null;menu=false;openSwipeId=null;page='add'}if(action==='menu'){menu=!menu}if(['edit','products'].includes(action)){menu=false;editReturnPage=page;page=action}
 if(action==='productPick'){pickQuery='';pickerAll=true;openSwipeId=null;page=action}
 if(action==='productCreate'){page='productCreate';openSwipeId=null};if(action==='shopToggle'){shopExpanded=!shopExpanded;priceScope=shopExpanded?'unit':'product';if(!shopExpanded)compareQuantity=null;render();return}
-if(action==='catalogueList'){pickerAll=!pickerAll;const heading=document.querySelector('.catalogue-list-heading');if(heading)heading.textContent=pickerAll?'登録一覧':'候補（最大3件）';const target=document.getElementById('catalogue-results');if(target)target.innerHTML=pickerResults();el.textContent=pickerAll?'候補に戻る':'登録一覧から選ぶ';return}if(action==='hide'){menu=false;dialog={title:'日用品を削除',message:'日用品リストから削除します',buttons:[{id:'cancel',label:'キャンセル'},{id:'confirmHide',label:'削除',primary:true}]}}if(action==='copyList'){const txt=CATS.map((cat,idx)=>{const rows=visible().filter(i=>i.category===idx&&!i.inStock).sort((a,b)=>a.order-b.order);return rows.length?cat+'\n'+rows.map(i=>'- '+i.name).join('\n'):''}).filter(Boolean).join('\n\n');menu=false;render();if(!txt){inlineActionNotice(document.querySelector('[data-act="copyList"]'),'在庫なしの日用品はありません');return}navigator.clipboard.writeText(txt).then(()=>say('在庫なしをコピーしました',{anchor:'[data-act="copyList"]'})).catch(()=>inlineActionNotice(document.querySelector('[data-act="copyList"]'),'コピーできませんでした'));return}if(action==='scanReceiptCamera'||action==='scanReceiptPhoto'){
+if(action==='catalogueList'){pickerAll=!pickerAll;const heading=document.querySelector('.catalogue-list-heading');if(heading)heading.textContent=pickerAll?'登録一覧':'候補（最大3件）';const target=document.getElementById('catalogue-results');if(target)target.innerHTML=pickerResults();el.textContent=pickerAll?'候補に戻る':'登録一覧から選ぶ';return}if(action==='hide'){menu=false;dialog={title:'日用品を削除',message:'日用品リストから削除します',buttons:[{id:'cancel',label:'キャンセル'},{id:'confirmHide',label:'削除',primary:true}]}}if(action==='copyList'){const txt=CATS.map((cat,idx)=>{const rows=visible().filter(i=>i.category===idx&&!i.inStock).sort((a,b)=>a.order-b.order);return rows.length?cat+'\n'+rows.map(i=>'- '+i.name).join('\n'):''}).filter(Boolean).join('\n\n');menu=false;render();if(!txt){inlineActionNotice(document.querySelector('[data-act="copyList"]'),'在庫なしの日用品はありません');return}navigator.clipboard.writeText(txt).then(()=>say('在庫なしをコピーしました',{anchor:'[data-act="copyList"]'})).catch(()=>inlineActionNotice(document.querySelector('[data-act="copyList"]'),'コピーできませんでした'));return}if(action==='deletePreviewReceipt'){
+ const recordId=String(el.dataset.recordId||'');
+ if(!previewRecords.records.some(r=>r.record_id===recordId))return;
+ dialog={title:'試作レシートを削除しますか？',
+  message:'このSafariの記録と明細を削除します。Google Sheetsは変更しません。',
+  buttons:[{id:'cancel',label:'残す'},{id:'confirmDeletePreviewReceipt',label:'試作記録を削除',critical:true}],
+  pending:{recordId}};
+ renderDialogOnly();return;
+}
+if(action==='scanReceiptCamera'||action==='scanReceiptPhoto'){
  document.getElementById(action==='scanReceiptCamera'?'receipt-camera':'receipt-photo')?.click();return;
 }
 if(action==='discardReceiptScan'){discardReceiptScan();render();return}

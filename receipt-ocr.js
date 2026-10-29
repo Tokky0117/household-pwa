@@ -8,40 +8,88 @@
  const MAX_LINES=30;
  let scriptPromise=null;
  const normalize=s=>String(s||'').normalize('NFKC').replace(/[\t\u3000]+/g,' ').replace(/\s+/g,' ').trim();
- const isSummary=line=>/^(?:小計|合計|総合計|合\s*計|税|消費税|税抜|内税|外税|対象|お預かり|預り|お釣り|釣銭|現金|クレジット|カード|支払|ご利用|ポイント|割引|値引|クーポン|購入点数|商品点数|レシート|領収|TEL|電話|〒|No[.:]|取引|売上|発行|担当|商品計)/i.test(line);
+ const isSummary=line=>/^(?:小\s*計|合\s*計|総\s*合\s*計|税|消費税|税抜|内税|外税|[0-9]{1,2}%\s*対象|対象|お預|預り|お釣|釣銭|現金|クレジット|カード|支払|ご利用|ポイント|割引|値引|R値引|クーポン|購入点数|商品点数|レシート|領収|TEL|電話|〒|No[.:]|取引|売上|発行|担当|商品計)/i.test(line);
+ const coupon=line=>/ストア[ー\s]*クーポン|クーポン|COUPON|\bCPN\b|値引|割引|値下|値引き/i.test(line);
+ const numeric=s=>Number(String(s).replace(/,/g,''));
+ const validAmount=n=>Number.isSafeInteger(n)&&n>=1&&n<=1000000;
  function validDate(year,month,day){
   const d=new Date(year,month-1,day);
   return d.getFullYear()===year&&d.getMonth()===month-1&&d.getDate()===day;
  }
+ function cleanName(s){
+  return normalize(s).replace(/^[*＊※#\s]+/,'').slice(0,120).trim();
+ }
+ function plausibleName(name){
+  return name.length>=2&&name.length<=120&&/[\p{L}]/u.test(name)&&
+   !isSummary(name)&&!coupon(name)&&!/\d{5,}/.test(name)&&
+   !/^(?:GOLDSTAR|BEGIN CHECK|END OF CHECK|MEMBER|MEMBERSHIP|SKU|\bNO\b)/i.test(name);
+ }
+ function knownStore(lines){
+  // Do not display arbitrary OCR garbage as a store guess.
+  const header=lines.slice(0,12).join(' ');
+  if(/COSTCO|コストコ|GOLDSTAR/i.test(header))return 'コストコ';
+  if(/(?:^|\s)ライフ(?:\s|$)/.test(header))return 'ライフ';
+  if(/万代/.test(header))return '万代';
+  if(/コノミヤ/.test(header))return 'コノミヤ';
+  if(/イオン/.test(header))return 'イオン';
+  if(/スギ薬局/.test(header))return 'スギ薬局';
+  return '';
+ }
  function parseText(source){
   const lines=String(source||'').slice(0,60000).split(/\r?\n/).map(normalize).filter(Boolean);
-  let date='',store='';
+  let date='';
   for(const line of lines.slice(0,24)){
    const d=line.match(/(20\d{2})\s*[年/.-]\s*(\d{1,2})\s*[月/.-]\s*(\d{1,2})\s*日?/);
    if(d&&validDate(+d[1],+d[2],+d[3])){date=d[1]+'-'+d[2].padStart(2,'0')+'-'+d[3].padStart(2,'0');break;}
   }
-  for(const line of lines.slice(0,6)){
-   if(line.length<=36&&!isSummary(line)&&!/^\d/.test(line)&&
-     !/^(?:〒|住所|大阪|東京|営業時間|店舗|お買い上げ|ありがとうございます)/.test(line)&&
-     !/20\d{2}|\d{2}:\d{2}|[0-9]{3}[-–][0-9]{3}/.test(line)){
-    store=line;break;
-   }
-  }
-  const items=[];
+  const store=knownStore(lines),items=[];
+  let previousName='',discountBlock=false;
+  const add=(name,quantity,amount)=>{
+   if(items.length>=MAX_LINES)return;
+   if(!plausibleName(name)||!Number.isSafeInteger(quantity)||quantity<1||quantity>99||!validAmount(amount))return;
+   items.push({name,quantity,amount});
+  };
   for(const line of lines){
    if(items.length>=MAX_LINES)break;
+   // The summary zone must never become an item even if OCR splits totals across lines.
+   if(/^(?:小\s*計|合\s*計|総\s*合\s*計)/.test(line))break;
+   if(coupon(line)){previousName='';discountBlock=true;continue;}
    if(isSummary(line)||/\b20\d{2}[年/.-]/.test(line)||
-      /(?:電話|TEL|ポイント|割引|値引|返品|合計|小計|消費税|税率|税抜|内税|外税|対象額|お釣|お預|クーポン|\d{2}:\d{2})/.test(line))continue;
-   const m=line.match(/^(.{2,100}?)\s+(?:[¥￥]\s*)?((?:\d{1,3}(?:,\d{3})+|\d{1,7}))\s*(?:円|[＊*※])?$/);
-   if(!m)continue;
-   let name=m[1].replace(/^[＊*※#\s]+/,'').trim();
-   const amount=Number(m[2].replace(/,/g,''));
-   if(!/[\p{L}]/u.test(name)||!Number.isSafeInteger(amount)||amount<0||amount>1000000)continue;
-   let quantity=1;
-   const qty=name.match(/\s+(\d{1,2})\s*(?:個|点|本|袋)\s*[xX×]\s*\d[\d,]*\s*$/);
-   if(qty){quantity=Number(qty[1]);name=name.slice(0,qty.index).trim();}
-   if(!name||quantity<1||quantity>99)continue;
-   items.push({name:name.slice(0,120),quantity,amount});
+      /(?:電話|TEL|ポイント|返品|消費税|税率|税抜|内税|外税|対象額|お釣|お預|\d{2}:\d{2})/i.test(line)){
+    previousName='';continue;
+   }
+   // Warehouse receipts commonly print an item name, then barcode / quantity /
+   // unit price / total and a tax flag on the following line. Require all columns.
+   const sku=line.match(/^(\d{5,8})\s+(\d{1,2})\s*[^\d,\s]{0,3}\s+([\d,]+)\s+([\d,]+)\s*[ET]?$/i);
+   if(sku){
+    if(!discountBlock&&previousName){
+     const quantity=Number(sku[2]),unit=numeric(sku[3]),total=numeric(sku[4]);
+     // Reject OCR columns that are inconsistent with the apparent quantity.
+     if(validAmount(unit)&&validAmount(total)&&unit*quantity===total)
+      add(previousName,quantity,total);
+    }
+    discountBlock=false;previousName='';continue;
+   }
+   if(discountBlock){
+    // Coupon label can wrap across lines. Do not treat any coupon detail as a product.
+    // Resume at the next ordinary item after its SKU/tax row.
+    if(/^#?\d{4,8}\b/.test(line)||/\d+[−-]\s*[ET]?$/.test(line)){
+     discountBlock=false;
+    }
+    continue;
+   }
+   const direct=line.match(/^(.{2,100}?)\s+(?:[¥￥]\s*)?((?:\d{1,3}(?:,\d{3})+|\d{1,6}))\s*(?:円)?$/);
+   if(direct){
+    let name=cleanName(direct[1]),quantity=1,amount=numeric(direct[2]);
+    const qty=name.match(/\s+(\d{1,2})\s*(?:個|点|本|袋)\s*[xX×]\s*([\d,]+)\s*$/);
+    if(qty){quantity=Number(qty[1]);name=name.slice(0,qty.index).trim();
+      if(numeric(qty[2])*quantity!==amount){previousName='';continue;}
+    }
+    // A barcode, duplicated price column or tax marker is not a product name.
+    if(!/\d{4,}/.test(name)&&!/\s[\d,]+\s+[\d,]+/.test(name))add(name,quantity,amount);
+    previousName='';continue;
+   }
+   previousName=plausibleName(cleanName(line))?cleanName(line):'';
   }
   return {store,date,items};
  }

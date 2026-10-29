@@ -21,13 +21,14 @@ const ctx=vm.createContext({window,document:doc,localStorage:storageApi,navigato
  crypto:{randomUUID:()=>String(storage.size)+'-random'},setTimeout:()=>1,clearTimeout(){},Date,Intl,URL,console,
  FormData:class FormData{constructor(form){this.values=form?.values||{}}get(key){return this.values[key]??null}}});
 const ui=vm.runInContext(source+`
-({receiptView,scanReceiptPhoto,receiptScanReview,savePreviewReceiptScan,savePreviewRecord,discardReceiptScan,
+({receiptView,scanReceiptPhoto,receiptScanReview,savePreviewReceiptScan,savePreviewRecord,deletePreviewRecord,discardReceiptScan,
   state:()=>({receiptScan,receiptScanBusy,previewRecords}),setReceiptTab(){tab='receipt';page='list'}})
 `,ctx);
-assert.match(html,/receipt-ocr\.js\?v=58/);
-assert.match(sw,/receipt-ocr\.js\?v=58/);
+assert.match(html,/receipt-ocr\.js\?v=59/);
+assert.match(sw,/receipt-ocr\.js\?v=59/);
 assert.match(ui.receiptView(),/カメラで撮影/);
 assert.match(ui.receiptView(),/写真を選択/);
+assert.match(ui.receiptView(),/Google Sheetsには未保存/);
 assert.match(ui.receiptView(),/image\/jpeg,image\/png,image\/webp/);
 assert.equal(ui.state().previewRecords.records.length,0);
 ui.setReceiptTab();
@@ -36,7 +37,9 @@ assert.equal(ui.state().receiptScanBusy,false);
 assert.equal(ui.state().receiptScan.items.length,2);
 assert.equal(ui.state().receiptScan.date,'2026-10-29');
 assert.match(ui.receiptView(),/店舗名候補：ライフ/);
-assert.match(ui.receiptView(),/確認した2明細をこの端末に試作保存/);
+assert.match(ui.receiptView(),/確認した2明細をこのSafariに試作保存/);
+assert.match(ui.receiptView(),/name="confirmed" value="yes" required/);
+assert.match(ui.receiptView(),/Google Sheets・Google Drive/);
 assert.equal(ui.state().previewRecords.records.length,0,'OCR never saves automatically');
 assert.equal(storage.get('household_pwa_records_preview_v1'),undefined);
 const prepared=JSON.parse(JSON.stringify(ui.state().receiptScan));
@@ -96,7 +99,7 @@ window.KurashiReceiptOCR.readImage=async()=>({store:'ライフ',date:'2026-10-29
 await ui.scanReceiptPhoto({type:'image/jpeg',size:20000});
 const savedBeforeClick=ui.state().previewRecords.records.length;
 draftForm={id:'receiptScanForm',values:{
- chain:'c-life',date:'2026-10-29',
+ chain:'c-life',date:'2026-10-29',confirmed:'yes',
  'name-0':'牛乳','quantity-0':'1','amount-0':'198','product-0':'','category-0':'',
  'name-1':'卵','quantity-1':'2','amount-1':'300','product-1':'','category-1':''
 }};
@@ -118,5 +121,15 @@ storageApi.setItem=savedSet;
 assert.equal(ui.savePreviewRecord(manual),true);
 assert.equal(ui.state().previewRecords.records.length,beforeManual+1);
 assert.match(ui.receiptView(),/バナナ/);
+assert.match(ui.receiptView(),/data-act="deletePreviewReceipt"/);
+const deleteTarget=ui.state().previewRecords.records[0].record_id;
+const countBeforeDelete=ui.state().previewRecords.records.length;
+storageApi.setItem=()=>{throw Error('quota-exceeded')};
+assert.equal(ui.deletePreviewRecord(deleteTarget),false);
+assert.equal(ui.state().previewRecords.records.length,countBeforeDelete);
+storageApi.setItem=savedSet;
+assert.equal(ui.deletePreviewRecord(deleteTarget),true);
+assert.equal(ui.state().previewRecords.records.length,countBeforeDelete-1);
+assert.ok(!ui.state().previewRecords.record_items.some(x=>x.record_id===deleteTarget));
 console.log('Receipt delegated camera and reviewed multi-line form submit PASS');
 console.log('Manual receipt local storage failure rolls back without false success PASS');

@@ -29,6 +29,25 @@ assert.equal(ocr.parseText('コノミヤ\n2026/02/30\nトイレットペーパ�
 assert.equal(ocr.parseText('万代\n2026/10/29\nりんご 120\n値引 -50').items.length,1);
 assert.equal(ocr.parseText('商品名 12345678').items.length,0,'Reject excessive price');
 assert.equal(ocr.parseText('領収書\n合計 100\nポイント 50').items.length,0);
+assert.equal(ocr.parseText('IELTS.\n2026-10-29\n牛乳 198').store,'','Unknown OCR text is not a store name');
+const warehouse=ocr.parseText(`GOLDSTAR
+COSTCO WHOLESALE
+KS SOAP
+1234567 1 * 1,380 1,380 T
+***ストアクーポン
+KS SOAP CPN
+#1556 1 * 300 300-T
+MILK
+7654321 2 * 198 396 E
+小計 1,776
+R値引 200-
+合計 1,576
+26,409`);
+assert.equal(warehouse.store,'コストコ');
+assert.deepEqual(JSON.parse(JSON.stringify(warehouse.items)),[
+ {name:'KS SOAP',quantity:1,amount:1380},{name:'MILK',quantity:2,amount:396}
+]);
+assert.equal(ocr.parseText('IELTS.\n(A " 26409\n合計 26,409').items.length,0,'Totals and broken OCR are not products');
 assert.ok(ocr.limits.maxItems===30&&ocr.limits.maxImageBytes===12*1024*1024);
 await assert.rejects(ocr.readImage({type:'image/heic',size:42}),/OCR_IMAGE_TYPE_UNSUPPORTED/);
 await assert.rejects(ocr.readImage({type:'image/png',size:13*1024*1024}),/OCR_IMAGE_SIZE_INVALID/);

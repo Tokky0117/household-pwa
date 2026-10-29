@@ -2247,3 +2247,8 @@ details.preview-record-row { display: block; }
 .receipt-record-lines li { display: flex; justify-content: space-between; align-items: start; gap: 8px; padding: 9px 0; border-bottom: 1px solid var(--line); }
 .receipt-record-lines li span { flex: 1; overflow-wrap: anywhere; }
 .receipt-record-lines li strong { font-size: 13px; white-space: nowrap; }
+
+/* A real photo OCR draft must require explicit review before local-only saving. */
+.receipt-scan-confirm{display:flex;align-items:center;gap:12px;margin:20px 0 12px;line-height:1.5;font-weight:650;cursor:pointer}
+.receipt-scan-confirm input{width:22px;height:22px;flex:none;accent-color:var(--accent)}
+.preview-record-row .danger{margin:14px 0 0;min-height:44px}
