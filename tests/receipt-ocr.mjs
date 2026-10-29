@@ -100,6 +100,20 @@ assert.equal(scripts.length,1);
 engine.createWorker=async()=>({async recognize(){throw Error('OCR_FAILED')},async terminate(){stats.stopped++}});
 await assert.rejects(ocr.readImage(file),/OCR_FAILED/);
 assert.equal(stats.stopped,2,'Always release OCR worker');
+
+const actualOcrStyle=ocr.parseText(`oe 市 川 国分 店
+2026年01月27日(火)18:02
+A* ボ イル まつ いか ¥398
+Ax し まほ っ け 開 干 #338
+カ ナ ダ サラ ダ \\335
+小計 ¥1,398
+外 8% ¥111
+支払 合計 ¥1,509`);
+assert.equal(actualOcrStyle.items.length,3,
+ 'OCR symbols ¥, # and backslash are plausible amounts, subject to manual review');
+assert.equal(actualOcrStyle.items[0].amount,398);
+assert.equal(actualOcrStyle.items[1].amount,338);
+assert.equal(actualOcrStyle.items[2].amount,335);
 // Test automatic receipt cropping with a synthetic photo: pale paper on wood.
 const w=120,h=180,rgba=new Uint8ClampedArray(w*h*4);
 for(let y=0;y<h;y++)for(let x=0;x<w;x++){

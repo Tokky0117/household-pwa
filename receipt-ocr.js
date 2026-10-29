@@ -91,7 +91,9 @@
     continue;
    }
    // Ordinary receipts: "A* 商品名 ¥398" or "* 商品名¥298".
-   const direct=line.match(/^(.{2,100}?)\s*[¥￥]\s*((?:\d{1,3}(?:,\d{3})+|\d{1,6}))\s*(?:円)?$/)||
+   // OCR can render a yen mark as # or a backslash; only treat it as a
+   // price prefix when a plausible product name precedes it.
+   const direct=line.match(/^(.{2,100}?)\s*[¥￥\\#]\s*((?:\d{1,3}(?:,\d{3})+|\d{1,6}))\s*(?:円|[ET])?$/i)||
       line.match(/^(.{2,100}?)\s+((?:\d{1,3}(?:,\d{3})+|\d{1,6}))\s*(?:円)?$/);
    if(direct){
     let name=cleanName(direct[1]),quantity=1,amount=numeric(direct[2]);
