@@ -59,7 +59,7 @@ assert.ok(calls.claimed);
 const script={method:'GET',url:new URL('app.js?v=59',entry).href};
 assert.equal((await emit('fetch',script))?.key,'./app.js?v=59');
 assert.equal((await emit('fetch',{method:'GET',url:entry,mode:'navigate'}))?.key,'./');
-const otherVersion=await emit('fetch',{method:'GET',url:new URL('app.js?v=59',entry).href});
+const otherVersion=await emit('fetch',{method:'GET',url:new URL('app.js?v=60',entry).href});
 assert.equal(otherVersion?.type,'error','Do not mix older JS into newer app shell');
 assert.equal(calls.put||0,0,'No offline cache writes');
 await emit('fetch',{method:'POST',url:entry});

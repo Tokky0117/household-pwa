@@ -160,7 +160,7 @@ assert.ok(!ui.savePreviewRecord({type:'receipt',chainId:'c-life',date:month+'-01
 assert.ok(ui.savePreviewRecord({type:'receipt',chainId:'c-life',date:ui.demoRecords[0].record_date,quantity:2,amount:476,productId:'',category:''}),'Unmatched receipt can be stored locally');
 assert.equal(ui.allPreviewRecords().length,ui.demoRecords.length+1,'Saved header in preview storage');
 assert.equal(ui.allPreviewItems().length,ui.demoRecordItems.length+1,'Saved child with same record');
-assert.ok(ui.receiptView().includes('この端末の記録')&&ui.budgetView().includes('未分類'));
+assert.ok(ui.receiptView().includes('このSafari内の試作記録')&&ui.budgetView().includes('未分類'));
 assert.ok(ui.budgetView().includes('値札は集計対象外'));
 const cls=(id)=>{const c=new Set();return {dataset:{productId:id},classList:{toggle(k,b){b?c.add(k):c.delete(k)}},querySelectorAll(){return [{tabIndex:-1}]},state:c}};
 const a=cls('p-milk-1'),b=cls('p-milk-2');mockSwipeRows=[a,b];

@@ -20,7 +20,7 @@
   return normalize(s).replace(/^[*＊※#\s]+/,'').slice(0,120).trim();
  }
  function plausibleName(name){
-  return name.length>=2&&name.length<=120&&/[\p{L}]/u.test(name)&&
+  return name.length>=2&&name.length<=120&&(name.match(/[\p{L}]/gu)||[]).length>=2&&
    !isSummary(name)&&!coupon(name)&&!/\d{5,}/.test(name)&&
    !/^(?:GOLDSTAR|BEGIN CHECK|END OF CHECK|MEMBER|MEMBERSHIP|SKU|\bNO\b)/i.test(name);
  }
