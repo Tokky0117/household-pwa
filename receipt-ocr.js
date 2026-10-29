@@ -28,7 +28,10 @@
   return normalize(s).replace(/^(?:[A-Z]\s*)?[＊*※]\s*/i,'').replace(/^[*＊※#\s]+/,'').slice(0,120).trim();
  }
  function plausibleName(name){
-  return name.length>=2&&name.length<=120&&(name.match(/[\p{L}]/gu)||[]).length>=2&&
+  return name.length>=1&&name.length<=120&&(
+    /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}]/u.test(name)||
+    (name.match(/[A-Za-z]/g)||[]).length>=2
+   )&&
    !isSummary(name)&&!coupon(name)&&!/\d{5,}/.test(name)&&
    !/(?:領収|支払|決済|ポイント|オーダー|レジ番号|登録番号|会員番号|お買上|お買い上げ|外\s*8%|税込額)/.test(name)&&
    !/^(?:GOLDSTAR|BEGIN CHECK|END OF CHECK|MEMBER|MEMBERSHIP|SKU|\bNO\b)/i.test(name);
