@@ -11,17 +11,26 @@
  const isSummary=line=>/^(?:小\s*計|合\s*計|総\s*合\s*計|税|消費税|税抜|内税|外税|[0-9]{1,2}%\s*対象|対象|お預|預り|お釣|釣銭|現金|クレジット|カード|支払|ご利用|ポイント|割引|値引|R値引|クーポン|購入点数|商品点数|レシート|領収|TEL|電話|〒|No[.:]|取引|売上|発行|担当|商品計)/i.test(line);
  const coupon=line=>/ストア[ー\s]*クーポン|クーポン|COUPON|\bCPN\b|値引|割引|値下|値引き/i.test(line);
  const numeric=s=>Number(String(s).replace(/,/g,''));
+ const paymentTotal=lines=>{
+  let total=null;
+  for(const line of lines){
+   const m=line.match(/^(?:合\s*計|支払\s*合計|決済金額)\s*[¥￥]?\s*([0-9]{1,3}(?:,[0-9]{3})*|[0-9]{1,6})\s*(?:円)?$/);
+   if(m)total=numeric(m[1]);
+  }
+  return Number.isSafeInteger(total)&&total>0?total:null;
+ };
  const validAmount=n=>Number.isSafeInteger(n)&&n>=1&&n<=1000000;
  function validDate(year,month,day){
   const d=new Date(year,month-1,day);
   return d.getFullYear()===year&&d.getMonth()===month-1&&d.getDate()===day;
  }
  function cleanName(s){
-  return normalize(s).replace(/^[*＊※#\s]+/,'').slice(0,120).trim();
+  return normalize(s).replace(/^(?:[A-Z]\s*)?[＊*※]\s*/i,'').replace(/^[*＊※#\s]+/,'').slice(0,120).trim();
  }
  function plausibleName(name){
   return name.length>=2&&name.length<=120&&(name.match(/[\p{L}]/gu)||[]).length>=2&&
    !isSummary(name)&&!coupon(name)&&!/\d{5,}/.test(name)&&
+   !/(?:領収|支払|決済|ポイント|オーダー|レジ番号|登録番号|会員番号|お買上|お買い上げ|外\s*8%|税込額)/.test(name)&&
    !/^(?:GOLDSTAR|BEGIN CHECK|END OF CHECK|MEMBER|MEMBERSHIP|SKU|\bNO\b)/i.test(name);
  }
  function knownStore(lines){
@@ -78,7 +87,9 @@
     }
     continue;
    }
-   const direct=line.match(/^(.{2,100}?)\s+(?:[¥￥]\s*)?((?:\d{1,3}(?:,\d{3})+|\d{1,6}))\s*(?:円)?$/);
+   // Ordinary receipts: "A* 商品名 ¥398" or "* 商品名¥298".
+   const direct=line.match(/^(.{2,100}?)\s*[¥￥]\s*((?:\d{1,3}(?:,\d{3})+|\d{1,6}))\s*(?:円)?$/)||
+      line.match(/^(.{2,100}?)\s+((?:\d{1,3}(?:,\d{3})+|\d{1,6}))\s*(?:円)?$/);
    if(direct){
     let name=cleanName(direct[1]),quantity=1,amount=numeric(direct[2]);
     const qty=name.match(/\s+(\d{1,2})\s*(?:個|点|本|袋)\s*[xX×]\s*([\d,]+)\s*$/);
@@ -89,9 +100,14 @@
     if(!/\d{4,}/.test(name)&&!/\s[\d,]+\s+[\d,]+/.test(name))add(name,quantity,amount);
     previousName='';continue;
    }
+   const standalonePrice=line.match(/^[¥￥]\s*([\d,]{1,8})\s*(?:円)?$/);
+   if(standalonePrice&&previousName){
+    add(previousName,1,numeric(standalonePrice[1]));
+    previousName='';continue;
+   }
    previousName=plausibleName(cleanName(line))?cleanName(line):'';
   }
-  return {store,date,items};
+  return {store,date,items,receiptTotal:paymentTotal(lines)};
  }
  function loadEngine(){
   if(window.Tesseract?.createWorker)return Promise.resolve(window.Tesseract);

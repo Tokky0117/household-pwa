@@ -30,6 +30,31 @@ assert.equal(ocr.parseText('万代\n2026/10/29\nりんご 120\n値引 -50').item
 assert.equal(ocr.parseText('商品名 12345678').items.length,0,'Reject excessive price');
 assert.equal(ocr.parseText('領収書\n合計 100\nポイント 50').items.length,0);
 assert.equal(ocr.parseText('IELTS.\n2026-10-29\n牛乳 198').store,'','Unknown OCR text is not a store name');
+const supermarket=ocr.parseText(`市川国分店
+2026年01月27日(火)18:02
+* 惣菜牛乳クリームコロッケ ¥298
+A* カナダホッキ貝入りサラダ ¥398
+A* ボイルまついか ¥398
+A* しまほっけ開干 ¥398
+Aカナガチハツ (3個) -94
+¥1194から ¥1100に致します
+小計 ¥1,398
+(外8% 対象 ¥1,398)
+外8% ¥111
+合計 ¥1,509
+支払合計 ¥1,509
+PayPay ¥1,509
+基本ポイント対象 ¥1,398`);
+assert.equal(supermarket.date,'2026-01-27');
+assert.equal(supermarket.receiptTotal,1509);
+assert.deepEqual(JSON.parse(JSON.stringify(supermarket.items)),[
+ {name:'惣菜牛乳クリームコロッケ',quantity:1,amount:298},
+ {name:'カナダホッキ貝入りサラダ',quantity:1,amount:398},
+ {name:'ボイルまついか',quantity:1,amount:398},
+ {name:'しまほっけ開干',quantity:1,amount:398}
+], 'Yen-marked product lines are extracted, but subtotal and discount are excluded');
+assert.equal(ocr.parseText('肉まん\n¥180\n小計\n¥180').items[0].amount,180,'Split price line');
+assert.equal(ocr.parseText('レジ番号 ¥101\n支払合計 ¥1509\n小計 1,398').items.length,0,'No receipt metadata as merchandise');
 const warehouse=ocr.parseText(`GOLDSTAR
 COSTCO WHOLESALE
 KS SOAP
