@@ -100,8 +100,9 @@ async function scanReceiptPhoto(file){
    if(label)label.textContent='写真を読み取っています… '+progress+'%';
   });
   if(epoch!==receiptScanEpoch||tab!=='receipt')return;
-  receiptScan={status:result.items.length?'読取候補を確認・修正してください':'明細を抽出できませんでした。別の写真で再試行するか、手入力してください。',
+  receiptScan={status:result.items.length?'読取候補を確認・修正してください':'明細を自動抽出できませんでした。下の「＋ 明細を追加」から写真を見ながら入力できます。',
    store:result.store,date:result.date||daysFromDate(new Date()),chainId:'',
+   receiptTotal:Number.isSafeInteger(result.receiptTotal)?result.receiptTotal:null,
    items:result.items.map(item=>({rawName:item.name,quantity:String(item.quantity),amount:String(item.amount),category:'',productId:''}))};
  }catch(error){
   if(epoch!==receiptScanEpoch||tab!=='receipt')return;
@@ -688,18 +689,22 @@ function receiptScanReview(){
  ${UI.formField({id:'scan-product-'+i,name:'product-'+i,label:'登録済み商品との対応（任意）',control:'select',value:item.productId,options:products})}
  ${UI.formField({id:'scan-category-'+i,name:'category-'+i,label:'家計簿カテゴリ',control:'select',value:item.category,options:categories})}
  </section>`).join('');
+ const total=Number.isSafeInteger(scan.receiptTotal)?scan.receiptTotal:null;
+ const initialSum=scan.items.reduce((a,item)=>a+(Number(item.amount)||0),0);
  return `<section class="panel receipt-scan-panel"><h2>写真の読み取り結果（保存前）</h2>
  <p class="hint" id="receipt-scan-progress" role="status">${esc(scan.status)}</p>
  <p class="hint">OCRの候補は自動確定しません。レシート原本と照合して、不要な候補を除外してください。チェーンが一覧になければ試作保存しないでください。</p>
  ${scan.store?'<p class="hint">店舗名候補：'+esc(scan.store)+'（チェーンは必ず選択してください）</p>':''}
  ${receiptPhotoUrl?'<img class="receipt-scan-photo" alt="選択したレシート写真（端末内のみ）" src="'+esc(receiptPhotoUrl)+'">':''}
- ${!receiptScanBusy&&scan.items.length?`<form id="receiptScanForm">
+ ${!receiptScanBusy?`<form id="receiptScanForm">
  ${UI.formField({id:'scan-chain',name:'chain',label:'チェーン（確認必須）',control:'select',value:scan.chainId,options})}
  ${UI.formField({id:'scan-date',name:'date',label:'購入日（確認必須）',type:'date',value:scan.date,required:true})}
+ ${total!==null?`<p class="hint" role="status"><strong>支払合計のOCR候補：${yen(total)}</strong> ／ 抽出した明細候補の合計：${yen(initialSum)}。税込・税抜や値引きが別計上される場合、明細と合計は一致しません。</p>`:''}
  ${items}
  <button type="button" class="secondary" data-act="addReceiptScanItem" ${scan.items.length>=30?'disabled':''}>＋ 明細を追加</button>
  <label class="receipt-scan-confirm"><input type="checkbox" name="confirmed" value="yes" required><span>レシート原本と明細・購入日・チェーン・金額を確認しました</span></label>
- <button type="submit" class="primary receipt-scan-save">確認した${scan.items.length}明細をこのSafariに試作保存</button>
+ ${total!==null?'<label class="receipt-scan-confirm"><input type="checkbox" name="totalsChecked" value="yes" required><span>支払合計と、税・値引きを含む明細金額の差を確認しました</span></label>':''}
+ <button type="submit" class="primary receipt-scan-save" ${scan.items.length?'':'disabled'}>確認した${scan.items.length}明細をこのSafariに試作保存</button>
  <p class="sample-price-notice">保存先：このSafariのWebサイトデータのみ。Google Sheets・Google Drive・ファイルには保存しません。OCR誤読、合計金額、税・割引、数量を必ず確認してください。</p></form>`:''}
  <button type="button" class="secondary" data-act="discardReceiptScan">写真の確認を終了</button>
  </section>`;
@@ -715,7 +720,7 @@ function receiptView(){
  }).join('');
  return `<details class="panel preview-record-row"><summary><strong>${esc(r.record_type==='receipt'?'レシート':'値札')} · ${esc(r.record_date)}</strong><span>${esc(chainLabel(r.chain_id))} ／ ${lines.length}明細 ／ ${yen(sum)}</span></summary><ul class="receipt-record-lines">${details}</ul><button type="button" class="secondary danger" data-act="deletePreviewReceipt" data-record-id="${esc(r.record_id)}">この試作記録を削除</button></details>`;
  }).join('')||'<div class="empty">この端末の記録はまだありません</div>';
- return `${head('レシート','くらしストック')}<main class="preview-record-page"><p class="sample-price-notice">写真の文字認識は端末内で行い、結果を確認してから試作保存できます。GAS・Sheets・夫婦間同期は未接続です。</p><section class="panel receipt-scan-start"><h2>レシート写真を読み込む</h2><p class="hint">OCR実行時のみ無料の認識ライブラリ・日本語データをネットから取得します。写真そのものは送信・保存しません。通信がない場合は手入力できます。</p><div class="record-entry-actions"><button type="button" class="secondary" data-act="scanReceiptCamera">カメラで撮影</button><button type="button" class="secondary" data-act="scanReceiptPhoto">写真を選択</button></div><input id="receipt-camera" type="file" accept="image/jpeg,image/png,image/webp" capture="environment" hidden><input id="receipt-photo" type="file" accept="image/jpeg,image/png,image/webp" hidden></section>${receiptScanReview()}<div class="record-entry-actions"><button class="secondary" data-act="newReceipt">${miniIcon('plus')}<span>レシート明細</span></button><button class="secondary" data-act="newShelf">${miniIcon('plus')}<span>値札</span></button></div><h2 class="sectiontitle">このSafari内の試作記録（Google Sheetsには未保存）</h2><p class="hint">保存した記録はこのブラウザのWebサイトデータにあります。Google Sheets・Google Drive・ファイルアプリには保存されません。ブラウザデータを消すと記録も失われます。</p>${rows}</main>${nav()}`;
+ return `${head('レシート','くらしストック')}<main class="preview-record-page"><p class="sample-price-notice">レシート確認期間中、開発版のGoogleログインは一時停止しています。読み取り結果は端末内の試作データのみです。GAS・Sheets・夫婦間同期は未接続です。</p><section class="panel receipt-scan-start"><h2>レシート写真を読み込む</h2><p class="hint">OCR実行時のみ無料の認識ライブラリ・日本語データをネットから取得します。写真そのものは送信・保存しません。通信がない場合は手入力できます。</p><div class="record-entry-actions"><button type="button" class="secondary" data-act="scanReceiptCamera">カメラで撮影</button><button type="button" class="secondary" data-act="scanReceiptPhoto">写真を選択</button></div><input id="receipt-camera" type="file" accept="image/jpeg,image/png,image/webp" capture="environment" hidden><input id="receipt-photo" type="file" accept="image/jpeg,image/png,image/webp" hidden></section>${receiptScanReview()}<div class="record-entry-actions"><button class="secondary" data-act="newReceipt">${miniIcon('plus')}<span>レシート明細</span></button><button class="secondary" data-act="newShelf">${miniIcon('plus')}<span>値札</span></button></div><h2 class="sectiontitle">このSafari内の試作記録（Google Sheetsには未保存）</h2><p class="hint">保存した記録はこのブラウザのWebサイトデータにあります。Google Sheets・Google Drive・ファイルアプリには保存されません。ブラウザデータを消すと記録も失われます。</p>${rows}</main>${nav()}`;
 }
 function budgetView(){
  const {total,byCategory}=budgetTotals(allPreviewRecords(),allPreviewItems(),budgetMonth);
@@ -723,7 +728,14 @@ function budgetView(){
  return `${head('家計簿','くらしストック')}<main class="preview-budget-page"><p class="sample-price-notice">※ サンプルと端末内の試作記録。値札は集計対象外です。</p><div class="budget-month"><button type="button" class="iconbtn" data-act="prevMonth" aria-label="前月">${chevron('left')}</button><strong>${esc(budgetMonth.replace('-', '年'))}月</strong><button type="button" class="iconbtn" data-act="nextMonth" aria-label="翌月">${chevron('right')}</button></div><div class="budget-total"><span>税込合計</span><strong>${yen(total)}</strong></div><div class="budget-category-list">${categoryRows.map(([name,value])=>`<div class="budget-category-row"><span>${esc(name)}</span><strong>${yen(value)}</strong></div>`).join('')}</div></main>${nav()}`;
 }
 function stub(title,icon,desc){return `${head(title,'くらしストック')}<main><div class="panel placeholder"><div class="bubble">${icon}</div><h2>${title}画面</h2><p>${desc}</p></div><div class="alert">この画面は共通UIの確認用です。データ処理や同期はまだ行いません。</div></main>${nav()}`}
-function settingsView(){const auth=window.KurashiAuth?.status?.()||{configured:false,signedIn:false};const loginPanel=`<div class="panel"><h2>Googleログイン（接続準備）</h2><p class="hint">${auth.signedIn?'この端末でログイン済みです。実データの同期はまだ無効です。':auth.configured?'初回のみGoogleアカウントでログインします。期限切れ時は再ログインが必要です。':'Googleログインの接続設定を準備中です。現時点では試作データだけを利用できます。'}</p>${auth.signedIn?'<button type="button" class="secondary" data-act="googleSignOut">ログアウト</button>':auth.configured?'<div id="google-login-button"></div>':''}</div>`;return `${head('設定','くらしストック')}<main>${loginPanel}<div class="panel"><h2>Google Sheets読み取り</h2><p class="hint" role="${liveStatus.startsWith('取得失敗：')?'alert':'status'}">状態：${esc(liveStatus)}。ログイン後、日用品・商品・店舗を読み取れます。保存や同期はまだ行いません。${liveStatus.startsWith('取得失敗：')?'自動再試行はしません。必要ならもう一度読み取ってください。':''}</p><button class="secondary" data-act="refreshLive" style="width:100%" ${auth.signedIn&&!liveBusy?'':'disabled'}>${liveBusy?'読み取り中…':liveStatus.startsWith('取得失敗：')?'もう一度読み取る':'Google Sheetsから読み取る'}</button>${liveMode?'<button class="secondary" data-act="leaveLive" style="width:100%">試作データに戻る</button>':''}</div><div class="panel"><h2>試作版の操作</h2><p class="hint">変更内容はこの端末の localStorage のみに保存され、夫婦間では共有されません。</p><button class="secondary danger" data-act="reset">仮データを初期状態に戻す</button></div><div class="panel"><h2>今後の実装</h2><p class="hint">レシート／値札のチェーン照合、Google Apps Script 接続、認証、オフライン差分同期を追加予定です。</p></div></main>${nav()}`}
+function settingsView(){
+ if(window.KURASHI_RECEIPT_TEST_MODE===true)
+  return `${head('設定','くらしストック')}<main>
+   <section class="panel"><h2>Googleログインは一時停止中</h2><p class="hint">レシート機能の確認期間中、この開発プレビューではGoogleログインとGoogle Sheetsへの通信を開始しません。本番の認証設定は変更していません。</p></section>
+   <section class="panel"><h2>試作データの保存先</h2><p class="hint">このSafariのWebサイト内データのみです。Google Sheets・Driveには保存しません。</p></section>
+   <section class="panel"><h2>試作版の操作</h2><button type="button" class="secondary danger" data-act="reset">仮データを初期状態に戻す</button></section>
+   </main>${nav()}`;
+ const auth=window.KurashiAuth?.status?.()||{configured:false,signedIn:false};const loginPanel=`<div class="panel"><h2>Googleログイン（接続準備）</h2><p class="hint">${auth.signedIn?'この端末でログイン済みです。実データの同期はまだ無効です。':auth.configured?'初回のみGoogleアカウントでログインします。期限切れ時は再ログインが必要です。':'Googleログインの接続設定を準備中です。現時点では試作データだけを利用できます。'}</p>${auth.signedIn?'<button type="button" class="secondary" data-act="googleSignOut">ログアウト</button>':auth.configured?'<div id="google-login-button"></div>':''}</div>`;return `${head('設定','くらしストック')}<main>${loginPanel}<div class="panel"><h2>Google Sheets読み取り</h2><p class="hint" role="${liveStatus.startsWith('取得失敗：')?'alert':'status'}">状態：${esc(liveStatus)}。ログイン後、日用品・商品・店舗を読み取れます。保存や同期はまだ行いません。${liveStatus.startsWith('取得失敗：')?'自動再試行はしません。必要ならもう一度読み取ってください。':''}</p><button class="secondary" data-act="refreshLive" style="width:100%" ${auth.signedIn&&!liveBusy?'':'disabled'}>${liveBusy?'読み取り中…':liveStatus.startsWith('取得失敗：')?'もう一度読み取る':'Google Sheetsから読み取る'}</button>${liveMode?'<button class="secondary" data-act="leaveLive" style="width:100%">試作データに戻る</button>':''}</div><div class="panel"><h2>試作版の操作</h2><p class="hint">変更内容はこの端末の localStorage のみに保存され、夫婦間では共有されません。</p><button class="secondary danger" data-act="reset">仮データを初期状態に戻す</button></div><div class="panel"><h2>今後の実装</h2><p class="hint">レシート／値札のチェーン照合、Google Apps Script 接続、認証、オフライン差分同期を追加予定です。</p></div></main>${nav()}`}
 // All confirmation dialogs share one DOM and CSS. A Japanese full stop ends a paragraph line.
 function dialogView(){
  if(!dialog)return '';
@@ -940,6 +952,9 @@ app.addEventListener('change',e=>{if(['receipt-camera','receipt-photo'].includes
 app.addEventListener('submit',e=>{e.preventDefault();const form=e.target;const d=new FormData(form);
 if(form.id==='receiptScanForm'){
  if(d.get('confirmed')!=='yes'){fieldNotice(form,'原本と明細を確認してチェックしてください','scan-chain');return;}
+ if(Number.isSafeInteger(receiptScan?.receiptTotal)&&d.get('totalsChecked')!=='yes'){
+  fieldNotice(form,'税込・税別・値引きと支払合計を確認してチェックしてください','scan-chain');return;
+ }
  receiptScanFormValues();
  if(!savePreviewReceiptScan(receiptScan)){fieldNotice(form,'チェーン・日付・各明細の品名・数量・税込金額を確認してください','scan-chain');return}
  discardReceiptScan();page='list';tab='receipt';render();say('このSafariに試作保存しました。Google Sheetsには保存していません。');return;
