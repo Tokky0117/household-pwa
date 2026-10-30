@@ -1,0 +1,25 @@
+name: OCR Japanese glyph conversion study (read-only)
+on:
+  push:
+    branches: [stage-a-ui-handoff-review]
+    paths:
+      - 'tools/receipt-japanese-normalization-study.mjs'
+      - '.github/workflows/ocr-japanese-normalization-study.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  study:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install pinned, isolated OpenCC-JS without modifying app
+        run: |
+          mkdir -p "$RUNNER_TEMP/opencc-study"
+          npm install --prefix "$RUNNER_TEMP/opencc-study" --no-save --package-lock=false --ignore-scripts --no-audit --no-fund --no-progress opencc-js@1.4.2
+      - name: Evaluate immutable OCR fixture and parsed item regressions
+        run: OPENCC_PACKAGE_ROOT="$RUNNER_TEMP/opencc-study" node tools/receipt-japanese-normalization-study.mjs
