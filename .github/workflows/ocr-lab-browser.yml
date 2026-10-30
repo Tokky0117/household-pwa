@@ -18,6 +18,9 @@ jobs:
       - name: Install pinned test dependencies
         working-directory: ocr-lab
         run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Test conservative Japanese OCR glyph normalization
+        working-directory: ocr-lab
+        run: npm run test:normalization
       - name: Build local OCR assets
         working-directory: ocr-lab
         run: npm run build

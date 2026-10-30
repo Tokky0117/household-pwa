@@ -22,10 +22,10 @@ try{
  await page.waitForFunction(()=>document.getElementById('crop-canvas').width>1);
  const canvas=page.locator('#crop-canvas'),r=await canvas.boundingBox();
  await page.mouse.move(r.x+r.width*.02,r.y+r.height*.02);await page.mouse.down();await page.mouse.move(r.x+r.width*.98,r.y+r.height*.98);await page.mouse.up();
- await page.locator('#scale').selectOption('contrast');await page.locator('#scan').click();
+ await page.locator('#scale').selectOption('contrast');await page.locator('#japanese-normalize').check();await page.locator('#scan').click();
  await page.waitForFunction(()=>!document.getElementById('result').hidden||document.getElementById('status').textContent.startsWith('読み取りできません'),{timeout:180000});
  assert.equal(await page.locator('#result').isVisible(),true,await page.locator('#status').textContent());
- const cropped=JSON.parse(await page.locator('#diagnostic').textContent());assert.equal(cropped.preparation.mode,'contrast');assert.ok(cropped.preparation.crop.width>0);
+ const cropped=JSON.parse(await page.locator('#diagnostic').textContent());assert.equal(cropped.preparation.mode,'contrast');assert.ok(cropped.preparation.crop.width>0);assert.equal(cropped.normalization.mode,'japanese-glyphs-v1');assert.equal(cropped.normalization.originalPreserved,true);
  await page.locator('#copy').click();assert.match(await page.evaluate(()=>navigator.clipboard.readText()),/位置情報/);
  assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));await page.locator('#reset').click();assert.equal(await page.locator('#photo').inputValue(),'');assert.equal(await page.locator('#text').inputValue(),'');assert.equal(await page.locator('#result').isHidden(),true);
  assert.equal(errors.length,0,errors.join('\n'));assert.ok(requests.every(r=>!r.external&&r.method==='GET'));

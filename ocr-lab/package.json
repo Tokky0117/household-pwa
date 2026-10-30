@@ -5,11 +5,13 @@
   "type": "module",
   "scripts": {
     "build": "vite build && node prepare-assets.mjs",
-    "test:browser": "node test-browser.mjs"
+    "test:browser": "node test-browser.mjs",
+    "test:normalization": "node test-normalization.mjs"
   },
   "dependencies": {
     "@paddleocr/paddleocr-js": "0.4.2",
-    "onnxruntime-web": "1.31.1"
+    "onnxruntime-web": "1.31.1",
+    "opencc-js": "1.4.2"
   },
   "devDependencies": {
     "vite": "6.4.1",
