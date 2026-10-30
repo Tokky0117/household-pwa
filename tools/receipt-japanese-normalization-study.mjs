@@ -80,3 +80,71 @@ console.log('IPHONE_R06 '+JSON.stringify({before:score(r06,original),after:score
 
 console.log('IPHONE_R06_SAFE '+JSON.stringify({before:score(r06,original),after:score(r06,safeConvert(original)),errorsBefore:dist(r06.truth,original),errorsAfter:dist(r06.truth,safeConvert(original)),changed:original.split('\n').map(x=>[x,safeConvert(x)]).filter(([x,y])=>x!==y)}));
 console.log('CHECK_SAFE '+JSON.stringify(checks.map(input=>({input,output:safeConvert(input)}))));
+
+
+const contextLine=/合計|クレ|対象|支払|お買上|小計|釣銭|税込|税額|総額/;
+function groupingCandidate(input){
+ return input.split('\n').map(line=>contextLine.test(line)?line.replace(/(?<!\d)(\d{1,3})\.(\d{3})(?!\d)/g,'$1,$2'):line).join('\n');
+}
+function align(ref,hyp){
+ ref=Array.from(norm(ref));hyp=Array.from(norm(hyp));
+ const n=ref.length,m=hyp.length,dp=Array.from({length:n+1},()=>new Uint16Array(m+1));
+ for(let i=0;i<=n;i++)dp[i][0]=i;
+ for(let j=0;j<=m;j++)dp[0][j]=j;
+ for(let i=1;i<=n;i++)for(let j=1;j<=m;j++)dp[i][j]=ref[i-1]===hyp[j-1]?dp[i-1][j-1]:Math.min(dp[i-1][j-1],dp[i-1][j],dp[i][j-1])+1;
+ const out=[];let i=n,j=m;
+ while(i>0||j>0){
+  if(i>0&&j>0&&ref[i-1]===hyp[j-1]){i--;j--;continue;}
+  if(i>0&&j>0&&dp[i][j]===dp[i-1][j-1]+1){out.push({kind:'S',ref:ref[--i],ocr:hyp[--j]});continue;}
+  if(i>0&&dp[i][j]===dp[i-1][j]+1){out.push({kind:'D',ref:ref[--i],ocr:''});continue;}
+  if(j>0&&dp[i][j]===dp[i][j-1]+1){out.push({kind:'I',ref:'',ocr:hyp[--j]});continue;}
+  throw Error('Untraceable edit');
+ }
+ return out.reverse();
+}
+const categories={markers:0,kana:0,kanji:0,amountsDigits:0,other:0},patterns=new Map();
+let oracleBefore=0,oracleAfter=0,betterOriginal=0,betterGray=0,betterEqual=0;
+const summaries=[],money={tested:0,found:0,missing:[]};
+for(const s of data.samples){
+ const gray=data.records.find(r=>r.id===s.id&&r.variant==='paddle-v6-small-2x-gray-geometry').text;
+ const orig=data.records.find(r=>r.id===s.id&&r.variant==='paddle-v6-small-original-geometry').text;
+ const transformed=safeConvert(gray),punct=groupingCandidate(transformed);
+ const origLines=orig.split('\n'),grayLines=gray.split('\n'),truthLines=s.truth.split('\n'),safeLines=transformed.split('\n');
+ if(origLines.length!==truthLines.length||grayLines.length!==truthLines.length)throw Error('Line count drift: '+s.id);
+ let glyphs=0,postGlyphs=0,extraGrouping=0;
+ for(let k=0;k<truthLines.length;k++){
+  const a=truthLines[k],b=grayLines[k],c=origLines[k],d=safeLines[k];
+  oracleBefore+=Math.min(dist(a,b),dist(a,c));
+  oracleAfter+=Math.min(dist(a,d),dist(a,safeConvert(c)));
+  const origErr=dist(a,c),grayErr=dist(a,b);
+  if(origErr<grayErr)betterOriginal++;
+  else if(origErr>grayErr)betterGray++;
+  else betterEqual++;
+  for(const x of align(a,d)){
+   glyphs++;
+   const source=x.ref||x.ocr;
+   let group;
+   if(/[※!()]/.test(source))group='markers';
+   else if(/[\p{Script=Hiragana}\p{Script=Katakana}]/u.test(source))group='kana';
+   else if(/\p{Script=Han}/u.test(source))group='kanji';
+   else if(/[0-9¥￥,.]/.test(source))group='amountsDigits';
+   else group='other';
+   categories[group]++;
+   const key=[x.kind,x.ref,x.ocr].join('→');
+   patterns.set(key,(patterns.get(key)||0)+1);
+  }
+  const m=a.match(/[¥￥]\s*(\d[\d,]*)\s*$/u);
+  if(m){
+   money.tested++;
+   const num=m[1].replace(/,/g,'');
+   const bmoney=[...b.matchAll(/[¥￥]\s*(\d[\d,.]*)/gu)].map(x=>x[1].replace(/[,.]/g,''));
+   if(bmoney.includes(num))money.found++;
+   else money.missing.push({id:s.id,line:k+1,truth:a,ocr:b});
+  }
+ }
+ summaries.push({id:s.id,gold: norm(s.truth).length,raw:dist(s.truth,gray),safe:dist(s.truth,transformed),withGrouping:dist(s.truth,punct),itemsBefore:score(s,gray).exact,itemsSafe:score(s,transformed).exact,itemsGrouping:score(s,punct).exact, groupingChanges:punct!==transformed,referenceChangedByGrouping:groupingCandidate(s.truth)!==s.truth});
+}
+console.log('AUDIT_SAMPLES '+JSON.stringify(summaries));
+console.log('AUDIT_ERRORS '+JSON.stringify({categories,patterns:[...patterns].sort((a,b)=>b[1]-a[1]).slice(0,34),totalPostSafe:Object.values(categories).reduce((a,b)=>a+b,0)}));
+console.log('AUDIT_MONEY '+JSON.stringify(money));
+console.log('AUDIT_ORACLE '+JSON.stringify({oracleBefore,oracleAfter,originalBetterLines:betterOriginal,grayBetterLines:betterGray,sameLines:betterEqual,warning:'Oracle selects each line using ground truth, not a deployable algorithm'}));
