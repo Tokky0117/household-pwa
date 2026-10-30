@@ -10,6 +10,25 @@ const OpenCC=require('opencc-js');
 const s2t=OpenCC.Converter({from:'cn',to:'t'});
 const t2jp=OpenCC.Converter({from:'t',to:'jp'});
 const convert=text=>t2jp(s2t(text));
+// Preserve glyphs that are already part of the Japanese Shift_JIS/CP932 repertoire;
+// convert only other characters that have a known simplified-to-Japanese mapping.
+// Repertoire is generated locally using the Web standard TextDecoder, not custom product words.
+function makeJapaneseRepertoire(){
+ const decoder=new TextDecoder('shift_jis',{fatal:true}),chars=new Set();
+ for(let a=0x81;a<=0xfc;a++){
+  if(!((a>=0x81&&a<=0x9f)||(a>=0xe0&&a<=0xfc)))continue;
+  for(let b=0x40;b<=0xfc;b++){
+   if(b===0x7f)continue;
+   try{for(const ch of decoder.decode(Uint8Array.of(a,b)))chars.add(ch);}
+   catch{/* Unassigned byte sequences are not Japanese repertoire glyphs. */}
+  }
+ }
+ return chars;
+}
+const japaneseRepertoire=makeJapaneseRepertoire();
+const safeConvert=text=>Array.from(text,ch=>japaneseRepertoire.has(ch)?ch:convert(ch)).join('');
+console.log('REPERTOIRE '+japaneseRepertoire.size);
+
 const data=JSON.parse(fs.readFileSync('tests/fixtures/receipt-paddle/inputs.json','utf8'));
 const context={};vm.runInNewContext(fs.readFileSync('receipt-structure.js','utf8'),context);
 const parser=context.KurashiReceiptStructure.parse;
@@ -41,6 +60,23 @@ for(const variant of ['paddle-v6-small-2x-gray-geometry','paddle-v6-small-origin
  }
  console.log('GROUP '+JSON.stringify({variant,characters:chars,errorsBefore:before,errorsAfter:after,cerBefore:before/chars,cerAfter:after/chars,exactBefore:beforeExact,exactAfter:afterExact,changedSamples:changed,changedLines:diffs,truthChanges}));
 }
+for(const variant of ['paddle-v6-small-2x-gray-geometry','paddle-v6-small-original-geometry','paddle-v5-mobile-2x-gray-geometry']){
+ let before=0,after=0,chars=0,beforeExact=0,afterExact=0,truthChanges=0;
+ const diffs=[];
+ for(const sample of data.samples){
+  const r=data.records.find(x=>x.id===sample.id&&x.variant===variant);
+  const altered=safeConvert(r.text);
+  before+=dist(sample.truth,r.text);after+=dist(sample.truth,altered);chars+=norm(sample.truth).length;
+  beforeExact+=score(sample,r.text).exact;afterExact+=score(sample,altered).exact;
+  const originalLines=r.text.split('\n'),newLines=altered.split('\n');
+  for(let i=0;i<originalLines.length;i++)if(originalLines[i]!==newLines[i])diffs.push({id:sample.id,before:originalLines[i],after:newLines[i]});
+  if(safeConvert(sample.truth)!==sample.truth)truthChanges++;
+ }
+ console.log('GROUP_SAFE '+JSON.stringify({variant,characters:chars,errorsBefore:before,errorsAfter:after,cerBefore:before/chars,cerAfter:after/chars,exactBefore:beforeExact,exactAfter:afterExact,changedLines:diffs,truthChanges}));
+}
 const original=['*白ねぎ1本 ¥159','自動割引1 10.00 -15','*成田もやし ¥29','*ブナシメジ','5コX单99 ¥495','自動割引11 10.00','5コX单-9 -45','(税8% 対象 ¥623)','税8% ¥49','(税合計 ¥49)','お買上 ¥672','クレジット ¥672','お買上点数 7点'].join('\n');
 const r06=data.samples.find(s=>s.id==='R06');
 console.log('IPHONE_R06 '+JSON.stringify({before:score(r06,original),after:score(r06,convert(original)),errorsBefore:dist(r06.truth,original),errorsAfter:dist(r06.truth,convert(original)),changed:original.split('\n').map(x=>[x,convert(x)]).filter(([x,y])=>x!==y)}));
+
+console.log('IPHONE_R06_SAFE '+JSON.stringify({before:score(r06,original),after:score(r06,safeConvert(original)),errorsBefore:dist(r06.truth,original),errorsAfter:dist(r06.truth,safeConvert(original)),changed:original.split('\n').map(x=>[x,safeConvert(x)]).filter(([x,y])=>x!==y)}));
+console.log('CHECK_SAFE '+JSON.stringify(checks.map(input=>({input,output:safeConvert(input)}))));
