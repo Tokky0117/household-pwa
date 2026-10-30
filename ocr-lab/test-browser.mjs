@@ -1,0 +1,26 @@
+// Uses generated test text, never a user's receipt. Runs on a real Chromium in CI.
+import fs from 'node:fs';import path from 'node:path';import http from 'node:http';import assert from 'node:assert/strict';import {fileURLToPath} from 'node:url';import {chromium} from 'playwright';
+const root=process.env.OCR_LAB_OUT||fileURLToPath(new URL('./dist',import.meta.url)),requests=[],errors=[];
+const server=http.createServer((req,res)=>{
+ const url=new URL(req.url,'http://localhost');const p=path.resolve(root,'.'+decodeURIComponent(url.pathname.endsWith('/')?url.pathname+'index.html':url.pathname));
+ if(!p.startsWith(path.resolve(root)+path.sep)||req.method!=='GET'){res.writeHead(403).end();return;}
+ try{res.setHeader('Content-Type',({'.html':'text/html','.js':'text/javascript','.mjs':'text/javascript','.wasm':'application/wasm','.css':'text/css','.json':'application/json'})[path.extname(p)]||'application/octet-stream');res.end(fs.readFileSync(p));}catch{res.writeHead(404).end();}
+});
+await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));let browser;
+try{
+ browser=await chromium.launch({headless:true});const context=await browser.newContext({viewport:{width:390,height:844},permissions:['clipboard-read','clipboard-write']}),page=await context.newPage();
+ await page.route('**/*',async route=>{const r=route.request(),u=new URL(r.url());requests.push({path:u.pathname,method:r.method(),external:u.hostname!=='127.0.0.1'});if(u.hostname!=='127.0.0.1'||r.method()!=='GET')await route.abort();else await route.continue();});
+ page.on('pageerror',e=>errors.push(e.message));const url=`http://127.0.0.1:${server.address().port}/`;await page.goto(url);
+ assert.equal(await page.locator('#scan').isDisabled(),true);assert.equal(requests.filter(r=>r.path.includes('/models/')).length,0);
+ const png=await page.evaluate(()=>{const c=document.createElement('canvas');c.width=500;c.height=220;const x=c.getContext('2d');x.fillStyle='white';x.fillRect(0,0,c.width,c.height);x.fillStyle='black';x.font='32px Arial';x.fillText('MILK 198',30,65);x.fillText('TOTAL 198',30,135);return c.toDataURL('image/png').split(',')[1];});
+ await page.locator('#photo').setInputFiles({name:'synthetic-receipt.png',mimeType:'image/png',buffer:Buffer.from(png,'base64')});
+ for(const firstRun of [true,false]){
+  await page.locator('#scan').click();await page.waitForFunction(()=>!document.getElementById('result').hidden||document.getElementById('status').textContent.startsWith('読み取りできません'),{timeout:180000});
+  assert.equal(await page.locator('#result').isVisible(),true,await page.locator('#status').textContent());
+  const diag=JSON.parse(await page.locator('#diagnostic').textContent());assert.equal(diag.firstRun,firstRun);assert.ok(diag.totalMs>0);assert.ok(diag.observationCount>0);assert.match(await page.locator('#text').inputValue(),/198/);
+ }
+ await page.locator('#copy').click();assert.match(await page.evaluate(()=>navigator.clipboard.readText()),/位置情報/);
+ assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));await page.locator('#reset').click();assert.equal(await page.locator('#photo').inputValue(),'');assert.equal(await page.locator('#text').inputValue(),'');assert.equal(await page.locator('#result').isHidden(),true);
+ assert.equal(errors.length,0,errors.join('\n'));assert.ok(requests.every(r=>!r.external&&r.method==='GET'));
+ console.log('Browser OCR PASS: real WASM inference, cold/warm runs, mobile width, clipboard, discard; same-origin GET only');
+}finally{if(browser)await browser.close();await new Promise(resolve=>server.close(resolve));}

@@ -1,0 +1,29 @@
+name: OCR laboratory browser test
+on:
+  push:
+    branches: [stage-a-ui-handoff-review]
+    paths: ['ocr-lab/**', 'receipt-layout.js', 'receipt-paddle.js', 'receipt-structure.js', '.github/workflows/ocr-lab-browser.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  browser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install pinned test dependencies
+        working-directory: ocr-lab
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Build local OCR assets
+        working-directory: ocr-lab
+        run: npm run build
+      - name: Install test browser
+        working-directory: ocr-lab
+        run: npx playwright install --with-deps chromium
+      - name: Run synthetic receipt in browser
+        working-directory: ocr-lab
+        run: npm run test:browser

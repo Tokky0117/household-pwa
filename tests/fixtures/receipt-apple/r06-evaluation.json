@@ -1,0 +1,43 @@
+{
+  "scope": "User pasted Apple Photos OCR. Only product-to-item-count excerpt retained; payment slip and unrelated receipt excluded. Sequence retained exactly; no correction.",
+  "characterScores": [
+    {
+      "variant": "Apple Photos pasted",
+      "errors": 40,
+      "characters": 115,
+      "cer": 34.78260869565217
+    },
+    {
+      "variant": "roi-original",
+      "errors": 29,
+      "characters": 115,
+      "cer": 25.217391304347824
+    },
+    {
+      "variant": "roi-current-preprocess",
+      "errors": 27,
+      "characters": 115,
+      "cer": 23.47826086956522
+    },
+    {
+      "variant": "roi-2x-gray",
+      "errors": 20,
+      "characters": 115,
+      "cer": 17.391304347826086
+    }
+  ],
+  "baselineExtractedItems": 0,
+  "baselineReceiptTotal": null,
+  "manualContentReview": {
+    "productNamesCorrect": 3,
+    "productLines": 3,
+    "majorAmountsPresent": true,
+    "notAnAutomatedExtraction": true
+  },
+  "limitations": [
+    "One receipt only",
+    "Pasted reading order differs from image; CER includes ordering errors",
+    "No phone model/iOS metadata supplied",
+    "Currency dot glyphs not normalized for CER"
+  ]
+}

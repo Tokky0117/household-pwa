@@ -1,0 +1,414 @@
+{
+  "groups": [
+    {
+      "variant": "paddle-v5-mobile-original-sdk-order",
+      "errors": 501,
+      "characters": 1147,
+      "extracted": 0,
+      "exactName": 0,
+      "exactNameQuantityGross": 0,
+      "exactAllFields": 0
+    },
+    {
+      "variant": "paddle-v5-mobile-original-geometry",
+      "errors": 489,
+      "characters": 1147,
+      "extracted": 32,
+      "exactName": 5,
+      "exactNameQuantityGross": 5,
+      "exactAllFields": 5
+    },
+    {
+      "variant": "paddle-v5-mobile-2x-gray-sdk-order",
+      "errors": 281,
+      "characters": 1147,
+      "extracted": 22,
+      "exactName": 0,
+      "exactNameQuantityGross": 0,
+      "exactAllFields": 0
+    },
+    {
+      "variant": "paddle-v5-mobile-2x-gray-geometry",
+      "errors": 244,
+      "characters": 1147,
+      "extracted": 44,
+      "exactName": 5,
+      "exactNameQuantityGross": 5,
+      "exactAllFields": 4
+    },
+    {
+      "variant": "paddle-v6-small-original-sdk-order",
+      "errors": 108,
+      "characters": 1147,
+      "extracted": 13,
+      "exactName": 1,
+      "exactNameQuantityGross": 1,
+      "exactAllFields": 0
+    },
+    {
+      "variant": "paddle-v6-small-original-geometry",
+      "errors": 111,
+      "characters": 1147,
+      "extracted": 42,
+      "exactName": 20,
+      "exactNameQuantityGross": 20,
+      "exactAllFields": 19
+    },
+    {
+      "variant": "paddle-v6-small-2x-gray-sdk-order",
+      "errors": 110,
+      "characters": 1147,
+      "extracted": 13,
+      "exactName": 2,
+      "exactNameQuantityGross": 2,
+      "exactAllFields": 0
+    },
+    {
+      "variant": "paddle-v6-small-2x-gray-geometry",
+      "errors": 94,
+      "characters": 1147,
+      "extracted": 44,
+      "exactName": 21,
+      "exactNameQuantityGross": 21,
+      "exactAllFields": 20
+    }
+  ],
+  "perSample": [
+    {
+      "id": "R01",
+      "variant": "paddle-v5-mobile-original-sdk-order",
+      "errors": 9,
+      "characters": 65,
+      "ms": 4467
+    },
+    {
+      "id": "R01",
+      "variant": "paddle-v5-mobile-original-geometry",
+      "errors": 9,
+      "characters": 65,
+      "ms": 4467
+    },
+    {
+      "id": "R01",
+      "variant": "paddle-v5-mobile-2x-gray-sdk-order",
+      "errors": 8,
+      "characters": 65,
+      "ms": 7780
+    },
+    {
+      "id": "R01",
+      "variant": "paddle-v5-mobile-2x-gray-geometry",
+      "errors": 8,
+      "characters": 65,
+      "ms": 7780
+    },
+    {
+      "id": "R02",
+      "variant": "paddle-v5-mobile-original-sdk-order",
+      "errors": 44,
+      "characters": 87,
+      "ms": 14402
+    },
+    {
+      "id": "R02",
+      "variant": "paddle-v5-mobile-original-geometry",
+      "errors": 39,
+      "characters": 87,
+      "ms": 14402
+    },
+    {
+      "id": "R02",
+      "variant": "paddle-v5-mobile-2x-gray-sdk-order",
+      "errors": 26,
+      "characters": 87,
+      "ms": 10464
+    },
+    {
+      "id": "R02",
+      "variant": "paddle-v5-mobile-2x-gray-geometry",
+      "errors": 25,
+      "characters": 87,
+      "ms": 10464
+    },
+    {
+      "id": "R03",
+      "variant": "paddle-v5-mobile-original-sdk-order",
+      "errors": 364,
+      "characters": 435,
+      "ms": 13378
+    },
+    {
+      "id": "R03",
+      "variant": "paddle-v5-mobile-original-geometry",
+      "errors": 363,
+      "characters": 435,
+      "ms": 13378
+    },
+    {
+      "id": "R03",
+      "variant": "paddle-v5-mobile-2x-gray-sdk-order",
+      "errors": 134,
+      "characters": 435,
+      "ms": 13251
+    },
+    {
+      "id": "R03",
+      "variant": "paddle-v5-mobile-2x-gray-geometry",
+      "errors": 104,
+      "characters": 435,
+      "ms": 13251
+    },
+    {
+      "id": "R04",
+      "variant": "paddle-v5-mobile-original-sdk-order",
+      "errors": 43,
+      "characters": 268,
+      "ms": 6803
+    },
+    {
+      "id": "R04",
+      "variant": "paddle-v5-mobile-original-geometry",
+      "errors": 43,
+      "characters": 268,
+      "ms": 6803
+    },
+    {
+      "id": "R04",
+      "variant": "paddle-v5-mobile-2x-gray-sdk-order",
+      "errors": 65,
+      "characters": 268,
+      "ms": 9413
+    },
+    {
+      "id": "R04",
+      "variant": "paddle-v5-mobile-2x-gray-geometry",
+      "errors": 65,
+      "characters": 268,
+      "ms": 9413
+    },
+    {
+      "id": "R05",
+      "variant": "paddle-v5-mobile-original-sdk-order",
+      "errors": 30,
+      "characters": 177,
+      "ms": 3337
+    },
+    {
+      "id": "R05",
+      "variant": "paddle-v5-mobile-original-geometry",
+      "errors": 30,
+      "characters": 177,
+      "ms": 3337
+    },
+    {
+      "id": "R05",
+      "variant": "paddle-v5-mobile-2x-gray-sdk-order",
+      "errors": 37,
+      "characters": 177,
+      "ms": 2660
+    },
+    {
+      "id": "R05",
+      "variant": "paddle-v5-mobile-2x-gray-geometry",
+      "errors": 37,
+      "characters": 177,
+      "ms": 2660
+    },
+    {
+      "id": "R06",
+      "variant": "paddle-v5-mobile-original-sdk-order",
+      "errors": 11,
+      "characters": 115,
+      "ms": 2912
+    },
+    {
+      "id": "R06",
+      "variant": "paddle-v5-mobile-original-geometry",
+      "errors": 5,
+      "characters": 115,
+      "ms": 2912
+    },
+    {
+      "id": "R06",
+      "variant": "paddle-v5-mobile-2x-gray-sdk-order",
+      "errors": 11,
+      "characters": 115,
+      "ms": 3521
+    },
+    {
+      "id": "R06",
+      "variant": "paddle-v5-mobile-2x-gray-geometry",
+      "errors": 5,
+      "characters": 115,
+      "ms": 3521
+    },
+    {
+      "id": "R01",
+      "variant": "paddle-v6-small-original-sdk-order",
+      "errors": 7,
+      "characters": 65,
+      "ms": 1692
+    },
+    {
+      "id": "R01",
+      "variant": "paddle-v6-small-original-geometry",
+      "errors": 7,
+      "characters": 65,
+      "ms": 1692
+    },
+    {
+      "id": "R01",
+      "variant": "paddle-v6-small-2x-gray-sdk-order",
+      "errors": 7,
+      "characters": 65,
+      "ms": 1976
+    },
+    {
+      "id": "R01",
+      "variant": "paddle-v6-small-2x-gray-geometry",
+      "errors": 7,
+      "characters": 65,
+      "ms": 1976
+    },
+    {
+      "id": "R02",
+      "variant": "paddle-v6-small-original-sdk-order",
+      "errors": 12,
+      "characters": 87,
+      "ms": 3335
+    },
+    {
+      "id": "R02",
+      "variant": "paddle-v6-small-original-geometry",
+      "errors": 12,
+      "characters": 87,
+      "ms": 3335
+    },
+    {
+      "id": "R02",
+      "variant": "paddle-v6-small-2x-gray-sdk-order",
+      "errors": 14,
+      "characters": 87,
+      "ms": 4191
+    },
+    {
+      "id": "R02",
+      "variant": "paddle-v6-small-2x-gray-geometry",
+      "errors": 12,
+      "characters": 87,
+      "ms": 4191
+    },
+    {
+      "id": "R03",
+      "variant": "paddle-v6-small-original-sdk-order",
+      "errors": 66,
+      "characters": 435,
+      "ms": 9496
+    },
+    {
+      "id": "R03",
+      "variant": "paddle-v6-small-original-geometry",
+      "errors": 60,
+      "characters": 435,
+      "ms": 9496
+    },
+    {
+      "id": "R03",
+      "variant": "paddle-v6-small-2x-gray-sdk-order",
+      "errors": 59,
+      "characters": 435,
+      "ms": 12876
+    },
+    {
+      "id": "R03",
+      "variant": "paddle-v6-small-2x-gray-geometry",
+      "errors": 53,
+      "characters": 435,
+      "ms": 12876
+    },
+    {
+      "id": "R04",
+      "variant": "paddle-v6-small-original-sdk-order",
+      "errors": 12,
+      "characters": 268,
+      "ms": 8879
+    },
+    {
+      "id": "R04",
+      "variant": "paddle-v6-small-original-geometry",
+      "errors": 12,
+      "characters": 268,
+      "ms": 8879
+    },
+    {
+      "id": "R04",
+      "variant": "paddle-v6-small-2x-gray-sdk-order",
+      "errors": 10,
+      "characters": 268,
+      "ms": 8166
+    },
+    {
+      "id": "R04",
+      "variant": "paddle-v6-small-2x-gray-geometry",
+      "errors": 10,
+      "characters": 268,
+      "ms": 8166
+    },
+    {
+      "id": "R05",
+      "variant": "paddle-v6-small-original-sdk-order",
+      "errors": 7,
+      "characters": 177,
+      "ms": 2805
+    },
+    {
+      "id": "R05",
+      "variant": "paddle-v6-small-original-geometry",
+      "errors": 7,
+      "characters": 177,
+      "ms": 2805
+    },
+    {
+      "id": "R05",
+      "variant": "paddle-v6-small-2x-gray-sdk-order",
+      "errors": 10,
+      "characters": 177,
+      "ms": 3488
+    },
+    {
+      "id": "R05",
+      "variant": "paddle-v6-small-2x-gray-geometry",
+      "errors": 8,
+      "characters": 177,
+      "ms": 3488
+    },
+    {
+      "id": "R06",
+      "variant": "paddle-v6-small-original-sdk-order",
+      "errors": 4,
+      "characters": 115,
+      "ms": 5254
+    },
+    {
+      "id": "R06",
+      "variant": "paddle-v6-small-original-geometry",
+      "errors": 13,
+      "characters": 115,
+      "ms": 5254
+    },
+    {
+      "id": "R06",
+      "variant": "paddle-v6-small-2x-gray-sdk-order",
+      "errors": 10,
+      "characters": 115,
+      "ms": 6077
+    },
+    {
+      "id": "R06",
+      "variant": "paddle-v6-small-2x-gray-geometry",
+      "errors": 4,
+      "characters": 115,
+      "ms": 6077
+    }
+  ]
+}

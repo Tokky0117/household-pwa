@@ -1,0 +1,918 @@
+{
+  "groups": [
+    {
+      "variant": "roi-original",
+      "psm": "6",
+      "errors": 479,
+      "characters": 1147
+    },
+    {
+      "variant": "roi-original",
+      "psm": "11",
+      "errors": 566,
+      "characters": 1147
+    },
+    {
+      "variant": "roi-current-preprocess",
+      "psm": "6",
+      "errors": 487,
+      "characters": 1147
+    },
+    {
+      "variant": "roi-current-preprocess",
+      "psm": "11",
+      "errors": 588,
+      "characters": 1147
+    },
+    {
+      "variant": "roi-2x-gray",
+      "psm": "6",
+      "errors": 413,
+      "characters": 1147
+    },
+    {
+      "variant": "roi-2x-gray",
+      "psm": "11",
+      "errors": 545,
+      "characters": 1147
+    },
+    {
+      "variant": "roi-2x-adaptive",
+      "psm": "6",
+      "errors": 465,
+      "characters": 1147
+    },
+    {
+      "variant": "roi-2x-otsu",
+      "psm": "6",
+      "errors": 464,
+      "characters": 1147
+    },
+    {
+      "variant": "roi-original-jpn",
+      "psm": "6",
+      "errors": 479,
+      "characters": 1147
+    },
+    {
+      "variant": "roi-current-preprocess-jpn",
+      "psm": "6",
+      "errors": 487,
+      "characters": 1147
+    },
+    {
+      "variant": "roi-2x-gray-jpn",
+      "psm": "6",
+      "errors": 413,
+      "characters": 1147
+    },
+    {
+      "variant": "full-current-preprocess",
+      "psm": "6",
+      "errors": 579,
+      "characters": 1147
+    },
+    {
+      "variant": "full-current-preprocess",
+      "psm": "11",
+      "errors": 599,
+      "characters": 1147
+    },
+    {
+      "variant": "roi-deskew",
+      "psm": "6",
+      "errors": 503,
+      "characters": 1147
+    },
+    {
+      "variant": "roi-flat",
+      "psm": "6",
+      "errors": 417,
+      "characters": 1147
+    },
+    {
+      "variant": "roi-flat-rows",
+      "psm": "7",
+      "errors": 674,
+      "characters": 1147
+    },
+    {
+      "variant": "roi-flat-columns",
+      "psm": "7",
+      "errors": 570,
+      "characters": 1147
+    },
+    {
+      "variant": "native-deskew",
+      "psm": "6",
+      "errors": 573,
+      "characters": 1147
+    },
+    {
+      "variant": "native-flat",
+      "psm": "6",
+      "errors": 498,
+      "characters": 1147
+    }
+  ],
+  "perSample": [
+    {
+      "id": "R01",
+      "variant": "roi-original",
+      "psm": "6",
+      "errors": 19,
+      "characters": 65
+    },
+    {
+      "id": "R01",
+      "variant": "roi-original",
+      "psm": "11",
+      "errors": 19,
+      "characters": 65
+    },
+    {
+      "id": "R01",
+      "variant": "roi-current-preprocess",
+      "psm": "6",
+      "errors": 19,
+      "characters": 65
+    },
+    {
+      "id": "R01",
+      "variant": "roi-current-preprocess",
+      "psm": "11",
+      "errors": 20,
+      "characters": 65
+    },
+    {
+      "id": "R01",
+      "variant": "roi-2x-gray",
+      "psm": "6",
+      "errors": 16,
+      "characters": 65
+    },
+    {
+      "id": "R01",
+      "variant": "roi-2x-gray",
+      "psm": "11",
+      "errors": 22,
+      "characters": 65
+    },
+    {
+      "id": "R02",
+      "variant": "roi-original",
+      "psm": "6",
+      "errors": 43,
+      "characters": 87
+    },
+    {
+      "id": "R02",
+      "variant": "roi-original",
+      "psm": "11",
+      "errors": 64,
+      "characters": 87
+    },
+    {
+      "id": "R02",
+      "variant": "roi-current-preprocess",
+      "psm": "6",
+      "errors": 54,
+      "characters": 87
+    },
+    {
+      "id": "R02",
+      "variant": "roi-current-preprocess",
+      "psm": "11",
+      "errors": 64,
+      "characters": 87
+    },
+    {
+      "id": "R02",
+      "variant": "roi-2x-gray",
+      "psm": "6",
+      "errors": 45,
+      "characters": 87
+    },
+    {
+      "id": "R02",
+      "variant": "roi-2x-gray",
+      "psm": "11",
+      "errors": 57,
+      "characters": 87
+    },
+    {
+      "id": "R03",
+      "variant": "roi-original",
+      "psm": "6",
+      "errors": 236,
+      "characters": 435
+    },
+    {
+      "id": "R03",
+      "variant": "roi-original",
+      "psm": "11",
+      "errors": 289,
+      "characters": 435
+    },
+    {
+      "id": "R03",
+      "variant": "roi-current-preprocess",
+      "psm": "6",
+      "errors": 266,
+      "characters": 435
+    },
+    {
+      "id": "R03",
+      "variant": "roi-current-preprocess",
+      "psm": "11",
+      "errors": 313,
+      "characters": 435
+    },
+    {
+      "id": "R03",
+      "variant": "roi-2x-gray",
+      "psm": "6",
+      "errors": 205,
+      "characters": 435
+    },
+    {
+      "id": "R03",
+      "variant": "roi-2x-gray",
+      "psm": "11",
+      "errors": 285,
+      "characters": 435
+    },
+    {
+      "id": "R04",
+      "variant": "roi-original",
+      "psm": "6",
+      "errors": 74,
+      "characters": 268
+    },
+    {
+      "id": "R04",
+      "variant": "roi-original",
+      "psm": "11",
+      "errors": 72,
+      "characters": 268
+    },
+    {
+      "id": "R04",
+      "variant": "roi-current-preprocess",
+      "psm": "6",
+      "errors": 46,
+      "characters": 268
+    },
+    {
+      "id": "R04",
+      "variant": "roi-current-preprocess",
+      "psm": "11",
+      "errors": 74,
+      "characters": 268
+    },
+    {
+      "id": "R04",
+      "variant": "roi-2x-gray",
+      "psm": "6",
+      "errors": 50,
+      "characters": 268
+    },
+    {
+      "id": "R04",
+      "variant": "roi-2x-gray",
+      "psm": "11",
+      "errors": 63,
+      "characters": 268
+    },
+    {
+      "id": "R05",
+      "variant": "roi-original",
+      "psm": "6",
+      "errors": 78,
+      "characters": 177
+    },
+    {
+      "id": "R05",
+      "variant": "roi-original",
+      "psm": "11",
+      "errors": 77,
+      "characters": 177
+    },
+    {
+      "id": "R05",
+      "variant": "roi-current-preprocess",
+      "psm": "6",
+      "errors": 75,
+      "characters": 177
+    },
+    {
+      "id": "R05",
+      "variant": "roi-current-preprocess",
+      "psm": "11",
+      "errors": 71,
+      "characters": 177
+    },
+    {
+      "id": "R05",
+      "variant": "roi-2x-gray",
+      "psm": "6",
+      "errors": 77,
+      "characters": 177
+    },
+    {
+      "id": "R05",
+      "variant": "roi-2x-gray",
+      "psm": "11",
+      "errors": 78,
+      "characters": 177
+    },
+    {
+      "id": "R06",
+      "variant": "roi-original",
+      "psm": "6",
+      "errors": 29,
+      "characters": 115
+    },
+    {
+      "id": "R06",
+      "variant": "roi-original",
+      "psm": "11",
+      "errors": 45,
+      "characters": 115
+    },
+    {
+      "id": "R06",
+      "variant": "roi-current-preprocess",
+      "psm": "6",
+      "errors": 27,
+      "characters": 115
+    },
+    {
+      "id": "R06",
+      "variant": "roi-current-preprocess",
+      "psm": "11",
+      "errors": 46,
+      "characters": 115
+    },
+    {
+      "id": "R06",
+      "variant": "roi-2x-gray",
+      "psm": "6",
+      "errors": 20,
+      "characters": 115
+    },
+    {
+      "id": "R06",
+      "variant": "roi-2x-gray",
+      "psm": "11",
+      "errors": 40,
+      "characters": 115
+    },
+    {
+      "id": "R01",
+      "variant": "roi-2x-adaptive",
+      "psm": "6",
+      "errors": 22,
+      "characters": 65
+    },
+    {
+      "id": "R01",
+      "variant": "roi-2x-otsu",
+      "psm": "6",
+      "errors": 25,
+      "characters": 65
+    },
+    {
+      "id": "R02",
+      "variant": "roi-2x-adaptive",
+      "psm": "6",
+      "errors": 52,
+      "characters": 87
+    },
+    {
+      "id": "R02",
+      "variant": "roi-2x-otsu",
+      "psm": "6",
+      "errors": 41,
+      "characters": 87
+    },
+    {
+      "id": "R03",
+      "variant": "roi-2x-adaptive",
+      "psm": "6",
+      "errors": 235,
+      "characters": 435
+    },
+    {
+      "id": "R03",
+      "variant": "roi-2x-otsu",
+      "psm": "6",
+      "errors": 247,
+      "characters": 435
+    },
+    {
+      "id": "R04",
+      "variant": "roi-2x-adaptive",
+      "psm": "6",
+      "errors": 58,
+      "characters": 268
+    },
+    {
+      "id": "R04",
+      "variant": "roi-2x-otsu",
+      "psm": "6",
+      "errors": 53,
+      "characters": 268
+    },
+    {
+      "id": "R05",
+      "variant": "roi-2x-adaptive",
+      "psm": "6",
+      "errors": 70,
+      "characters": 177
+    },
+    {
+      "id": "R05",
+      "variant": "roi-2x-otsu",
+      "psm": "6",
+      "errors": 73,
+      "characters": 177
+    },
+    {
+      "id": "R06",
+      "variant": "roi-2x-adaptive",
+      "psm": "6",
+      "errors": 28,
+      "characters": 115
+    },
+    {
+      "id": "R06",
+      "variant": "roi-2x-otsu",
+      "psm": "6",
+      "errors": 25,
+      "characters": 115
+    },
+    {
+      "id": "R01",
+      "variant": "roi-original-jpn",
+      "psm": "6",
+      "errors": 19,
+      "characters": 65
+    },
+    {
+      "id": "R01",
+      "variant": "roi-current-preprocess-jpn",
+      "psm": "6",
+      "errors": 19,
+      "characters": 65
+    },
+    {
+      "id": "R01",
+      "variant": "roi-2x-gray-jpn",
+      "psm": "6",
+      "errors": 16,
+      "characters": 65
+    },
+    {
+      "id": "R02",
+      "variant": "roi-original-jpn",
+      "psm": "6",
+      "errors": 43,
+      "characters": 87
+    },
+    {
+      "id": "R02",
+      "variant": "roi-current-preprocess-jpn",
+      "psm": "6",
+      "errors": 54,
+      "characters": 87
+    },
+    {
+      "id": "R02",
+      "variant": "roi-2x-gray-jpn",
+      "psm": "6",
+      "errors": 45,
+      "characters": 87
+    },
+    {
+      "id": "R03",
+      "variant": "roi-original-jpn",
+      "psm": "6",
+      "errors": 236,
+      "characters": 435
+    },
+    {
+      "id": "R03",
+      "variant": "roi-current-preprocess-jpn",
+      "psm": "6",
+      "errors": 266,
+      "characters": 435
+    },
+    {
+      "id": "R03",
+      "variant": "roi-2x-gray-jpn",
+      "psm": "6",
+      "errors": 205,
+      "characters": 435
+    },
+    {
+      "id": "R04",
+      "variant": "roi-original-jpn",
+      "psm": "6",
+      "errors": 74,
+      "characters": 268
+    },
+    {
+      "id": "R04",
+      "variant": "roi-current-preprocess-jpn",
+      "psm": "6",
+      "errors": 46,
+      "characters": 268
+    },
+    {
+      "id": "R04",
+      "variant": "roi-2x-gray-jpn",
+      "psm": "6",
+      "errors": 50,
+      "characters": 268
+    },
+    {
+      "id": "R05",
+      "variant": "roi-original-jpn",
+      "psm": "6",
+      "errors": 78,
+      "characters": 177
+    },
+    {
+      "id": "R05",
+      "variant": "roi-current-preprocess-jpn",
+      "psm": "6",
+      "errors": 75,
+      "characters": 177
+    },
+    {
+      "id": "R05",
+      "variant": "roi-2x-gray-jpn",
+      "psm": "6",
+      "errors": 77,
+      "characters": 177
+    },
+    {
+      "id": "R06",
+      "variant": "roi-original-jpn",
+      "psm": "6",
+      "errors": 29,
+      "characters": 115
+    },
+    {
+      "id": "R06",
+      "variant": "roi-current-preprocess-jpn",
+      "psm": "6",
+      "errors": 27,
+      "characters": 115
+    },
+    {
+      "id": "R06",
+      "variant": "roi-2x-gray-jpn",
+      "psm": "6",
+      "errors": 20,
+      "characters": 115
+    },
+    {
+      "id": "R01",
+      "variant": "full-current-preprocess",
+      "psm": "6",
+      "errors": 65,
+      "characters": 65
+    },
+    {
+      "id": "R01",
+      "variant": "full-current-preprocess",
+      "psm": "11",
+      "errors": 65,
+      "characters": 65
+    },
+    {
+      "id": "R02",
+      "variant": "full-current-preprocess",
+      "psm": "6",
+      "errors": 57,
+      "characters": 87
+    },
+    {
+      "id": "R02",
+      "variant": "full-current-preprocess",
+      "psm": "11",
+      "errors": 55,
+      "characters": 87
+    },
+    {
+      "id": "R03",
+      "variant": "full-current-preprocess",
+      "psm": "6",
+      "errors": 296,
+      "characters": 435
+    },
+    {
+      "id": "R03",
+      "variant": "full-current-preprocess",
+      "psm": "11",
+      "errors": 295,
+      "characters": 435
+    },
+    {
+      "id": "R04",
+      "variant": "full-current-preprocess",
+      "psm": "6",
+      "errors": 62,
+      "characters": 268
+    },
+    {
+      "id": "R04",
+      "variant": "full-current-preprocess",
+      "psm": "11",
+      "errors": 47,
+      "characters": 268
+    },
+    {
+      "id": "R05",
+      "variant": "full-current-preprocess",
+      "psm": "6",
+      "errors": 75,
+      "characters": 177
+    },
+    {
+      "id": "R05",
+      "variant": "full-current-preprocess",
+      "psm": "11",
+      "errors": 83,
+      "characters": 177
+    },
+    {
+      "id": "R06",
+      "variant": "full-current-preprocess",
+      "psm": "6",
+      "errors": 24,
+      "characters": 115
+    },
+    {
+      "id": "R06",
+      "variant": "full-current-preprocess",
+      "psm": "11",
+      "errors": 54,
+      "characters": 115
+    },
+    {
+      "id": "R01",
+      "variant": "roi-deskew",
+      "psm": "6",
+      "errors": 65,
+      "characters": 65
+    },
+    {
+      "id": "R01",
+      "variant": "roi-flat",
+      "psm": "6",
+      "errors": 15,
+      "characters": 65
+    },
+    {
+      "id": "R01",
+      "variant": "roi-flat-rows",
+      "psm": "7",
+      "errors": 44,
+      "characters": 65
+    },
+    {
+      "id": "R01",
+      "variant": "roi-flat-columns",
+      "psm": "7",
+      "errors": 46,
+      "characters": 65
+    },
+    {
+      "id": "R02",
+      "variant": "roi-deskew",
+      "psm": "6",
+      "errors": 36,
+      "characters": 87
+    },
+    {
+      "id": "R02",
+      "variant": "roi-flat",
+      "psm": "6",
+      "errors": 37,
+      "characters": 87
+    },
+    {
+      "id": "R02",
+      "variant": "roi-flat-rows",
+      "psm": "7",
+      "errors": 157,
+      "characters": 87
+    },
+    {
+      "id": "R02",
+      "variant": "roi-flat-columns",
+      "psm": "7",
+      "errors": 123,
+      "characters": 87
+    },
+    {
+      "id": "R03",
+      "variant": "roi-deskew",
+      "psm": "6",
+      "errors": 239,
+      "characters": 435
+    },
+    {
+      "id": "R03",
+      "variant": "roi-flat",
+      "psm": "6",
+      "errors": 217,
+      "characters": 435
+    },
+    {
+      "id": "R03",
+      "variant": "roi-flat-rows",
+      "psm": "7",
+      "errors": 277,
+      "characters": 435
+    },
+    {
+      "id": "R03",
+      "variant": "roi-flat-columns",
+      "psm": "7",
+      "errors": 234,
+      "characters": 435
+    },
+    {
+      "id": "R04",
+      "variant": "roi-deskew",
+      "psm": "6",
+      "errors": 58,
+      "characters": 268
+    },
+    {
+      "id": "R04",
+      "variant": "roi-flat",
+      "psm": "6",
+      "errors": 40,
+      "characters": 268
+    },
+    {
+      "id": "R04",
+      "variant": "roi-flat-rows",
+      "psm": "7",
+      "errors": 79,
+      "characters": 268
+    },
+    {
+      "id": "R04",
+      "variant": "roi-flat-columns",
+      "psm": "7",
+      "errors": 63,
+      "characters": 268
+    },
+    {
+      "id": "R05",
+      "variant": "roi-deskew",
+      "psm": "6",
+      "errors": 79,
+      "characters": 177
+    },
+    {
+      "id": "R05",
+      "variant": "roi-flat",
+      "psm": "6",
+      "errors": 81,
+      "characters": 177
+    },
+    {
+      "id": "R05",
+      "variant": "roi-flat-rows",
+      "psm": "7",
+      "errors": 75,
+      "characters": 177
+    },
+    {
+      "id": "R05",
+      "variant": "roi-flat-columns",
+      "psm": "7",
+      "errors": 69,
+      "characters": 177
+    },
+    {
+      "id": "R06",
+      "variant": "roi-deskew",
+      "psm": "6",
+      "errors": 26,
+      "characters": 115
+    },
+    {
+      "id": "R06",
+      "variant": "roi-flat",
+      "psm": "6",
+      "errors": 27,
+      "characters": 115
+    },
+    {
+      "id": "R06",
+      "variant": "roi-flat-rows",
+      "psm": "7",
+      "errors": 42,
+      "characters": 115
+    },
+    {
+      "id": "R06",
+      "variant": "roi-flat-columns",
+      "psm": "7",
+      "errors": 35,
+      "characters": 115
+    },
+    {
+      "id": "R01",
+      "variant": "native-deskew",
+      "psm": "6",
+      "errors": 65,
+      "characters": 65
+    },
+    {
+      "id": "R01",
+      "variant": "native-flat",
+      "psm": "6",
+      "errors": 29,
+      "characters": 65
+    },
+    {
+      "id": "R02",
+      "variant": "native-deskew",
+      "psm": "6",
+      "errors": 38,
+      "characters": 87
+    },
+    {
+      "id": "R02",
+      "variant": "native-flat",
+      "psm": "6",
+      "errors": 53,
+      "characters": 87
+    },
+    {
+      "id": "R03",
+      "variant": "native-deskew",
+      "psm": "6",
+      "errors": 288,
+      "characters": 435
+    },
+    {
+      "id": "R03",
+      "variant": "native-flat",
+      "psm": "6",
+      "errors": 266,
+      "characters": 435
+    },
+    {
+      "id": "R04",
+      "variant": "native-deskew",
+      "psm": "6",
+      "errors": 85,
+      "characters": 268
+    },
+    {
+      "id": "R04",
+      "variant": "native-flat",
+      "psm": "6",
+      "errors": 46,
+      "characters": 268
+    },
+    {
+      "id": "R05",
+      "variant": "native-deskew",
+      "psm": "6",
+      "errors": 76,
+      "characters": 177
+    },
+    {
+      "id": "R05",
+      "variant": "native-flat",
+      "psm": "6",
+      "errors": 78,
+      "characters": 177
+    },
+    {
+      "id": "R06",
+      "variant": "native-deskew",
+      "psm": "6",
+      "errors": 21,
+      "characters": 115
+    },
+    {
+      "id": "R06",
+      "variant": "native-flat",
+      "psm": "6",
+      "errors": 26,
+      "characters": 115
+    }
+  ]
+}

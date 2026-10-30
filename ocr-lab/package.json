@@ -1,0 +1,18 @@
+{
+  "name": "kurashi-receipt-ocr-lab",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "build": "vite build && node prepare-assets.mjs",
+    "test:browser": "node test-browser.mjs"
+  },
+  "dependencies": {
+    "@paddleocr/paddleocr-js": "0.4.2",
+    "onnxruntime-web": "1.31.1"
+  },
+  "devDependencies": {
+    "vite": "6.4.1",
+    "playwright": "1.51.1"
+  }
+}

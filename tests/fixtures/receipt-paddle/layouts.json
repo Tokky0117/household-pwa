@@ -1,0 +1,2845 @@
+[
+  {
+    "id": "R01",
+    "variant": "paddle-v5-mobile-original",
+    "angle": 0,
+    "lines": [
+      {
+        "text": "****合計 14,758",
+        "observationIndices": [
+          0,
+          1
+        ]
+      },
+      {
+        "text": "クレットート* 14.758",
+        "observationIndices": [
+          2,
+          3
+        ]
+      },
+      {
+        "text": "釣銭 0",
+        "observationIndices": [
+          4,
+          5
+        ]
+      },
+      {
+        "text": "8%対象 12.120（消囊税 898）",
+        "observationIndices": [
+          6,
+          7,
+          8
+        ]
+      },
+      {
+        "text": "10%対象 2.638（消豐税 240）",
+        "observationIndices": [
+          9,
+          10,
+          11
+        ]
+      }
+    ]
+  },
+  {
+    "id": "R01",
+    "variant": "paddle-v5-mobile-2x-gray",
+    "angle": 0.014439429602765917,
+    "lines": [
+      {
+        "text": "**** 合計 14.758",
+        "observationIndices": [
+          0,
+          1,
+          2
+        ]
+      },
+      {
+        "text": "クレットカート 14.758",
+        "observationIndices": [
+          3,
+          4
+        ]
+      },
+      {
+        "text": "釣銭 0",
+        "observationIndices": [
+          5,
+          6
+        ]
+      },
+      {
+        "text": "8%対象 12.120（消营税 898）",
+        "observationIndices": [
+          7,
+          8,
+          9
+        ]
+      },
+      {
+        "text": "10%対象 2.638（消豐税 240）",
+        "observationIndices": [
+          10,
+          11,
+          12
+        ]
+      }
+    ]
+  },
+  {
+    "id": "R02",
+    "variant": "paddle-v5-mobile-original",
+    "angle": 0,
+    "lines": [
+      {
+        "text": "10一 じ肉 ￥861",
+        "observationIndices": [
+          0,
+          1,
+          2
+        ]
+      },
+      {
+        "text": "-250",
+        "observationIndices": [
+          3
+        ]
+      },
+      {
+        "text": "1 力産 トロロース焼肉 ￥233",
+        "observationIndices": [
+          4,
+          6,
+          7,
+          5
+        ]
+      },
+      {
+        "text": "きケン軟骨",
+        "observationIndices": [
+          8
+        ]
+      },
+      {
+        "text": "-50",
+        "observationIndices": [
+          9
+        ]
+      },
+      {
+        "text": "时 きン軟骨 ￥404",
+        "observationIndices": [
+          10,
+          11,
+          12
+        ]
+      },
+      {
+        "text": "值 -50",
+        "observationIndices": [
+          13,
+          14
+        ]
+      },
+      {
+        "text": "焼きとつと ￥128",
+        "observationIndices": [
+          15,
+          16
+        ]
+      }
+    ]
+  },
+  {
+    "id": "R02",
+    "variant": "paddle-v5-mobile-2x-gray",
+    "angle": 0,
+    "lines": [
+      {
+        "text": "牛肉肉 ￥861",
+        "observationIndices": [
+          0,
+          1
+        ]
+      },
+      {
+        "text": "值引 -250",
+        "observationIndices": [
+          2,
+          3
+        ]
+      },
+      {
+        "text": "アリカトロロース焼肉￥233",
+        "observationIndices": [
+          4
+        ]
+      },
+      {
+        "text": "值引 -50",
+        "observationIndices": [
+          5,
+          6
+        ]
+      },
+      {
+        "text": "内付き竹軟骨 ￥437",
+        "observationIndices": [
+          7,
+          8
+        ]
+      },
+      {
+        "text": "值引 -50",
+        "observationIndices": [
+          9,
+          10
+        ]
+      },
+      {
+        "text": "-",
+        "observationIndices": [
+          11
+        ]
+      },
+      {
+        "text": "肉付竹軟骨 ￥404",
+        "observationIndices": [
+          12,
+          13
+        ]
+      },
+      {
+        "text": "值引 -50",
+        "observationIndices": [
+          15,
+          14
+        ]
+      },
+      {
+        "text": "焼きつとつと ￥128",
+        "observationIndices": [
+          16,
+          17
+        ]
+      }
+    ]
+  },
+  {
+    "id": "R03",
+    "variant": "paddle-v5-mobile-original",
+    "angle": 0,
+    "lines": [
+      {
+        "text": "白 ネ !",
+        "observationIndices": [
+          0,
+          1,
+          2
+        ]
+      },
+      {
+        "text": "割",
+        "observationIndices": [
+          3
+        ]
+      },
+      {
+        "text": "m !",
+        "observationIndices": [
+          4,
+          5
+        ]
+      },
+      {
+        "text": "!",
+        "observationIndices": [
+          6
+        ]
+      },
+      {
+        "text": "类 割 污 10%",
+        "observationIndices": [
+          7,
+          8,
+          9,
+          10
+        ]
+      },
+      {
+        "text": "￥12",
+        "observationIndices": [
+          11
+        ]
+      },
+      {
+        "text": "5沪5 10% ￥49",
+        "observationIndices": [
+          12,
+          13,
+          14
+        ]
+      },
+      {
+        "text": "L",
+        "observationIndices": [
+          15
+        ]
+      },
+      {
+        "text": "活 割 10%",
+        "observationIndices": [
+          16,
+          17,
+          18
+        ]
+      },
+      {
+        "text": "千",
+        "observationIndices": [
+          19
+        ]
+      },
+      {
+        "text": "分干 类 括 事 污 10%",
+        "observationIndices": [
+          20,
+          21,
+          22,
+          25,
+          23,
+          24
+        ]
+      },
+      {
+        "text": "大",
+        "observationIndices": [
+          26
+        ]
+      },
+      {
+        "text": "頭 一括割引 10%",
+        "observationIndices": [
+          29,
+          27,
+          28
+        ]
+      },
+      {
+        "text": "青 C M !",
+        "observationIndices": [
+          30,
+          31,
+          32,
+          33
+        ]
+      },
+      {
+        "text": "米K 頭 割",
+        "observationIndices": [
+          34,
+          35,
+          36
+        ]
+      },
+      {
+        "text": "3 か !",
+        "observationIndices": [
+          37,
+          38,
+          39
+        ]
+      },
+      {
+        "text": "分临 米 須 + HTEN 割",
+        "observationIndices": [
+          40,
+          41,
+          42,
+          43,
+          44,
+          45
+        ]
+      },
+      {
+        "text": "每 南 !",
+        "observationIndices": [
+          46,
+          47,
+          49
+        ]
+      },
+      {
+        "text": "活 害 1",
+        "observationIndices": [
+          50,
+          51,
+          52
+        ]
+      },
+      {
+        "text": "三 子 10 B 0 !",
+        "observationIndices": [
+          53,
+          54,
+          48,
+          55,
+          56,
+          57
+        ]
+      },
+      {
+        "text": "割",
+        "observationIndices": [
+          58
+        ]
+      },
+      {
+        "text": "2 ! ￥20",
+        "observationIndices": [
+          59,
+          60,
+          61
+        ]
+      },
+      {
+        "text": "割",
+        "observationIndices": [
+          62
+        ]
+      },
+      {
+        "text": "ま !",
+        "observationIndices": [
+          63,
+          64
+        ]
+      },
+      {
+        "text": "! ￥1",
+        "observationIndices": [
+          65,
+          66
+        ]
+      },
+      {
+        "text": "10%",
+        "observationIndices": [
+          67
+        ]
+      },
+      {
+        "text": "一",
+        "observationIndices": [
+          68
+        ]
+      },
+      {
+        "text": "2",
+        "observationIndices": [
+          69
+        ]
+      },
+      {
+        "text": "3 ク 1",
+        "observationIndices": [
+          72,
+          71,
+          75
+        ]
+      },
+      {
+        "text": "类真 调 2",
+        "observationIndices": [
+          73,
+          74,
+          70
+        ]
+      },
+      {
+        "text": "一",
+        "observationIndices": [
+          76
+        ]
+      },
+      {
+        "text": "分類一 -22",
+        "observationIndices": [
+          77,
+          78
+        ]
+      }
+    ]
+  },
+  {
+    "id": "R03",
+    "variant": "paddle-v5-mobile-2x-gray",
+    "angle": 0,
+    "lines": [
+      {
+        "text": "白ネ ！￥98",
+        "observationIndices": [
+          0,
+          1
+        ]
+      },
+      {
+        "text": "分类類括割弓1 10% -10",
+        "observationIndices": [
+          3,
+          4,
+          2
+        ]
+      },
+      {
+        "text": "当店一押し南瓜 ！￥302",
+        "observationIndices": [
+          5,
+          6
+        ]
+      },
+      {
+        "text": "分类页—括割号10% -31",
+        "observationIndices": [
+          7,
+          8
+        ]
+      },
+      {
+        "text": "洋人参 ！￥98",
+        "observationIndices": [
+          9,
+          10
+        ]
+      },
+      {
+        "text": "-10",
+        "observationIndices": [
+          11
+        ]
+      },
+      {
+        "text": "徳用えのき ！￥128",
+        "observationIndices": [
+          12,
+          13
+        ]
+      },
+      {
+        "text": "分類一括割引 10% -13",
+        "observationIndices": [
+          16,
+          14,
+          15
+        ]
+      },
+      {
+        "text": "生とんこLL6P ！￥498",
+        "observationIndices": [
+          17,
+          18
+        ]
+      },
+      {
+        "text": "分类一括割弓 10% -50",
+        "observationIndices": [
+          21,
+          19,
+          20
+        ]
+      },
+      {
+        "text": "！￥148",
+        "observationIndices": [
+          22
+        ]
+      },
+      {
+        "text": "分類括割引 10% -15",
+        "observationIndices": [
+          25,
+          23,
+          24
+        ]
+      },
+      {
+        "text": "千切大想 ！￥158",
+        "observationIndices": [
+          26,
+          27
+        ]
+      },
+      {
+        "text": "分类括割引10% -16",
+        "observationIndices": [
+          28,
+          29
+        ]
+      },
+      {
+        "text": "青き ！￥98",
+        "observationIndices": [
+          30,
+          31
+        ]
+      },
+      {
+        "text": "分类括割引10% -10",
+        "observationIndices": [
+          32,
+          33
+        ]
+      },
+      {
+        "text": "まろやか買味ミ二3 ！￥129",
+        "observationIndices": [
+          34,
+          35
+        ]
+      },
+      {
+        "text": "分类—持割号10% -13",
+        "observationIndices": [
+          36,
+          37
+        ]
+      },
+      {
+        "text": "北海道牛 ！￥199",
+        "observationIndices": [
+          38,
+          39
+        ]
+      },
+      {
+        "text": "分类括割引！10% -20",
+        "observationIndices": [
+          40,
+          41
+        ]
+      },
+      {
+        "text": "ミルチコレ-トB￥398",
+        "observationIndices": [
+          42
+        ]
+      },
+      {
+        "text": "分括割号110% -40",
+        "observationIndices": [
+          43,
+          44
+        ]
+      },
+      {
+        "text": "トマトチャッフ ！￥208",
+        "observationIndices": [
+          45,
+          46
+        ]
+      },
+      {
+        "text": "分類—括割弓10% -21",
+        "observationIndices": [
+          47,
+          48
+        ]
+      },
+      {
+        "text": "お徳用いこま白 ！￥218",
+        "observationIndices": [
+          49,
+          50
+        ]
+      },
+      {
+        "text": "分类一—括割引10% -22",
+        "observationIndices": [
+          51,
+          52
+        ]
+      },
+      {
+        "text": "味しみきさあげ ！￥158",
+        "observationIndices": [
+          53,
+          54
+        ]
+      },
+      {
+        "text": "分类類—括割引10% -16",
+        "observationIndices": [
+          55,
+          56
+        ]
+      },
+      {
+        "text": "手焼きゆ ！￥216",
+        "observationIndices": [
+          57,
+          58
+        ]
+      },
+      {
+        "text": "（2個×Q108)",
+        "observationIndices": [
+          59
+        ]
+      },
+      {
+        "text": "分类括割引、10% -22",
+        "observationIndices": [
+          60,
+          61
+        ]
+      },
+      {
+        "text": "薩摩の味かつおパック ！￥278",
+        "observationIndices": [
+          62,
+          63
+        ]
+      },
+      {
+        "text": "分类页括割引10% --28",
+        "observationIndices": [
+          64,
+          65
+        ]
+      },
+      {
+        "text": "七 グレー プ ！￥216",
+        "observationIndices": [
+          66,
+          67,
+          68,
+          69
+        ]
+      },
+      {
+        "text": "2個×@108)",
+        "observationIndices": [
+          70
+        ]
+      },
+      {
+        "text": "分类——括割引10% -22",
+        "observationIndices": [
+          71,
+          72
+        ]
+      }
+    ]
+  },
+  {
+    "id": "R04",
+    "variant": "paddle-v5-mobile-original",
+    "angle": 0.010928526653385177,
+    "lines": [
+      {
+        "text": "ネピネビティシュ150W5P ￥283",
+        "observationIndices": [
+          0,
+          1
+        ]
+      },
+      {
+        "text": "（特壳俩格）",
+        "observationIndices": [
+          2
+        ]
+      },
+      {
+        "text": "やまみくておいしいき ￥116",
+        "observationIndices": [
+          3,
+          4
+        ]
+      },
+      {
+        "text": "（特壳価格）",
+        "observationIndices": [
+          5
+        ]
+      },
+      {
+        "text": "トイレクイックル詰替用 20 ￥327",
+        "observationIndices": [
+          6,
+          7,
+          8
+        ]
+      },
+      {
+        "text": "（特壳価格）",
+        "observationIndices": [
+          9
+        ]
+      },
+      {
+        "text": "金ちゃん 鍋焼きつねうど ￥116",
+        "observationIndices": [
+          10,
+          11,
+          12
+        ]
+      },
+      {
+        "text": "（特壳価格）",
+        "observationIndices": [
+          13
+        ]
+      },
+      {
+        "text": "金ちやん 鍋烧肉とん ￥116",
+        "observationIndices": [
+          14,
+          15,
+          16
+        ]
+      },
+      {
+        "text": "（特壳価格）",
+        "observationIndices": [
+          17
+        ]
+      },
+      {
+        "text": "金ちやん 鍋焼天ぶらと ￥116",
+        "observationIndices": [
+          18,
+          19,
+          20
+        ]
+      },
+      {
+        "text": "（特壳価格）",
+        "observationIndices": [
+          21
+        ]
+      },
+      {
+        "text": "キュキュット詰替700mi ￥327",
+        "observationIndices": [
+          22,
+          23
+        ]
+      },
+      {
+        "text": "（特壳価格）",
+        "observationIndices": [
+          24
+        ]
+      },
+      {
+        "text": "金のつ たれたっぷり!た ￥105",
+        "observationIndices": [
+          25,
+          26,
+          27
+        ]
+      },
+      {
+        "text": "（特壳価格）",
+        "observationIndices": [
+          28
+        ]
+      },
+      {
+        "text": "塩あじお手軽えだま400G ￥408",
+        "observationIndices": [
+          29,
+          30
+        ]
+      },
+      {
+        "text": "金ちやん 鍋烧味噌意と ￥116",
+        "observationIndices": [
+          31,
+          32,
+          33
+        ]
+      },
+      {
+        "text": "2×单 105 ￥210",
+        "observationIndices": [
+          34,
+          35,
+          36
+        ]
+      },
+      {
+        "text": "チルメラ バリカタ豚骨 ￥354",
+        "observationIndices": [
+          37,
+          38,
+          39
+        ]
+      },
+      {
+        "text": "（特壳価格）",
+        "observationIndices": [
+          40
+        ]
+      },
+      {
+        "text": "チルメラ5食 ￥321",
+        "observationIndices": [
+          41,
+          42
+        ]
+      },
+      {
+        "text": "レジ袋大 ￥5",
+        "observationIndices": [
+          43,
+          44
+        ]
+      }
+    ]
+  },
+  {
+    "id": "R04",
+    "variant": "paddle-v5-mobile-2x-gray",
+    "angle": 0.01791922875965843,
+    "lines": [
+      {
+        "text": "C6.",
+        "observationIndices": [
+          1
+        ]
+      },
+      {
+        "text": "ネビネビテシュ150W5P ￥283",
+        "observationIndices": [
+          0,
+          2
+        ]
+      },
+      {
+        "text": "（特壳俩格）",
+        "observationIndices": [
+          3
+        ]
+      },
+      {
+        "text": "やみくていしい￥116",
+        "observationIndices": [
+          4
+        ]
+      },
+      {
+        "text": "（特壳価格）",
+        "observationIndices": [
+          5
+        ]
+      },
+      {
+        "text": "トイレイック詰替用20￥327",
+        "observationIndices": [
+          6
+        ]
+      },
+      {
+        "text": "（特壳価格）",
+        "observationIndices": [
+          7
+        ]
+      },
+      {
+        "text": "金ちん焼きつねうど ￥116",
+        "observationIndices": [
+          8,
+          9
+        ]
+      },
+      {
+        "text": "（特壳価格）",
+        "observationIndices": [
+          10
+        ]
+      },
+      {
+        "text": "金ちやん 鍋烧肉と ￥116",
+        "observationIndices": [
+          11,
+          12,
+          13
+        ]
+      },
+      {
+        "text": "（特壳価格）",
+        "observationIndices": [
+          14
+        ]
+      },
+      {
+        "text": "金ちやん 鍋烧天ぶらと ￥116",
+        "observationIndices": [
+          15,
+          16,
+          17
+        ]
+      },
+      {
+        "text": "（特壳仙格）",
+        "observationIndices": [
+          18
+        ]
+      },
+      {
+        "text": "キュキュト詰替700m ￥327",
+        "observationIndices": [
+          19,
+          20
+        ]
+      },
+      {
+        "text": "（特壳価格）",
+        "observationIndices": [
+          21
+        ]
+      },
+      {
+        "text": "金のつっり!￥105",
+        "observationIndices": [
+          22
+        ]
+      },
+      {
+        "text": "（特壳価格）",
+        "observationIndices": [
+          23
+        ]
+      },
+      {
+        "text": "塩じお手軽えだま400G ￥408",
+        "observationIndices": [
+          24,
+          25
+        ]
+      },
+      {
+        "text": "金ちやん，鍋烧味噌煮と ￥116",
+        "observationIndices": [
+          26,
+          27
+        ]
+      },
+      {
+        "text": "2×单 105 ￥210",
+        "observationIndices": [
+          28,
+          29,
+          30
+        ]
+      },
+      {
+        "text": "チルメラ バリカタ豚骨 ￥354",
+        "observationIndices": [
+          31,
+          32,
+          33
+        ]
+      },
+      {
+        "text": "（特壳価格）",
+        "observationIndices": [
+          34
+        ]
+      },
+      {
+        "text": "チルメラみ5食 ￥321",
+        "observationIndices": [
+          35,
+          36
+        ]
+      },
+      {
+        "text": "レ袋大 ￥5",
+        "observationIndices": [
+          37,
+          38
+        ]
+      }
+    ]
+  },
+  {
+    "id": "R05",
+    "variant": "paddle-v5-mobile-original",
+    "angle": 0,
+    "lines": [
+      {
+        "text": "エアリスムコットンクルーネック",
+        "observationIndices": [
+          0
+        ]
+      },
+      {
+        "text": "2000219735999 1 ￥1,290",
+        "observationIndices": [
+          1,
+          2,
+          3
+        ]
+      },
+      {
+        "text": "メリノルーネックーかン",
+        "observationIndices": [
+          4
+        ]
+      },
+      {
+        "text": "2000211787545 1 ￥2,990",
+        "observationIndices": [
+          5,
+          6,
+          7
+        ]
+      },
+      {
+        "text": "メリーネッカが",
+        "observationIndices": [
+          8
+        ]
+      },
+      {
+        "text": "2000211287069 1 ￥2,990",
+        "observationIndices": [
+          9,
+          10,
+          11
+        ]
+      },
+      {
+        "text": "メリッン",
+        "observationIndices": [
+          12
+        ]
+      },
+      {
+        "text": "2000221861600 ￥2,990",
+        "observationIndices": [
+          13,
+          14
+        ]
+      },
+      {
+        "text": "エアリスムコットンクルーネック",
+        "observationIndices": [
+          15
+        ]
+      },
+      {
+        "text": "2000219736231 1 ￥1,290",
+        "observationIndices": [
+          16,
+          17,
+          18
+        ]
+      }
+    ]
+  },
+  {
+    "id": "R05",
+    "variant": "paddle-v5-mobile-2x-gray",
+    "angle": 0,
+    "lines": [
+      {
+        "text": "アリムコットンクルーネック",
+        "observationIndices": [
+          0
+        ]
+      },
+      {
+        "text": "2000219735999 1 ￥1,290",
+        "observationIndices": [
+          1,
+          2,
+          3
+        ]
+      },
+      {
+        "text": "リネッーテカン",
+        "observationIndices": [
+          4
+        ]
+      },
+      {
+        "text": "2000211787545 1 ￥2,990",
+        "observationIndices": [
+          5,
+          6,
+          7
+        ]
+      },
+      {
+        "text": "Wメリネッククデがン",
+        "observationIndices": [
+          8
+        ]
+      },
+      {
+        "text": "2000211287069 1 ￥2,990",
+        "observationIndices": [
+          9,
+          10,
+          11
+        ]
+      },
+      {
+        "text": "リッー",
+        "observationIndices": [
+          12
+        ]
+      },
+      {
+        "text": "2000221861600 ￥2,990",
+        "observationIndices": [
+          13,
+          14
+        ]
+      },
+      {
+        "text": "アリムコットンクルネック",
+        "observationIndices": [
+          15
+        ]
+      },
+      {
+        "text": "2000219736231 1￥1,290",
+        "observationIndices": [
+          16,
+          17
+        ]
+      }
+    ]
+  },
+  {
+    "id": "R06",
+    "variant": "paddle-v5-mobile-original",
+    "angle": 0,
+    "lines": [
+      {
+        "text": "*白ねぎ1本 ￥159",
+        "observationIndices": [
+          0,
+          1
+        ]
+      },
+      {
+        "text": "自動割引1 10.00 -15",
+        "observationIndices": [
+          2,
+          4,
+          3
+        ]
+      },
+      {
+        "text": "*成田もやし ￥29",
+        "observationIndices": [
+          5,
+          6
+        ]
+      },
+      {
+        "text": "*ブナシメジ",
+        "observationIndices": [
+          7
+        ]
+      },
+      {
+        "text": "5×单99 ¥495",
+        "observationIndices": [
+          8,
+          9
+        ]
+      },
+      {
+        "text": "自動割引11 10.00",
+        "observationIndices": [
+          10,
+          11
+        ]
+      },
+      {
+        "text": "5×单-9 -45",
+        "observationIndices": [
+          12,
+          13
+        ]
+      },
+      {
+        "text": "（税8% 対象 ￥623)",
+        "observationIndices": [
+          14,
+          15,
+          16
+        ]
+      },
+      {
+        "text": "税8% ￥49",
+        "observationIndices": [
+          17,
+          18
+        ]
+      },
+      {
+        "text": "（税合計 ￥49）",
+        "observationIndices": [
+          19,
+          20
+        ]
+      },
+      {
+        "text": "お買上 ￥672",
+        "observationIndices": [
+          21,
+          22
+        ]
+      },
+      {
+        "text": "クレジット ￥672",
+        "observationIndices": [
+          23,
+          24
+        ]
+      },
+      {
+        "text": "お買上点数 7点",
+        "observationIndices": [
+          25,
+          26
+        ]
+      }
+    ]
+  },
+  {
+    "id": "R06",
+    "variant": "paddle-v5-mobile-2x-gray",
+    "angle": 0.005181161695138657,
+    "lines": [
+      {
+        "text": "*白ねぎ 1本 ￥159",
+        "observationIndices": [
+          0,
+          1,
+          2
+        ]
+      },
+      {
+        "text": "自動割引11 10.00 -15",
+        "observationIndices": [
+          3,
+          5,
+          4
+        ]
+      },
+      {
+        "text": "*成田もやし ￥29",
+        "observationIndices": [
+          6,
+          7
+        ]
+      },
+      {
+        "text": "*ブナシメジ",
+        "observationIndices": [
+          8
+        ]
+      },
+      {
+        "text": "5×单99 ￥495",
+        "observationIndices": [
+          9,
+          10
+        ]
+      },
+      {
+        "text": "自動割引11 10.00",
+        "observationIndices": [
+          11,
+          12
+        ]
+      },
+      {
+        "text": "5コ×单-9 -45",
+        "observationIndices": [
+          13,
+          14
+        ]
+      },
+      {
+        "text": "（税8% 対象 ￥623）",
+        "observationIndices": [
+          15,
+          16,
+          17
+        ]
+      },
+      {
+        "text": "税8% ￥49",
+        "observationIndices": [
+          18,
+          19
+        ]
+      },
+      {
+        "text": "（税合計 ￥49)",
+        "observationIndices": [
+          20,
+          21
+        ]
+      },
+      {
+        "text": "お買上 ￥672",
+        "observationIndices": [
+          22,
+          23
+        ]
+      },
+      {
+        "text": "クレジット ¥672",
+        "observationIndices": [
+          24,
+          25
+        ]
+      },
+      {
+        "text": "お買上点数 7点",
+        "observationIndices": [
+          26,
+          27
+        ]
+      }
+    ]
+  },
+  {
+    "id": "R01",
+    "variant": "paddle-v6-small-original",
+    "angle": 0,
+    "lines": [
+      {
+        "text": "**** 合計 14,758",
+        "observationIndices": [
+          0,
+          1
+        ]
+      },
+      {
+        "text": "クレシ・ットカート* 14.758",
+        "observationIndices": [
+          2,
+          3
+        ]
+      },
+      {
+        "text": "釣銭 0",
+        "observationIndices": [
+          4,
+          5
+        ]
+      },
+      {
+        "text": "8%対象 12.120（消費税 898)",
+        "observationIndices": [
+          6,
+          7,
+          8
+        ]
+      },
+      {
+        "text": "10%対象 2.638（消費税 240)",
+        "observationIndices": [
+          9,
+          10,
+          11
+        ]
+      }
+    ]
+  },
+  {
+    "id": "R01",
+    "variant": "paddle-v6-small-2x-gray",
+    "angle": 0,
+    "lines": [
+      {
+        "text": "**** 合計 14,758",
+        "observationIndices": [
+          0,
+          1,
+          2
+        ]
+      },
+      {
+        "text": "クレシットカート* 14.758",
+        "observationIndices": [
+          3,
+          4
+        ]
+      },
+      {
+        "text": "釣銭 0",
+        "observationIndices": [
+          5,
+          6
+        ]
+      },
+      {
+        "text": "8%対象 12.120（消費税 898)",
+        "observationIndices": [
+          7,
+          8,
+          9
+        ]
+      },
+      {
+        "text": "10%対象 2.638（消费税 240)",
+        "observationIndices": [
+          10,
+          11,
+          12
+        ]
+      }
+    ]
+  },
+  {
+    "id": "R02",
+    "variant": "paddle-v6-small-original",
+    "angle": 0,
+    "lines": [
+      {
+        "text": "牛肉じ肉 ¥861",
+        "observationIndices": [
+          0,
+          1
+        ]
+      },
+      {
+        "text": "值引 -250",
+        "observationIndices": [
+          2,
+          3
+        ]
+      },
+      {
+        "text": "アメリカ産トロロース焼肉￥233",
+        "observationIndices": [
+          4
+        ]
+      },
+      {
+        "text": "值引 -50",
+        "observationIndices": [
+          5,
+          6
+        ]
+      },
+      {
+        "text": "肉付き竹グン軟骨 ¥437",
+        "observationIndices": [
+          7,
+          8
+        ]
+      },
+      {
+        "text": "值引 -50",
+        "observationIndices": [
+          9,
+          10
+        ]
+      },
+      {
+        "text": "※肉付きグン軟骨 ¥404",
+        "observationIndices": [
+          11,
+          12
+        ]
+      },
+      {
+        "text": "值引 -50",
+        "observationIndices": [
+          13,
+          14
+        ]
+      },
+      {
+        "text": "※堅焼きおっとっと ¥128",
+        "observationIndices": [
+          15,
+          16
+        ]
+      }
+    ]
+  },
+  {
+    "id": "R02",
+    "variant": "paddle-v6-small-2x-gray",
+    "angle": 0,
+    "lines": [
+      {
+        "text": "牛肉じ肉 ¥861",
+        "observationIndices": [
+          0,
+          1
+        ]
+      },
+      {
+        "text": "值引 -250",
+        "observationIndices": [
+          3,
+          2
+        ]
+      },
+      {
+        "text": "アメリカ産トロロース焼肉¥233",
+        "observationIndices": [
+          4
+        ]
+      },
+      {
+        "text": "值引 -50",
+        "observationIndices": [
+          5,
+          6
+        ]
+      },
+      {
+        "text": "肉付きャグン軟骨 ¥437",
+        "observationIndices": [
+          7,
+          8
+        ]
+      },
+      {
+        "text": "值引 -50",
+        "observationIndices": [
+          9,
+          10
+        ]
+      },
+      {
+        "text": "※肉付きャグン軟骨 ¥404",
+        "observationIndices": [
+          11,
+          12
+        ]
+      },
+      {
+        "text": "值引 -50",
+        "observationIndices": [
+          13,
+          14
+        ]
+      },
+      {
+        "text": "※堅焼きおっとっと ¥128",
+        "observationIndices": [
+          15,
+          16
+        ]
+      }
+    ]
+  },
+  {
+    "id": "R03",
+    "variant": "paddle-v6-small-original",
+    "angle": 0,
+    "lines": [
+      {
+        "text": "※白ネギ ¥98",
+        "observationIndices": [
+          0,
+          1
+        ]
+      },
+      {
+        "text": "分类括割引10% -10",
+        "observationIndices": [
+          2,
+          3
+        ]
+      },
+      {
+        "text": "当店一押し南瓜 ¥302",
+        "observationIndices": [
+          4,
+          5
+        ]
+      },
+      {
+        "text": "分类類一括割引 10% -31",
+        "observationIndices": [
+          6,
+          7
+        ]
+      },
+      {
+        "text": "洋人参 ¥98",
+        "observationIndices": [
+          8,
+          9
+        ]
+      },
+      {
+        "text": "分类一括割引 10% -10",
+        "observationIndices": [
+          10,
+          11
+        ]
+      },
+      {
+        "text": "※徳用えのき ¥128",
+        "observationIndices": [
+          12,
+          13
+        ]
+      },
+      {
+        "text": "分類一括割引 10% -13",
+        "observationIndices": [
+          14,
+          15,
+          16
+        ]
+      },
+      {
+        "text": "生とんこLL6P ！¥498",
+        "observationIndices": [
+          17,
+          18
+        ]
+      },
+      {
+        "text": "分类一括割引10% -50",
+        "observationIndices": [
+          19,
+          20
+        ]
+      },
+      {
+        "text": "！¥148",
+        "observationIndices": [
+          21
+        ]
+      },
+      {
+        "text": "分类一括割引10% -15",
+        "observationIndices": [
+          22,
+          23
+        ]
+      },
+      {
+        "text": "※ 千切り大粮 ！¥158",
+        "observationIndices": [
+          24,
+          25,
+          26
+        ]
+      },
+      {
+        "text": "分类一括割引 10% -16",
+        "observationIndices": [
+          27,
+          28
+        ]
+      },
+      {
+        "text": "青ねぎ ！¥98",
+        "observationIndices": [
+          29,
+          30
+        ]
+      },
+      {
+        "text": "分类類一括割引！10% -10",
+        "observationIndices": [
+          31,
+          32
+        ]
+      },
+      {
+        "text": "※まろやか冒味三 ！¥129",
+        "observationIndices": [
+          33,
+          34
+        ]
+      },
+      {
+        "text": "-13",
+        "observationIndices": [
+          35
+        ]
+      },
+      {
+        "text": "北海道牛乳 ¥199",
+        "observationIndices": [
+          36,
+          37
+        ]
+      },
+      {
+        "text": "分類一括割引！10% -20",
+        "observationIndices": [
+          38,
+          39
+        ]
+      },
+      {
+        "text": "※ ミルクチョコレート日 BO！¥398",
+        "observationIndices": [
+          40,
+          41,
+          42
+        ]
+      },
+      {
+        "text": "分类一括割引 10% -40",
+        "observationIndices": [
+          43,
+          44
+        ]
+      },
+      {
+        "text": "トマトケチャップ ！¥208",
+        "observationIndices": [
+          45,
+          46
+        ]
+      },
+      {
+        "text": "分类一括割引 10% -21",
+        "observationIndices": [
+          47,
+          48
+        ]
+      },
+      {
+        "text": "※お徳用いりごま白 ¥218",
+        "observationIndices": [
+          49,
+          50
+        ]
+      },
+      {
+        "text": "分类一括割引10% -22",
+        "observationIndices": [
+          51,
+          52
+        ]
+      },
+      {
+        "text": "※味しみきさみあげ ！¥158",
+        "observationIndices": [
+          53,
+          54
+        ]
+      },
+      {
+        "text": "分类一括割引10% -16",
+        "observationIndices": [
+          55,
+          56
+        ]
+      },
+      {
+        "text": "手焼きおつゆ麩 ！¥216",
+        "observationIndices": [
+          57,
+          58
+        ]
+      },
+      {
+        "text": "2個×@108)",
+        "observationIndices": [
+          59
+        ]
+      },
+      {
+        "text": "分类一括割引、10% -22",
+        "observationIndices": [
+          60,
+          61
+        ]
+      },
+      {
+        "text": "※薩摩の味かつおパック ！¥278",
+        "observationIndices": [
+          62,
+          63
+        ]
+      },
+      {
+        "text": "分类一括割引10% -28",
+        "observationIndices": [
+          64,
+          66
+        ]
+      },
+      {
+        "text": "※蒟セリーグレープ ！¥216",
+        "observationIndices": [
+          65,
+          67
+        ]
+      },
+      {
+        "text": "2個× @108)",
+        "observationIndices": [
+          68
+        ]
+      },
+      {
+        "text": "分类一括割引10% -22",
+        "observationIndices": [
+          69,
+          70
+        ]
+      }
+    ]
+  },
+  {
+    "id": "R03",
+    "variant": "paddle-v6-small-2x-gray",
+    "angle": 0,
+    "lines": [
+      {
+        "text": "白ネギ ！¥98",
+        "observationIndices": [
+          0,
+          1
+        ]
+      },
+      {
+        "text": "分类類括割引10% -10",
+        "observationIndices": [
+          3,
+          2
+        ]
+      },
+      {
+        "text": "当店一押し南瓜 ！¥302",
+        "observationIndices": [
+          4,
+          5
+        ]
+      },
+      {
+        "text": "分类一括割引10% -31",
+        "observationIndices": [
+          6,
+          7
+        ]
+      },
+      {
+        "text": "洋人参我 ¥98",
+        "observationIndices": [
+          8,
+          9
+        ]
+      },
+      {
+        "text": "分类一括割引 10% -10",
+        "observationIndices": [
+          10,
+          11
+        ]
+      },
+      {
+        "text": "※徳用えのき ¥128",
+        "observationIndices": [
+          12,
+          13
+        ]
+      },
+      {
+        "text": "分类一括割引 10% -13",
+        "observationIndices": [
+          14,
+          15
+        ]
+      },
+      {
+        "text": "生とんこLL6P ！¥498",
+        "observationIndices": [
+          16,
+          17
+        ]
+      },
+      {
+        "text": "分类類一括割引10% -50",
+        "observationIndices": [
+          18,
+          19
+        ]
+      },
+      {
+        "text": "I ！¥148",
+        "observationIndices": [
+          20,
+          21
+        ]
+      },
+      {
+        "text": "分类一括割引10% -15",
+        "observationIndices": [
+          22,
+          23
+        ]
+      },
+      {
+        "text": "千切门大粮 ！¥158",
+        "observationIndices": [
+          24,
+          25
+        ]
+      },
+      {
+        "text": "分類一括割引 10% -16",
+        "observationIndices": [
+          26,
+          27
+        ]
+      },
+      {
+        "text": "※青ねぎ ！¥98",
+        "observationIndices": [
+          28,
+          29
+        ]
+      },
+      {
+        "text": "分类一括割引！ 10% -10",
+        "observationIndices": [
+          30,
+          31
+        ]
+      },
+      {
+        "text": "※まろやか買味ミ二3 ！¥129",
+        "observationIndices": [
+          32,
+          33
+        ]
+      },
+      {
+        "text": "分类一括割引 10% -13",
+        "observationIndices": [
+          34,
+          35
+        ]
+      },
+      {
+        "text": "北海道牛乳 ¥199",
+        "observationIndices": [
+          36,
+          37
+        ]
+      },
+      {
+        "text": "分類一括割引！10% -20",
+        "observationIndices": [
+          38,
+          39
+        ]
+      },
+      {
+        "text": "ミルクチョコレートBO¥398",
+        "observationIndices": [
+          40
+        ]
+      },
+      {
+        "text": "分类類一括割引 10% -40",
+        "observationIndices": [
+          41,
+          42
+        ]
+      },
+      {
+        "text": "トマトケチャップ ！¥208",
+        "observationIndices": [
+          43,
+          44
+        ]
+      },
+      {
+        "text": "分类類一括割引10% -21",
+        "observationIndices": [
+          45,
+          46
+        ]
+      },
+      {
+        "text": "※お徳用いりこま白 ¥218",
+        "observationIndices": [
+          47,
+          48
+        ]
+      },
+      {
+        "text": "分类類一括割引10% -22",
+        "observationIndices": [
+          49,
+          50
+        ]
+      },
+      {
+        "text": "※味しみきさみあげ ！¥158",
+        "observationIndices": [
+          51,
+          52
+        ]
+      },
+      {
+        "text": "分类一括割引10% -16",
+        "observationIndices": [
+          53,
+          54
+        ]
+      },
+      {
+        "text": "手焼きおつゆ麩 ！¥216",
+        "observationIndices": [
+          55,
+          56
+        ]
+      },
+      {
+        "text": "2個×@108)",
+        "observationIndices": [
+          57
+        ]
+      },
+      {
+        "text": "分类括割引10% -22",
+        "observationIndices": [
+          58,
+          59
+        ]
+      },
+      {
+        "text": "※薩摩の味かつおパック ¥278",
+        "observationIndices": [
+          60,
+          61
+        ]
+      },
+      {
+        "text": "分类一括割引10% -28",
+        "observationIndices": [
+          62,
+          63
+        ]
+      },
+      {
+        "text": "※蒟ゼリーグレープ ¥216",
+        "observationIndices": [
+          64,
+          65
+        ]
+      },
+      {
+        "text": "2個×@108)",
+        "observationIndices": [
+          66
+        ]
+      },
+      {
+        "text": "分类一括割引 10% -22",
+        "observationIndices": [
+          67,
+          68
+        ]
+      }
+    ]
+  },
+  {
+    "id": "R04",
+    "variant": "paddle-v6-small-original",
+    "angle": 0.012231920201024659,
+    "lines": [
+      {
+        "text": "ネピネビティシュ150W5P ¥283",
+        "observationIndices": [
+          0,
+          1
+        ]
+      },
+      {
+        "text": "(特売価格)",
+        "observationIndices": [
+          2
+        ]
+      },
+      {
+        "text": "※やまみ　濃くておいしいき ¥116",
+        "observationIndices": [
+          3,
+          4
+        ]
+      },
+      {
+        "text": "(特売価格)",
+        "observationIndices": [
+          5
+        ]
+      },
+      {
+        "text": "トイレクイックル詰替用 20 ¥327",
+        "observationIndices": [
+          6,
+          7,
+          8
+        ]
+      },
+      {
+        "text": "(特売価格)",
+        "observationIndices": [
+          9
+        ]
+      },
+      {
+        "text": "金ちやん 鍋焼きつねうど ¥116",
+        "observationIndices": [
+          10,
+          11,
+          12
+        ]
+      },
+      {
+        "text": "(特売価格)",
+        "observationIndices": [
+          13
+        ]
+      },
+      {
+        "text": "※金ちやん 鍋焼肉うどん ¥116",
+        "observationIndices": [
+          14,
+          15,
+          16
+        ]
+      },
+      {
+        "text": "(特売価格)",
+        "observationIndices": [
+          17
+        ]
+      },
+      {
+        "text": "※金ちやん 鍋焼天ぶらうと ¥116",
+        "observationIndices": [
+          18,
+          19,
+          20
+        ]
+      },
+      {
+        "text": "(特売価格)",
+        "observationIndices": [
+          21
+        ]
+      },
+      {
+        "text": "キュキュット詰替700ml ¥327",
+        "observationIndices": [
+          22,
+          23
+        ]
+      },
+      {
+        "text": "(特売価格)",
+        "observationIndices": [
+          24
+        ]
+      },
+      {
+        "text": "金のつぶ たれたっぷり！た¥105",
+        "observationIndices": [
+          25,
+          26
+        ]
+      },
+      {
+        "text": "(特売価格)",
+        "observationIndices": [
+          27
+        ]
+      },
+      {
+        "text": "※塩あじお手軽えだまめ400G ¥408",
+        "observationIndices": [
+          28,
+          29
+        ]
+      },
+      {
+        "text": "金ちゃん 鍋焼味噌煮うと ¥116",
+        "observationIndices": [
+          30,
+          31,
+          32
+        ]
+      },
+      {
+        "text": "2×单 105 ¥210",
+        "observationIndices": [
+          33,
+          34,
+          35
+        ]
+      },
+      {
+        "text": "※チャルメラ バリカタ豚骨 ¥354",
+        "observationIndices": [
+          36,
+          37,
+          38
+        ]
+      },
+      {
+        "text": "(特売価格)",
+        "observationIndices": [
+          39
+        ]
+      },
+      {
+        "text": "※チャルメラみそ5食 ¥321",
+        "observationIndices": [
+          40,
+          41
+        ]
+      },
+      {
+        "text": "レジ袋大 ¥5",
+        "observationIndices": [
+          42,
+          43
+        ]
+      }
+    ]
+  },
+  {
+    "id": "R04",
+    "variant": "paddle-v6-small-2x-gray",
+    "angle": 0.012399445967951747,
+    "lines": [
+      {
+        "text": "ネピネビティシュ150W5P ¥283",
+        "observationIndices": [
+          0,
+          1
+        ]
+      },
+      {
+        "text": "(特売価格)",
+        "observationIndices": [
+          2
+        ]
+      },
+      {
+        "text": "※やまみ　濃くておいしいき ¥116",
+        "observationIndices": [
+          3,
+          4
+        ]
+      },
+      {
+        "text": "(特売価格)",
+        "observationIndices": [
+          5
+        ]
+      },
+      {
+        "text": "トイレクイックル詰替用 20 ¥327",
+        "observationIndices": [
+          6,
+          7,
+          8
+        ]
+      },
+      {
+        "text": "(特売価格)",
+        "observationIndices": [
+          9
+        ]
+      },
+      {
+        "text": "※金ちゃん 鍋焼きつねうど ¥116",
+        "observationIndices": [
+          10,
+          11,
+          12
+        ]
+      },
+      {
+        "text": "(特売価格)",
+        "observationIndices": [
+          13
+        ]
+      },
+      {
+        "text": "※金ちやん 鍋焼肉うどん ¥116",
+        "observationIndices": [
+          14,
+          15,
+          16
+        ]
+      },
+      {
+        "text": "(特売価格)",
+        "observationIndices": [
+          17
+        ]
+      },
+      {
+        "text": "※金ちやん 鍋焼天ぷらうど ¥116",
+        "observationIndices": [
+          18,
+          19,
+          20
+        ]
+      },
+      {
+        "text": "(特売価格)",
+        "observationIndices": [
+          21
+        ]
+      },
+      {
+        "text": "キュキュット詰替700ml ¥327",
+        "observationIndices": [
+          22,
+          23
+        ]
+      },
+      {
+        "text": "(特売価格)",
+        "observationIndices": [
+          24
+        ]
+      },
+      {
+        "text": "金のつぶ たれたっふり！た¥105",
+        "observationIndices": [
+          25,
+          26
+        ]
+      },
+      {
+        "text": "(特売価格)",
+        "observationIndices": [
+          27
+        ]
+      },
+      {
+        "text": "※塩あじお手軽えだまめ400G ¥408",
+        "observationIndices": [
+          28,
+          29
+        ]
+      },
+      {
+        "text": "金ちゃん 鍋燒味噌煮うと ¥116",
+        "observationIndices": [
+          30,
+          31,
+          32
+        ]
+      },
+      {
+        "text": "23×单 105 ¥210",
+        "observationIndices": [
+          33,
+          34,
+          35
+        ]
+      },
+      {
+        "text": "※チャルメラ バリカタ豚骨 ¥354",
+        "observationIndices": [
+          36,
+          37,
+          38
+        ]
+      },
+      {
+        "text": "(特売価格)",
+        "observationIndices": [
+          39
+        ]
+      },
+      {
+        "text": "※チャルメラみそ5食 ¥321",
+        "observationIndices": [
+          40,
+          41
+        ]
+      },
+      {
+        "text": "レジ袋大 ¥5",
+        "observationIndices": [
+          42,
+          43
+        ]
+      }
+    ]
+  },
+  {
+    "id": "R05",
+    "variant": "paddle-v6-small-original",
+    "angle": 0,
+    "lines": [
+      {
+        "text": "エアリスムコットンクルーネックT",
+        "observationIndices": [
+          0
+        ]
+      },
+      {
+        "text": "2000219735999 1 ¥1,290",
+        "observationIndices": [
+          1,
+          2,
+          3
+        ]
+      },
+      {
+        "text": "Wメリノクルーネックカーディガン",
+        "observationIndices": [
+          4
+        ]
+      },
+      {
+        "text": "2000211787545 1 ¥2,990",
+        "observationIndices": [
+          5,
+          6,
+          7
+        ]
+      },
+      {
+        "text": "Wメリノクルーネックカーディガン",
+        "observationIndices": [
+          8
+        ]
+      },
+      {
+        "text": "2000211287069 ¥2,990",
+        "observationIndices": [
+          9,
+          10
+        ]
+      },
+      {
+        "text": "メリハネックカーディカン",
+        "observationIndices": [
+          11
+        ]
+      },
+      {
+        "text": "2000221861600 1 ¥2,990",
+        "observationIndices": [
+          12,
+          13,
+          14
+        ]
+      },
+      {
+        "text": "エアリス“ムコットンクルーネックT",
+        "observationIndices": [
+          15
+        ]
+      },
+      {
+        "text": "2000219736231 1 ¥1,290",
+        "observationIndices": [
+          16,
+          17,
+          18
+        ]
+      }
+    ]
+  },
+  {
+    "id": "R05",
+    "variant": "paddle-v6-small-2x-gray",
+    "angle": 0,
+    "lines": [
+      {
+        "text": "エアリス`ムコットンクルーネックT",
+        "observationIndices": [
+          0
+        ]
+      },
+      {
+        "text": "2000219735999 1 ¥1,290",
+        "observationIndices": [
+          1,
+          2,
+          3
+        ]
+      },
+      {
+        "text": "Wメリノクルーネックカーディガ`ン",
+        "observationIndices": [
+          4
+        ]
+      },
+      {
+        "text": "2000211787545 1 ¥2,990",
+        "observationIndices": [
+          5,
+          7,
+          6
+        ]
+      },
+      {
+        "text": "Wメリノクルーネックカーディガ`ン",
+        "observationIndices": [
+          8
+        ]
+      },
+      {
+        "text": "2000211287069 1 ¥2,990",
+        "observationIndices": [
+          9,
+          10,
+          11
+        ]
+      },
+      {
+        "text": "メリハネックカーディカン",
+        "observationIndices": [
+          12
+        ]
+      },
+      {
+        "text": "2000221861600 1 ¥2,990",
+        "observationIndices": [
+          13,
+          14,
+          15
+        ]
+      },
+      {
+        "text": "エアリスムコットンクルーネックT",
+        "observationIndices": [
+          16
+        ]
+      },
+      {
+        "text": "2000219736231 1 ¥1,290",
+        "observationIndices": [
+          17,
+          18,
+          19
+        ]
+      }
+    ]
+  },
+  {
+    "id": "R06",
+    "variant": "paddle-v6-small-original",
+    "angle": 0.024485309271289293,
+    "lines": [
+      {
+        "text": "*白ねぎ 1本 ¥159 -15",
+        "observationIndices": [
+          0,
+          1,
+          2,
+          5
+        ]
+      },
+      {
+        "text": "自動割引1 10.00 ¥29",
+        "observationIndices": [
+          3,
+          4,
+          7
+        ]
+      },
+      {
+        "text": "*成田もやし",
+        "observationIndices": [
+          6
+        ]
+      },
+      {
+        "text": "*ブナシメジ",
+        "observationIndices": [
+          8
+        ]
+      },
+      {
+        "text": "5コX单99 ¥495",
+        "observationIndices": [
+          9,
+          10
+        ]
+      },
+      {
+        "text": "自動割引1 10.00",
+        "observationIndices": [
+          11,
+          12
+        ]
+      },
+      {
+        "text": "5コX单-9 -45",
+        "observationIndices": [
+          13,
+          14
+        ]
+      },
+      {
+        "text": "(税8% 対象 ¥623)",
+        "observationIndices": [
+          15,
+          16,
+          17
+        ]
+      },
+      {
+        "text": "税8% ¥49",
+        "observationIndices": [
+          18,
+          19
+        ]
+      },
+      {
+        "text": "(税合計 ¥49)",
+        "observationIndices": [
+          20,
+          21
+        ]
+      },
+      {
+        "text": "お買上 ¥672",
+        "observationIndices": [
+          22,
+          23
+        ]
+      },
+      {
+        "text": "クレジット ¥672",
+        "observationIndices": [
+          24,
+          25
+        ]
+      },
+      {
+        "text": "お買上点数 7点",
+        "observationIndices": [
+          26,
+          27
+        ]
+      }
+    ]
+  },
+  {
+    "id": "R06",
+    "variant": "paddle-v6-small-2x-gray",
+    "angle": 0.00413213732982558,
+    "lines": [
+      {
+        "text": "*白ねぎ 1本 ¥159",
+        "observationIndices": [
+          0,
+          1,
+          2
+        ]
+      },
+      {
+        "text": "自動割引1 10.00 -15",
+        "observationIndices": [
+          3,
+          5,
+          4
+        ]
+      },
+      {
+        "text": "*成田もやし ¥29",
+        "observationIndices": [
+          6,
+          7
+        ]
+      },
+      {
+        "text": "*ブナシメジ",
+        "observationIndices": [
+          8
+        ]
+      },
+      {
+        "text": "5コX单99 ¥495",
+        "observationIndices": [
+          9,
+          10
+        ]
+      },
+      {
+        "text": "自動割引1 10.00",
+        "observationIndices": [
+          11,
+          12
+        ]
+      },
+      {
+        "text": "5コX单-9 -45",
+        "observationIndices": [
+          13,
+          14
+        ]
+      },
+      {
+        "text": "(税8% 対象 ¥623)",
+        "observationIndices": [
+          15,
+          16,
+          17
+        ]
+      },
+      {
+        "text": "税8% ¥49",
+        "observationIndices": [
+          18,
+          19
+        ]
+      },
+      {
+        "text": "(税合計 ¥49)",
+        "observationIndices": [
+          20,
+          21
+        ]
+      },
+      {
+        "text": "お買上 ¥672",
+        "observationIndices": [
+          22,
+          23
+        ]
+      },
+      {
+        "text": "クレジット ¥672",
+        "observationIndices": [
+          24,
+          25
+        ]
+      },
+      {
+        "text": "お買上点数 7点",
+        "observationIndices": [
+          26,
+          27
+        ]
+      }
+    ]
+  }
+]

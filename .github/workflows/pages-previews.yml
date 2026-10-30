@@ -27,6 +27,11 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Set up Node for isolated OCR preview
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
       # Regression checks run independently in offline-tests.yml.
       # A test failure must not block publishing read-only diagnostic pages.
 
@@ -68,6 +73,18 @@ jobs:
                 version="$(sed -nE "s/^const CACHE='household-ui-v([0-9]+)';/\\1/p" "$dest/sw.js" | head -n 1)"
                 [[ "$version" =~ ^[0-9]+$ ]] || { echo "Invalid SW cache version: $branch"; exit 1; }
                 sed -i "s/const CACHE=\x27[^\x27]*\x27/const CACHE=\x27household-preview-$slug-v$version\x27/" "$dest/sw.js"
+              fi
+              # Only the authorized development preview receives the OCR laboratory.
+              # Main and all other branches are copied exactly as before.
+              if [[ "$branch" == "stage-a-ui-handoff-review" ]] && git cat-file -e "refs/remotes/$remote_ref:ocr-lab/package-lock.json" 2>/dev/null; then
+                build_root="$(mktemp -d)"
+                git archive "refs/remotes/$remote_ref" ocr-lab receipt-layout.js receipt-paddle.js receipt-structure.js | tar -x -C "$build_root"
+                (
+                  cd "$build_root/ocr-lab"
+                  npm ci --ignore-scripts --no-audit --no-fund
+                  OCR_LAB_OUT="$GITHUB_WORKSPACE/$dest/ocr-lab" npm run build
+                )
+                rm -rf "$build_root"
               fi
               echo "Preview: /previews/$slug/"
             else
