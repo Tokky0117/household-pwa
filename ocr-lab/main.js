@@ -37,6 +37,8 @@ function diagnosticSummary(d,receipt){
    warningsInside:scope.merchandise,warningsOutside:scope.outside,
    warningsGlobal:scope.global},
   checks:{quantityMatches:r.printedCountMatches??null,
+   candidateQuantityMatches:r.candidateCountMatches??null,
+   quantityVerified:r.quantityVerified===true,
    amountMatches:r.totalMatches??null,
    taxBasis:receipt.taxBasis}
  };
