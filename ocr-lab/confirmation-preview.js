@@ -50,10 +50,32 @@ export function createConfirmationPreview({section,file,chain,status,list,summar
   select.disabled=!found.length;
  };
  const summaryText=rows=>{
-  const uncertain=receipt?.items.filter(x=>!x.name||x.issues?.length).length||0;
-  summary.textContent='明細 '+(receipt?.items.length||0)+'件・要確認 '+uncertain+
-   '件・商品候補 '+rows.filter(x=>x.candidates.length).length+
-   '件・商品選択 '+selected.size+'件・数量確認 '+quantities.size+'件。保存は行いません。';
+  const items=receipt?.items||[];
+  // Keep OCR reliability, catalog matching, and manual confirmation separate.
+  // "No OCR warnings" never means that an unmatched item is verified.
+  const uncertain=items.filter(x=>!x.name||x.issues?.length||
+   x.quantitySource==='inferred_candidate').length;
+  const matched=rows.filter(x=>x.candidates.length).length;
+  const unmatched=catalog?rows.filter(x=>!x.candidates.length).length:0;
+  const conflicts=catalog?rows.filter(x=>x.status==='conflict').length:0;
+  const ambiguous=catalog?rows.filter(x=>x.status==='ambiguous').length:0;
+  const suggestions=catalog?rows.filter(x=>x.status==='name_suggestion').length:0;
+  const warnings=Array.isArray(receipt?.warnings)?receipt.warnings.length:0;
+  const extras=[];
+  if(catalog)extras.push('未照合 '+unmatched+'件');
+  if(conflicts)extras.push('コード・商品名の競合 '+conflicts+'件');
+  if(ambiguous)extras.push('候補が複数 '+ambiguous+'件');
+  if(suggestions)extras.push('類似名候補 '+suggestions+'件');
+  if(warnings)extras.push('抽出警告 '+warnings+'件');
+  if(receipt?.receiptTotal!=null&&receipt?.reconciliation?.totalMatches===false)
+   extras.push('レシート合計と明細が不一致');
+  else if(receipt?.receiptTotal!=null&&receipt?.reconciliation?.totalMatches==null)
+   extras.push('レシート合計は未検証');
+  summary.textContent='明細 '+items.length+'件・OCR要確認 '+uncertain+
+   '件・商品候補 '+matched+'件・商品選択 '+selected.size+
+   '件・数量確認 '+quantities.size+'件'+
+   (extras.length?'・'+extras.join('・'):'')+
+   '。候補は自動確定しません。保存は行いません。';
  };
  function render(){
   list.replaceChildren();section.hidden=!receipt;if(!receipt)return;
@@ -79,7 +101,7 @@ export function createConfirmationPreview({section,file,chain,status,list,summar
      name_suggestion:'商品名が類似',ambiguous:'複数候補',conflict:'コードと名前が矛盾'}[match.status];
     card.append(element('small',meaning||'要確認'));
 
-   }else card.append(element('p',catalog?'登録商品候補なし（未照合）':'商品マスタ未読み込み'));
+   }else card.append(element('p',catalog?'一致する登録商品候補なし。OCR誤読・未登録商品・チェーン選択を確認してください。':'商品マスタ未読み込み'));
    const selectedId=selected.get(i);
    if(catalog&&chainId&&selectedId&&item.productCode){
     const verdict=window.KurashiAliasPreflight.inspect({
