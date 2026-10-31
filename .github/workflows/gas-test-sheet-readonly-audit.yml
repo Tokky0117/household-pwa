@@ -18,8 +18,8 @@ jobs:
       - name: Establish test-GAS token without exposing credentials
         shell: bash
         env:
-          CLASPRC_JSON: \${{ secrets.CLASPRC_JSON }}
-          GAS_SCRIPT_ID_TEST: \${{ secrets.GAS_SCRIPT_ID_TEST }}
+          CLASPRC_JSON: ${{ secrets.CLASPRC_JSON }}
+          GAS_SCRIPT_ID_TEST: ${{ secrets.GAS_SCRIPT_ID_TEST }}
         run: |
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/kurashi-sheet-inspect"
