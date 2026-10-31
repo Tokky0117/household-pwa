@@ -265,6 +265,7 @@ function doPost(e){
   const action=String(input.action||'');
   const payload=input.payload||{};
   if(action==='bootstrap')return jsonReply({ok:true,data:bootstrap(user,readContext.book)});
+   if(action==='product.catalog')return jsonReply({ok:true,data:productCatalog_(user,readContext.book)});
   if(action==='sync')return jsonReply({ok:true,data:changes(user,payload,readContext.book)});
   if(!['item.create','item.update','product.create','product.update','product.move'].includes(action))fail('UNSUPPORTED','未対応の操作です');
   return jsonReply({ok:true,data:mutate_(user,action,payload,input.operation_id)});
@@ -463,6 +464,41 @@ function bootstrap(user,book){
   sequence_no:currentSequence(householdId,activeBook)
  };
 }
+/**
+ * Read-only, opt-in product catalog for STEP 3.
+ * Aliases have no household_id: authorize through the product foreign key.
+ * Never use caller-controlled householdId; the verified Google subject decides it.
+ * No server-side caching across households. No writes or exposure of other rows.
+ */
+function productCatalog_(user,book){
+ const activeBook=book||spreadsheet(),hid=String(user.householdId);
+ const allProducts=rows('products',activeBook);
+ const ownership=new Map();
+ for(const row of allProducts){
+  const id=String(row.obj.product_id||'');
+  if(!id||ownership.has(id))fail('CATALOG_CONFLICT','商品IDに重複があるため照合できません');
+  ownership.set(id,String(row.obj.household_id||''));
+ }
+ const products=allProducts.filter(r=>String(r.obj.household_id)===hid&&!r.obj.deleted_at)
+  .map(r=>({product_id:String(r.obj.product_id),household_id:hid,
+    name:String(r.obj.name||''),normalized_name:String(r.obj.normalized_name||'')}));
+ const allowed=new Set(products.map(p=>p.product_id));
+ const stores=rows('stores',activeBook).filter(r=>String(r.obj.household_id)===hid)
+  .map(r=>({chain_id:String(r.obj.chain_id),canonical_name:String(r.obj.canonical_name||'')}));
+ const allowedChains=new Set(stores.map(s=>s.chain_id));
+ const aliases=rows('product_aliases',activeBook).filter(r=>{
+  const a=r.obj;
+  const pid=String(a.product_id||'');
+  const chain=a.chain_id==null||a.chain_id===''?null:String(a.chain_id);
+  // Reject wrong-chain rows instead of crossing an authorization boundary.
+  return allowed.has(pid)&&ownership.get(pid)===hid&&
+   (chain===null||allowedChains.has(chain));
+ }).map(r=>({alias_id:String(r.obj.alias_id||''),product_id:String(r.obj.product_id),
+  chain_id:r.obj.chain_id==null||r.obj.chain_id===''?null:String(r.obj.chain_id),
+  normalized_alias:String(r.obj.normalized_alias||'')}));
+ return {household_id:hid,products,product_aliases:aliases,stores};
+}
+
 function currentSequence(hid,book){return scopedPrefix_('change_log',hid,3,book).reduce((n,x)=>Math.max(n,Number(x.obj.sequence_no)||0),0)}
 function changes(user,payload,book){
  const cursor=Number(payload.after_sequence||0);
