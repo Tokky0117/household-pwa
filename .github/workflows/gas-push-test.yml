@@ -24,13 +24,15 @@ jobs:
     if: github.ref == 'refs/heads/stage-a-ui-handoff-review' && inputs.confirm_target_backup == 'BACKUP_DONE' && inputs.confirm_test_source == 'TEST_GAS_UPDATE'
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    env:
-      GAS_WORK: ${{ runner.temp }}/kurashi-test-gas
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
+
+      - name: Prepare temporary work path
+        shell: bash
+        run: echo "GAS_WORK=$RUNNER_TEMP/kurashi-test-gas" >> "$GITHUB_ENV"
 
       - name: Check development source syntax
         shell: bash
