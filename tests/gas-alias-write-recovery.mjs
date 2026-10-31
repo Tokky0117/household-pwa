@@ -156,6 +156,7 @@ function seedPriorItemTrial(h,version=2){
 {
  const h=harness();h.tables.products.splice(1);h.tables.stores.splice(1);
  seedPriorItemTrial(h,2);
+ const initial=h.writes;
  assert.equal(h.mock.testIsolatedAliasWriteTrialPreflightReadOnly_(),true);
  assert.equal(h.mock.testAliasTrialPreflightReadOnly(),true,'Editor-visible preflight wrapper runs read-only');
  assert.equal(h.writes,initial,'Public preflight must never write');
