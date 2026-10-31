@@ -1,5 +1,5 @@
 name: Read-only audit of existing test GAS source
-# Verify remote test GAS matches the approved prototype-only alias editor preflight update.
+# Read-only verification after adding the user-approved editor-only alias write fixture.
 on:
   push:
     branches: [stage-a-ui-handoff-review]
