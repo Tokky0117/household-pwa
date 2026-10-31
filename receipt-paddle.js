@@ -9,12 +9,12 @@
    return enginePromise;
   };
   return {
-   async readImage(image){
+   async readImage(image,params){
     if(closed)throw new Error('reader disposed');
     if(active)throw new Error('reader busy');
     const work=(async()=>{
     const engine=await getEngine();if(closed)throw new Error('reader disposed');
-    const results=await engine.predict(image);if(closed)throw new Error('reader disposed');
+    const results=await engine.predict(image,params);if(closed)throw new Error('reader disposed');
     if(!Array.isArray(results)||results.length!==1||!Array.isArray(results[0].items))throw new Error('invalid OCR response');
     const r=results[0],layout=root.KurashiReceiptLayout.groupLines(r.items);
     return {engine:'PP-OCRv6_small',text:layout.text,observations:r.items,lines:layout.lines,image:r.image,metrics:r.metrics,runtime:r.runtime};

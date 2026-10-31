@@ -8,5 +8,5 @@ export default {
   {find:'@paddleocr/paddleocr-js',replacement:path.join(nm,'@paddleocr/paddleocr-js/dist/index.mjs')},
   {find:'onnxruntime-web',replacement:path.join(nm,'onnxruntime-web/dist/ort.wasm.min.mjs')}
  ]},
- build:{outDir:process.env.OCR_LAB_OUT||path.join(root,'dist'),emptyOutDir:true,target:'es2022'}
+ build:{rollupOptions:{input:{main:path.join(root,'index.html'),benchmark:path.join(root,'bench.html')}},outDir:process.env.OCR_LAB_OUT||path.join(root,'dist'),emptyOutDir:true,target:'es2022'}
 };
