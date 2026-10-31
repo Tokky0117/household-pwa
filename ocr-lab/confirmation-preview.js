@@ -97,6 +97,13 @@ export function createConfirmationPreview({section,file,chain,status,list,summar
    card.append(head,element('p','数量 '+item.quantity+'・金額 '+yen(item.grossAmount)+
     '・値引き '+yen(item.discount)+'・差引 '+yen(item.netAmount)));
    if(item.productCode)card.append(element('p','商品コード '+item.productCode));
+   if(item.quantitySource==='inferred_candidate'&&
+      typeof item.ocrQuantityToken==='string'&&
+      /^\d{1,2}[●@eEoO]?$/.test(item.ocrQuantityToken)){
+    const qtyHint=element('p','OCR数量表記「'+item.ocrQuantityToken+
+     '」→ 数量候補 '+item.quantity+'（単価と金額から推定。原本確認が必要）');
+    qtyHint.className='review-warning';card.append(qtyHint);
+   }
    const warnings=item.issues||[];
    if(warnings.length){const p=element('p',warnings.map(x=>({
     quantity_ocr_ambiguous:'数量の印字を要確認',missing_product_name:'商品名が欠落',
