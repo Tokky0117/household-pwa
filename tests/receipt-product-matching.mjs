@@ -277,6 +277,20 @@ for(let i=0;i<13;i++){
  assert.equal(r01Matches[i].candidates[0].name,r01Reviewed.items[i].name);
 }
 assert.equal(r01Matches[1].candidates[0].name,'リンツリンドールピンク450G');
+// Reproduce the actual user's symptom: JSON was loaded but chainId was
+// absent, so only exact-name candidates appeared while Lindor was unresolved.
+const r01WithNoChain=suggest([
+ {name:'TORRIDEN SERUM',productCode:'72587'},
+ {name:'リンツリント・ールヒ・ンク450G',productCode:'84471'}
+],{...catalogR01,chainId:null});
+assert.equal(r01WithNoChain[0].status,'name_candidate');
+assert.equal(r01WithNoChain[1].status,'unresolved');
+const r01WithChain=suggest([
+ {name:'TORRIDEN SERUM',productCode:'72587'},
+ {name:'リンツリント・ールヒ・ンク450G',productCode:'84471'}
+],{...catalogR01,chainId:warehouseChain});
+assert.deepEqual(r01WithChain.map(r=>r.status),['code_candidate','code_candidate']);
+
 const r01Preview=JSON.parse(createProductTestReport({
  receipt:corruptedReceipt,diagnostic:{},
  review:{source:'local',items:r01Matches.map(x=>({
