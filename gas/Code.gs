@@ -1245,25 +1245,30 @@ function testIsolatedAliasWriteTrialResultReadOnly_(){
 }
 function runIsolatedAliasWriteTrialOnce_(){
  // Editor-only; unlike doPost, intentionally bypasses the separate browser
- // experimental-writes flag. It still rechecks isolation under the lock.
- const book=spreadsheet(),state=isolatedAliasTrialGuard_(book),
-       fixture=ALIAS_TRIAL_FIXTURE_,now=new Date().toISOString();
- // The hard-coded fixture IDs make the seeding restartable if an earlier
- // Apps Script execution stopped between the two append calls.
- if(state.stores.length===0)
-  append_('stores',{chain_id:fixture.store_id,household_id:state.householdId,
-   canonical_name:'[KURASHI_ALIAS_TRIAL_ONLY]',
-   normalized_name:'kurashi_alias_trial_only',aliases:null,version:1,
-   updated_at:now},book);
- if(state.products.length===0)
-  append_('products',{product_id:fixture.product_id,
-   household_id:state.householdId,item_group_id:null,
-   name:'試験用・商品コード',normalized_name:'試験用・商品コード',
-   package_quantity:null,package_unit:null,item_group_order:null,
-   version:1,created_at:now,updated_at:now,deleted_at:null},book);
- // Re-read all trial restrictions after seeding. The actual mutation obtains
- // its own script lock and revalidates identity and aliases again.
- isolatedAliasTrialGuard_(book);
+ // experimental-writes flag. It still rechecks isolation under both locks.
+ const fixture=ALIAS_TRIAL_FIXTURE_,lock=LockService.getScriptLock();
+ if(!lock.tryLock(20000))fail('BUSY','試験用書き込みが処理中です');
+ let state;
+ try{
+  const book=spreadsheet();
+  state=isolatedAliasTrialGuard_(book);
+  const now=new Date().toISOString();
+  // The fixed fixture IDs let the seed recover from interruption, without
+  // ever writing unrelated rows; a script lock serializes seeding itself.
+  if(state.stores.length===0)
+   append_('stores',{chain_id:fixture.store_id,household_id:state.householdId,
+    canonical_name:'[KURASHI_ALIAS_TRIAL_ONLY]',
+    normalized_name:'kurashi_alias_trial_only',aliases:null,version:1,
+    updated_at:now},book);
+  if(state.products.length===0)
+   append_('products',{product_id:fixture.product_id,
+    household_id:state.householdId,item_group_id:null,
+    name:'試験用・商品コード',normalized_name:'試験用・商品コード',
+    package_quantity:null,package_unit:null,item_group_order:null,
+    version:1,created_at:now,updated_at:now,deleted_at:null},book);
+  isolatedAliasTrialGuard_(book);
+ }finally{lock.releaseLock()}
+ // The mutation takes a new lock and rechecks everything after the seed.
  const answer=mutateAliasSafely_(
   {householdId:state.householdId,userId:String(state.member.user_id)},
   {product_id:fixture.product_id,chain_id:fixture.store_id,
