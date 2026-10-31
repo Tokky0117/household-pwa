@@ -118,6 +118,25 @@ assert.match(mixedSummary,/抽出警告 \d+件（明細欄内 0件・欄外 \d+�
 assert.match(mixedSummary,/購入点数一致/);
 assert.match(mixedSummary,/合計金額一致/);
 assert.equal(actions.length,1,'Realistic text summary must not trigger a GAS request');
+// A home-center receipt has JAN, name and inclusive price on different
+// lines. Neither subtotal nor payment rows are merchandise candidates.
+$('ocr-review-text').value=[
+ '#015 JAN4900000000001','洗たく槽KB2P550g×','437内',
+ '#015 JAN4900000000002','リーゼ うるおいパーマもと','800内',
+ '#015 JAN4900000000003','よもぎ温座パット3個','748内',
+ '小計金額 ¥1,985','内税小計 3 ¥1,985','合 33 ¥1,985',
+ '(10%対象 ¥1,985)','(10%対象消費税 ¥180)',
+ '楽天ペイ ¥1,985','楽天ペイ ¥1,985'
+].join('\n');
+await $('ocr-review-text').fire('input');
+await $('ocr-parse').fire('click');
+const homeSummary=$('ocr-candidate-summary').textContent;
+assert.equal($('ocr-candidate-list').children.length,3,
+ 'Subtotal and payment must not be displayed as items');
+assert.match(homeSummary,/明細 3件・OCR要確認 0件/);
+assert.match(homeSummary,/未照合 3件/);
+assert.match(homeSummary,/合計金額一致/);
+assert.equal(actions.length,1,'Home-center text must never be transmitted');
 // Return to the already-verified synthetic one-product fixture.
 await $('ocr-sample').fire('click');
 // Real-device follow-up: select the one known test chain and the candidate
