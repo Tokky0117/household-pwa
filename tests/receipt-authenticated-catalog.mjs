@@ -22,6 +22,33 @@ assert.equal(checked.status,'available');assert.equal(checked.code,'00012345');a
 assert.equal(requests[1].action,'product.alias.check');
 assert.equal(requests[1].payload.product_code,'00012345');
 assert.equal(JSON.stringify(requests).includes('id_token'),false,'Token only in underlying auth adapter');
+// A stale or corrupt server response must never suggest "available" when
+// its matched IDs describe a collision or contradict the declared status.
+const originalAliasReply=structuredClone(reply);
+const badReplies=[
+ {...originalAliasReply,status:'available',matched_product_ids:['other-product']},
+ {...originalAliasReply,status:'already_registered',matched_product_ids:[]},
+ {...originalAliasReply,status:'already_registered',matched_product_ids:['other-product']},
+ {...originalAliasReply,status:'conflict',matched_product_ids:[]},
+ {...originalAliasReply,status:'conflict',matched_product_ids:['p1']},
+ {...originalAliasReply,status:'conflict',matched_product_ids:[1,'other-product']},
+ {...originalAliasReply,status:'conflict',matched_product_ids:['other-product','other-product']}
+];
+for(const bad of badReplies){
+ reply=bad;
+ await assert.rejects(
+  connection.checkAlias({householdId:'h-a',productId:'p1',chainId:'s1',productCode:'00012345'}),
+  /ALIAS_RESPONSE_INVALID/);
+}
+reply={...originalAliasReply,status:'conflict',matched_product_ids:['p1','other-product']};
+assert.equal((await connection.checkAlias({
+ householdId:'h-a',productId:'p1',chainId:'s1',productCode:'00012345'
+})).status,'conflict','A valid conflict must still be accepted');
+reply={...originalAliasReply,status:'already_registered',matched_product_ids:['p1']};
+assert.equal((await connection.checkAlias({
+ householdId:'h-a',productId:'p1',chainId:'s1',productCode:'00012345'
+})).status,'already_registered','A valid existing alias must still be accepted');
+reply=originalAliasReply;
 const before=requests.length;
 await assert.rejects(connection.checkAlias({householdId:'h-a',productId:'p1',chainId:'s1',productCode:'=HACK()'}),/ALIAS_INPUT_INVALID/);
 assert.equal(requests.length,before,'Malformed code must not make a request');
