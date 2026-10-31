@@ -27,7 +27,7 @@ jobs:
     if: >-
       github.ref == 'refs/heads/stage-a-ui-handoff-review' &&
       ((github.event_name == 'push' &&
-         github.event.head_commit.message == 'APPROVED_EXISTING_PROTOTYPE_ALIAS_PREFLIGHT_GAS_UPDATE_20261031') ||
+         github.event.head_commit.message == 'APPROVED_EXISTING_PROTOTYPE_ALIAS_PREFLIGHT_GAS_UPDATE_VERIFIED_20261031') ||
        (github.event_name == 'workflow_dispatch' &&
          inputs.confirm_target_backup == 'BACKUP_DONE' &&
          inputs.confirm_test_source == 'TEST_GAS_UPDATE'))
@@ -101,7 +101,7 @@ jobs:
           // Refuse any source/manifest drift since the final read-only audit.
           const crypto=require('node:crypto');
           const digest=text=>crypto.createHash('sha256').update(text).digest('hex');
-          const approvedSource='b68931fc9cd41fd863f971e4c7254e0fdfed520734b52097f419e828c3f15618';
+          const approvedSource='d1d8afa7379665169ba4d1bf055dc706a452d0df9bdf3bc40d31578a34396426';
           const approvedManifest='0952d47f73508eb256f1cf50f0368fe77434f8c05ea0d6defc7cf9b4e227e935';
           const remote=fs.readFileSync(path.join(remoteDir,codeFiles[0]),'utf8');
           if(digest(remote)!==approvedSource)throw Error('REMOTE_SOURCE_DRIFT_REVIEW_REQUIRED');
