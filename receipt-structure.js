@@ -96,13 +96,19 @@
     const originalQtyToken=m[2],rawQty=Number(originalQtyToken.match(/^\d+/)[0]),ratio=total/unit;
     let q=rawQty,qtyIssue=null;
     if(!m[5]&&(!Number.isSafeInteger(rawQty)||rawQty<1||rawQty>99||rawQty*unit!==total)){
-     // e.g. printed 1● was read as 10. Retain a clearly flagged candidate
-     // only when unit and total independently establish a valid integer count.
-     if(Number.isSafeInteger(ratio)&&ratio>=1&&ratio<=99&&originalQtyToken.startsWith(String(ratio))){
-      q=ratio;qtyIssue='quantity_ocr_ambiguous';
-     }
+     // "10" may REALLY mean ten items. Unit/total reconciliation can
+     // suggest another number but never turn that suggestion into fact.
+     qtyIssue='quantity_ocr_ambiguous';
+     if(Number.isSafeInteger(ratio)&&ratio>=1&&ratio<=99&&originalQtyToken.startsWith(String(ratio)))
+      q=ratio;
     }
-    if(!m[5]&&/[●@eEoO]$/.test(originalQtyToken)&&!/[●]$/.test(originalQtyToken))qtyIssue='quantity_ocr_ambiguous';
+    // Costco's "1@" is an explicit unit-count marker on the paper.
+    // The @ form is trusted only if the integer quantity reconciles with
+    // the printed unit price AND line total; otherwise review is mandatory.
+    // Ambiguous OCR suffixes (e/o) are always reviewable.
+    if(!m[5]&&/[eEoO]$/.test(originalQtyToken))qtyIssue='quantity_ocr_ambiguous';
+    // A printed @ only supplies credible numeric evidence when arithmetic
+    // matches: the mismatch check above remains in force.
     if(m[5]){
      discount(total,ix);
      if(last){last.discountCodes=last.discountCodes||[];last.discountCodes.push(m[1]);}
@@ -175,7 +181,21 @@
   for(const item of items){item.taxBasis=taxBasis;item.taxIncludedAmount=taxBasis==='included'?item.netAmount:null;}
   const expected=taxBasis==='excluded'&&taxTotal!==null?sum+taxTotal:taxBasis==='included'?sum:null;
   if(taxBasis==='unknown')warn('unknown_tax_basis',null);
-  return {rawText,items,adjustments,warnings,receiptTotal,subtotal,taxTotal,taxBreakdown,taxBasis,printedCount,reconciliation:{itemCount:items.length,quantity:items.reduce((s,x)=>s+x.quantity,0),printedCountMatches:printedCount===null?null:printedCount===items.reduce((s,x)=>s+x.quantity,0),netSum:sum,expectedTotal:expected,totalMatches:expected===null||receiptTotal===null?null:expected===receiptTotal,subtotalMatches:subtotal===null?null:sum===subtotal,individualItemsVerified:false}};
+  const quantity=items.reduce((s,x)=>s+x.quantity,0);
+  const hasUnverifiedQuantity=items.some(x=>x.quantitySource==='inferred_candidate'||
+   x.issues.includes('quantity_ocr_ambiguous')||x.issues.includes('unit_quantity_mismatch'));
+  const candidateCountMatches=printedCount===null?null:printedCount===quantity;
+  return {rawText,items,adjustments,warnings,receiptTotal,subtotal,taxTotal,taxBreakdown,taxBasis,printedCount,reconciliation:{
+   itemCount:items.length,
+   // Used only for consistency calculations, NOT confirmed inventory count.
+   quantity,
+   quantityVerified:!hasUnverifiedQuantity,
+   candidateCountMatches,
+   // A matching sum of guessed quantities does not prove the counts.
+   printedCountMatches:hasUnverifiedQuantity?null:candidateCountMatches,
+   netSum:sum,expectedTotal:expected,totalMatches:expected===null||receiptTotal===null?null:expected===receiptTotal,
+   subtotalMatches:subtotal===null?null:sum===subtotal,individualItemsVerified:false
+  }};
  }
  // Warnings from a neighbouring receipt or payment slip must not be
  // presented as though a recognized merchandise row had failed.
