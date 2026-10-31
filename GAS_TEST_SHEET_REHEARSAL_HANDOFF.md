@@ -133,3 +133,20 @@
 4. 実行ログの `ALIAS_TRIAL_EDITOR_WRITE_OK` と `ALIAS_TRIAL_RESULT_OK` を確認。出なければ**シートの内容やScript Propertiesを自分で修正せず**、ログの失敗コードだけを共有すること。操作IDは変更しない。
 
 **現段階の限界**：GASエディタ実行はまだ行われていないため、実Google Sheets上での書き込み成功は未確認。試験データを追加したことをユーザーが報告するまでは、「実データ登録完了」とは扱わない。
+
+## 2026-10-31：実Google Sheetsでの商品コード登録試験に成功（ユーザー提供GAS実行ログ）
+
+- ユーザーが試験用Apps Scriptエディタから `runAliasTrialWriteOnce` を実行し、ログのスクリーンショットを提供。
+- `SCHEMA_READ_OK: 12 sheets`、`READ_OK: categories = 5` を確認。
+- `ALIAS_TRIAL_RESULT_OK: store=1, product=1, aliases=1, change_log=1, journal=1, replay=verified, code_as_text=verified` を確認。
+- `ALIAS_TRIAL_ONCE_OK: 1 stored alias, 1 completed operation, 1 change log, no duplicate replay` を確認。
+- `ALIAS_TRIAL_EDITOR_WRITE_OK: fixture verified; identical replay produced no duplicates`、`実行完了` を確認。
+- したがって、**ユーザー提供の実GAS実行ログが示す範囲で**試験用Google Sheetsに店舗・商品・別名の各1行と変更履歴・操作履歴各1行が正常登録され、同一操作ID再送で重複せず、コード `00012345` の先頭ゼロ保持も検証された。
+- **実行ログに基づく検証であり、ChatGPTがシートのセルを直接読み取った結果ではない。** 同時実行・ネットワーク遮断・実ユーザーでの認証API経由の書き込みは依然未検証。
+- 既存のhouseholds/users/categoriesは変更対象外。今回追加された架空テスト行は、引き続き試験用データとして保持する。安易に手動削除・操作ID変更はしない。
+
+### 次工程
+
+1. `product.catalog` と `product.alias.check` の認証済み読み取りを、試験用GASで確認する。既に登録した架空店舗・商品・別名を利用し、シートデータを追加しない。
+2. OCR確認画面への取得・候補マッチング接続を、認証と家庭分離が確認できた範囲に限って試験する。
+3. フロントエンドからの `product.alias.create` は現在も `UNSUPPORTED` のまま。本番運用・他家庭・未確認商品についての書き込み解禁は行わない。
