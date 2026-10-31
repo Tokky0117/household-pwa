@@ -154,7 +154,7 @@ const kansai=parse([
  '※成田もやし ¥29','※ブナシメジ','5コ×単99 ¥495',
  '自動割引1 10.00','5コ×単-9 -45',
  '税8% ¥49','お買上 ¥672','お買上点数 7点'
-].join('\\n'));
+].join('\n'));
 assert.equal(kansai.reconciliation.totalMatches,true);
 assert.equal(kansai.reconciliation.candidateCountMatches,true);
 assert.equal(kansai.reconciliation.printedCountMatches,null);
