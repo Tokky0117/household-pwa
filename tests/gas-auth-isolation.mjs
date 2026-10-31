@@ -99,6 +99,18 @@ assert.equal(inspect('p-a','s-a','0000000987654').data.status,'already_registere
 books.product_aliases.push(['alias-other-household','p-b','s-b','0000000987654',1,'']);
 assert.equal(inspect('p-a','s-a','0000000987654').data.status,'already_registered');
 books.product_aliases.pop();books.product_aliases.pop();
+// In-scope collision must be rejected; same SKU on a different chain is allowed.
+books.products.push(['p-c','h-a','i-a','Second product','','','',2,1,'','','']);
+books.product_aliases.push(['alias-a-collision','p-c','s-a','0000000987654',1,'']);
+assert.equal(inspect('p-a','s-a','0000000987654').data.status,'conflict');
+assert.deepEqual(Array.from(inspect('p-a','s-a','0000000987654').data.matched_product_ids),['p-c']);
+books.product_aliases.pop();
+books.product_aliases.push(['alias-another-chain','p-c','s-b','0000000987654',1,'']);
+// A foreign-chain alias pointing to a home product is corrupt, fail closed.
+assert.equal(inspect('p-a','s-a','0000000987654').error.code,'CATALOG_CONFLICT');
+books.product_aliases.pop();
+books.products.pop();
+
 
 assert.equal(catalog.data.products[0].name,'A product');
 assert.equal(catalog.data.product_aliases.some(a=>a.normalized_alias==='wrong chain'),false);
