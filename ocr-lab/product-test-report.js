@@ -75,6 +75,12 @@ export function createProductTestReport({receipt,diagnostic,review,warningScopes
   title:'くらしストック 商品検証レポート',
   version:'product-test-1',
   sharingNotice:'商品名・購入内容・商品コードを含みます。共有前に内容を確認してください。会員・決済・OCR全文は含めません。',
+  ocrSettings:{
+   japaneseGlyphConversion:diagnostic.normalization?.mode==='japanese-glyphs-v1'?true:
+    diagnostic.normalization?.mode==='none'?false:null,
+   japaneseGlyphChanges:number(diagnostic.normalization?.changedCount),
+   yenGroupingChanges:number(diagnostic.moneyGrouping?.changedCount)
+  },
   timing:{
    firstRun:diagnostic.firstRun===true,
    totalMs:milliseconds(diagnostic.totalMs),
@@ -87,6 +93,9 @@ export function createProductTestReport({receipt,diagnostic,review,warningScopes
   counts:{
    extractedItems:products.length,
    needsReview:products.filter(x=>x.issues.length||x.quantitySource==='inferred_candidate').length,
+   // Product-level review reasons are not the same as warnings outside
+   // the merchandise region. Keep both counts for test comparisons.
+   itemIssueTypes:issueCounts(products.flatMap(x=>x.issues.map(code=>({code})))),
    warningTypes:issueCounts(receipt.warnings),
    warningsByPosition:{
     merchandise:number(scope.merchandise),
