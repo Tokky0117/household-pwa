@@ -51,7 +51,7 @@ const api={
  }
 };
 const gate={
- ready:()=>ready,
+ ready:()=>ready&&auth.status().signedIn,
  subscribe(fn){gateListeners.add(fn);return()=>gateListeners.delete(fn)}
 };
 function setGate(v){ready=v;for(const fn of gateListeners)fn()}
