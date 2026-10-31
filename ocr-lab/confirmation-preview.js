@@ -143,12 +143,14 @@ export function createConfirmationPreview({section,file,chain,status,list,summar
   const matches=candidates();
   matches.forEach((match,i)=>{
    const item=receipt.items[i],card=element('li');card.className='review-item';
-   const head=element('strong','OCR商品名（未確定）：'+(item.name||'（商品名が認識できませんでした）'));
+   const head=element('strong',(receipt.importSource==='chatgpt_paste'?'ChatGPT読み取り商品名（未確定）：':'OCR商品名（未確定）：')+(item.name||'（商品名が認識できませんでした）'));
    const qtyUncertain=item.quantitySource==='default'||item.quantitySource==='inferred_candidate'||
     warningsHasQuantityIssue(item);
    const qtyText=qtyUncertain?(quantities.has(i)?
     '数量 '+item.quantity+'（手動確認済み）':
-    '数量未確定（'+(item.quantitySource==='default'?'初期候補 ':'計算候補 ')+item.quantity+'）'):
+    item.quantity==null?'数量未確定（候補なし）':
+    '数量未確定（'+(receipt.importSource==='chatgpt_paste'?'ChatGPT候補 ':
+     item.quantitySource==='default'?'初期候補 ':'計算候補 ')+item.quantity+'）'):
     '数量 '+item.quantity;
    card.append(head,element('p',qtyText+'・金額 '+yen(item.grossAmount)+
     '・値引き '+yen(item.discount)+'・差引 '+yen(item.netAmount)));
@@ -167,7 +169,9 @@ export function createConfirmationPreview({section,file,chain,status,list,summar
    if(warnings.length){const p=element('p',warnings.map(x=>({
     quantity_ocr_ambiguous:'数量の印字を要確認',missing_product_name:'商品名が欠落',
     unit_quantity_mismatch:'数量×単価が不一致',negative_net:'差引金額が不正',
-    invalid_jan_checksum:'JANの検査数字が不一致。原本のコードを確認してください（コード照合しません）'
+    invalid_jan_checksum:'JANの検査数字が不一致。原本のコードを確認してください（コード照合しません）',
+    quantity_missing:'数量が不明',import_quantity_unverified:'ChatGPTの数量は未確定',
+    amount_incomplete:'金額情報が不足',line_amount_mismatch:'値引前・値引・差引が不一致'
    })[x]||x).join('／'));p.className='review-warning';card.append(p);}
    if(match.candidates.length){
     const label=element('label','登録商品候補（この画面内で選択）');
@@ -232,6 +236,7 @@ export function createConfirmationPreview({section,file,chain,status,list,summar
     const label=element('label');label.className='review-check';
     const checkbox=element('input');checkbox.type='checkbox';checkbox.dataset.action='quantity';
     checkbox.dataset.index=String(i);checkbox.checked=quantities.has(i);
+    checkbox.disabled=!Number.isSafeInteger(item.quantity)||item.quantity<1;
     label.append(checkbox,element('span','レシートの印字を確認し、数量を確認した'));card.append(label);
    }
    list.append(card);
@@ -284,7 +289,8 @@ export function createConfirmationPreview({section,file,chain,status,list,summar
    else selected.delete(index);
   }
   if(target.dataset.action==='quantity'){
-   if(target.checked)quantities.add(index);else quantities.delete(index);
+   if(target.checked&&Number.isSafeInteger(receipt.items[index]?.quantity)&&
+      receipt.items[index].quantity>0)quantities.add(index);else quantities.delete(index);
   }
   summaryText(candidates());
   // Do not replace the select's parent synchronously in its native change
