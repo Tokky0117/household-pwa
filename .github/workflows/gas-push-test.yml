@@ -1,5 +1,5 @@
 name: Push GAS to test project (manual)
-# Never triggered by pushes. Replaces test Apps Script source only after explicit approval.
+# Single use: permitted test-GAS source replacement (user approved); other pushes skipped.
 on:
   push:
     branches: [stage-a-ui-handoff-review]
