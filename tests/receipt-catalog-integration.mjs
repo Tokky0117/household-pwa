@@ -13,7 +13,7 @@ function node(tag='div'){
   replaceChildren(...items){this.children=items},
   setAttribute(name,value){this[name]=String(value)},
   addEventListener(name,callback){handlers.set(name,callback)},
-  async fire(name){return await handlers.get(name)?.({target:this})}
+  async fire(name,target=this){return await handlers.get(name)?.({target})}
  };
 }
 const ids=['ocr-review-text','ocr-sample','ocr-parse','ocr-load-catalog','ocr-clear',
@@ -88,6 +88,41 @@ assert.ok(item.children.some(n=>n.tag==='label'&&
   c.children.some(option=>option.textContent==='試験用・商品コード'))),
  'Catalog from authenticated API must appear as product selection');
 assert.match($('ocr-catalog-status').textContent,/認証済みの商品マスタ 1商品・1別名/);
+// Real-device follow-up: select the one known test chain and the candidate
+// explicitly. A matching digit code then becomes an already-registered hint,
+// not a second network request or an automatic product confirmation.
+const chain=$('ocr-review-chain'),list=$('ocr-candidate-list');
+assert.equal(chain.children.length,2);
+assert.equal(chain.children[1].textContent,'[KURASHI_ALIAS_TRIAL_ONLY]');
+chain.value='fixture-store';
+await chain.fire('change');
+assert.match(list.children[0].children.map(c=>c.textContent).join(' '),/商品コードが一致/);
+let chooser=list.children[0].children.flatMap(x=>x.children||[]).find(x=>x.dataset.action==='product');
+assert.ok(chooser,'The product selector must be available');
+chooser.value='fixture-product';
+await list.fire('change',chooser);
+await new Promise(resolve=>setTimeout(resolve,5));
+let hint=list.children[0].children.find(x=>x.dataset.aliasVerdict==='already_registered');
+assert.ok(hint,'Known code is already registered under the chosen test chain');
+assert.match(hint.textContent,/すでに登録されています/);
+assert.equal(review.getState().catalog.selected,1);
+assert.equal(actions.length,1,'Chain choice and alias verification are local-only');
+
+// A different code must remain an unregistered suggestion, not auto-save.
+$('ocr-review-text').value='試験用・商品コード\n00099999 1 198 198 E\n合計 ¥198';
+await $('ocr-review-text').fire('input');
+await $('ocr-parse').fire('click');
+assert.equal(review.getState().parsed,true);
+chooser=list.children[0].children.flatMap(x=>x.children||[]).find(x=>x.dataset.action==='product');
+chooser.value='fixture-product';
+await list.fire('change',chooser);
+await new Promise(resolve=>setTimeout(resolve,5));
+hint=list.children[0].children.find(x=>x.dataset.aliasVerdict==='available');
+assert.ok(hint,'Unknown code is only a proposed alias');
+assert.match(hint.textContent,/未登録/);
+assert.equal(actions.length,1,'Unknown code never triggers a network mutation');
+// Restore the registered fixture for the remaining logout tests.
+await $('ocr-sample').fire('click');
 // Session may expire while Safari is in the background without a callback.
 session={signedIn:false,subject:null};
 winListeners.get('focus')();
