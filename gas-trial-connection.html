@@ -10,7 +10,7 @@ button:disabled{background:#a1aaba}.secondary{background:#eef2f8;color:#20508c}
 .muted{font-size:.92rem;color:#56677b}.warning{border-left:4px solid #ac762a;padding-left:11px}a{color:#22538e}
 </style></head><body>
 <h1>試験用GAS｜読み取り接続確認</h1>
-<p>新しく作成した<strong>試験専用GAS</strong>へGoogleログインして、試験用シートの件数だけを確認します。この画面から書き込み処理は呼び出しません。</p>
+<p>既存の<strong>試験用GAS</strong>へGoogleログインして、試験用シートの件数と架空の商品コードの照合結果を確認します。この画面から書き込み処理は呼び出しません。</p>
 <section class="panel">
 <h2>① 試験用WebアプリのURL</h2>
 <label for="trial-url">試験用GASのWebアプリURL（/exec）</label>
@@ -37,6 +37,13 @@ button:disabled{background:#a1aaba}.secondary{background:#eef2f8;color:#20508c}
 <p class="warning"><strong>重要：</strong>この画面で保存・登録・削除はできません。読み取りが成功しても `ENABLE_EXPERIMENTAL_WRITES` を有効にしないでください。</p>
 </section>
 <section class="panel">
+<h2>④ 登録済み商品コードの読み取り照合</h2>
+<p class="muted">③の認証付きPOSTが成功した後だけ実行できます。試験用シートに登録済みの架空コードと未登録の架空コードを確認します。商品ID・家庭ID・認証トークン・商品マスタの内容は表示・保存しません。</p>
+<button id="catalog-check" type="button" disabled>登録済み・未登録コードを照合（読み取りのみ）</button>
+<p id="catalog-result" role="status" aria-live="polite">③の読み取り接続確認後に実行できます。</p>
+<p id="catalog-detail" class="muted"></p>
+</section>
+<section class="panel">
 <h2>失敗した場合</h2>
 <p class="muted">GETが成功してもPOST成功の証明にはなりません。また、GoogleログインHTMLが返る場合はGAS本体の応答とは限りません。ネットワーク失敗はCORS・アクセス権・通信など複数原因が考えられます。試験GASの公開範囲を広げたり、トークンをURLに載せたりしないでください。</p>
 </section>
@@ -52,7 +59,8 @@ button:disabled{background:#a1aaba}.secondary{background:#eef2f8;color:#20508c}
  const result=document.getElementById('result'),counts=document.getElementById('counts'),check=document.getElementById('check');
  const logout=document.getElementById('signout');
  const probeGet=document.getElementById('probe-get'),probeResult=document.getElementById('probe-result');
- let probing=false;
+ const catalogCheck=document.getElementById('catalog-check'),catalogResult=document.getElementById('catalog-result'),catalogDetail=document.getElementById('catalog-detail');
+ let probing=false,catalogBusy=false,verifiedRevision=-1,verifiedSubject='';
  let loading=false,attempt=0,scriptState='未開始',revision=0;
  function elapsed(started){return ((Date.now()-started)/1000).toFixed(2)+'秒'}
  // Never show a response or an identity from an endpoint no longer selected.
@@ -64,6 +72,7 @@ button:disabled{background:#a1aaba}.secondary{background:#eef2f8;color:#20508c}
   if(code==='UNAUTHORIZED')return 'POST：Google認証がGAS側で拒否されました。';
   if(code==='FORBIDDEN')return 'POST：このアカウントの家庭認可が拒否されました。';
   if(code==='GAS_RESPONSE_INVALID')return 'POST：API形式のJSONを受け取れませんでした（ログインHTML等の可能性）。';
+  if(code==='UNSUPPORTED')return 'POST：現在の公開済みGASに読み取りAPIが含まれていない可能性があります。デプロイ版を確認してください。';
   if(code==='GAS_RESPONSE_TOO_LARGE')return 'POST：応答サイズが上限を超えました。';
   if(/^GAS_HTTP_[0-9]{3}$/.test(code))return 'POST：HTTPエラー '+code.slice(9)+'。';
   return 'POST：読み取り失敗。GAS側の認証・アクセス設定と通信状態を確認してください。';
@@ -77,6 +86,44 @@ button:disabled{background:#a1aaba}.secondary{background:#eef2f8;color:#20508c}
   if(data&&data.ok===false&&data.error?.code==='POST_REQUIRED')
    return 'GET：GASのPOST_REQUIRED応答を確認（GET経路は到達）。';
   return 'GET：HTTP '+response.status+' のJSON応答を受信（GAS自身かは未確認）。';
+ }
+ // Use only the preapproved synthetic fixture. Never display or persist row IDs.
+ const FIXTURE_CODE='00012345',UNKNOWN_CODE='00099999';
+ function fixtureFromCatalog(data){
+  if(!data||typeof data.household_id!=='string'||!data.household_id||
+    !Array.isArray(data.products)||!Array.isArray(data.stores)||
+    !Array.isArray(data.product_aliases)||data.products.length!==1||
+    data.stores.length!==1||data.product_aliases.length!==1)
+   throw Error('CATALOG_FIXTURE_MISMATCH');
+  const p=data.products[0],s=data.stores[0],a=data.product_aliases[0];
+  if(p?.household_id!==data.household_id||p?.name!=='試験用・商品コード'||
+   s?.canonical_name!=='[KURASHI_ALIAS_TRIAL_ONLY]'||
+   typeof p.product_id!=='string'||!p.product_id||
+   typeof s.chain_id!=='string'||!s.chain_id||
+   a?.product_id!==p.product_id||a?.chain_id!==s.chain_id||
+   a?.normalized_alias!==FIXTURE_CODE)
+   throw Error('CATALOG_FIXTURE_MISMATCH');
+  return {householdId:data.household_id,productId:p.product_id,chainId:s.chain_id};
+ }
+ function requireAliasReply(data,fixture,code,statusValue){
+  if(!data||data.household_id!==fixture.householdId||
+   data.product_id!==fixture.productId||data.chain_id!==fixture.chainId||
+   data.product_code!==code||data.status!==statusValue||
+   data.write_permitted!==false||!Array.isArray(data.matched_product_ids)||
+   (statusValue==='already_registered'&&
+    (data.matched_product_ids.length!==1||
+     data.matched_product_ids[0]!==fixture.productId))||
+   (statusValue==='available'&&data.matched_product_ids.length!==0))
+   throw Error('CATALOG_MATCH_MISMATCH');
+ }
+ function sameSession(rev,subject){
+  const now=window.KurashiAuth.status();
+  return !outdated(rev)&&now.signedIn&&now.subject===subject;
+ }
+ function invalidateRead(){
+  revision++;verifiedRevision=-1;verifiedSubject='';
+  catalogResult.textContent='③の読み取り接続確認後に実行できます。';
+  catalogDetail.textContent='';
  }
  window.KurashiAuth.configure(CLIENT_ID,{manualOnly:true});
  function validateTrialUrl(value){
@@ -95,8 +142,10 @@ button:disabled{background:#a1aaba}.secondary{background:#eef2f8;color:#20508c}
   if(url.value.trim())endpointError=validateTrialUrl(url.value);
   else window.KurashiGasApi.configure('');
   endpointStatus.textContent=endpointError||'試験用URLの形式を確認しました。';
-  check.disabled=!active||!!endpointError||loading||probing;
-  probeGet.disabled=!!endpointError||loading||probing;
+  check.disabled=!active||!!endpointError||loading||probing||catalogBusy;
+  probeGet.disabled=!!endpointError||loading||probing||catalogBusy;
+  catalogCheck.disabled=!active||!!endpointError||loading||probing||catalogBusy||
+    verifiedRevision!==revision||verifiedSubject!==window.KurashiAuth.status().subject;
   if(active){diagnostics.textContent='Googleログイン成功';return}
   if(window.google?.accounts?.id){
    try{window.KurashiAuth.signIn();diagnostics.textContent='ログインボタンを表示しています。';}
@@ -111,12 +160,17 @@ button:disabled{background:#a1aaba}.secondary{background:#eef2f8;color:#20508c}
   script.onerror=()=>{if(current!==attempt)return;scriptState='読み込み失敗';update()};
   script.src='https://accounts.google.com/gsi/client';document.head.appendChild(script);
  }
- window.KurashiAuth.subscribe(update);
- url.addEventListener('input',()=>{revision++;counts.textContent='';result.textContent='試験用URLを確認してください。';probeResult.textContent='未実行です。';update()});
+ window.KurashiAuth.subscribe(()=>{
+  // Even an A → B → A account change invalidates an in-flight response.
+  invalidateRead();counts.textContent='';
+  result.textContent='ログイン状態が変わりました。読み取り接続を再確認してください。';
+  update();
+ });
+ url.addEventListener('input',()=>{invalidateRead();counts.textContent='';result.textContent='試験用URLを確認してください。';probeResult.textContent='未実行です。';update()});
  document.getElementById('retry-google').addEventListener('click',loadGoogle);
- logout.addEventListener('click',()=>{revision++;window.KurashiAuth.signOut();result.textContent='ログアウトしました。';counts.textContent='';update()});
+ logout.addEventListener('click',()=>{window.KurashiAuth.signOut();result.textContent='ログアウトしました。';counts.textContent='';update()});
  probeGet.addEventListener('click',async()=>{
-  if(probing||loading)return;
+  if(probing||loading||catalogBusy)return;
   const invalid=validateTrialUrl(url.value);
   if(invalid){probeResult.textContent=invalid;update();return}
   const requestUrl=url.value.trim(),rev=revision,started=Date.now();
@@ -146,15 +200,16 @@ button:disabled{background:#a1aaba}.secondary{background:#eef2f8;color:#20508c}
   }finally{clearTimeout(timeout);probing=false;update()}
  });
  check.addEventListener('click',async()=>{
-  if(loading||probing)return;
+  if(loading||probing||catalogBusy)return;
   const invalid=validateTrialUrl(url.value);if(invalid){result.textContent=invalid;update();return}
   if(!window.KurashiAuth.status().signedIn){result.textContent='ログインが必要です';update();return}
-  const rev=revision,started=Date.now();
-  loading=true;counts.textContent='';result.textContent='読み取り中です…';update();
+  const rev=revision,started=Date.now(),subject=window.KurashiAuth.status().subject;
+  if(typeof subject!=='string'||!subject){result.textContent='ログイン状態を確認できません。';return}
+  loading=true;verifiedRevision=-1;verifiedSubject='';counts.textContent='';result.textContent='読み取り中です…';catalogDetail.textContent='';update();
   try{
    // Only authenticated read action; write gate remains disabled.
    const data=await window.KurashiGasApi.request('bootstrap');
-   if(outdated(rev)||!window.KurashiAuth.status().signedIn)return;
+   if(!sameSession(rev,subject))return;
    if(!data||typeof data.household_id!=='string'||!Array.isArray(data.categories)||
       !Array.isArray(data.item_groups)||!Array.isArray(data.products)||!Array.isArray(data.stores)||
       data.categories.length!==5)throw Error('RESPONSE_SHAPE_INVALID');
@@ -162,9 +217,46 @@ button:disabled{background:#a1aaba}.secondary{background:#eef2f8;color:#20508c}
    if(!data.categories.every((v,i)=>v?.name===expected[i]))throw Error('CATEGORIES_MISMATCH');
    result.textContent='POST：GAS認証付き読み取り成功（カテゴリ5件）。計測 '+elapsed(started);
    counts.textContent='日用品 '+data.item_groups.length+' 件 ／ 商品 '+data.products.length+' 件 ／ 店舗 '+data.stores.length+' 件';
+   verifiedRevision=rev;verifiedSubject=subject;
   }catch(e){
-   if(!outdated(rev))result.textContent=readFailure(e)+' 計測 '+elapsed(started);
+   if(sameSession(rev,subject))result.textContent=readFailure(e)+' 計測 '+elapsed(started);
   }finally{loading=false;update()}
+ });
+ catalogCheck.addEventListener('click',async()=>{
+  if(catalogBusy||probing||loading||verifiedRevision!==revision)return;
+  const invalid=validateTrialUrl(url.value);
+  if(invalid){catalogResult.textContent=invalid;update();return}
+  const subject=window.KurashiAuth.status().subject;
+  if(!subject||!window.KurashiAuth.status().signedIn||subject!==verifiedSubject)return;
+  const rev=revision,started=Date.now();
+  catalogBusy=true;catalogResult.textContent='商品マスタ・商品コードを照合中…';
+  catalogDetail.textContent='';update();
+  try{
+   const master=await window.KurashiGasApi.request('product.catalog');
+   if(!sameSession(rev,subject))return;
+   const fixture=fixtureFromCatalog(master);
+   const existing=await window.KurashiGasApi.request('product.alias.check',{
+    product_id:fixture.productId,chain_id:fixture.chainId,product_code:FIXTURE_CODE
+   });
+   if(!sameSession(rev,subject))return;
+   requireAliasReply(existing,fixture,FIXTURE_CODE,'already_registered');
+   const unknown=await window.KurashiGasApi.request('product.alias.check',{
+    product_id:fixture.productId,chain_id:fixture.chainId,product_code:UNKNOWN_CODE
+   });
+   if(!sameSession(rev,subject))return;
+   requireAliasReply(unknown,fixture,UNKNOWN_CODE,'available');
+   catalogResult.textContent='POST：商品マスタ・登録済みコード・未登録コードの照合に成功しました。';
+   catalogDetail.textContent='家庭を限定した読み取り3回。既存の架空データと一致・書き込み0件。計測 '+elapsed(started);
+  }catch(e){
+   if(sameSession(rev,subject)){
+    const code=String(e?.message||'');
+    catalogResult.textContent=code==='CATALOG_FIXTURE_MISMATCH'||
+      code==='CATALOG_MATCH_MISMATCH'?
+      'POST：架空の試験データと照合結果が一致しません。接続先・コード版・試験シートを確認してください。':
+      readFailure(e);
+    catalogDetail.textContent='コード照合は完了していません。書き込みは行っていません。';
+   }
+  }finally{catalogBusy=false;update()}
  });
  window.addEventListener('load',loadGoogle);
  update();
