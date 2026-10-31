@@ -1,0 +1,27 @@
+name: Export public ONNXRuntime Python wheel for private local receipt OCR
+on:
+  push:
+    branches: [stage-a-ui-handoff-review]
+    paths: ['.github/workflows/ocr-onnxruntime-wheel.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  wheel:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Download public ONNX Runtime wheel only
+        run: |
+          python -m pip download --only-binary=:all: --no-deps -d /tmp/ocr-wheels onnxruntime==1.23.2
+          ls -lh /tmp/ocr-wheels
+      - name: Export public wheel only (no photos)
+        uses: actions/upload-artifact@v4
+        with:
+          name: onnxruntime-python313-public-wheel
+          path: /tmp/ocr-wheels/*
+          retention-days: 1
+          compression-level: 0
