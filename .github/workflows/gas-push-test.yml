@@ -1,5 +1,5 @@
 name: Push GAS to test project (manual)
-# One-time user-approved editor-only write-trial function update; no Sheet writes in CI.
+# One-time source-only deploy of the user-approved test fixture function; GSheets remains unchanged by CI.
 on:
   push:
     branches: [stage-a-ui-handoff-review]
