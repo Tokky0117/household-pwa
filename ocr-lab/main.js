@@ -44,14 +44,23 @@ $('scan-form').addEventListener('submit',async event=>{
 $('reset').addEventListener('click',async()=>{generation++;photo.value='';cropSelector.clear();clearResult();confirmation.reset();status.textContent=busy?'処理の終了を待って破棄しています…':'写真と結果を破棄しました。';if(reader){const old=reader;reader=null;await old.dispose().catch(()=>{});}controls();});
 $('copy').addEventListener('click',async()=>{if(!report)return;try{await navigator.clipboard.writeText(report);$('copy-status').textContent='コピーしました。';}catch{$('text').focus();$('text').select();$('copy-status').textContent='文字起こしを選択しました。コピー操作を行ってください。';}});
 $('copy-text').addEventListener('click',async()=>{
- const text=$('text').value;
- if(!text||$('result').hidden)return;
+ const source=$('text').value;
+ if(!source||$('result').hidden)return;
+ let excerpt;
  try{
-  await navigator.clipboard.writeText(text);
-  $('copy-status').textContent='文字起こしだけコピーしました。⑤の照合テスト画面に貼り付けてください。';
+  const parsed=window.KurashiReceiptStructure.parse(source);
+  excerpt=window.KurashiReceiptStructure.merchandiseExcerpt(parsed);
  }catch{
-  $('text').focus();$('text').select();
-  $('copy-status').textContent='文字起こしを選択しました。コピー操作を行ってください。';
+  $('copy-status').textContent='商品明細だけを安全に抽出できませんでした。写真のレシート部分を切り抜いて読み直してください。';
+  return;
+ }
+ try{
+  await navigator.clipboard.writeText(excerpt);
+  $('copy-status').textContent='商品明細と合計だけをコピーしました。原本と照合して⑤に貼り付けてください。';
+ }catch{
+  // Never select/copy the full OCR text as a fallback: it may contain
+  // payment identifiers and content from other receipts in the photo.
+  $('copy-status').textContent='クリップボードにコピーできませんでした。ブラウザの権限を確認してください。';
  }
 });
 controls();
