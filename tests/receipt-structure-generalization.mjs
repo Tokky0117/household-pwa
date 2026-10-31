@@ -10,6 +10,35 @@ for(let q=1;q<=5;q++){
  check('数量別行変種 '+q,`※ 季節の野菜${q}\n${q}コ×単${unit} ¥${amount}\n合計 ¥${amount}`,r=>{assert.equal(r.items.length,1);assert.equal(r.items[0].quantity,q);assert.equal(r.items[0].unitPrice,unit);});
  check('商品コード変種 '+q,`新作シャツ${q}\n${2000990000000+q} ${q} ¥${amount}\n合計 ¥${amount}`,r=>{assert.equal(r.items.length,1);assert.equal(r.items[0].quantity,q);assert.equal(r.items[0].grossAmount,amount);});
 }
+// Do not reinterpret a plausible quantity 10 as one item. The 1@ token is
+// the documented Costco unit marker; its amount must still reconcile.
+check('倉庫レシートで正しく数量10が印字される',
+ '商品A\n88888 10 99 990 E\nお買上点数 10点',
+ r=>{assert.equal(r.items.length,1);assert.equal(r.items[0].quantity,10);
+  assert.equal(r.items[0].quantitySource,'printed');
+  assert.equal(r.reconciliation.printedCountMatches,true);
+  assert.equal(r.reconciliation.quantityVerified,true);});
+check('10とOCRされても単価×10と一致しない場合は未確定',
+ '商品A\n88888 10 99 99 E\nお買上点数 1点',
+ r=>{assert.equal(r.items.length,1);assert.equal(r.items[0].quantity,1);
+  assert.equal(r.items[0].quantitySource,'inferred_candidate');
+  assert.ok(r.items[0].issues.includes('quantity_ocr_ambiguous'));
+  assert.equal(r.reconciliation.quantityVerified,false);
+  assert.equal(r.reconciliation.candidateCountMatches,true);
+  assert.equal(r.reconciliation.printedCountMatches,null);});
+check('1@は印字数量1の形式で単価と金額も一致',
+ '商品A\n88888 1@ 99 99 E\nお買上点数 1点',
+ r=>{assert.equal(r.items.length,1);assert.equal(r.items[0].quantity,1);
+  assert.equal(r.items[0].quantitySource,'printed');
+  assert.equal(r.items[0].ocrQuantityToken,'1@');
+  assert.equal(r.items[0].issues.length,0);
+  assert.equal(r.reconciliation.printedCountMatches,true);});
+check('1@でも単価と金額が不一致なら未確定',
+ '商品A\n88888 1@ 99 198 E',
+ r=>{assert.equal(r.items.length,1);
+  assert.equal(r.items[0].quantitySource,'inferred_candidate');
+  assert.ok(r.items[0].issues.includes('quantity_ocr_ambiguous'));
+  assert.ok(r.items[0].issues.includes('unit_quantity_mismatch'));});
 check('通常値引の後も抽出','商品甲 ¥300\n値引 -30\n商品乙 ¥200\n値引 -20\n合計 ¥450',r=>{assert.equal(r.items.length,2);assert.deepEqual(r.items.map(x=>x.netAmount),[270,180]);});
 check('完全な印字・円記号なし','牛乳 198\n合計 198',r=>assert.equal(r.items.length,1));
 check('完全な印字・円サフィックス','牛乳 198円\n合計 198',r=>assert.equal(r.items.length,1));
