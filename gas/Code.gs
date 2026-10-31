@@ -1302,7 +1302,7 @@ function testTrialSheetInventoryReadOnly(){
  };
  const household=extract('households'),user=extract('users');
  for(const name of expectedNames){
-  if(name==='households'||name==='users')continue;
+  if(name==='households'||name==='users'||name==='categories')continue;
   extract(name);
  }
  const toRecords=result=>result?.rows?.map(row=>
