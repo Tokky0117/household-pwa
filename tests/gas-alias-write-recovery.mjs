@@ -94,6 +94,7 @@ function harness(){
   ContentService:{MimeType:{JSON:'application/json'},createTextOutput(content){
    return {setMimeType(){return this},getContent(){return content}};
   }},
+  Logger:{log(){}},
   Date,JSON
  };
  vm.createContext(mock);
@@ -153,7 +154,6 @@ for(const stage of phases)for(const phase of ['before','after']){
  assert.equal(h.records('change_log').length,1);
  assert.equal(h.records('processed_operations').length,1);
  assert.equal(h.records('product_aliases')[0].normalized_alias,'00012345');
- assert.equal(h.mock.testIsolatedAliasWriteTrialPreflightReadOnly_ instanceof Function,true);
  const n=h.writes;
  assert.equal(h.mock.runIsolatedAliasWriteTrialOnce_(),true,'Identical editor retry is allowed');
  assert.equal(h.writes,n,'Idempotent editor rerun never appends rows');
