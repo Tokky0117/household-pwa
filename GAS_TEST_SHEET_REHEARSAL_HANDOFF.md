@@ -183,3 +183,10 @@
 - 続いて開発ブランチのOCR確認画面に、認証済みカタログを**明示的に**受け取るための画面境界とログアウト時破棄を実装。合成データによる回帰テストが成功した。
 - **次の未検証項目**：ブラウザから認証付き `product.catalog` / `product.alias.check` を実GAS Webアプリへ送る通信と、CORS・Googleログイン・家庭分離の実機検査。現在の公開OCRラボにこの通信は接続していない。
 - **維持する安全条件**：ブラウザの `product.alias.create` は `UNSUPPORTED`、`ENABLE_EXPERIMENTAL_WRITES` は無効、試験用データは保持、画像のアップロード・レシート本登録・本番環境の作成・既存デプロイ更新は実施しない。
+
+## 2026-10-31：ブラウザからの認証付き商品照合の診断UIを準備（未実機）
+
+- 既存 `gas-trial-connection.html` へ、Googleログインと認証済み `bootstrap` 成功後だけ選べる **④ 登録済み・未登録コードを照合（読み取りのみ）** を追加。`product.catalog` で対象家庭の既知架空商品・店舗・別名各1件を確認した後、`product.alias.check` で登録済み `00012345` → `already_registered` と未登録 `00099999` → `available`、いずれも `write_permitted:false` を検証する。追加行・本番データ・コード変更・再デプロイなし。
+- 家庭IDや商品ID、トークン、商品マスタ行は診断画面へ出さない。ブートストラップ失敗、接続先変更、ログアウト／アカウント変更、通信遅延時には照合ボタンを無効化し、旧応答を破棄。意図しない `product.alias.create` 等の送信を一切行わない。
+- `tests/gas-trial-connection-page.mjs` を拡充。既知/未知の架空コード、誤家庭の商品マスタ、照合応答矛盾、公開API未更新、古い通信応答・ログアウト、トークンを使わないGET、書き込みゼロの合成テストが成功。GitHub Actions: https://github.com/Tokky0117/household-pwa/actions/runs/41174828501
+- **実機判定待ち**：ユーザーが既存の試験 `/exec` URLを開発ブランチの診断画面へ入力し、Googleログインして、③の認証付き読み取り→④の商品照合を順に実行する。所有者限定デプロイを勝手に一般公開しない。古いデプロイによる `UNSUPPORTED` とCORSエラーを区別し、成功するまで商品マスタの本体接続を進めない。スクリプトIDはデプロイURLではなく、`/exec` URLは別途確認する。
