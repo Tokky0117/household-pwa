@@ -29,6 +29,21 @@ assert.equal(contradictory[0].status,'conflict');
 assert.equal(contradictory[0].candidates.length,2);
 const sameName=suggest([{name:'カーディガンB'}],base);
 assert.equal(sameName[0].status,'ambiguous');
+// Correct names cannot be recovered from R1's garbled katakana by treating
+// the OCR name as authoritative. A chain-scoped exact SKU can provide a
+// registered product-name *candidate*, but never auto-confirm it.
+const lindorOcr=[{name:'リンツリント・ールヒ・ンク450G',productCode:'84471'}];
+const lindorCatalog={householdId:h,chainId:'synthetic-warehouse',
+ products:[{household_id:h,product_id:'lindor-product',name:'リンツリンドールピンク450G'}],
+ aliases:[{product_id:'lindor-product',chain_id:'synthetic-warehouse',normalized_alias:'84471'}]};
+const lindorSuggested=suggest(lindorOcr,lindorCatalog)[0];
+assert.equal(lindorSuggested.status,'code_candidate');
+assert.deepEqual(lindorSuggested.candidates.map(x=>x.name),['リンツリンドールピンク450G']);
+assert.equal(lindorSuggested.requiresConfirmation,true);
+assert.equal(suggest(lindorOcr,{...lindorCatalog,chainId:'other-warehouse'})[0].status,'unresolved',
+ 'Warehouse-specific SKU must not be matched across unrelated chains');
+// Without a catalog or a chain-specific code mapping, the OCR name stays
+// unresolved, not forcibly changed into a known test-receipt name.
 const uncertain=suggest([{name:'I',grossAmount:148}],{householdId:h,chainId,products:[{household_id:h,product_id:'p0',name:'エリンギ'}],aliases:[]});
 assert.equal(uncertain[0].status,'unresolved');
 const typo=suggest([{name:'牛肉じ肉'}],{householdId:h,chainId,products:[{household_id:h,product_id:'p0',name:'牛肉すじ肉'}],aliases:[]});
