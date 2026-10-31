@@ -791,7 +791,7 @@ function mutateItemSafely_(user,action,payload,operationId,localEditorTrial,tria
  * use fresh Sheets rows INSIDE the write lock. Writes are journaled before
  * changing the alias sheet, and identical retries reconcile partial writes.
  */
-function mutateAliasSafely_(user,payload,operationId){
+function mutateAliasSafely_(user,payload,operationId,localEditorTrial){
  requiredId(operationId);
  if(!/^[A-Za-z0-9_-]{8,128}$/.test(operationId))
   fail('BAD_REQUEST','操作IDが不正です');
@@ -807,7 +807,7 @@ function mutateAliasSafely_(user,payload,operationId){
  const lock=LockService.getScriptLock();
  if(!lock.tryLock(20000))fail('BUSY','しばらくして再試行してください');
  try{
-  const book=requireIsolatedWriteTrial(false),hid=String(user.householdId);
+  const book=requireIsolatedWriteTrial(localEditorTrial===true),hid=String(user.householdId);
   const members=rows('users',book),homes=rows('households',book);
   if(homes.length!==1||String(homes[0].obj.household_id)!==hid||
      members.length!==1||String(members[0].obj.household_id)!==hid||
@@ -1153,6 +1153,139 @@ function runIsolatedItemWriteTrialOnce_(){
  Logger.log('ISOLATED_ITEM_WRITE_TRIAL_OK: item_groups=1, change_log=2, processed_operations=2, version=2, replay=OK, stale=REJECTED');
  return true;
 }
+/**
+ * One-time editor-only live Google Sheets rehearsal of SKU alias registration.
+ * NEVER callable from doPost. Does not enable any client write API/property.
+ *
+ * Uses the already-configured isolated trial Spreadsheet. Its fixture rows
+ * have fixed IDs, so a retry after an interruption during fixture seeding
+ * can identify, validate, and reuse the SAME fixture and operation ID.
+ */
+const ALIAS_TRIAL_FIXTURE_={
+ store_id:'alias-trial-store-0001',
+ product_id:'alias-trial-product-0001',
+ product_code:'00012345',
+ operation_id:'alias-trial-create-00000001'
+};
+function isolatedAliasTrialGuard_(book){
+ const p=PropertiesService.getScriptProperties();
+ if(!p.getProperty('SPREADSHEET_ID')||
+   p.getProperty('SPREADSHEET_ID')!==p.getProperty('WRITE_TRIAL_SPREADSHEET_ID')||
+   p.getProperty('ENABLE_EXPERIMENTAL_WRITES')==='true')
+  fail('TRIAL_NOT_ISOLATED','独立した試験用シートと書き込み無効設定を確認してください');
+ assertIsolatedTrialIdentity(book);
+ testAllSheetsReadOnly();
+ const hid=String(rows('households',book)[0].obj.household_id);
+ for(const table of ['item_groups','records','record_items','receipt_rules'])
+  if(rows(table,book).length!==0)
+   fail('TRIAL_NOT_EMPTY','試験専用以外のデータがあります: '+table);
+ const fixture=ALIAS_TRIAL_FIXTURE_,stores=rows('stores',book),
+       products=rows('products',book),aliases=rows('product_aliases',book),
+       logs=rows('change_log',book),ops=rows('processed_operations',book);
+ if(stores.some(x=>String(x.obj.chain_id)!==fixture.store_id||
+    String(x.obj.household_id)!==hid||
+    String(x.obj.canonical_name)!=='[KURASHI_ALIAS_TRIAL_ONLY]')||
+    stores.length>1||
+    products.some(x=>String(x.obj.product_id)!==fixture.product_id||
+      String(x.obj.household_id)!==hid||
+      String(x.obj.name)!=='試験用・商品コード')||
+    products.length>1||
+    aliases.some(x=>String(x.obj.product_id)!==fixture.product_id||
+      String(x.obj.chain_id)!==fixture.store_id||
+      String(x.obj.normalized_alias)!==fixture.product_code)||
+    aliases.length>1||
+    logs.some(x=>String(x.obj.change_id)!==fixture.operation_id||
+      String(x.obj.household_id)!==hid||
+      String(x.obj.action)!=='product.alias.create')||
+    logs.length>1||
+    ops.some(x=>String(x.obj.operation_id)!==fixture.operation_id||
+      String(x.obj.household_id)!==hid)||
+    ops.length>1)
+  fail('TRIAL_NOT_ISOLATED','試験専用の既知データ以外が存在します');
+ // The row-count combination must represent a valid prefix of our one-time
+ // procedure, not an externally inserted partial or arbitrary operation.
+ if((products.length>0&&stores.length===0)||
+    (aliases.length>0&&products.length===0)||
+    (logs.length>0&&aliases.length===0)||
+    (ops.length>0&&products.length===0)||
+    (aliases.length>0&&ops.length===0))
+  fail('TRIAL_NOT_ISOLATED','試験データの作成順序が不正です');
+ return {householdId:hid,member:rows('users',book)[0].obj,
+  stores,products,aliases,logs,ops};
+}
+function testIsolatedAliasWriteTrialPreflightReadOnly_(){
+ const book=spreadsheet();
+ const state=isolatedAliasTrialGuard_(book);
+ if(state.stores.length||state.products.length||state.aliases.length||
+   state.logs.length||state.ops.length)
+  fail('TRIAL_NOT_EMPTY','別名試験を開始済みです');
+ Logger.log('ALIAS_TRIAL_PREFLIGHT_OK: 12 sheets, 5 categories, all alias-trial tables empty');
+ return true;
+}
+function testIsolatedAliasWriteTrialResultReadOnly_(){
+ const book=spreadsheet(),state=isolatedAliasTrialGuard_(book);
+ const fixture=ALIAS_TRIAL_FIXTURE_;
+ if(state.stores.length!==1||state.products.length!==1||
+    state.aliases.length!==1||state.logs.length!==1||
+    state.ops.length!==1||
+    Number(state.aliases[0].obj.version)!==1||
+    Number(state.logs[0].obj.sequence_no)!==1||
+    String(state.logs[0].obj.entity_id)!==String(state.aliases[0].obj.alias_id))
+  fail('TRIAL_RESULT_MISMATCH','別名登録試験の行数または変更履歴が一致しません');
+ let result;
+ try{result=JSON.parse(String(state.ops[0].obj.result))}
+ catch(_){fail('TRIAL_RESULT_MISMATCH','操作履歴を解釈できません')}
+ if(result.status==='prepared'||
+    String(result.entity?.alias_id)!==String(state.aliases[0].obj.alias_id)||
+    String(result.entity?.normalized_alias)!==fixture.product_code||
+    Number(result.sequence_no)!==1)
+  fail('TRIAL_RESULT_MISMATCH','操作履歴と別名データが一致しません');
+ Logger.log('ALIAS_TRIAL_RESULT_OK: store=1, product=1, aliases=1, change_log=1, journal=1, replay=verified, code_as_text=verified');
+ return true;
+}
+function runIsolatedAliasWriteTrialOnce_(){
+ // Editor-only; unlike doPost, intentionally bypasses the separate browser
+ // experimental-writes flag. It still rechecks isolation under the lock.
+ const book=spreadsheet(),state=isolatedAliasTrialGuard_(book),
+       fixture=ALIAS_TRIAL_FIXTURE_,now=new Date().toISOString();
+ // The hard-coded fixture IDs make the seeding restartable if an earlier
+ // Apps Script execution stopped between the two append calls.
+ if(state.stores.length===0)
+  append_('stores',{chain_id:fixture.store_id,household_id:state.householdId,
+   canonical_name:'[KURASHI_ALIAS_TRIAL_ONLY]',
+   normalized_name:'kurashi_alias_trial_only',aliases:null,version:1,
+   updated_at:now},book);
+ if(state.products.length===0)
+  append_('products',{product_id:fixture.product_id,
+   household_id:state.householdId,item_group_id:null,
+   name:'試験用・商品コード',normalized_name:'試験用・商品コード',
+   package_quantity:null,package_unit:null,item_group_order:null,
+   version:1,created_at:now,updated_at:now,deleted_at:null},book);
+ // Re-read all trial restrictions after seeding. The actual mutation obtains
+ // its own script lock and revalidates identity and aliases again.
+ isolatedAliasTrialGuard_(book);
+ const answer=mutateAliasSafely_(
+  {householdId:state.householdId,userId:String(state.member.user_id)},
+  {product_id:fixture.product_id,chain_id:fixture.store_id,
+   product_code:fixture.product_code,confirmed:true},
+  fixture.operation_id,true);
+ if(String(answer.entity?.product_id)!==fixture.product_id||
+   String(answer.entity?.normalized_alias)!==fixture.product_code||
+   Number(answer.sequence_no)!==1)
+  fail('TRIAL_ASSERT_FAILED','別名の登録結果が想定外です');
+ const replay=mutateAliasSafely_(
+  {householdId:state.householdId,userId:String(state.member.user_id)},
+  {product_id:fixture.product_id,chain_id:fixture.store_id,
+   product_code:fixture.product_code,confirmed:true},
+  fixture.operation_id,true);
+ if(String(answer.entity.alias_id)!==String(replay.entity?.alias_id)||
+   Number(answer.sequence_no)!==Number(replay.sequence_no))
+  fail('TRIAL_ASSERT_FAILED','同じ操作IDの再送結果が一致しません');
+ testIsolatedAliasWriteTrialResultReadOnly_();
+ Logger.log('ALIAS_TRIAL_ONCE_OK: 1 stored alias, 1 completed operation, 1 change log, no duplicate replay');
+ return true;
+}
+
 /** Legacy helper deliberately disabled. Existing trial sheet only. */
 function createFreshIsolatedWriteTrialSpreadsheet_(){
  fail('TRIAL_CREATION_DISABLED','既存の試験用シートを再利用してください');
