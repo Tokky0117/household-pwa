@@ -5,6 +5,7 @@
  */
 import {createConfirmationPreview} from './ocr-lab/confirmation-preview.js';
 import {createAuthenticatedPreviewBridge} from './ocr-lab/preview-auth-bridge.js';
+import {createProductTestReport} from './ocr-lab/product-test-report.js';
 
 export function mountReceiptCatalogIntegration({
  doc=globalThis.document,win=globalThis.window,auth=win?.KurashiAuth,
@@ -18,16 +19,17 @@ export function mountReceiptCatalogIntegration({
   throw Error('RECEIPT_REVIEW_UNAVAILABLE');
  const $=id=>doc.getElementById(id);
  const text=$('ocr-review-text'),sample=$('ocr-sample'),multiSample=$('ocr-multi-sample'),parse=$('ocr-parse'),
-  load=$('ocr-load-catalog'),clear=$('ocr-clear'),message=$('ocr-parse-status');
- if(!text||!sample||!multiSample||!parse||!load||!clear||!message)throw Error('RECEIPT_REVIEW_UNAVAILABLE');
+  load=$('ocr-load-catalog'),clear=$('ocr-clear'),message=$('ocr-parse-status'),
+  copyProducts=$('ocr-copy-products'),copyStatus=$('ocr-copy-products-status');
+ if(!text||!sample||!multiSample||!parse||!load||!clear||!message||!copyProducts||!copyStatus)throw Error('RECEIPT_REVIEW_UNAVAILABLE');
  const preview=createConfirmationPreview({
   section:$('ocr-candidate-confirmation'),file:$('ocr-catalog-file'),
   chain:$('ocr-review-chain'),status:$('ocr-catalog-status'),
   list:$('ocr-candidate-list'),summary:$('ocr-candidate-summary')
  });
  let bridge=createAuthenticatedPreviewBridge({auth,api,confirmation:preview});
- let parsed=false,busy=false,revision=0,wasReady=gate.ready(),disposed=false;
- function update(){load.disabled=disposed||busy||!parsed||!gate.ready();}
+ let parsed=false,busy=false,revision=0,wasReady=gate.ready(),disposed=false,parsedReceipt=null;
+ function update(){load.disabled=disposed||busy||!parsed||!gate.ready();copyProducts.disabled=disposed||!parsed;}
  function resetBridge(){
   revision++;busy=false;
   bridge.dispose();
@@ -54,11 +56,11 @@ export function mountReceiptCatalogIntegration({
   if(disposed)return;
   const raw=text.value;
   if(typeof raw!=='string'||!raw.trim()){
-   parsed=false;preview.setParsed(null);
+   parsed=false;parsedReceipt=null;preview.setParsed(null);
    message.textContent='OCR文字列を入力してください。';update();return;
   }
   if(raw.length>12000){
-   parsed=false;preview.setParsed(null);
+   parsed=false;parsedReceipt=null;preview.setParsed(null);
    message.textContent='OCR文字列は12,000文字以内にしてください。';update();return;
   }
   try{
@@ -66,12 +68,12 @@ export function mountReceiptCatalogIntegration({
    if(!result||!Array.isArray(result.items)||result.items.length>300)
     throw Error('OCR_PARSE_INVALID');
    preview.setParsed(result);
-   parsed=result.items.length>0;
+   parsed=result.items.length>0;parsedReceipt=parsed?result:null;
    message.textContent=parsed?
     '明細 '+result.items.length+'件を端末内で抽出しました。内容と商品候補を必ず確認してください。':
     '明細を抽出できませんでした。原文を確認してください。';
   }catch{
-   parsed=false;preview.setParsed(null);
+   parsed=false;parsedReceipt=null;preview.setParsed(null);
    message.textContent='明細を抽出できませんでした。入力内容を確認してください。';
   }
   update();
@@ -91,7 +93,7 @@ export function mountReceiptCatalogIntegration({
  });
  parse.addEventListener('click',extract);
  text.addEventListener('input',()=>{
-  parsed=false;
+  parsed=false;parsedReceipt=null;
   preview.setParsed(null);
   message.textContent='内容を変更しました。「明細候補を抽出」を押してください。';
   update();
@@ -111,9 +113,24 @@ export function mountReceiptCatalogIntegration({
    if(token===revision){busy=false;update();}
   }
  });
+ copyProducts.addEventListener('click',async()=>{
+  if(disposed||!parsedReceipt||!parsed)return;
+  try{
+   const output=createProductTestReport({
+    receipt:parsedReceipt,diagnostic:{},review:preview.getProductReview(),
+    warningScopes:win.KurashiReceiptStructure.warningScopes(parsedReceipt)
+   });
+   const clipboard=win.navigator?.clipboard||globalThis.navigator?.clipboard;
+   if(typeof clipboard?.writeText!=='function')throw Error('CLIPBOARD_UNAVAILABLE');
+   await clipboard.writeText(output);
+   copyStatus.textContent='商品照合結果をコピーしました。購入内容を含むため共有前に確認してください。';
+  }catch{
+   copyStatus.textContent='商品照合結果をコピーできませんでした。ブラウザのクリップボード権限を確認してください。';
+  }
+ });
  clear.addEventListener('click',()=>{
   if(disposed)return;
-  resetBridge();busy=false;parsed=false;text.value='';preview.reset();
+  resetBridge();busy=false;parsed=false;parsedReceipt=null;text.value='';preview.reset();copyStatus.textContent='';
   message.textContent='明細・商品マスタをこの画面から破棄しました。';
   update();
  });
@@ -128,7 +145,7 @@ export function mountReceiptCatalogIntegration({
    win.removeEventListener?.('pageshow',reconcileGate);
    doc.removeEventListener?.('visibilitychange',reconcileGate);
    bridge.dispose();preview.reset();
-   parsed=false;busy=false;text.value='';update();
+   parsed=false;parsedReceipt=null;busy=false;text.value='';update();
   }
  };
 }
