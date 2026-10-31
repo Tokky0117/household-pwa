@@ -99,6 +99,25 @@ assert.match($('ocr-candidate-summary').textContent,/未照合 2件/);
 assert.match($('ocr-candidate-summary').textContent,/OCR要確認 1件/);
 assert.equal(actions.length,1,'Mixed receipt parsing stays offline');
 assert.match($('ocr-candidate-list').children[2].children.map(n=>n.textContent).join(' '),/数量の印字を要確認/);
+// A realistic multi-item shopping region can reconcile both printed count
+// and tax-inclusive payment total while warnings remain outside its items.
+$('ocr-review-text').value=[
+ '周囲の別伝票','店内のお知らせ',
+ '*白ねぎ 1本 ¥159','自動割引1 10.00 -15',
+ '*成田もやし ¥29','*ブナシメジ','5コ×単99 ¥495',
+ '自動割引1 10.00','5コ×単-9 -45',
+ '税8% ¥49','お買上 ¥672','お買上点数 7点',
+ 'クレジット売上票','トークン 0000-0000-0000-0000'
+].join('\n');
+await $('ocr-review-text').fire('input');
+await $('ocr-parse').fire('click');
+const mixedSummary=$('ocr-candidate-summary').textContent;
+assert.match(mixedSummary,/明細 3件・OCR要確認 0件/);
+assert.match(mixedSummary,/未照合 3件/);
+assert.match(mixedSummary,/抽出警告 \d+件（明細欄内 0件・欄外 \d+件/);
+assert.match(mixedSummary,/購入点数一致/);
+assert.match(mixedSummary,/合計金額一致/);
+assert.equal(actions.length,1,'Realistic text summary must not trigger a GAS request');
 // Return to the already-verified synthetic one-product fixture.
 await $('ocr-sample').fire('click');
 // Real-device follow-up: select the one known test chain and the candidate
