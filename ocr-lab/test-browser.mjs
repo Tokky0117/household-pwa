@@ -58,6 +58,18 @@ try{
  assert.match(await page.locator('#timing-comparison-status').textContent(),/画像処理設定が変わったため参考値/,
  'Comparison must warn that image processing settings differ');
  const cropped=JSON.parse(await page.locator('#diagnostic').textContent());assert.equal(cropped.preparation.mode,'contrast');assert.ok(cropped.preparation.crop.width>0);assert.equal(cropped.normalization.mode,'japanese-glyphs-v1');assert.equal(cropped.normalization.originalPreserved,true);assert.equal(cropped.moneyGrouping.mode,'yen-grouping-v1');assert.equal(cropped.moneyGrouping.changedCount,0);
+ await page.locator('#copy-products').click();
+ const productReport=JSON.parse(await page.evaluate(()=>navigator.clipboard.readText()));
+ assert.equal(productReport.version,'product-test-1');
+ assert.equal(productReport.products.length,firstItems.length);
+ assert.equal(productReport.products[0].ocrName,firstItems[0].name);
+ assert.equal(productReport.products[0].recognition.catalogSource,'local');
+ assert.equal(productReport.products[0].recognition.selectedProductName,productName);
+ assert.equal(productReport.products[0].recognition.candidateStatus,'name_candidate');
+ assert.equal(productReport.receiptChecks.netSum,firstItems.reduce((s,item)=>s+item.netAmount,0));
+ assert.ok(!JSON.stringify(productReport).includes('test-household'),'Do not export household ID');
+ assert.ok(!JSON.stringify(productReport).includes('synthetic-receipt'),'Do not export photo filename');
+ assert.ok(!JSON.stringify(productReport).includes('rawText'),'Do not export OCR body');
  await page.locator('#copy').click();assert.match(await page.evaluate(()=>navigator.clipboard.readText()),/位置情報/);
  await page.locator('#copy-text').click();
  const excerpt=await page.evaluate(()=>window.KurashiReceiptStructure.merchandiseExcerpt(
