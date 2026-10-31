@@ -343,6 +343,33 @@ const localSelected=JSON.parse(copiedProductReport);
 assert.equal(localSelected.products[0].recognition.candidateStatus,'code_candidate');
 assert.deepEqual(localSelected.matchingContext,{catalogLoaded:true,chainSelected:true});
 assert.equal(actions.length,count,'Local file and chain selection must remain offline');
+
+// Header-only automatic chain suggestion in the local OCR preview, using
+// store names already present in a manually loaded test catalog.
+$('ocr-review-text').value='COSTCO\n架空の試験用商品\n00012345 1 198 198 E\n合計 ¥198';
+await $('ocr-review-text').fire('input');
+await $('ocr-parse').fire('click');
+const autoChainFixture=structuredClone(originalFixture);
+autoChainFixture.stores[0].canonical_name='コストコ（R1試験用・端末内）';
+localFile.files=[{size:600,text:async()=>JSON.stringify(autoChainFixture)}];
+await localFile.fire('change');
+assert.equal($('ocr-review-chain').value,'fixture-store');
+assert.match($('ocr-candidate-summary').textContent,
+ /チェーンをレシート上部から推定（商品登録前に確認してください）/);
+assert.match($('ocr-candidate-summary').textContent,/店舗別SKU一致 1件/);
+await $('ocr-copy-products').fire('click');
+const autoChainReport=JSON.parse(copiedProductReport);
+assert.deepEqual(autoChainReport.matchingContext,
+ {catalogLoaded:true,chainSelected:true});
+assert.equal(autoChainReport.products[0].recognition.candidateStatus,'code_candidate');
+assert.equal(autoChainReport.products[0].recognition.nameConfirmed,false);
+// A manual clear must win over the suggestion until the receipt changes.
+$('ocr-review-chain').value='';
+await $('ocr-review-chain').fire('change');
+assert.match($('ocr-candidate-summary').textContent,/チェーン未選択：店舗別SKU/);
+assert.doesNotMatch($('ocr-candidate-summary').textContent,/店舗別SKU一致 1件/);
+assert.equal(actions.length,count,'Auto-suggestion and override must not write or fetch');
+
 review.dispose();
 assert.equal(gateListeners.size,0);
 assert.equal(authListeners.size,0);
