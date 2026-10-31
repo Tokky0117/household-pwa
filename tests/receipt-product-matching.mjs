@@ -48,6 +48,22 @@ const uncertain=suggest([{name:'I',grossAmount:148}],{householdId:h,chainId,prod
 assert.equal(uncertain[0].status,'unresolved');
 const typo=suggest([{name:'牛肉じ肉'}],{householdId:h,chainId,products:[{household_id:h,product_id:'p0',name:'牛肉すじ肉'}],aliases:[]});
 assert.equal(typo[0].status,'name_suggestion');assert.equal(typo[0].requiresConfirmation,true);
+// Near-equal edit distances must remain visible as alternatives, not
+// silently turn the closest spelling into a confirmed product identity.
+const closeChoices=suggest([{name:'牛肉すし肉'}],{
+ householdId:h,chainId,
+ products:[
+  {product_id:'near-a',household_id:h,name:'牛肉すじ肉'},
+  {product_id:'near-b',household_id:h,name:'牛肉すじ煮'},
+  {product_id:'far',household_id:h,name:'洗濯洗剤'}
+ ],aliases:[]
+})[0];
+assert.equal(closeChoices.status,'ambiguous');
+assert.equal(closeChoices.requiresConfirmation,true);
+assert.ok(closeChoices.candidates.some(x=>x.productId==='near-a'));
+assert.ok(closeChoices.candidates.some(x=>x.productId==='near-b'));
+assert.ok(closeChoices.candidates.every(x=>x.productId!=='far'));
+assert.ok(closeChoices.candidates.every(x=>Number.isInteger(x.editDistance)));
 const blank=parse('！¥148\n分類割引 10% -15');
 assert.ok(blank.items[0].issues.includes('missing_product_name'));
 const uncertainQty=parse('商品B\n22×単 105 ¥210');
