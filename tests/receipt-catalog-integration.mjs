@@ -104,7 +104,7 @@ assert.equal($('ocr-candidate-list').children.length,3);
 assert.match($('ocr-candidate-summary').textContent,/明細 3件/);
 assert.match($('ocr-candidate-summary').textContent,/商品候補 1件/);
 assert.match($('ocr-candidate-summary').textContent,/未照合 2件/);
-assert.match($('ocr-candidate-summary').textContent,/OCR要確認 1件/);
+assert.match($('ocr-candidate-summary').textContent,/OCR要確認 2件/);
 assert.equal(actions.length,1,'Mixed receipt parsing stays offline');
 assert.match($('ocr-candidate-list').children[2].children.map(n=>n.textContent).join(' '),/数量の印字を要確認/);
 // A realistic multi-item shopping region can reconcile both printed count
@@ -120,12 +120,39 @@ $('ocr-review-text').value=[
 await $('ocr-review-text').fire('input');
 await $('ocr-parse').fire('click');
 const mixedSummary=$('ocr-candidate-summary').textContent;
-assert.match(mixedSummary,/明細 3件・OCR要確認 0件/);
+assert.match(mixedSummary,/明細 3件・OCR要確認 2件/);
 assert.match(mixedSummary,/未照合 3件/);
 assert.match(mixedSummary,/抽出警告 \d+件（明細欄内 0件・欄外 \d+件/);
-assert.match(mixedSummary,/購入点数一致/);
+assert.match(mixedSummary,/数量候補の合計は印字点数と一致（未確定の数量あり）/);
 assert.match(mixedSummary,/合計金額一致/);
 assert.equal(actions.length,1,'Realistic text summary must not trigger a GAS request');
+// Default-one quantities must show a manual-review control and remain
+// candidates (not verified counts) in the clipboard report.
+const firstDefaultCard=$('ocr-candidate-list').children[0];
+assert.match(firstDefaultCard.children.map(n=>n.textContent).join(' '),
+ /数量未確定（初期候補 1）/);
+const quantityReview=firstDefaultCard.children.flatMap(n=>n.children||[])
+ .find(n=>n.dataset?.action==='quantity');
+assert.ok(quantityReview,'Default-one quantity must be explicitly confirmable');
+await $('ocr-copy-products').fire('click');
+const kansaiBeforeReview=JSON.parse(copiedProductReport);
+assert.equal(kansaiBeforeReview.counts.uncertainQuantities,2);
+assert.equal(kansaiBeforeReview.receiptChecks.quantityVerified,false);
+assert.equal(kansaiBeforeReview.products[0].quantityStatus,'unverified_default_one');
+assert.equal(kansaiBeforeReview.products[0].quantity,null);
+assert.equal(kansaiBeforeReview.products[0].quantityCandidate,1);
+assert.equal(kansaiBeforeReview.receiptChecks.totalMatches,true);
+quantityReview.checked=true;
+await $('ocr-candidate-list').fire('change',quantityReview);
+await new Promise(resolve=>setTimeout(resolve,5));
+await $('ocr-copy-products').fire('click');
+const kansaiAfterOneReview=JSON.parse(copiedProductReport);
+assert.equal(kansaiAfterOneReview.products[0].quantityStatus,'manual_confirmed');
+assert.equal(kansaiAfterOneReview.products[0].quantity,1);
+assert.equal(kansaiAfterOneReview.products[1].quantity,null);
+assert.equal(kansaiAfterOneReview.receiptChecks.quantityVerified,false);
+assert.equal(actions.length,1,'Manual review must stay local-only');
+
 // A home-center receipt has JAN, name and inclusive price on different
 // lines. Neither subtotal nor payment rows are merchandise candidates.
 $('ocr-review-text').value=[
@@ -141,7 +168,7 @@ await $('ocr-parse').fire('click');
 const homeSummary=$('ocr-candidate-summary').textContent;
 assert.equal($('ocr-candidate-list').children.length,3,
  'Subtotal and payment must not be displayed as items');
-assert.match(homeSummary,/明細 3件・OCR要確認 0件/);
+assert.match(homeSummary,/明細 3件・OCR要確認 3件/);
 assert.match(homeSummary,/未照合 3件/);
 assert.match(homeSummary,/合計金額一致/);
 assert.equal(actions.length,1,'Home-center text must never be transmitted');
