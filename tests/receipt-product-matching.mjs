@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
-import {validateCatalog} from '../ocr-lab/confirmation-preview.js';
+import {validateCatalog,detectReceiptChain} from '../ocr-lab/confirmation-preview.js';
 import {createProductTestReport} from '../ocr-lab/product-test-report.js';
 const context={};
 for(const file of ['receipt-structure.js','receipt-product-matching.js','receipt-alias-preflight.js'])
@@ -234,6 +234,30 @@ assert.ok(r01Reviewed&&r01Reviewed.items.length===13);
 const r01Reference=parse(r01Reviewed.text);
 assert.equal(r01Reference.items.length,13);
 assert.equal(r01Reference.reconciliation.netSum,14758);
+
+// Header-only store selection: a unique merchant is suggested automatically,
+// but conflicting/unknown headers and merchant mentions in footer are ignored.
+const receiptStoreList=[
+ {chain_id:'r01-store',canonical_name:'コストコ（R1試験用・端末内）'},
+ {chain_id:'kansai-store',canonical_name:'関西スーパー'}
+];
+assert.equal(detectReceiptChain(r01Reference,receiptStoreList),'r01-store');
+assert.equal(detectReceiptChain(parse([
+ '関西スーパー','西冠店','白ねぎ ¥159',
+ '成田もやし ¥29','税8% ¥15','お買上 ¥203'
+].join('\n')),receiptStoreList),'kansai-store');
+assert.equal(detectReceiptChain(parse([
+ 'COSTCO','関西スーパー','商品名 ¥100','合計 ¥100'
+].join('\n')),receiptStoreList),null,'Conflicting receipt logos must not auto-select a store');
+assert.equal(detectReceiptChain(parse('商品名 ¥100\nCOSTCO\n合計 ¥100'),receiptStoreList),null,
+ 'Footer references do not establish the selling chain');
+assert.equal(detectReceiptChain(parse('商品名 ¥100\n合計 ¥100'),receiptStoreList),null);
+assert.equal(detectReceiptChain(r01Reference,[]),null);
+assert.equal(detectReceiptChain(parse('COSTCO\n商品名 ¥100'),[
+ {chain_id:'store-1',canonical_name:'コストコ 北店'},
+ {chain_id:'store-2',canonical_name:'コストコ 南店'}
+]),null,'Two possible stores must require manual selection');
+
 assert.equal(new Set(r01Reference.items.map(item=>item.productCode)).size,13);
 assert.ok(r01Reference.items.every(item=>/^\d{4,8}$/.test(item.productCode)));
 const warehouseChain='fixture-r01-warehouse',warehouseHome='fixture-r01-household';
