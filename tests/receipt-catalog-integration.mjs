@@ -18,7 +18,8 @@ function node(tag='div'){
 }
 const ids=['ocr-review-text','ocr-sample','ocr-multi-sample','ocr-parse','ocr-load-catalog','ocr-clear',
  'ocr-parse-status','ocr-candidate-confirmation','ocr-catalog-file',
- 'ocr-review-chain','ocr-catalog-status','ocr-candidate-list','ocr-candidate-summary'];
+ 'ocr-review-chain','ocr-catalog-status','ocr-candidate-list','ocr-candidate-summary',
+ 'ocr-copy-products','ocr-copy-products-status'];
 const elements=new Map(ids.map(id=>[id,node()]));
 const docListeners=new Map(),winListeners=new Map();
 const doc={getElementById:id=>elements.get(id),createElement:node,
@@ -56,7 +57,9 @@ const gate={
 };
 function setGate(v){ready=v;for(const fn of gateListeners)fn()}
 function setSession(v){session=v;for(const fn of authListeners)fn({...session})}
-const win={KurashiReceiptStructure:globalThis.KurashiReceiptStructure,
+let copiedProductReport='',productCopies=0;
+const win={navigator:{clipboard:{async writeText(content){copiedProductReport=content;productCopies++}}},
+ KurashiReceiptStructure:globalThis.KurashiReceiptStructure,
  KurashiProductMatching:globalThis.KurashiProductMatching,
  KurashiAliasPreflight:globalThis.KurashiAliasPreflight,
  addEventListener(name,fn){winListeners.set(name,fn)},
@@ -73,6 +76,11 @@ assert.equal(review.getState().parsed,true,'Synthetic receipt must yield an item
 assert.equal($('ocr-candidate-list').children.length,1);
 assert.match($('ocr-candidate-summary').textContent,/明細 1件/);
 assert.equal(actions.length,0,'Receipt parsing and preview must stay offline');
+assert.equal($('ocr-copy-products').disabled,false);
+await $('ocr-copy-products').fire('click');
+assert.equal(JSON.parse(copiedProductReport).products[0].ocrName,'試験用・商品コード');
+assert.equal(JSON.parse(copiedProductReport).products[0].recognition.catalogSource,'none');
+assert.equal(actions.length,0,'Report must never trigger POST');
 assert.equal($('ocr-load-catalog').disabled,true,'Fourth test must succeed before catalog read');
 setGate(true);
 assert.equal($('ocr-load-catalog').disabled,false);
@@ -157,6 +165,14 @@ let hint=list.children[0].children.find(x=>x.dataset.aliasVerdict==='already_reg
 assert.ok(hint,'Known code is already registered under the chosen test chain');
 assert.match(hint.textContent,/すでに登録されています/);
 assert.equal(review.getState().catalog.selected,1);
+await $('ocr-copy-products').fire('click');
+const selectedReport=JSON.parse(copiedProductReport);
+assert.equal(selectedReport.products[0].recognition.catalogSource,'authenticated');
+assert.equal(selectedReport.products[0].recognition.candidateStatus,'code_candidate');
+assert.equal(selectedReport.products[0].recognition.selectedProductName,'試験用・商品コード');
+assert.equal(selectedReport.products[0].code,'00012345');
+assert.equal(copiedProductReport.includes('fixture-home'),false);
+assert.equal(copiedProductReport.includes('fixture-product'),false);
 assert.equal(actions.length,1,'Chain choice and alias verification are local-only');
 
 // A different code must remain an unregistered suggestion, not auto-save.
@@ -219,6 +235,7 @@ const count=actions.length;
 $('ocr-review-text').value='牛乳 ¥198';
 await $('ocr-review-text').fire('input');
 assert.equal(review.getState().parsed,false);
+assert.equal($('ocr-copy-products').disabled,true);
 assert.equal(actions.length,count);
 await $('ocr-parse').fire('click');
 assert.equal(review.getState().parsed,true);
@@ -227,6 +244,7 @@ await $('ocr-clear').fire('click');
 assert.equal($('ocr-review-text').value,'');
 assert.equal(review.getState().catalog.catalogLoaded,false);
 assert.equal(review.getState().parsed,false);
+assert.equal($('ocr-copy-products').disabled,true);
 assert.equal(actions.length,count,'Clear must not send a request');
 review.dispose();
 assert.equal(gateListeners.size,0);
