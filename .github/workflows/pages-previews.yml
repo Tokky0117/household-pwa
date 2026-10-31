@@ -78,7 +78,7 @@ jobs:
               # Main and all other branches are copied exactly as before.
               if [[ "$branch" == "stage-a-ui-handoff-review" ]] && git cat-file -e "refs/remotes/$remote_ref:ocr-lab/package-lock.json" 2>/dev/null; then
                 build_root="$(mktemp -d)"
-                git archive "refs/remotes/$remote_ref" ocr-lab receipt-layout.js receipt-paddle.js receipt-structure.js receipt-product-matching.js | tar -x -C "$build_root"
+                git archive "refs/remotes/$remote_ref" ocr-lab receipt-layout.js receipt-paddle.js receipt-structure.js receipt-product-matching.js receipt-alias-preflight.js | tar -x -C "$build_root"
                 (
                   cd "$build_root/ocr-lab"
                   npm ci --ignore-scripts --no-audit --no-fund

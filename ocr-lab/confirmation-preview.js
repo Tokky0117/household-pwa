@@ -68,7 +68,26 @@ export function createConfirmationPreview({section,file,chain,status,list,summar
     const meaning={code_candidate:'商品コードが一致',name_candidate:'商品名が一致',
      name_suggestion:'商品名が類似',ambiguous:'複数候補',conflict:'コードと名前が矛盾'}[match.status];
     card.append(element('small',meaning||'要確認'));
+
    }else card.append(element('p',catalog?'登録商品候補なし（未照合）':'商品マスタ未読み込み'));
+   const selectedId=selected.get(i);
+   if(catalog&&chainId&&selectedId&&item.productCode){
+    const verdict=window.KurashiAliasPreflight.inspect({
+     catalog,chainId,productId:selectedId,productCode:String(item.productCode)
+    });
+    const meanings={
+     available:'このコードは未登録です。別名登録の候補にできます（未保存）。',
+     already_registered:'この商品コードは、この商品にすでに登録されています。',
+     conflict:'この商品コードは別の商品にも登録されています。登録禁止・要確認。',
+     invalid_code:'商品コードの文字列が不正です。',
+     select_chain:'店舗が未選択です。',
+     select_product:'商品を選択してください。'
+    };
+    const hint=element('p',meanings[verdict.status]||'別名登録の予備判定ができません');
+    hint.className=verdict.status==='conflict'?'review-warning':'review-alias';
+    hint.dataset.aliasVerdict=verdict.status;
+    card.append(hint);
+   }
    if(item.quantitySource==='inferred_candidate'||warnings.includes('quantity_ocr_ambiguous')){
     const label=element('label');label.className='review-check';
     const checkbox=element('input');checkbox.type='checkbox';checkbox.dataset.action='quantity';
@@ -103,7 +122,7 @@ export function createConfirmationPreview({section,file,chain,status,list,summar
   if(target.dataset.action==='quantity'){
    if(target.checked)quantities.add(index);else quantities.delete(index);
   }
-  summaryText(candidates());
+  render();
  });
  refreshChains();
  return {

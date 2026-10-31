@@ -1,4 +1,4 @@
-import '../receipt-layout.js';import '../receipt-paddle.js';import '../receipt-structure.js';import '../receipt-product-matching.js';
+import '../receipt-layout.js';import '../receipt-paddle.js';import '../receipt-structure.js';import '../receipt-product-matching.js';import '../receipt-alias-preflight.js';
 import {createConfirmationPreview} from './confirmation-preview.js';
 import {prepareImage} from './prepare-image.js';
 import {createCropSelector} from './crop-preview.js';
