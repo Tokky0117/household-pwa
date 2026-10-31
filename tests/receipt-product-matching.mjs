@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
 import {validateCatalog} from '../ocr-lab/confirmation-preview.js';
+import {createProductTestReport} from '../ocr-lab/product-test-report.js';
 const context={};
 for(const file of ['receipt-structure.js','receipt-product-matching.js','receipt-alias-preflight.js'])
  vm.runInNewContext(fs.readFileSync(new URL('../'+file,import.meta.url),'utf8'),context);
@@ -220,5 +221,104 @@ const novelCode=JSON.parse(JSON.stringify(context.KurashiAliasPreflight.inspect(
 })));
 assert.equal(novelCode.status,'available');
 assert.equal(novelCode.writePermitted,false);
+
+
+// R01/R1 catalog-recovery experiment: every merchandise name is deliberately
+// corrupted, while the 13 reviewed SKU lines stay as originally printed.
+// The local test master comes from EXISTING reviewed fixture data; no actual
+// Sheets data, live user catalog, image, or raw user OCR is committed here.
+const r01Reviewed=JSON.parse(fs.readFileSync(
+ new URL('./fixtures/receipt-reviewed-60.json',import.meta.url),'utf8'
+)).samples.find(s=>s.id==='R01');
+assert.ok(r01Reviewed&&r01Reviewed.items.length===13);
+const r01Reference=parse(r01Reviewed.text);
+assert.equal(r01Reference.items.length,13);
+assert.equal(r01Reference.reconciliation.netSum,14758);
+assert.equal(new Set(r01Reference.items.map(item=>item.productCode)).size,13);
+assert.ok(r01Reference.items.every(item=>/^\d{4,8}$/.test(item.productCode)));
+const warehouseChain='fixture-r01-warehouse',warehouseHome='fixture-r01-household';
+const catalogR01=validateCatalog({
+ household_id:warehouseHome,
+ stores:[{chain_id:warehouseChain,canonical_name:'Synthetic R01 chain'}],
+ products:r01Reference.items.map((_,i)=>({
+  household_id:warehouseHome,product_id:'r01-item-'+i,
+  name:r01Reviewed.items[i].name,normalized_name:r01Reviewed.items[i].name
+ })),
+ product_aliases:r01Reference.items.map((item,i)=>({
+  chain_id:warehouseChain,product_id:'r01-item-'+i,
+  normalized_alias:item.productCode
+ }))
+});
+let corruptedR01=r01Reviewed.text;
+for(let i=0;i<r01Reviewed.items.length;i++){
+ const originalName=r01Reviewed.items[i].name+'\n';
+ assert.ok(corruptedR01.includes(originalName),'Reviewed name must occur in R01 fixture');
+ corruptedR01=corruptedR01.replace(originalName,'OCR判読不可'+(i+1)+'\n');
+}
+corruptedR01=corruptedR01.replace(/ 1● /g,' 10 ')
+ .replace('51515 10 2,098 2,098 E','51515 1@ 2,098 2,098 E');
+const corruptedReceipt=parse(corruptedR01);
+assert.equal(corruptedReceipt.items.length,13);
+assert.equal(corruptedReceipt.items.filter(x=>x.quantitySource==='inferred_candidate').length,12);
+assert.equal(corruptedReceipt.reconciliation.quantityVerified,false);
+assert.equal(corruptedReceipt.reconciliation.printedCountMatches,null);
+assert.equal(corruptedReceipt.reconciliation.candidateCountMatches,true);
+assert.equal(corruptedReceipt.reconciliation.netSum,14758);
+assert.equal(corruptedReceipt.reconciliation.totalMatches,true);
+const r01Matches=suggest(corruptedReceipt.items,{...catalogR01,chainId:warehouseChain});
+assert.equal(r01Matches.length,13);
+for(let i=0;i<13;i++){
+ assert.equal(corruptedReceipt.items[i].productCode,r01Reference.items[i].productCode);
+ assert.notEqual(corruptedReceipt.items[i].name,r01Reviewed.items[i].name);
+ assert.equal(r01Matches[i].status,'code_candidate','SKU recovery #'+(i+1));
+ assert.equal(r01Matches[i].requiresConfirmation,true);
+ assert.equal(r01Matches[i].candidates.length,1,'One scoped SKU candidate #'+(i+1));
+ assert.equal(r01Matches[i].candidates[0].productId,'r01-item-'+i);
+ assert.equal(r01Matches[i].candidates[0].name,r01Reviewed.items[i].name);
+}
+assert.equal(r01Matches[1].candidates[0].name,'リンツリンドールピンク450G');
+const r01Preview=JSON.parse(createProductTestReport({
+ receipt:corruptedReceipt,diagnostic:{},
+ review:{source:'local',items:r01Matches.map(x=>({
+  status:x.status,candidateNames:x.candidates.map(c=>c.name)
+ }))}
+}));
+assert.equal(r01Preview.counts.unconfirmedNames,13,'Proposed names are not confirmed names');
+assert.equal(r01Preview.counts.uncertainQuantities,12);
+assert.equal(r01Preview.products[1].recognition.candidateNames[0],'リンツリンドールピンク450G');
+assert.ok(r01Preview.products.every(x=>x.recognition.selectedProductName===null));
+assert.ok(r01Preview.products.every(x=>x.recognition.nameConfirmed===false));
+assert.ok(r01Preview.products.every(x=>x.recognition.candidateStatus==='code_candidate'));
+assert.equal(r01Preview.receiptChecks.quantityVerified,false);
+assert.equal(r01Preview.receiptChecks.totalMatches,true);
+// Missing code and missing name: do not invent a master match.
+const unknownR01=suggest([{name:'OCR判読不能',productCode:'99999999'}],
+ {...catalogR01,chainId:warehouseChain})[0];
+assert.equal(unknownR01.status,'unresolved');
+assert.equal(unknownR01.candidates.length,0);
+// Chain-specific SKUs must not cross chain/household boundaries.
+assert.ok(suggest(corruptedReceipt.items,{...catalogR01,chainId:'different-chain'})
+ .every(x=>x.status==='unresolved'));
+assert.ok(suggest(corruptedReceipt.items,{...catalogR01,householdId:'another-home'})
+ .every(x=>x.status==='unresolved'));
+// Code/name contradiction: show the scoped code candidate first but fail closed.
+const contradicted=suggest([{
+ name:r01Reviewed.items[2].name,productCode:r01Reference.items[1].productCode
+}],{...catalogR01,chainId:warehouseChain})[0];
+assert.equal(contradicted.status,'conflict');
+assert.equal(contradicted.requiresConfirmation,true);
+assert.deepEqual(contradicted.candidates.map(x=>x.productId),
+ ['r01-item-1','r01-item-2']);
+// Duplicate code assignments must never be accepted as a unique match.
+const collision=suggest([corruptedReceipt.items[1]],{
+ ...catalogR01,chainId:warehouseChain,
+ aliases:[...catalogR01.aliases,{
+  product_id:'r01-item-2',chain_id:warehouseChain,
+  normalized_alias:r01Reference.items[1].productCode
+ }]
+})[0];
+assert.equal(collision.status,'conflict');
+assert.equal(collision.requiresConfirmation,true);
+assert.equal(collision.candidates.length,2);
 
 console.log('STEP2/STEP3 candidate matching PASS: 5/5 exact code proposals, household/chain isolation, conflict detection, incomplete OCR and uncertain quantities flagged; no product auto-registration');
