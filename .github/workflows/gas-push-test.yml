@@ -1,5 +1,5 @@
 name: Push GAS to test project (manual)
-# Updates require explicit manual user approval; push trigger removed after successful one-time update.
+# One-time correction of editor-visible read-only trial function under prior approval.
 on:
   push:
     branches: [stage-a-ui-handoff-review]
