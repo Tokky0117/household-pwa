@@ -1,4 +1,5 @@
 /* Read-only local receipt confirmation. No network, storage or writes. */
+import {searchCatalogProducts} from './catalog-search.js';
 export function validateCatalog(value){
  if(!value||typeof value!=='object'||typeof value.household_id!=='string'||!value.household_id||
  !Array.isArray(value.products)||!Array.isArray(value.product_aliases)||!Array.isArray(value.stores))
@@ -29,6 +30,7 @@ const element=(tag,text)=>{const n=document.createElement(tag);if(text!==undefin
 const yen=n=>Number.isSafeInteger(n)?n.toLocaleString('ja-JP')+'円':'不明';
 export function createConfirmationPreview({section,file,chain,status,list,summary}){
  let receipt=null,catalog=null,chainId=null,generation=0;
+ const searchQueries=new Map();
  const selected=new Map(),quantities=new Set();
  const refreshChains=()=>{
   chain.replaceChildren();
@@ -39,6 +41,14 @@ export function createConfirmationPreview({section,file,chain,status,list,summar
  const candidates=()=>catalog&&receipt?
   window.KurashiProductMatching.suggest(receipt.items,{...catalog,chainId}):
   receipt?.items.map((_,index)=>({index,status:'unresolved',candidates:[]}))||[];
+ const populate=(select,found,selectedId)=>{
+  select.replaceChildren();
+  const empty=element('option',found.length?'検索結果から商品を選択':'該当商品なし（2文字以上で検索）');
+  empty.value='';select.append(empty);
+  for(const p of found){const option=element('option',p.name);option.value=p.productId;select.append(option);}
+  select.value=found.some(p=>p.productId===selectedId)?selectedId:'';
+  select.disabled=!found.length;
+ };
  const summaryText=rows=>{
   const uncertain=receipt?.items.filter(x=>!x.name||x.issues?.length).length||0;
   summary.textContent='明細 '+(receipt?.items.length||0)+'件・要確認 '+uncertain+
@@ -88,6 +98,18 @@ export function createConfirmationPreview({section,file,chain,status,list,summar
     hint.dataset.aliasVerdict=verdict.status;
     card.append(hint);
    }
+   if(catalog){
+    const details=element('details');details.className='review-manual';
+    details.open=searchQueries.has(i);
+    details.append(element('summary','別の商品を手動で探す（未保存）'));
+    const input=element('input');input.type='search';input.placeholder='商品名を2文字以上入力';
+    input.dataset.action='search';input.dataset.index=String(i);
+    input.value=searchQueries.get(i)||'';
+    const chooser=element('select');chooser.dataset.action='manual-product';chooser.dataset.index=String(i);
+    chooser.setAttribute('aria-label','検索結果から商品を選択');
+    populate(chooser,searchCatalogProducts(catalog,input.value),selected.get(i));
+    details.append(input,chooser);card.append(details);
+   }
    if(item.quantitySource==='inferred_candidate'||warnings.includes('quantity_ocr_ambiguous')){
     const label=element('label');label.className='review-check';
     const checkbox=element('input');checkbox.type='checkbox';checkbox.dataset.action='quantity';
@@ -100,7 +122,7 @@ export function createConfirmationPreview({section,file,chain,status,list,summar
  }
  file.addEventListener('change',async()=>{
   const token=++generation,chosen=file.files?.[0];catalog=null;chainId=null;
-  selected.clear();quantities.clear();refreshChains();
+  selected.clear();quantities.clear();searchQueries.clear();refreshChains();
   if(!chosen){status.textContent='商品マスタ未読み込み';render();return}
   if(chosen.size>1024*1024){status.textContent='JSONは1MB以内にしてください。';render();return}
   try{
@@ -112,12 +134,27 @@ export function createConfirmationPreview({section,file,chain,status,list,summar
    status.textContent='JSONの形式または家庭・店舗の対応が不正です。';}
  });
  chain.addEventListener('change',()=>{chainId=chain.value||null;selected.clear();render()});
+ list.addEventListener('input',event=>{
+  const target=event.target,index=Number(target?.dataset?.index);
+  if(target?.dataset?.action!=='search'||!receipt||!catalog||
+   !Number.isInteger(index)||index<0||index>=receipt.items.length)return;
+  searchQueries.set(index,target.value);
+  selected.delete(index);
+  const chooser=target.closest('details')?.querySelector('select[data-action="manual-product"]');
+  if(chooser)populate(chooser,searchCatalogProducts(catalog,target.value),null);
+  summaryText(candidates());
+ });
  list.addEventListener('change',event=>{
   const target=event.target,index=Number(target?.dataset?.index);
   if(!Number.isInteger(index)||index<0||index>=receipt.items.length)return;
   if(target.dataset.action==='product'){
    const ids=candidates()[index]?.candidates.map(x=>x.productId)||[];
    if(ids.includes(target.value))selected.set(index,target.value);else selected.delete(index);
+  }
+  if(target.dataset.action==='manual-product'){
+   const found=catalog?searchCatalogProducts(catalog,searchQueries.get(index)||''):[];
+   if(found.some(x=>x.productId===target.value))selected.set(index,target.value);
+   else selected.delete(index);
   }
   if(target.dataset.action==='quantity'){
    if(target.checked)quantities.add(index);else quantities.delete(index);
@@ -126,9 +163,9 @@ export function createConfirmationPreview({section,file,chain,status,list,summar
  });
  refreshChains();
  return {
-  setParsed(value){receipt=value;selected.clear();quantities.clear();render()},
+  setParsed(value){receipt=value;selected.clear();quantities.clear();searchQueries.clear();render()},
   reset(){generation++;receipt=null;catalog=null;chainId=null;selected.clear();quantities.clear();
-   file.value='';status.textContent='';summary.textContent='';refreshChains();render()},
+   file.value='';status.textContent='';summary.textContent='';searchQueries.clear();refreshChains();render()},
   getStatus(){return {catalogLoaded:!!catalog,selected:selected.size,quantityConfirmed:quantities.size}}
  };
 }
