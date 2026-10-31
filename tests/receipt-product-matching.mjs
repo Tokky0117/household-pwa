@@ -54,7 +54,7 @@ const closeChoices=suggest([{name:'牛肉すし肉'}],{
  householdId:h,chainId,
  products:[
   {product_id:'near-a',household_id:h,name:'牛肉すじ肉'},
-  {product_id:'near-b',household_id:h,name:'牛肉すじ煮'},
+  {product_id:'near-b',household_id:h,name:'牛肉すし煮'},
   {product_id:'far',household_id:h,name:'洗濯洗剤'}
  ],aliases:[]
 })[0];
