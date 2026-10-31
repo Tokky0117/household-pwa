@@ -50,3 +50,21 @@
 - `.github/workflows/gas-push-test.yml` の反映手順は、試験用GASのScript IDのハッシュ一致、実行ブランチ、2重確認入力（`BACKUP_DONE`、`TEST_GAS_UPDATE`）、現行ファイルが `コード.js` と `appsscript.json` の2件のみ、既知旧関数の一覧、OAuthスコープを検査し、試験用GASソースだけを更新する形に改めた。実GASの再デプロイ・スプレッドシートへの書き込みは行わない。
 - 反映ワークフローは **手動実行専用かつ未実行**。GitHubの仕様上、`workflow_dispatch` のUI起動にはワークフローファイルが既定ブランチにも必要だが、現在の `main` にはない。`main` を無断で更新しないため、現段階でユーザーを「Run workflow」ボタンへ誘導しない。実行時は別途、試験ブランチだけの明示承認付き一時トリガー、またはWindowsの `clasp.cmd push` を検討する。
 - これまで実行したのは**試験用GASの読み取り専用検査とGitHub開発ブランチの変更だけ**。GASソースの反映・デプロイ・実Google Sheetsへの書き込みは行っていない。書き込み前に試験用GASのソース置換をユーザーに確認する。
+
+## 2026-10-31：ユーザー承認に基づく試験用GASへのソース反映完了
+
+- ユーザーが `試験用GASの更新を許可` と明示し、既存PCバックアップの3ファイル確認済み。**本番環境はまだ作成していない**との申告がある。
+- 読み取り専用で採取した現行試験GASのソースとマニフェストのSHA-256を反映用ワークフローに固定し、変更検出・日本語ファイル名 `コード.js` の検査・既存専用関数の確認・既存マニフェスト維持・Script ID照合を通過した場合に限り、GitHubの開発ブランチから **試験用GASのソースコードだけ**を更新した。
+- 実行結果：`https://github.com/Tokky0117/household-pwa/actions/runs/41166176277`。`clasp push --force` 成功後、`clasp pull` で必要関数の存在を確認し、実行ジョブ成功。
+- 直後に、許可された一回限りのGitHub Actions自動更新経路を無効に戻した。以降の単なる開発ブランチへのプッシュではGASを書き換えない。
+- 再度の読み取り専用監査 `https://github.com/Tokky0117/household-pwa/actions/runs/41166238013` が成功。**試験用GASソースとGitHub開発版のバイト列が一致**し、マニフェストのハッシュは更新前から変わっていない。
+- **GASのデプロイ、`SPREADSHEET_ID` などのScript Properties、Google Sheetsのデータは未変更**。`product.catalog` / `product.alias.check` / `product.alias.create` の実Google認証・実通信・実Sheetへの書き込みは未試験。
+
+### 次の実機試験
+
+1. `https://script.google.com/home/projects/15pyx5qYzEMEqgGQmbSyRdx5U2DywTxnRYgWpQb9lazE__tGwQ58DJGIU/edit` で試験用GASの関数選択を開く。
+2. `testIsolatedAliasWriteTrialPreflightReadOnly_` を実行。最初の試験は**読み取りのみ**。試験専用Sheet設定・全12シート・カテゴリ5件・家庭/ユーザーと既存在庫試験の操作履歴が一致すれば `ALIAS_TRIAL_PREFLIGHT_OK` が記録される。
+3. `SPREADSHEET_ID` と `WRITE_TRIAL_SPREADSHEET_ID` が**同じ試験用シート**であること、`ENABLE_EXPERIMENTAL_WRITES` が未設定または `true` 以外であることが前提。**本番環境は現時点で存在せず、新設はしない**。
+4. 読み取り専用の合格を確認した後に限り、ユーザーの意図を確認してから `runIsolatedAliasWriteTrialOnce_` に進む。実行すると架空の1商品・1チェーン・1コードがSheetsに書き込まれる。
+
+注意：開発ブランチの `gas-push-test.yml` は現在 `workflow_dispatch` のみに戻されているため、ユーザーによるGASソース更新は明示的な別工程として扱う。
