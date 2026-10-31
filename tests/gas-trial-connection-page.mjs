@@ -144,6 +144,7 @@ assert.match(node('result').textContent,/認証付き読み取り成功/);
 assert.match(node('counts').textContent,/日用品 1 件/);
 // A stale authenticated POST response is also ignored after URL changes.
 let respondPost;
+const normalRequest=apiMock.request;
 apiMock.request=async action=>{postCalls.push(action);return new Promise(resolve=>{respondPost=resolve})};
 const pendingPost=node('check').listeners.click();
 node('trial-url').value='https://script.google.com/macros/s/CHANGED_TRIAL/exec';
@@ -151,6 +152,7 @@ node('trial-url').listeners.input();
 respondPost({household_id:'previous',categories:['飲食','キッチン','洗面・風呂','洗濯・掃除','その他'].map(name=>({name})),
  item_groups:[{}],products:[],stores:[]});
 await pendingPost;
+apiMock.request=normalRequest;
 assert.equal(node('result').textContent,'試験用URLを確認してください。');
 assert.equal(node('counts').textContent,'');
 // Re-verify bootstrap after URL changes before catalog actions are allowed.
