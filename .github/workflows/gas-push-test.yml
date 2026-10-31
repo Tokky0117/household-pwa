@@ -1,5 +1,5 @@
 name: Push GAS to test project (manual)
-# Explicitly approved isolated source-only update for existing prototype preflight.
+# Repeat source-only approved update after verifying original target code exactly matches previous GitHub snapshot.
 on:
   push:
     branches: [stage-a-ui-handoff-review]
