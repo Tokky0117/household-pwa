@@ -191,7 +191,10 @@
   for(const tax of receipt.taxBreakdown||[]){
    if(![8,10].includes(tax.rate)||!Number.isSafeInteger(tax.amount)||tax.amount<0)
     throw Error('UNSAFE_MERCHANDISE');
-   excerpt.push('税'+tax.rate+'% ¥'+tax.amount);
+   // "税10%" means EXCLUSIVE tax to the parser. Preserve an inclusive
+   // receipt's tax basis explicitly when copying to another screen.
+   if(receipt.taxBasis==='included')excerpt.push('(内'+tax.rate+'% ¥'+tax.amount+')');
+   else if(receipt.taxBasis==='excluded')excerpt.push('税'+tax.rate+'% ¥'+tax.amount);
   }
   if(Number.isSafeInteger(receipt.receiptTotal)&&receipt.receiptTotal>=0)
    excerpt.push('お買上 ¥'+receipt.receiptTotal);
