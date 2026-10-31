@@ -1,0 +1,119 @@
+/* Opt-in receipt text -> authenticated product catalog confirmation.
+ * No photo, receipt text, OCR result or selection is ever sent to GAS.
+ * Import is inert. User must explicitly parse text and request the catalog.
+ * The existing receipt OCR laboratory remains completely local-only.
+ */
+import {createConfirmationPreview} from './ocr-lab/confirmation-preview.js';
+import {createAuthenticatedPreviewBridge} from './ocr-lab/preview-auth-bridge.js';
+
+export function mountReceiptCatalogIntegration({
+ doc=globalThis.document,win=globalThis.window,auth=win?.KurashiAuth,
+ api=win?.KurashiGasApi,gate=win?.KurashiTrialCatalogGate
+}={}){
+ if(!doc||!win||!auth||!api||!gate||
+    typeof gate.ready!=='function'||typeof gate.subscribe!=='function'||
+    typeof win.KurashiReceiptStructure?.parse!=='function'||
+    typeof win.KurashiProductMatching?.suggest!=='function'||
+    typeof win.KurashiAliasPreflight?.inspect!=='function')
+  throw Error('RECEIPT_REVIEW_UNAVAILABLE');
+ const $=id=>doc.getElementById(id);
+ const text=$('ocr-review-text'),sample=$('ocr-sample'),parse=$('ocr-parse'),
+  load=$('ocr-load-catalog'),clear=$('ocr-clear'),message=$('ocr-parse-status');
+ if(!text||!sample||!parse||!load||!clear||!message)throw Error('RECEIPT_REVIEW_UNAVAILABLE');
+ const preview=createConfirmationPreview({
+  section:$('ocr-candidate-confirmation'),file:$('ocr-catalog-file'),
+  chain:$('ocr-review-chain'),status:$('ocr-catalog-status'),
+  list:$('ocr-candidate-list'),summary:$('ocr-candidate-summary')
+ });
+ let bridge=createAuthenticatedPreviewBridge({auth,api,confirmation:preview});
+ let parsed=false,busy=false,revision=0,wasReady=gate.ready(),disposed=false;
+ function update(){load.disabled=disposed||busy||!parsed||!gate.ready();}
+ function resetBridge(){
+  revision++;
+  bridge.dispose();
+  bridge=createAuthenticatedPreviewBridge({auth,api,confirmation:preview});
+ }
+ const unsubscribe=gate.subscribe(()=>{
+  const ready=gate.ready();
+  if(!ready&&wasReady){
+   resetBridge();
+   message.textContent=parsed?
+    'ログインまたは接続先の変更を検出しました。再び④の照合に成功した後で商品マスタを読み込んでください。':
+    '認証状態が変わりました。';
+  }
+  wasReady=ready;update();
+ });
+ function extract(){
+  if(disposed)return;
+  const raw=text.value;
+  if(typeof raw!=='string'||!raw.trim()){
+   parsed=false;preview.setParsed(null);
+   message.textContent='OCR文字列を入力してください。';update();return;
+  }
+  if(raw.length>12000){
+   parsed=false;preview.setParsed(null);
+   message.textContent='OCR文字列は12,000文字以内にしてください。';update();return;
+  }
+  try{
+   const result=win.KurashiReceiptStructure.parse(raw);
+   if(!result||!Array.isArray(result.items)||result.items.length>300)
+    throw Error('OCR_PARSE_INVALID');
+   preview.setParsed(result);
+   parsed=result.items.length>0;
+   message.textContent=parsed?
+    '明細 '+result.items.length+'件を端末内で抽出しました。内容と商品候補を必ず確認してください。':
+    '明細を抽出できませんでした。原文を確認してください。';
+  }catch{
+   parsed=false;preview.setParsed(null);
+   message.textContent='明細を抽出できませんでした。入力内容を確認してください。';
+  }
+  update();
+ }
+ sample.addEventListener('click',()=>{
+  if(disposed)return;
+  text.value='試験用・商品コード\n00012345 1 198 198 E\n合計 ¥198';
+  extract();
+ });
+ parse.addEventListener('click',extract);
+ text.addEventListener('input',()=>{
+  parsed=false;
+  preview.setParsed(null);
+  message.textContent='内容を変更しました。「明細候補を抽出」を押してください。';
+  update();
+ });
+ load.addEventListener('click',async()=>{
+  if(disposed||busy||!parsed||!gate.ready())return;
+  const token=++revision;
+  busy=true;message.textContent='Google Sheetsの商品マスタを認証付きで読み取り中…';update();
+  try{
+   const ok=await bridge.load();
+   if(token!==revision||disposed||!gate.ready()||!ok)return;
+   message.textContent='認証済み商品マスタと明細候補を照合しました。商品とチェーンを必ず確認してください。';
+  }catch{
+   if(token===revision&&!disposed)
+    message.textContent='商品マスタを読み取れませんでした。④の結果とログイン状態を確認してください。';
+  }finally{
+   if(token===revision){busy=false;update();}
+  }
+ });
+ clear.addEventListener('click',()=>{
+  if(disposed)return;
+  resetBridge();busy=false;parsed=false;text.value='';preview.reset();
+  message.textContent='明細・商品マスタをこの画面から破棄しました。';
+  update();
+ });
+ // Loading the module and mounting controls perform no catalog request.
+ update();
+ return {
+  getState:()=>({parsed,busy,ready:gate.ready(),catalog:preview.getStatus()}),
+  dispose(){
+   if(disposed)return;
+   disposed=true;revision++;unsubscribe();bridge.dispose();preview.reset();
+   parsed=false;busy=false;text.value='';update();
+  }
+ };
+}
+if(typeof window!=='undefined'&&typeof document!=='undefined'&&
+ window.KurashiTrialCatalogGate&&document.getElementById('ocr-review')){
+ mountReceiptCatalogIntegration();
+}
