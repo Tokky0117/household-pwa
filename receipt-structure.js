@@ -10,11 +10,14 @@
  // must still be consistent. Never silently treat an uncertain quantity as printed fact.
  const skuRow=/^(?:CPN\s+)?(\d{4,8})\s+(\d{1,2}[●@eEoO]?)\s+([\d,.]+)\s+([\d,.]+)(-)?\s*([ET])$/i;
  const ambiguousUnitRow=/^(\d{2,3})\s*[x×]\s*単\s*([\d,]+)\s*[¥]?\s*([\d,]+)$/i;
+ // Home centers may print barcode, name and price on separate lines.
+ const janHeader=/^#\d{1,4}\s+JAN\s*([0-9]{13})$/i;
+ const janTaxPrice=/^[¥￥]?([\d,]+)\s*(?:内|込)$/;
  const name=s=>norm(s).replace(/^[※*]\s*/,'').replace(/^委\)\s*/,'').replace(/\s*!$/,'').trim();
  function parse(source){
   const rawText=String(source||''), items=[], warnings=[], adjustments=[];
   const taxBreakdown=[];
-  const lines=rawText.split(/\r?\n/);let pending=null,last=null,coupon=false,summary=false;
+  const lines=rawText.split(/\r?\n/);let pending=null,last=null,janPending=null,coupon=false,summary=false;
   let receiptTotal=null,subtotal=null,taxTotal=null,printedCount=null;
   const warn=(code,line)=>warnings.push({code,line});
   const add=(rawName,q,unit,amount,indices)=>{
@@ -32,12 +35,39 @@
   for(let i=0;i<lines.length;i++){
    const l=norm(lines[i]).replace(/\\(?=\s*\d)/g,'¥');if(!l)continue;const ix=i+1;let m;
    const tax=l.match(/^(?:\(?(?:内|税)\s*(8|10)%(?: 対象 [¥]?[\d,]+)?\s*[¥]([\d,]+)\)?|内消費税 (8|10)\.00% ¥([\d,]+)|(?:8|10)%対象 [\d,]+ \(消費税 ([\d,]+)\))$/);
+   const targetTax=l.match(/^\(\s*(8|10)%\s*対象消費税\s*[¥]?([\d,]+)\s*\)$/);
    if(tax){const amount=num(tax[2]||tax[4]||tax[5]);taxBreakdown.push({rate:Number(tax[1]||tax[3]||l.match(/^(8|10)/)[1]),amount,sourceLine:ix});}
-   if(m=l.match(/^(?:\*+\s*)?(?:合\s*計|お買上)\s*[¥\\]?\s*([\d,]+)$/)){receiptTotal=num(m[1]);summary=true;pending=null;continue;}
-   if(m=l.match(/^小計\s*[¥]?\s*([\d,]+)$/)){subtotal=num(m[1]);summary=true;pending=null;continue;}
+   if(targetTax)taxBreakdown.push({rate:+targetTax[1],amount:num(targetTax[2]),sourceLine:ix});
+   if(m=l.match(/^(?:\*+\s*)?(?:合\s*計|お買上)\s*[¥\\]?\s*([\d,]+)$/)){receiptTotal=num(m[1]);summary=true;pending=null;janPending=null;continue;}
+   // "合 33 ¥1,985": OCR merges summary label and count.
+   // This pattern is admissible only after an actual subtotal.
+   if(summary&&(m=l.match(/^合\s*\d{1,2}\s*¥([\d,]+)$/))){receiptTotal=num(m[1]);continue;}
+   if(m=l.match(/^小計(?:金額)?\s*[¥]?\s*([\d,]+)$/)){subtotal=num(m[1]);summary=true;pending=null;janPending=null;continue;}
    if(m=l.match(/^(?:お買上点数|買上点数)\s*(\d+)点$/)){printedCount=+m[1];continue;}
    if(m=l.match(/^(?:税(?:8|10)%|外税額 (?:8|10)%)\s*¥([\d,]+)$/)){taxTotal=(taxTotal||0)+num(m[1]);continue;}
    if(summary)continue;
+   // Barcode -> name -> tax-inclusive price. Fail closed when incomplete.
+   if(m=l.match(janHeader)){
+    if(janPending)warn('jan_incomplete_item',janPending.line);
+    janPending={line:ix,code:m[1],nameLine:null,rawName:null};
+    pending=null;last=null;continue;
+   }
+   if(janPending){
+    if(!janPending.rawName){
+     if(/^\d|^(?:小計|合計|内税|決済|クレジット|楽天ペイ)/.test(l)){
+      warn('jan_missing_product_name',janPending.line);janPending=null;
+     }else{
+      janPending.rawName=lines[i];janPending.nameLine=ix;continue;
+     }
+    }else if(m=l.match(janTaxPrice)){
+     const item=add(janPending.rawName,1,null,num(m[1]),
+      [janPending.line,janPending.nameLine,ix]);
+     if(item){item.productCode=janPending.code;item.taxBasis='included';}
+     janPending=null;continue;
+    }else{
+     warn('jan_missing_price',janPending.line);janPending=null;
+    }
+   }
    if(/^CPN$/i.test(l)){coupon=true;pending=null;continue;}
    if(m=l.match(skuRow)){
     const unit=skuAmount(m[3]),total=skuAmount(m[4]);
@@ -102,6 +132,7 @@
     pending={raw:lines[i],line:ix};
    }else {pending=null;}
   }
+  if(janPending)warn('jan_incomplete_item',janPending.line);
   if(pending)warn('unpriced_name',pending.line);
   if(coupon)warn('incomplete_coupon',null);
   if(taxTotal===null&&taxBreakdown.length)taxTotal=taxBreakdown.reduce((s,x)=>s+x.amount,0);
