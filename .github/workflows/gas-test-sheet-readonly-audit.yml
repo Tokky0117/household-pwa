@@ -111,6 +111,15 @@ jobs:
            emit('SHEETS_CONTENT_ACCESS: FAILED (HTTP '+meta.status+')');
            emit('SHEETS_ACCESS_ERROR_CLASS: '+meta.reason);
            emit('SHEETS_TOKEN_INSUFFICIENT_SCOPE: '+(meta.insufficientScope?'YES':'NO_OR_UNKNOWN'));
+           const exportUrl='https://www.googleapis.com/drive/v3/files/'+encodeURIComponent(id)+
+             '/export?mimeType='+encodeURIComponent('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+           const exported=await fetch(exportUrl,{headers:{Authorization:'Bearer '+token.access_token}});
+           emit('DRIVE_READONLY_XLSX_EXPORT: '+(exported.ok?'AVAILABLE':'FAILED HTTP '+exported.status));
+           if(exported.ok){
+            const bytes=Buffer.from(await exported.arrayBuffer());
+            fs.writeFileSync(path.join(process.env.RUNNER_TEMP,'kurashi-sheet-inspect','audit.xlsx'),bytes,{mode:0o600});
+            emit('DRIVE_XLSX_PRIVATE_TEMP_FILE: CREATED (not uploaded, not logged)');
+           }
            emit('SHEET_ROWS_READ: NO');
            fs.appendFileSync(summary,out.join('\n')+'\n');
            process.exit(0);
