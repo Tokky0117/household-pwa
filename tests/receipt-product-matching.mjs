@@ -51,4 +51,21 @@ assert.equal(prefixed.items.length,1);assert.equal(prefixed.items[0].productCode
 assert.equal(prefixed.items[0].discount,0);
 assert.ok(prefixed.items[0].issues.includes('quantity_ocr_ambiguous'));
 assert.throws(()=>suggest([],{}),/required/);
+
+const reviewedOcr=JSON.parse(fs.readFileSync(new URL('./fixtures/receipt-paddle/inputs.json',import.meta.url),'utf8'));
+const original=reviewedOcr.samples.find(x=>x.id==='R05');
+const observed=reviewedOcr.records.find(x=>x.id==='R05'&&x.variant==='paddle-v6-small-2x-gray-geometry');
+const barcodes=[...original.truth.matchAll(/(?:^|\n)(\d{13})\s+\d+\s+¥/g)].map(x=>x[1]);
+assert.equal(barcodes.length,5,'Must extract all 5 printed codes from frozen teaching text');
+const frozenItems=parse(observed.text).items;
+assert.equal(frozenItems.length,5);
+const verifiedMaster={householdId:h,chainId:'test-clothing-chain',
+ products:original.expected.map((x,i)=>({product_id:'verified'+i,household_id:h,name:x.name})),
+ aliases:barcodes.map((normalized_alias,i)=>({product_id:'verified'+i,chain_id:'test-clothing-chain',normalized_alias}))};
+const verifiedSuggestions=suggest(frozenItems,verifiedMaster);
+assert.equal(verifiedSuggestions.filter(x=>x.status==='code_candidate').length,5,
+ '5/5 code candidate recovery must use saved OCR, not fabricated recognition');
+assert.ok(verifiedSuggestions.every((x,i)=>x.candidates[0].productId==='verified'+i));
+assert.ok(verifiedSuggestions.every(x=>x.requiresConfirmation===true));
+
 console.log('STEP2/STEP3 candidate matching PASS: 5/5 exact code proposals, household/chain isolation, conflict detection, incomplete OCR and uncertain quantities flagged; no product auto-registration');
