@@ -71,7 +71,17 @@ jobs:
            (/\/auth\/spreadsheets(\.readonly)?(\s|$)/.test(scope)?'YES':'NOT_RECORDED'));
           async function api(url){
            const response=await fetch(url,{headers:{Authorization:'Bearer '+token.access_token}});
-           if(!response.ok)return {status:response.status,ok:false};
+           if(!response.ok){
+            let body=null;
+            try{body=await response.json()}catch(_){}
+            const detail=body?.error?.details?.find(x=>String(x['@type']||'').endsWith('ErrorInfo'));
+            const raw=String(detail?.reason||body?.error?.errors?.[0]?.reason||body?.error?.status||'');
+            const allowed=['ACCESS_TOKEN_SCOPE_INSUFFICIENT','SERVICE_DISABLED',
+             'PERMISSION_DENIED','AUTHENTICATION_ERROR','CONSUMER_INVALID'];
+            const reason=allowed.includes(raw)?raw:'OTHER';
+            const insufficientScope=String(response.headers.get('www-authenticate')||'').includes('insufficient_scope');
+            return {status:response.status,ok:false,reason,insufficientScope};
+           }
            return {ok:true,status:response.status,data:await response.json()};
           }
           const driveRoot='https://www.googleapis.com/drive/v3/files';
@@ -99,6 +109,8 @@ jobs:
           const meta=await api(root+'?fields=sheets(properties(title,gridProperties(rowCount,columnCount)))');
           if(!meta.ok){
            emit('SHEETS_CONTENT_ACCESS: FAILED (HTTP '+meta.status+')');
+           emit('SHEETS_ACCESS_ERROR_CLASS: '+meta.reason);
+           emit('SHEETS_TOKEN_INSUFFICIENT_SCOPE: '+(meta.insufficientScope?'YES':'NO_OR_UNKNOWN'));
            emit('SHEET_ROWS_READ: NO');
            fs.appendFileSync(summary,out.join('\n')+'\n');
            process.exit(0);
