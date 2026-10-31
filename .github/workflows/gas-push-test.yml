@@ -1,5 +1,5 @@
 name: Push GAS to test project (manual)
-# One-time source-only update for confirmed existing prototype Sheet; manual flag restored afterward.
+# Explicitly approved isolated source-only update for existing prototype preflight.
 on:
   push:
     branches: [stage-a-ui-handoff-review]
