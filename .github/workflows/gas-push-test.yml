@@ -1,5 +1,5 @@
 name: Push GAS to test project (manual)
-# One-time source upgrade for trial-only read-only catalog match; no spreadsheet writes.
+# Guarded single update adds catalog test only; fixed test GAS identity remains pinned.
 on:
   push:
     branches: [stage-a-ui-handoff-review]
