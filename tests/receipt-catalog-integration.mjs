@@ -165,7 +165,8 @@ assert.equal(qtyReport.products[0].recognition.quantityConfirmed,false);
 assert.match($('ocr-candidate-list').children[0].children.map(n=>n.textContent).join(' '),
  /数量未確定（計算候補 1）/);
 const correctionBox=$('ocr-candidate-list').children[0].children
- .flatMap(n=>n.children||[]).find(n=>n.dataset?.action==='name-correction');
+ .flatMap(n=>n.children||[]).flatMap(n=>n.children||[])
+ .find(n=>n.dataset?.action==='name-correction');
 assert.ok(correctionBox,'Manual OCR name correction is available even without catalog');
 correctionBox.value='原本で確認した商品名';
 await $('ocr-candidate-list').fire('input',correctionBox);
