@@ -115,6 +115,16 @@ jobs:
              '/export?mimeType='+encodeURIComponent('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
            const exported=await fetch(exportUrl,{headers:{Authorization:'Bearer '+token.access_token}});
            emit('DRIVE_READONLY_XLSX_EXPORT: '+(exported.ok?'AVAILABLE':'FAILED HTTP '+exported.status));
+           if(!exported.ok){
+            const body=await exported.json().catch(()=>null);
+            const raw=String(body?.error?.errors?.[0]?.reason||body?.error?.status||'');
+            const allowed=['insufficientFilePermissions','insufficientPermissions','appNotAuthorizedToFile',
+             'ACCESS_TOKEN_SCOPE_INSUFFICIENT','PERMISSION_DENIED','SERVICE_DISABLED',
+             'accessNotConfigured','forbidden','notFound'];
+            emit('DRIVE_EXPORT_ERROR_CLASS: '+(allowed.includes(raw)?raw:'OTHER'));
+            emit('DRIVE_TOKEN_INSUFFICIENT_SCOPE: '+
+             (String(exported.headers.get('www-authenticate')||'').includes('insufficient_scope')?'YES':'NO_OR_UNKNOWN'));
+           }
            if(exported.ok){
             const bytes=Buffer.from(await exported.arrayBuffer());
             fs.writeFileSync(path.join(process.env.RUNNER_TEMP,'kurashi-sheet-inspect','audit.xlsx'),bytes,{mode:0o600});
