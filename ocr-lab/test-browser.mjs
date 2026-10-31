@@ -17,7 +17,7 @@ try{
  for(const firstRun of [true,false]){
   await page.locator('#scan').click();await page.waitForFunction(()=>!document.getElementById('result').hidden||document.getElementById('status').textContent.startsWith('読み取りできません'),{timeout:180000});
   assert.equal(await page.locator('#result').isVisible(),true,await page.locator('#status').textContent());
-  const diag=JSON.parse(await page.locator('#diagnostic').textContent());assert.equal(diag.firstRun,firstRun);assert.ok(diag.totalMs>0);assert.ok(diag.observationCount>0);assert.match(await page.locator('#text').inputValue(),/198/);
+  const diag=JSON.parse(await page.locator('#diagnostic').textContent());assert.equal(diag.firstRun,firstRun);assert.ok(diag.totalMs>0);assert.ok(diag.phases.readerCallMs>0);assert.ok(diag.phases.sdkModuleLoadMs>=0);assert.ok(diag.phases.modelRuntimeEstimateMs>=0);if(!firstRun)assert.equal(diag.phases.sdkModuleLoadMs,0);assert.ok(diag.observationCount>0);assert.match(await page.locator('#text').inputValue(),/198/);
  }
  await page.waitForFunction(()=>document.getElementById('crop-canvas').width>1);
  const canvas=page.locator('#crop-canvas'),r=await canvas.boundingBox();
@@ -51,7 +51,16 @@ try{
  const cropped=JSON.parse(await page.locator('#diagnostic').textContent());assert.equal(cropped.preparation.mode,'contrast');assert.ok(cropped.preparation.crop.width>0);assert.equal(cropped.normalization.mode,'japanese-glyphs-v1');assert.equal(cropped.normalization.originalPreserved,true);assert.equal(cropped.moneyGrouping.mode,'yen-grouping-v1');assert.equal(cropped.moneyGrouping.changedCount,0);
  await page.locator('#copy').click();assert.match(await page.evaluate(()=>navigator.clipboard.readText()),/位置情報/);
  await page.locator('#copy-text').click();
- assert.equal(await page.evaluate(()=>navigator.clipboard.readText()),await page.locator('#text').inputValue(),'Only OCR text, never diagnostics, is copied for the separate matching screen');
+ const excerpt=await page.evaluate(()=>window.KurashiReceiptStructure.merchandiseExcerpt(
+  window.KurashiReceiptStructure.parse(document.getElementById('text').value)));
+ assert.equal(await page.evaluate(()=>navigator.clipboard.readText()),excerpt,
+  'Copy only the purchase rows, never payment or diagnostics, to matching screen');
+ await page.locator('#copy-summary').click();
+ const safeSummary=await page.evaluate(()=>navigator.clipboard.readText());
+ assert.match(safeSummary,/OCR検証サマリー/);
+ assert.match(safeSummary,/modelRuntimeEstimate/);
+ assert.match(safeSummary,/firstRun/);
+ assert.doesNotMatch(safeSummary,/MILK|TOTAL|synthetic-receipt|User-Agent|位置情報|observations|device/);
  assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));await page.locator('#reset').click();assert.equal(await page.locator('#photo').inputValue(),'');assert.equal(await page.locator('#text').inputValue(),'');assert.equal(await page.locator('#result').isHidden(),true);
  assert.equal(errors.length,0,errors.join('\n'));assert.ok(requests.every(r=>!r.external&&r.method==='GET'));
  console.log('Browser OCR PASS: real WASM inference, cold/warm runs, mobile width, clipboard, discard; same-origin GET only');
