@@ -34,6 +34,17 @@ await assert.rejects(api.request('bootstrap',{}, {fetcher}),/LOGIN_REQUIRED/);
 window.KurashiAuth.getToken=()=> 'test-id-token';
 assert.equal(data.categories[0].name,'飲食');
 assert.equal(calls,1);
+const catalog=await api.request('product.catalog',{}, {fetcher:async (_url,opts)=>{
+ calls++;
+ const request=JSON.parse(opts.body);
+ assert.equal(request.action,'product.catalog');
+ assert.equal(request.operation_id,undefined);
+ assert.equal(opts.credentials,'omit');
+ assert.equal(opts.headers['Content-Type'],'text/plain;charset=utf-8');
+ return {ok:true,text:async()=>JSON.stringify({ok:true,data:{household_id:'h-a',products:[],product_aliases:[],stores:[]}})};
+}});
+assert.equal(catalog.household_id,'h-a');
+assert.equal(calls,2);
 await assert.rejects(api.request('bootstrap',{}, {token:'test-id-token',fetcher:async()=>({ok:true,text:async()=>'{invalid json'} )}),/GAS_RESPONSE_INVALID/);
 await assert.rejects(api.request('bootstrap',{}, {fetcher:async()=>({ok:true,text:async()=>JSON.stringify({ok:false,error:{code:'FORBIDDEN'}})})}),/FORBIDDEN/);
 // Browser errors, failed HTTP responses, and malformed/oversized responses

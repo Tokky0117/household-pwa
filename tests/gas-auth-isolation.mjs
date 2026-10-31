@@ -19,6 +19,14 @@ const books={
  change_log:[['change_id','sequence_no','household_id','entity_type','entity_id','action','occurred_at'],
  ['c-a',1,'h-a','item_groups','i-a','item.update',''],['c-b',4,'h-b','item_groups','i-b','item.update','']]
 };
+books.product_aliases=[
+ ['alias_id','product_id','chain_id','normalized_alias','version','updated_at'],
+ ['alias-a1','p-a','s-a','0000000123456',1,''],
+ ['alias-a2','p-a','','alias product a',1,''],
+ ['alias-b','p-b','s-b','0000000543210',1,''],
+ ['alias-other-chain','p-a','s-b','wrong chain',1,''],
+ ['alias-orphan','missing','s-a','should not appear',1,'']
+];
 let claims={aud:'client-test',iss:'https://accounts.google.com',sub:'subject-a',exp:Math.floor(Date.now()/1000)+3600};
 let responseCode=200;let urlCalls=0;let writeCalls=0;let spreadsheetOpens=0;
 const readsByTable=Object.create(null);
@@ -62,6 +70,18 @@ assert.deepEqual(Array.from(out.data.products,x=>x.product_id),['p-a']);
 assert.deepEqual(Array.from(out.data.stores,x=>x.chain_id),['s-a']);
 assert.equal(out.data.categories.length,5);
 assert.equal(out.data.sequence_no,1);
+assert.equal(readsByTable.product_aliases||0,0,'Ordinary bootstrap must not scan aliases');
+const catalogReadStart=spreadsheetOpens;
+let catalog=request('product.catalog',{householdId:'h-b'});
+assert.equal(spreadsheetOpens-catalogReadStart,1);
+assert.equal(catalog.household_id,undefined);
+assert.equal(catalog.data.household_id,'h-a','Client-supplied household never changes scope');
+assert.deepEqual(Array.from(catalog.data.products,p=>p.product_id),['p-a']);
+assert.deepEqual(Array.from(catalog.data.product_aliases,a=>a.alias_id),['alias-a1','alias-a2']);
+assert.deepEqual(Array.from(catalog.data.stores,x=>x.chain_id),['s-a']);
+assert.equal(catalog.data.products[0].name,'A product');
+assert.equal(catalog.data.product_aliases.some(a=>a.normalized_alias==='wrong chain'),false);
+assert.ok((readsByTable.product_aliases||0)>=1,'Aliases fetched only on explicit catalog request');
 const beforeSyncReads=readsByTable.change_log||0;
 const beforeFirstSyncOpen=spreadsheetOpens;
 out=request('sync',{after_sequence:0});assert.equal(out.ok,true);
@@ -76,6 +96,10 @@ assert.equal(out.data.sequence_no,1,'Future cursor still reports current max seq
 assert.equal(readsByTable.change_log-beforeEmptySync,1,'Empty sync also reads log once');
 assert.equal(request('sync',{after_sequence:-1}).error.code,'BAD_REQUEST');
 claims.sub='subject-b';out=request('bootstrap');assert.equal(out.data.household_id,'h-b');
+catalog=request('product.catalog',{householdId:'h-a'});
+assert.equal(catalog.data.household_id,'h-b');
+assert.deepEqual(Array.from(catalog.data.product_aliases,a=>a.alias_id),['alias-b']);
+assert.deepEqual(Array.from(catalog.data.products,p=>p.product_id),['p-b']);
 assert.deepEqual(Array.from(out.data.item_groups,x=>x.item_group_id),['i-b']);
 assert.deepEqual(Array.from(out.data.products,x=>x.product_id),['p-b']);
 assert.deepEqual(Array.from(out.data.stores,x=>x.chain_id),['s-b']);
@@ -140,6 +164,10 @@ assert.equal(shape.some(x=>x.type==='full'),false,'Large bootstrap should not re
 assert.ok(shape.some(x=>x.type==='range'&&x.width===3&&x.height>1));
 // Colliding Google subject/household identifiers must fail closed. Only the
 // originally selected household's rows would otherwise be returned.
+books.products.push(['p-a','h-b','i-b','ID-collision','','','',1,1,'','','']);
+assert.equal(request('product.catalog').error.code,'CATALOG_CONFLICT',
+ 'Cross-household product ID collision must fail closed');
+books.products.pop();
 books.users.push(['u-duplicate','h-b','Other','subject-a']);
 assert.equal(request('bootstrap').error.code,'FORBIDDEN');
 books.users.pop();
@@ -147,9 +175,11 @@ books.households.push(['h-a','Cloned household',1,'']);
 assert.equal(request('bootstrap').error.code,'FORBIDDEN');
 books.households.pop();
 claims.sub='outsider';assert.equal(request('bootstrap').error.code,'FORBIDDEN');
+assert.equal(request('product.catalog').error.code,'FORBIDDEN');
 claims.sub='subject-a';claims.aud='untrusted-client';
 const beforeBadTokenOpen=spreadsheetOpens;
 assert.equal(request('bootstrap').error.code,'UNAUTHORIZED');
+assert.equal(request('product.catalog').error.code,'UNAUTHORIZED');
 assert.equal(spreadsheetOpens,beforeBadTokenOpen,'Never access Sheets when Google token claims fail');
 claims.aud='client-test';claims.exp=Math.floor(Date.now()/1000)-60;assert.equal(request('bootstrap').error.code,'UNAUTHORIZED');
 claims.exp=Math.floor(Date.now()/1000)+3600;responseCode=403;assert.equal(request('bootstrap').error.code,'UNAUTHORIZED');
