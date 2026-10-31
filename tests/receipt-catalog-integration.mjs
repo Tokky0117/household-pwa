@@ -206,6 +206,12 @@ setGate(false);
 assert.equal(review.getState().catalog.catalogLoaded,false);
 assert.equal($('ocr-review-text').value.includes('00012345'),true);
 assert.equal($('ocr-load-catalog').disabled,true);
+await $('ocr-copy-products').fire('click');
+const afterLogout=JSON.parse(copiedProductReport);
+assert.equal(afterLogout.products[0].recognition.catalogSource,'none');
+assert.deepEqual(afterLogout.products[0].recognition.candidateNames,[]);
+assert.equal(afterLogout.products[0].recognition.selectedProductName,null,
+ 'Private authenticated product selections must not persist into copied reports after logout');
 assert.equal(authListeners.size,1,'Renewed bridge must subscribe exactly once');
 
 // New session: stale response from prior endpoint must not revive private data.
