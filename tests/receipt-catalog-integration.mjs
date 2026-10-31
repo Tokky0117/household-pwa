@@ -157,10 +157,24 @@ assert.match($('ocr-candidate-list').children[0].children.map(n=>n.textContent).
 await $('ocr-copy-products').fire('click');
 const qtyReport=JSON.parse(copiedProductReport);
 assert.equal(qtyReport.products[0].ocrQuantityToken,'10');
-assert.equal(qtyReport.products[0].quantity,1);
+assert.equal(qtyReport.products[0].quantity,null,'OCR 10 must not be exported as verified one');
+assert.equal(qtyReport.products[0].quantityCandidate,1);
+assert.equal(qtyReport.products[0].quantityStatus,'unverified_candidate');
 assert.equal(qtyReport.products[0].quantitySource,'inferred_candidate');
 assert.equal(qtyReport.products[0].recognition.quantityConfirmed,false);
-assert.equal(actions.length,1,'Quantity visibility is local-only');
+assert.match($('ocr-candidate-list').children[0].children.map(n=>n.textContent).join(' '),
+ /数量未確定（計算候補 1）/);
+const correctionBox=$('ocr-candidate-list').children[0].children
+ .flatMap(n=>n.children||[]).find(n=>n.dataset?.action==='name-correction');
+assert.ok(correctionBox,'Manual OCR name correction is available even without catalog');
+correctionBox.value='原本で確認した商品名';
+await $('ocr-candidate-list').fire('input',correctionBox);
+await $('ocr-copy-products').fire('click');
+const correctedReport=JSON.parse(copiedProductReport);
+assert.equal(correctedReport.products[0].ocrName,'架空テスト商品');
+assert.equal(correctedReport.products[0].recognition.manuallyCorrectedName,'原本で確認した商品名');
+assert.equal(correctedReport.products[0].recognition.nameConfirmed,true);
+assert.equal(actions.length,1,'Quantity and name corrections remain local-only');
 // Return to the already-verified synthetic one-product fixture.
 await $('ocr-sample').fire('click');
 // Real-device follow-up: select the one known test chain and the candidate
