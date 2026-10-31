@@ -80,7 +80,13 @@ function harness(){
   Utilities:{
    getUuid(){return 'alias-uuid-'+(++number)},
    DigestAlgorithm:{SHA_256:'sha256'},
-   computeDigest(_alg,s){return Array.from(createHash('sha256').update(s).digest())},
+   computeDigest(_alg,s){
+    // Simulate the expected SHA256 for the one approved prototype Sheet,
+    // without committing its real spreadsheet identifier to this test.
+    if(s==='synthetic_existing_prototype')
+     return [...Buffer.from('e2383bb4d5a2df8271ac582e129e3d49450861fedf767f4986944c53bc83d43a','hex')];
+    return Array.from(createHash('sha256').update(s).digest());
+   },
    base64EncodeWebSafe(bytes){return Buffer.from(bytes).toString('base64url')}
   },
   UrlFetchApp:{fetch(url,options){
@@ -250,6 +256,96 @@ function seedPriorItemTrial(h,version=2){
  const h=harness();h.tables.products.splice(1);h.tables.stores.splice(1);
  h.tables.receipt_rules.push(['unexpected','s1','pattern',1,true,1,'']);
  assert.throws(()=>h.mock.runIsolatedAliasWriteTrialOnce_(),e=>e?.code==='TRIAL_NOT_EMPTY');
+ assert.equal(h.writes,0);
+}
+
+// The actual prototype may have a non-trial display name. ONLY the exact
+// pinned test-Sheet fingerprint is accepted for this *editor-only* alias test.
+// Normal browser POST and all stock mutations retain their strict identity gate.
+function prepareExistingPrototype(h){
+ h.tables.products.splice(1);h.tables.stores.splice(1);
+ h.tables.households[1][1]='Existing prototype household';
+ h.setActive('synthetic_existing_prototype');
+ h.setTrial('synthetic_existing_prototype');
+}
+{
+ const h=harness();prepareExistingPrototype(h);
+ const baseline=h.writes;
+ assert.equal(h.mock.testAliasTrialPreflightReadOnly(),true,
+  'Read-only preflight accepts original prototype label on exact pinned Sheet');
+ assert.equal(h.writes,baseline);
+ assert.equal(h.mock.runIsolatedAliasWriteTrialOnce_(),true);
+ assert.equal(h.records('stores').length,1);
+ assert.equal(h.records('products').length,1);
+ assert.equal(h.records('product_aliases').length,1);
+ assert.equal(h.records('product_aliases')[0].normalized_alias,'00012345');
+ assert.equal(h.records('change_log').length,1);
+ assert.equal(h.records('processed_operations').length,1);
+ const written=h.writes;
+ assert.equal(h.mock.runIsolatedAliasWriteTrialOnce_(),true,
+  'Re-running approved prototype test cannot duplicate rows');
+ assert.equal(h.writes,written);
+ assert.equal(h.tables.households[1][1],'Existing prototype household',
+  'The existing household label is preserved');
+ assert.equal(h.locked,false);
+}
+{
+ const h=harness();prepareExistingPrototype(h);
+ h.setActive('synthetic_other_spreadsheet');
+ h.setTrial('synthetic_other_spreadsheet');
+ assert.throws(()=>h.mock.testAliasTrialPreflightReadOnly(),
+  /ALIAS_TRIAL_PREFLIGHT_FAILED: TRIAL_NOT_ISOLATED/);
+ assert.equal(h.writes,0);
+}
+{
+ const h=harness();prepareExistingPrototype(h);
+ h.tables.users[1][3]='';
+ assert.throws(()=>h.mock.testAliasTrialPreflightReadOnly(),
+  /ALIAS_TRIAL_PREFLIGHT_FAILED: TRIAL_NOT_ISOLATED/);
+ assert.equal(h.writes,0);
+}
+{
+ const h=harness();prepareExistingPrototype(h);
+ h.tables.users[1][1]='different-household';
+ assert.throws(()=>h.mock.runIsolatedAliasWriteTrialOnce_(),
+  e=>e?.code==='TRIAL_NOT_ISOLATED');
+ assert.equal(h.writes,0);
+}
+{
+ const h=harness();prepareExistingPrototype(h);
+ h.tables.records.push(['old-receipt','h-trial','receipt','','','','', '', '',1,'']);
+ assert.throws(()=>h.mock.runIsolatedAliasWriteTrialOnce_(),
+  e=>e?.code==='TRIAL_NOT_EMPTY');
+ assert.equal(h.writes,0,'Existing receipt rows must never be overwritten');
+}
+{
+ const h=harness();prepareExistingPrototype(h);
+ h.setTrial('another-sheet');
+ assert.throws(()=>h.mock.testAliasTrialPreflightReadOnly(),
+  /ALIAS_TRIAL_PREFLIGHT_FAILED: TRIAL_NOT_ISOLATED/);
+ assert.equal(h.writes,0);
+}
+{
+ const h=harness();prepareExistingPrototype(h);
+ h.setEnabled(true);
+ const before=h.writes;
+ assert.throws(()=>h.mock.runIsolatedAliasWriteTrialOnce_(),
+  e=>e?.code==='TRIAL_NOT_ISOLATED');
+ assert.equal(h.writes,before);
+ // A normal authenticated POST remains blocked by the old fixed-label gate,
+ // even if someone tries to turn on the public experimental write flag.
+ const reply=h.post('product.alias.create',h.payload(),'api-000011');
+ assert.equal(reply.ok,false);
+ assert.equal(reply.error.code,'TRIAL_NOT_ISOLATED');
+ assert.equal(h.writes,before);
+}
+{
+ const h=harness();prepareExistingPrototype(h);
+ // The new prototype exception is alias-editor-only; do not expand the
+ // separate stock-update writer's permissions.
+ assert.throws(()=>h.mock.mutateItemSafely_(
+  h.user,'item.create',{name:'test',category_id:0},'item00001',true),
+  e=>e?.code==='TRIAL_NOT_ISOLATED');
  assert.equal(h.writes,0);
 }
 
