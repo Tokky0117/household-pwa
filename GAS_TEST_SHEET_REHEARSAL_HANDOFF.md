@@ -190,3 +190,11 @@
 - 家庭IDや商品ID、トークン、商品マスタ行は診断画面へ出さない。ブートストラップ失敗、接続先変更、ログアウト／アカウント変更、通信遅延時には照合ボタンを無効化し、旧応答を破棄。意図しない `product.alias.create` 等の送信を一切行わない。
 - `tests/gas-trial-connection-page.mjs` を拡充。既知/未知の架空コード、誤家庭の商品マスタ、照合応答矛盾、公開API未更新、古い通信応答・ログアウト、トークンを使わないGET、書き込みゼロの合成テストが成功。GitHub Actions: https://github.com/Tokky0117/household-pwa/actions/runs/41174828501
 - **実機判定待ち**：ユーザーが既存の試験 `/exec` URLを開発ブランチの診断画面へ入力し、Googleログインして、③の認証付き読み取り→④の商品照合を順に実行する。所有者限定デプロイを勝手に一般公開しない。古いデプロイによる `UNSUPPORTED` とCORSエラーを区別し、成功するまで商品マスタの本体接続を進めない。スクリプトIDはデプロイURLではなく、`/exec` URLは別途確認する。
+
+## 2026-10-31：既存デプロイURLの誤判定を修正
+
+- ユーザーがiPhoneから診断ページに貼り付けたURLは、当該**試験用GASプロジェクトの「デプロイを管理」**で確認したWebアプリURLであると明言。試験用スクリプトIDと部署用デプロイIDは別物のため、GitHubの過去の `MAIN_GAS` 固定文字列だけで「家庭用GAS」と断定した前バリデーションは誤判定だった。**本番環境は未作成**。
+- `gas-trial-connection.html` から `candidate.href===MAIN_GAS` の一律拒否を削除。代わりに「そのURLが既存の試験用GASのデプロイを管理で確認したものである」という明示チェックを必須にし、URLを変更したらチェックを解除し、前の試験結果は無効化する。HTTPS `script.google.com/macros/s/<deployment>/exec` の厳密な形式検証は共通 `gas-api.js` で維持。
+- 既存のURLでの確認にPC操作、新規GAS、別デプロイ、公開範囲の緩和は不要。読み取り専用GETと認証済み `bootstrap` → `product.catalog` → `product.alias.check` のみ、通常の書き込みゲートは無効。
+- テストは旧 `MAIN_GAS` と一致するURLでもチェックした場合だけ読み取り可能になること、URL変更でチェックが外れること、未確認ではGET/POSTボタンが無効となることを確認。GitHub Actionsのオフライン回帰試験 https://github.com/Tokky0117/household-pwa/actions/runs/41178003387 は成功。
+- **実機では次に**診断ページを再読込し、①既存の試験用デプロイURLを入力、チェック欄を選択、②ログイン、③GETと認証付き読み取り、③が成功した場合だけ④照合。通信結果は未確定であり、CORS/アクセス制限や公開済み旧GASの可能性も残る。
