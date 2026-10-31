@@ -1,0 +1,26 @@
+name: OCR detector config audit (public model only)
+on:
+  push:
+    branches: [stage-a-ui-handoff-review]
+    paths: ['.github/workflows/ocr-detector-config-audit.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Read verified public PaddleOCR model defaults
+        shell: bash
+        run: |
+          set -euo pipefail
+          file="$RUNNER_TEMP/paddle-v6-det.tar"
+          curl -fsSL --retry 3 --connect-timeout 15 --max-time 120 \
+            "https://paddle-model-ecology.bj.bcebos.com/paddlex/official_inference_model/paddle3.0.0/PP-OCRv6_small_det_onnx_infer.tar" -o "$file"
+          printf 'd218f6fbf0f1c23d2161bd6ac7f5eaa6104fa89955c09290497e31008e2618e4  %s\n' "$file" | sha256sum -c -
+          yaml=$(tar -tf "$file" | grep -E '(^|/)inference\.yml$' | head -1)
+          if [ -z "$yaml" ]; then echo 'INFERENCE_YML_MISSING';exit 1;fi
+          echo "MODEL_YML_PATH $yaml"
+          tar -xOf "$file" "$yaml" | grep -E -C 5 'DetResizeForTest|resize_long|limit_type|max_side_limit|box_thresh|unclip_ratio|thresh|max_candidates' | head -100
+          echo "PUBLIC_MODEL_CONFIG_AUDIT_COMPLETE"
