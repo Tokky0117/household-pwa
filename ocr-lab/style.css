@@ -31,7 +31,7 @@
 #chatgpt-paste .secondary-action{background:#e5ece7;color:#253e31;margin-left:8px}
 #chatgpt-draft{border-top:1px solid #dce4df;margin-top:20px;padding-top:12px}
 .chatgpt-draft-item{background:#f6f8f5;border:1px solid #dce4df;border-radius:12px;padding:14px;margin:12px 0}
-.chatgpt-draft-item h3{margin:0 0 12px;font-size:1rem}
+.chatgpt-draft-item summary{cursor:pointer;font-weight:600;padding:0 0 4px}.chatgpt-draft-item[open] summary{margin-bottom:12px;border-bottom:1px solid #dce4df}
 .chatgpt-draft-item label{font-size:.9rem}
 .chatgpt-draft-item input{margin:0 0 12px;padding:10px;border:1px solid #bbc9c0;border-radius:8px}
 .chatgpt-draft-item input:focus-visible{outline:2px solid #2b6751;outline-offset:2px}
