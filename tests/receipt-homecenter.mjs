@@ -8,9 +8,9 @@ const {parse,merchandiseExcerpt,warningScopes}=globalThis.KurashiReceiptStructur
 // intentionally not committed. JANs and names below are test-only fixtures.
 const synthetic=[
  '領 収 証','架空ホームセンター','試験店舗',
- '#015 JAN4900000000001','洗たく槽KB2P550g×','437内',
- '#015 JAN4900000000002','リーゼ うるおいパーマもと','800内',
- '#015 JAN4900000000003','よもぎ温座パット3個','748内',
+ '#015 JAN4900000000009','洗たく槽KB2P550g×','437内',
+ '#015 JAN4900000000016','リーゼ うるおいパーマもと','800内',
+ '#015 JAN4900000000023','よもぎ温座パット3個','748内',
  '小計金額 ¥1,985','内税小計 3 ¥1,985',
  '合 33 ¥1,985','(10%対象 ¥1,985)','(10%対象消費税 ¥180)',
  '決済','楽天ペイ ¥1,985','楽天ペイ ¥1,985',
@@ -22,7 +22,7 @@ assert.deepEqual(r.items.map(x=>x.name),[
  '洗たく槽KB2P550g×','リーゼ うるおいパーマもと','よもぎ温座パット3個'
 ]);
 assert.deepEqual(r.items.map(x=>x.productCode),[
- '4900000000001','4900000000002','4900000000003'
+ '4900000000009','4900000000016','4900000000023'
 ]);
 assert.deepEqual(r.items.map(x=>x.quantity),[1,1,1]);
 assert.deepEqual(r.items.map(x=>x.grossAmount),[437,800,748]);
@@ -37,10 +37,22 @@ assert.equal(r.reconciliation.printedCountMatches,null,
  'Tax-rate group count is not automatically interpreted as total item count');
 assert.equal(r.reconciliation.quantity,3);
 assert.ok(r.items.every(x=>x.sourceLines.length===3));
+assert.ok(r.items.every(x=>x.janChecksumValid===true&&x.issues.length===0),
+ 'Three synthetically valid JAN codes should not create OCR warnings');
+const badChecksum=synthetic.replace('JAN4900000000009','JAN4900000000008');
+const bad=parse(badChecksum);
+assert.equal(bad.items.length,3,
+ 'An invalid check digit must not silently remove the purchase');
+assert.equal(bad.items[0].productCode,'4900000000008');
+assert.equal(bad.items[0].janChecksumValid,false);
+assert.ok(bad.items[0].issues.includes('invalid_jan_checksum'));
+assert.ok(bad.warnings.some(x=>x.code==='invalid_jan_checksum'&&x.line===4));
+assert.equal(warningScopes(bad).merchandise,1,
+ 'The invalid JAN warning belongs to merchandise, not the footer');
 const scope=warningScopes(r);
 assert.equal(scope.merchandise,0);
 const safe=merchandiseExcerpt(r);
-assert.match(safe,/JAN4900000000001/);
+assert.match(safe,/JAN4900000000009/);
 assert.match(safe,/437内/);
 assert.match(safe,/お買上 ¥1985/);
 assert.doesNotMatch(safe,/取引ID|楽天ペイ|ホームセンター|ポイント|SYNTHETIC/);
