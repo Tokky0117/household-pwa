@@ -26,3 +26,18 @@
 本試験が実Sheets上で成功し、認証済み `product.catalog` と `product.alias.check` が期待通りの家庭内商品・別名だけ返すことを別途確認する必要がある。正式な `product.alias.create` はブラウザの `gas-api.js` ではまだ `UNSUPPORTED` に固定されている。実デプロイ・本番商品コード登録は未実施。
 
 検証でユーザーから受領する情報は**ログの成功／失敗とエラーコードのみ**で十分。トークン、商品データ、スプレッドシートの全内容を貼り付ける必要はない。
+
+## 接続確認結果（2026-10-31：GitHub Secrets登録後）
+
+- GitHub Actionsの読み取り専用監査（`.github/workflows/gas-remote-source-audit.yml`）で試験用Script IDの照合に成功し、`clasp pull` による現行GASソース取得が成功した。GitHubのSecret値や現行GASソース全文はログに出していない。
+- 現行GASソースの名前は日本語の **`コード.js`** （`Code.gs` ではない）。既存の反映用ワークフロー `.github/workflows/gas-push-test.yml` はバックアップ検査で `Code.gs` を要求しているため、**現在のままでは上書き処理は安全側に停止する**。変更前にこの相違を解消する必要がある。
+- 取得できたスクリプトソースは1ファイル、約15.9 KB。開発ブランチの `gas/Code.gs` と内容は一致しない。
+- 既存の `doGet`、`doPost`、`authenticate`、`bootstrap`、`testAllSheetsReadOnly` は確認できた。一方、開発済みの `mutateItemSafely_`、`runIsolatedItemWriteTrialOnce_`、`productCatalog_`、`productAliasCheck_`、`mutateAliasSafely_`、別名登録試験用3関数は**未反映**。
+- **実GASのコード更新・デプロイ・実Spreadsheetへの書き込みは一切行っていない**。認証情報が利用できることと、実シートが安全に更新できることは別の段階として判断する。
+- 読み取り専用検査の成功：<https://github.com/Tokky0117/household-pwa/actions/runs/41164986405>。
+
+### 次に必要な安全確認
+
+1. 現在の試験用GASプロジェクトの `コード.js` と `appsscript.json` の**バックアップをユーザー管理の安全な場所へ保存**する。公開リポジトリや公開Actionsのアーティファクトへ、内容未検査のGASコードを不用意に保存しない。
+2. テスト専用GASの現行機能と開発版GASの差分を確認し、未移植の重要機能がないことを確認する。開発版の `Code.gs` と現行の `コード.js` のファイル名差を反映用の手順で明示的に扱う。
+3. その後、試験環境の上書き許可を得てコードを反映し、最初は読み取り専用のスキーマ・家庭分離・事前確認のみ実行する。商品コード登録試験の書き込みは後段に分離する。
