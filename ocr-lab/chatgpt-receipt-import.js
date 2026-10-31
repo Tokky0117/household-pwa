@@ -46,7 +46,7 @@ function validate(raw){
   const name=item.name===null?null:cleanText(item.name,120);
   if(item.code!==null&&(typeof item.code!=='string'||!/^(?:\d{4,8}|\d{13})$/.test(item.code)))
    throw Error('INVALID_PRODUCT_CODE');
-  if(!name&&!item.code&&!optionalInteger(item.grossAmount))throw Error('ITEM_NOT_IDENTIFIABLE');
+  if(!name&&!item.code&&item.grossAmount===null&&item.netAmount===null)throw Error('ITEM_NOT_IDENTIFIABLE');
   if(!optionalInteger(item.quantity,999)||item.quantity===0||
      !optionalInteger(item.unitPrice)||!optionalInteger(item.grossAmount)||
      !optionalInteger(item.discount)||!optionalInteger(item.netAmount))
@@ -69,6 +69,9 @@ function makeReceipt(raw){
    issues.push('amount_incomplete');
   else if(row.grossAmount-row.discount!==row.netAmount)
    issues.push('line_amount_mismatch');
+  if(row.quantity!==null&&row.unitPrice!==null&&row.grossAmount!==null&&
+     row.quantity*row.unitPrice!==row.grossAmount)
+   issues.push('unit_quantity_mismatch');
   if(!row.name)issues.push('missing_product_name');
   return {
    name:row.name,rawName:row.name,productCode:row.productCode,
@@ -91,7 +94,8 @@ function makeReceipt(raw){
  const expectedTotal=netSum===null?null:
   data.taxBasis==='included'?netSum:
   data.taxBasis==='excluded'&&data.taxTotal!==null?netSum+data.taxTotal:null;
- const consistency=items.every(i=>!i.issues.includes('line_amount_mismatch'));
+ const consistency=items.every(i=>
+  !i.issues.includes('line_amount_mismatch')&&!i.issues.includes('unit_quantity_mismatch'));
  return {
   importSource:'chatgpt_paste',rawText:'',purchaseDate:data.purchaseDate,
   storeName:data.storeName,items,adjustments:[],warnings:[],
