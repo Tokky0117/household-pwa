@@ -100,7 +100,8 @@ export function createConfirmationPreview({section,file,chain,status,list,summar
    const warnings=item.issues||[];
    if(warnings.length){const p=element('p',warnings.map(x=>({
     quantity_ocr_ambiguous:'数量の印字を要確認',missing_product_name:'商品名が欠落',
-    unit_quantity_mismatch:'数量×単価が不一致',negative_net:'差引金額が不正'
+    unit_quantity_mismatch:'数量×単価が不一致',negative_net:'差引金額が不正',
+    invalid_jan_checksum:'JANの検査数字が不一致。原本のコードを確認してください（コード照合しません）'
    })[x]||x).join('／'));p.className='review-warning';card.append(p);}
    if(match.candidates.length){
     const label=element('label','登録商品候補（この画面内で選択）');
@@ -114,7 +115,8 @@ export function createConfirmationPreview({section,file,chain,status,list,summar
 
    }else card.append(element('p',catalog?'一致する登録商品候補なし。OCR誤読・未登録商品・チェーン選択を確認してください。':'商品マスタ未読み込み'));
    const selectedId=selected.get(i);
-   if(catalog&&chainId&&selectedId&&item.productCode){
+   if(catalog&&chainId&&selectedId&&item.productCode&&
+      !warnings.includes('invalid_jan_checksum')){
     const verdict=window.KurashiAliasPreflight.inspect({
      catalog,chainId,productId:selectedId,productCode:String(item.productCode)
     });
