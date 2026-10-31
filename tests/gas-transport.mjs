@@ -45,6 +45,18 @@ const catalog=await api.request('product.catalog',{}, {fetcher:async (_url,opts)
 }});
 assert.equal(catalog.household_id,'h-a');
 assert.equal(calls,2);
+const check=await api.request('product.alias.check',
+ {product_id:'p-a',chain_id:'s-a',product_code:'0000000123456'},
+ {fetcher:async (_url,opts)=>{
+  calls++;const sent=JSON.parse(opts.body);
+  assert.equal(sent.action,'product.alias.check');
+  assert.equal(sent.operation_id,undefined);
+  assert.equal(sent.payload.product_code,'0000000123456');
+  return {ok:true,text:async()=>JSON.stringify({ok:true,data:{status:'already_registered',write_permitted:false}})};
+ }});
+assert.equal(check.status,'already_registered');
+assert.equal(check.write_permitted,false);
+assert.equal(calls,3);
 await assert.rejects(api.request('bootstrap',{}, {token:'test-id-token',fetcher:async()=>({ok:true,text:async()=>'{invalid json'} )}),/GAS_RESPONSE_INVALID/);
 await assert.rejects(api.request('bootstrap',{}, {fetcher:async()=>({ok:true,text:async()=>JSON.stringify({ok:false,error:{code:'FORBIDDEN'}})})}),/FORBIDDEN/);
 // Browser errors, failed HTTP responses, and malformed/oversized responses
