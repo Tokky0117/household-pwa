@@ -1,0 +1,88 @@
+name: Read-only audit of existing test GAS source
+on:
+  push:
+    branches: [stage-a-ui-handoff-review]
+    paths: ['.github/workflows/gas-remote-source-audit.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Check configured test-GAS credentials and verify the exact target
+        id: gate
+        shell: bash
+        env:
+          CLASPRC_JSON: ${{ secrets.CLASPRC_JSON }}
+          GAS_SCRIPT_ID_TEST: ${{ secrets.GAS_SCRIPT_ID_TEST }}
+        run: |
+          set -euo pipefail
+          if [ -z "$CLASPRC_JSON" ] || [ -z "$GAS_SCRIPT_ID_TEST" ]; then
+            echo 'READY=false' >> "$GITHUB_OUTPUT"
+            echo 'READ_ONLY_GAS_AUDIT: credentials not configured; no remote access attempted' >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          expected='9c4113806442904861bb84dede2d9c542449a5c9ed5b494abe451cda0c1f4739'
+          actual="$(printf '%s' "$GAS_SCRIPT_ID_TEST" | sha256sum | cut -d' ' -f1)"
+          if [ "$actual" != "$expected" ]; then
+            echo 'READY=false' >> "$GITHUB_OUTPUT"
+            echo 'READ_ONLY_GAS_AUDIT: configured test-GAS target does not match supplied target; no access attempted' >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          echo 'READY=true' >> "$GITHUB_OUTPUT"
+      - name: Download current test GAS source (read-only)
+        if: steps.gate.outputs.READY == 'true'
+        shell: bash
+        env:
+          CLASPRC_JSON: ${{ secrets.CLASPRC_JSON }}
+          GAS_SCRIPT_ID_TEST: ${{ secrets.GAS_SCRIPT_ID_TEST }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/remote-gas"
+          node - <<'NODE'
+          const fs=require('node:fs');
+          const auth=JSON.parse(process.env.CLASPRC_JSON);
+          const id=process.env.GAS_SCRIPT_ID_TEST;
+          if(!auth||typeof auth!=='object')throw Error('Credential syntax invalid');
+          if(!/^[A-Za-z0-9_-]{20,}$/.test(id))throw Error('Target syntax invalid');
+          fs.writeFileSync(process.env.HOME+'/.clasprc.json',JSON.stringify(auth),{mode:0o600});
+          fs.writeFileSync(process.env.RUNNER_TEMP+'/remote-gas/.clasp.json',
+            JSON.stringify({scriptId:id,rootDir:'.'}),{mode:0o600});
+          NODE
+          cd "$RUNNER_TEMP/remote-gas"
+          npx --yes @google/clasp@3 pull
+          test -f Code.gs || { echo 'Remote Code.gs not found'; exit 1; }
+      - name: Compare required functions and file digest (never output source)
+        if: steps.gate.outputs.READY == 'true'
+        shell: bash
+        run: |
+          node - <<'NODE'
+          const fs=require('node:fs'),crypto=require('node:crypto');
+          const local=fs.readFileSync('gas/Code.gs','utf8');
+          const remote=fs.readFileSync(process.env.RUNNER_TEMP+'/remote-gas/Code.gs','utf8');
+          const functions=['productCatalog_','productAliasCheck_','mutateAliasSafely_',
+            'testIsolatedAliasWriteTrialPreflightReadOnly_',
+            'runIsolatedAliasWriteTrialOnce_',
+            'testIsolatedAliasWriteTrialResultReadOnly_'];
+          const match=functions.map(name=>({name,present:remote.includes('function '+name+'(')}));
+          const sha=s=>crypto.createHash('sha256').update(s).digest('hex').slice(0,12);
+          const report=[
+            'READ_ONLY_GAS_AUDIT: Test GAS source retrieved without modifying project or Sheets.',
+            'Remote and branch Code.gs same bytes: '+(sha(local)===sha(remote)),
+            'Remote contains catalog/alias review and trial functions:',
+            ...match.map(x=>'- '+x.name+': '+(x.present?'YES':'NO')),
+            'No source code, script ID, token, or Sheet data included.'
+          ];
+          fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY,report.join('\n')+'\n');
+          console.log(report.join('\n'));
+          NODE
+      - name: Delete temporary authentication and downloaded code
+        if: always()
+        shell: bash
+        run: rm -rf "$HOME/.clasprc.json" "$RUNNER_TEMP/remote-gas"
