@@ -1,5 +1,5 @@
 name: Push GAS to test project (manual)
-# Manual-only trial GAS source update; one-time push trigger permanently removed.
+# One-time previously-authorized test-GAS source update: read-only prototype inventory.
 on:
   push:
     branches: [stage-a-ui-handoff-review]
