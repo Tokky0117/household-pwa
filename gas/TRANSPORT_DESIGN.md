@@ -4,6 +4,15 @@
 
 > **現行仕様はこの冒頭を優先**。後半の「接続前設計」「v50〜v56」等は当時の検討履歴で、実際に接続成功した範囲・書き込み方式・未実装状況が現在とは異なる。実装は `gas/Code.gs`、`gas-api.js`、`live-operation-journal.js`、安全境界と測定結果は `TRANSPORT_DECISION.md` を確認する。
 
+## 2026-10-31：実Sheet照合成功後の認証付きブラウザ接続検証（追加・未実機）
+
+- ユーザーの試験GAS実行ログから、`testAliasCatalogReadOnly` による12シート・商品/店舗/別名各1件・登録済み先頭ゼロ付きコードと未登録コードの**実Sheet読み取り照合成功**を確認した。これはGASエディタからの実行であり、**ブラウザからの認証付きHTTP成功ではない**。
+- 開発ブランチの既存 `gas-trial-connection.html` に、`bootstrap` 成功後のみユーザーの明示操作で `product.catalog` と `product.alias.check`（登録済み架空コード `00012345`／未登録 `00099999`）を読み取る追加ボタンを実装した。試験用の既知1商品・1チェーン・1別名との一致を検証し、家庭ID・商品ID・アクセストークン・実商品データは表示しない。不一致、GAS公開版未更新、認証拒否、HTML応答、CORS疑いを成功と扱わない。
+- ユーザーのGoogleログイン状態・接続先URLが変わると先行通信の結果を無効化。明示ログイン、`credentials:'omit'`、トークンはPOST本文のメモリ内のみ、追加の書き込み操作なし。従来の診断GETは無トークンのまま。コードレベルの全オフライン回帰試験は成功。
+- **未確認**：所有者限定の既存 `/exec` 公開版が新しい `product.catalog` と `product.alias.check` を提供するか、GitHub Pages→GASのHTTP 200/JSONがiPhone Safariから読めるか。CORSが遮断した場合はHTTPの直接接続を成功扱いせず、既存のGAS HTML Service試験と切り分ける。Webアプリの公開範囲拡張や本番デプロイ・別サーバー作成は未承認で実施しない。
+- 試験用GAS・Google Sheets・`main`・認証設定は変更しない。`ENABLE_EXPERIMENTAL_WRITES=false` とクライアント書き込み禁止を維持。
+
+
 ## 2026-10-28 時点の通信契約（現行）
 
 ### 採用構成と優先順位
