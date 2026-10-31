@@ -1,6 +1,29 @@
 <!doctype html><html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"><meta name="referrer" content="no-referrer"><meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-eval' 'wasm-unsafe-eval'; connect-src 'self'; img-src 'self' blob: data:; style-src 'self'; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'none'"><title>レシート読み取り検証｜くらしストック</title><link rel="stylesheet" href="./style.css"></head><body><main>
 <a href="../">くらしストックに戻る</a><h1>レシート読み取り検証</h1><p>写真を選び、新しい読み取り方式を試せます。写真と結果は送信・保存しません。金額の千位区切り（例：14.758）は限定的に自動補正し、OCR原文も保持します。</p>
 <form id="scan-form"><label for="photo">レシート写真</label><input id="photo" type="file" accept="image/*"><div id="crop-area" hidden><label for="crop-canvas">レシート部分を指定（任意）</label><canvas id="crop-canvas" aria-label="写真の切り抜き範囲を指で囲む"></canvas><p id="crop-status" class="muted"></p><button id="clear-crop" type="button">範囲指定を解除</button></div><label for="scale">画像の処理</label><select id="scale"><option value="gray">拡大・グレー化（比較用）</option><option value="original">カラー（補正なし）</option><option value="contrast">グレー＋局所コントラスト</option><option value="sharpen">グレー＋シャープ</option><option value="binary">グレー＋局所二値化</option></select><label class="normalization-label" for="japanese-normalize"><input id="japanese-normalize" type="checkbox" checked><span>日本語向け漢字変換を試す（認識原文は保持）<small>中国語字体に認識された漢字を日本語表記へ。商品名の推測補完はしません。</small></span></label><button id="scan" type="submit" disabled>読み取りを試す</button></form>
+<section id="chatgpt-paste"><h2>ChatGPTの読み取り結果を貼り付け（試験・未保存）</h2>
+<p>レシート写真を自分でChatGPTに送り、指定のJSON形式で文字と金額を読み取らせる方法です。アプリから写真を送信しません。会員番号・決済情報は必要に応じて隠してください。</p>
+<button id="chatgpt-copy-prompt" type="button">ChatGPT用の読取指示をコピー</button>
+<p class="muted">ChatGPTへ送信する写真と読取結果は、ChatGPTのサービス条件に従います。AIの結果は必ず原本と照合してください。</p>
+<label for="chatgpt-paste-input">ChatGPTが返したJSON（説明文・コードフェンスなし）</label>
+<textarea id="chatgpt-paste-input" rows="8" maxlength="30000" placeholder='{"version":"kurashi-receipt-import-1", ...}'></textarea>
+<button id="chatgpt-parse" type="button">貼り付け結果を確認</button>
+<button id="chatgpt-clear" type="button" class="secondary-action">貼り付け下書きを破棄</button>
+<p id="chatgpt-paste-status" role="status" aria-live="polite"></p>
+<div id="chatgpt-draft" hidden><h3>ChatGPTからの未確定下書き</h3>
+<p id="chatgpt-draft-summary"></p>
+<div id="chatgpt-draft-rows"></div>
+<p class="muted">各明細は「修正を反映」で端末内の下書きへ反映します。入力内容は保存されず、原本を確認するまでは数量・金額・商品名を確定しません。</p>
+</div></section>
+<section id="chatgpt-candidate-confirmation" hidden><h2>ChatGPT下書きの商品候補確認（試験・保存なし）</h2>
+<p>既存の商品候補確認部品を共有します。登録済み商品の照合は任意です。候補は自動登録しません。</p>
+<label for="chatgpt-catalog-file">商品マスタJSON（任意）</label><input id="chatgpt-catalog-file" type="file" accept=".json,application/json">
+<label for="chatgpt-catalog-chain">チェーン（店舗別SKUの照合に必要）</label>
+<select id="chatgpt-catalog-chain" disabled><option>チェーン未選択</option></select>
+<p id="chatgpt-catalog-status" role="status" class="muted"></p>
+<p id="chatgpt-candidate-summary" role="status"></p>
+<ol id="chatgpt-candidate-list" class="review-list"></ol>
+</section>
 <p id="status" role="status" aria-live="polite">写真を選んでください。初回は読み取りに必要なデータをダウンロードします。</p><p id="elapsed" class="muted"></p><button id="reset" type="button">写真と結果を破棄</button>
 <section id="result" hidden><h2>読み取り結果</h2><p>同じ写真で切り抜きと画像処理を比較できます。元画像の切り抜き後に360万画素以内へ調整します。</p><p>商品名・金額を原本と比べてください。この画面から購入記録は登録されません。</p><dl id="metrics"></dl><div id="timing-comparison" hidden>
 <h2>同じ写真の読み取り時間を比較</h2>
@@ -20,4 +43,4 @@
 <p id="catalog-status" role="status" class="muted"></p><p id="candidate-summary" role="status"></p>
 <ol id="candidate-list" class="review-list"></ol></section>
 <p class="muted">動作が止まった場合は、このページを閉じて開き直せます。初回の待ち時間と、2回目の読み取り時間を分けて確認します。</p>
-</main><script type="module" src="./main.js"></script></body></html>
+</main><script type="module" src="./main.js"></script><script type="module" src="./chatgpt-paste-ui.js"></script></body></html>
