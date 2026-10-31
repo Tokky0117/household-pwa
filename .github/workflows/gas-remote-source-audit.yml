@@ -1,5 +1,5 @@
 name: Read-only audit of existing test GAS source
-# Read-only verification after adding the user-approved editor-only alias write fixture.
+# Read-only fingerprint of existing test GAS before matching/cross-check upgrade.
 on:
   push:
     branches: [stage-a-ui-handoff-review]
