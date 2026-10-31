@@ -97,3 +97,21 @@
 - GitHubでオフライン回帰テスト `tests/gas-trial-sheet-inventory.mjs` が成功し、試験用GASへのソース反映・関数検査が成功：<https://github.com/Tokky0117/household-pwa/actions/runs/41168937997>。自動更新トリガーは終了後に無効化した。
 - **次のユーザー操作**：既存試験用Apps Scriptエディタの画面をリロードし、上部の関数選択で `testTrialSheetInventoryReadOnly` を選び実行。実行ログの `INVENTORY_START` ～ `INVENTORY_DONE` を共有する。個人IDや実商品データは共有不要。
 - この検査結果を確認するまで、家庭名のリネームや `auth_subject` の追加、データ削除、表の初期化、別名登録の書き込み試験は実施しない。
+
+## 2026-10-31：既存の試作用シート専用の別名登録事前検査を修正
+
+- 2026-10-31のユーザー提供GASログにより、12タブ/列見出し正常、householdsとusersがそれぞれ1行で関連付け一致、auth_subjectが数字、categoriesが設計どおり5行、他9タブが0行、書き込みゲート無効、試験用シートID設定一致が確認できた。家庭名だけが従来の `[KURASHI_WRITE_TRIAL_ONLY]` ではなかった。
+- `gas/Code.gs` に `approvedPrototypeAliasSheet_` と `assertAliasEditorTrialIdentity_` を追加。指定済みの既存試用Spreadsheet IDのSHA-256と2つの設定値の一致、公開書き込みフラグOFF、households/usersが1件でIDが存在し関連付け一致、auth_subjectが数字であることを厳密に検査。**家庭表示名は変更・要求しない**。
+- 例外は、GASエディタから呼び出される `testAliasTrialPreflightReadOnly` と、将来明示許可があった場合のエディタ専用 `runIsolatedAliasWriteTrialOnce_` 内の試験に限定。`doPost` と `mutateItemSafely_` は従来の `[KURASHI_WRITE_TRIAL_ONLY]` 固定ラベル条件を維持。既存の他用途GAS試験シートに通常書き込みを許可するものではない。
+- シートの列検査・categories 5件・既存レシートなどの異物混入禁止・過去履歴の復旧整合・同時実行対策は保持。固定の架空商品/店舗/コードだけを扱う既存エディタ試験処理も保持。
+- `testAliasTrialPreflightReadOnly` で検査失敗時は `ALIAS_TRIAL_PREFLIGHT_FAILED: エラーコード` をログに記録し、従来の `[object Object]` より原因を把握しやすくした。出力にシートのID・家庭名・ユーザー認証ID・実データは出さない。
+- 模擬試験では、既存家庭名のままの指定シートに対する読み取り専用事前検査、正常な架空商品コード登録・再実行、違うシートID/家庭参照/認証ID欠落/レシート混入/公開書き込み許可ONの拒否、通常POSTの拒否、在庫操作の安全ゲート維持を検証した。オフライン回帰テスト成功。
+- 反映の初回試行は**古い比較用コードハッシュ**との不一致により安全停止した。読み取り専用の監査で、試験用GASの現行コードは前回GitHubで検証済みの版と完全一致することを確認し、コードハッシュを修正して再実行した。
+- 試験用GASソースのみ更新成功：<https://github.com/Tokky0117/household-pwa/actions/runs/41170175281>。更新後の読み取り専用照合でもGitHubの開発版と**完全一致**、マニフェストの指紋は変更前から不変：<https://github.com/Tokky0117/household-pwa/actions/runs/41170244289>。一時的な更新トリガーは再度無効化した。
+- **今回の実Google Sheets書き込みは0件**。更新はGASのソースコードだけで、GASデプロイやScript Propertiesも変更していない。
+
+### ユーザーに依頼する次の操作
+
+試験用Apps Scriptエディタを再読み込みし、上部の関数選択から `testAliasTrialPreflightReadOnly`（末尾アンダースコアなし）を選択して「実行」。成功ログ `ALIAS_TRIAL_PREFLIGHT_OK` を確認する。実行してもシートデータは変更しない。失敗時は `ALIAS_TRIAL_PREFLIGHT_FAILED: <code>` のエラーコードだけ共有すればよく、セルの値を公開する必要はない。
+
+**注意**：`runIsolatedAliasWriteTrialOnce_` はシートに架空の行を実際に追加するため、現段階では実行しない。さらにエディタでの関数選択に末尾 `_` の関数は表示されない場合があるため、将来書き込みテストを行う際は別途安全な明示許可・入口が必要。
