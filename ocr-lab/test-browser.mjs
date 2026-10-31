@@ -19,6 +19,13 @@ try{
   assert.equal(await page.locator('#result').isVisible(),true,await page.locator('#status').textContent());
   const diag=JSON.parse(await page.locator('#diagnostic').textContent());assert.equal(diag.firstRun,firstRun);assert.ok(diag.totalMs>0);assert.ok(diag.phases.readerCallMs>0);assert.ok(diag.phases.sdkModuleLoadMs>=0);assert.ok(diag.phases.modelRuntimeEstimateMs>=0);if(!firstRun)assert.equal(diag.phases.sdkModuleLoadMs,0);assert.ok(diag.observationCount>0);assert.match(await page.locator('#text').inputValue(),/198/);
  }
+ assert.equal(await page.locator('#timing-comparison').isVisible(),true,
+ 'The second read of the same image should display a comparison');
+ assert.equal(await page.locator('#timing-comparison-rows tr').count(),7);
+ assert.match(await page.locator('#timing-comparison-status').textContent(),/1回目はモデル初期化を含む/);
+ const timingRows=await page.locator('#timing-comparison-rows tr').allTextContents();
+ assert.ok(timingRows.some(line=>line.includes('全体')));
+ assert.ok(timingRows.every(line=>line.includes('秒')||line.includes('—')));
  await page.waitForFunction(()=>document.getElementById('crop-canvas').width>1);
  const canvas=page.locator('#crop-canvas'),r=await canvas.boundingBox();
  await page.mouse.move(r.x+r.width*.02,r.y+r.height*.02);await page.mouse.down();await page.mouse.move(r.x+r.width*.98,r.y+r.height*.98);await page.mouse.up();
@@ -48,6 +55,8 @@ try{
  assert.match(await page.locator('#candidate-summary').textContent(),/商品選択 1件/);
 
  
+ assert.match(await page.locator('#timing-comparison-status').textContent(),/画像処理設定が変わったため参考値/,
+ 'Comparison must warn that image processing settings differ');
  const cropped=JSON.parse(await page.locator('#diagnostic').textContent());assert.equal(cropped.preparation.mode,'contrast');assert.ok(cropped.preparation.crop.width>0);assert.equal(cropped.normalization.mode,'japanese-glyphs-v1');assert.equal(cropped.normalization.originalPreserved,true);assert.equal(cropped.moneyGrouping.mode,'yen-grouping-v1');assert.equal(cropped.moneyGrouping.changedCount,0);
  await page.locator('#copy').click();assert.match(await page.evaluate(()=>navigator.clipboard.readText()),/位置情報/);
  await page.locator('#copy-text').click();
@@ -61,7 +70,10 @@ try{
  assert.match(safeSummary,/modelRuntimeEstimate/);
  assert.match(safeSummary,/firstRun/);
  assert.doesNotMatch(safeSummary,/MILK|TOTAL|synthetic-receipt|User-Agent|位置情報|observations|device/);
- assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));await page.locator('#reset').click();assert.equal(await page.locator('#photo').inputValue(),'');assert.equal(await page.locator('#text').inputValue(),'');assert.equal(await page.locator('#result').isHidden(),true);
+ assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));await page.locator('#reset').click();
+ assert.equal(await page.locator('#timing-comparison').isHidden(),true);
+ assert.equal(await page.locator('#timing-comparison-rows tr').count(),0);
+ assert.equal(await page.locator('#photo').inputValue(),'');assert.equal(await page.locator('#text').inputValue(),'');assert.equal(await page.locator('#result').isHidden(),true);
  assert.equal(errors.length,0,errors.join('\n'));assert.ok(requests.every(r=>!r.external&&r.method==='GET'));
  console.log('Browser OCR PASS: real WASM inference, cold/warm runs, mobile width, clipboard, discard; same-origin GET only');
 }finally{if(browser)await browser.close();await new Promise(resolve=>server.close(resolve));}
