@@ -28,8 +28,38 @@ export function validateCatalog(value){
 }
 const element=(tag,text)=>{const n=document.createElement(tag);if(text!==undefined)n.textContent=text;return n};
 const yen=n=>Number.isSafeInteger(n)?n.toLocaleString('ja-JP')+'円':'不明';
+
+// Conservative header-only chain inference; this never confirms an item,
+// registers a chain, or persists the result. Unknown/ambiguous stays manual.
+export function detectReceiptChain(receipt,stores){
+ if(!receipt||typeof receipt.rawText!=='string'||!Array.isArray(receipt.items)||
+    !receipt.items.length||!Array.isArray(stores))return null;
+ const sourceLines=receipt.items.flatMap(item=>Array.isArray(item.sourceLines)?item.sourceLines:[])
+  .filter(n=>Number.isInteger(n)&&n>0);
+ if(!sourceLines.length)return null;
+ const first=Math.min(...sourceLines);
+ if(first<2)return null;
+ const lines=receipt.rawText.split(/\r?\n/).slice(0,Math.min(first-1,30));
+ // Match whole logo/name lines, not arbitrary substrings from merchandise.
+ const normalize=value=>String(value||'').normalize('NFKC').toUpperCase()
+  .replace(/[\s　・･☆★*]/gu,'').trim();
+ const headings=new Set(lines.filter(line=>line.length<=100).map(normalize).filter(Boolean));
+ const matches=new Set();
+ for(const store of stores){
+  if(!store||typeof store.chain_id!=='string'||typeof store.canonical_name!=='string')continue;
+  // Catalogs may append a local test description after the shop name.
+  const base=store.canonical_name.split(/[（(]/)[0].trim();
+  const labels=[base];
+  if(base.includes('コストコ'))labels.push('COSTCO','COSTCO WHOLESALE');
+  for(const label of labels){
+   const value=normalize(label);
+   if(value.length>=4&&headings.has(value)){matches.add(store.chain_id);break;}
+  }
+ }
+ return matches.size===1?[...matches][0]:null;
+}
 export function createConfirmationPreview({section,file,chain,status,list,summary}){
- let receipt=null,catalog=null,chainId=null,generation=0,source='none';
+ let receipt=null,catalog=null,chainId=null,chainSource=null,generation=0,source='none';
  const searchQueries=new Map(),manualNames=new Map();
  const selected=new Map(),quantities=new Set();
  const warningsHasQuantityIssue=item=>
@@ -39,7 +69,10 @@ export function createConfirmationPreview({section,file,chain,status,list,summar
   chain.replaceChildren();
   const empty=element('option','チェーン未選択（共通の別名のみ）');empty.value='';chain.append(empty);
   for(const s of catalog?.stores||[]){const o=element('option',s.canonical_name);o.value=s.chain_id;chain.append(o)}
-  chain.value='';chain.disabled=!catalog;
+  // Reconsider only with a new validated catalog/receipt. User can override.
+  chainId=detectReceiptChain(receipt,catalog?.stores);
+  chainSource=chainId?'receipt_header':null;
+  chain.value=chainId||'';chain.disabled=!catalog;
  };
  const candidates=()=>catalog&&receipt?
   window.KurashiProductMatching.suggest(receipt.items,{...catalog,chainId}):
@@ -65,6 +98,8 @@ export function createConfirmationPreview({section,file,chain,status,list,summar
   const suggestions=catalog?rows.filter(x=>x.status==='name_suggestion').length:0;
   const warnings=Array.isArray(receipt?.warnings)?receipt.warnings.length:0;
   const extras=[];
+  if(catalog&&chainId&&chainSource==='receipt_header')
+   extras.push('チェーンをレシート上部から推定（商品登録前に確認してください）');
   if(catalog&&!chainId&&catalog.aliases.some(a=>a.chain_id!=null))
    extras.push('チェーン未選択：店舗別SKUは照合していません。上のチェーン欄を選択してください');
   if(catalog&&chainId){
@@ -213,7 +248,10 @@ export function createConfirmationPreview({section,file,chain,status,list,summar
   }catch{if(token!==generation)return;catalog=null;refreshChains();render();
    status.textContent='JSONの形式または家庭・店舗の対応が不正です。';}
  });
- chain.addEventListener('change',()=>{chainId=chain.value||null;selected.clear();render()});
+ chain.addEventListener('change',()=>{
+  chainId=chain.value||null;chainSource=chainId?'manual':null;
+  selected.clear();render();
+ });
  list.addEventListener('input',event=>{
   const target=event.target,index=Number(target?.dataset?.index);
   if(target?.dataset?.action==='name-correction'&&receipt&&
@@ -296,10 +334,15 @@ export function createConfirmationPreview({section,file,chain,status,list,summar
    status.textContent='ログイン状態の変更により商品マスタを破棄しました。';
    return true;
   },
-  setParsed(value){receipt=value;selected.clear();quantities.clear();searchQueries.clear();manualNames.clear();render()},
+  setParsed(value){
+   receipt=value;selected.clear();quantities.clear();searchQueries.clear();manualNames.clear();
+   if(catalog)refreshChains();else{chainId=null;chainSource=null;}
+   render();
+  },
   reset(){generation++;receipt=null;catalog=null;chainId=null;source='none';selected.clear();quantities.clear();
    file.value='';status.textContent='';summary.textContent='';searchQueries.clear();manualNames.clear();refreshChains();render()},
-  getStatus(){return {catalogLoaded:!!catalog,source,selected:selected.size,quantityConfirmed:quantities.size}},
+  getStatus(){return {catalogLoaded:!!catalog,source,chainSelectionSource:chainSource,
+   selected:selected.size,quantityConfirmed:quantities.size}},
   // For the explicit clipboard-only product test report. Expose names and
   // non-sensitive match states, never household IDs or internal product IDs.
   getProductReview(){
