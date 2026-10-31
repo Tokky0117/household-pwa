@@ -115,3 +115,21 @@
 試験用Apps Scriptエディタを再読み込みし、上部の関数選択から `testAliasTrialPreflightReadOnly`（末尾アンダースコアなし）を選択して「実行」。成功ログ `ALIAS_TRIAL_PREFLIGHT_OK` を確認する。実行してもシートデータは変更しない。失敗時は `ALIAS_TRIAL_PREFLIGHT_FAILED: <code>` のエラーコードだけ共有すればよく、セルの値を公開する必要はない。
 
 **注意**：`runIsolatedAliasWriteTrialOnce_` はシートに架空の行を実際に追加するため、現段階では実行しない。さらにエディタでの関数選択に末尾 `_` の関数は表示されない場合があるため、将来書き込みテストを行う際は別途安全な明示許可・入口が必要。
+
+## 2026-10-31：ユーザー許可後の書き込み試験関数を反映
+
+- ユーザーから**既存試験用スプレッドシートに限り架空データ5シートを書き込む許可**を受領。既存の家庭/ユーザー/カテゴリの変更は許可対象外。
+- `gas/Code.gs` に**エディタから選べる公開関数 `runAliasTrialWriteOnce`** を追加した。呼び出しは内部の `runIsolatedAliasWriteTrialOnce_` のみで、12シート/認証家庭・ユーザー/対象Spreadsheet SHA-256/公開書き込み禁止/異物混入/固定ID/リカバリジャーナル/競合/再送防止を再検査する。`doGet`・`doPost`・通常アプリからは公開しない。
+- `product_aliases.normalized_alias` の書き込み時は対象セルを**プレーンテキスト書式 `@`** に設定してから `setValues` し、商品コード `00012345` の先頭ゼロを保持。書き戻し後も文字列一致を読み取って検査する。書式が不正・数字へ変換された場合は成功を返さない。
+- エディタ試験成功時のログは `ALIAS_TRIAL_RESULT_OK`, `ALIAS_TRIAL_ONCE_OK`, `ALIAS_TRIAL_EDITOR_WRITE_OK`。途中エラーは `ALIAS_TRIAL_EDITOR_WRITE_FAILED: <code>` と表示し、IDや商品データをログに出さない。
+- オフライン回帰テストで、初回1件・同一操作ID再送が書き込みゼロ・`@` 書式設定・家庭ID不一致・数字へ変換された商品コードの拒否を含む全テストが成功。
+- **試験用GASのソース反映だけ成功**：<https://github.com/Tokky0117/household-pwa/actions/runs/41170859225>。反映後の読み取り専用照合でも**GitHub開発版と一致、元のマニフェストは不変**：<https://github.com/Tokky0117/household-pwa/actions/runs/41170946564>。一時的な自動反映トリガーは削除した。今回のGitHub ActionsによるGoogle Sheets書き込みは0件。
+
+### 実Google Sheetsへの書き込みを行うための唯一のユーザー操作
+
+1. [試験用Apps Scriptエディタ](https://script.google.com/home/projects/15pyx5qYzEMEqgGQmbSyRdx5U2DywTxnRYgWpQb9lazE__tGwQ58DJGIU/edit)をリロード。
+2. 関数選択メニューから **`runAliasTrialWriteOnce`（末尾 `_` なし）** を選ぶ。
+3. **実行**を押す。試験用店舗/商品/別名/変更履歴/操作履歴だけを追加し、コード先頭ゼロと同じIDによる再実行を内部で確認する。
+4. 実行ログの `ALIAS_TRIAL_EDITOR_WRITE_OK` と `ALIAS_TRIAL_RESULT_OK` を確認。出なければ**シートの内容やScript Propertiesを自分で修正せず**、ログの失敗コードだけを共有すること。操作IDは変更しない。
+
+**現段階の限界**：GASエディタ実行はまだ行われていないため、実Google Sheets上での書き込み成功は未確認。試験データを追加したことをユーザーが報告するまでは、「実データ登録完了」とは扱わない。
