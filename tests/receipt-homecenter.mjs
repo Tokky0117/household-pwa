@@ -58,4 +58,12 @@ assert.ok(incomplete.warnings.some(x=>x.code==='jan_incomplete_item'||x.code==='
  'Incomplete JAN group must be visible as a warning');
 const footerOnly=parse('小計金額 ¥1,985\n楽天ペイ ¥1,985\n楽天ペイ ¥1,985');
 assert.equal(footerOnly.items.length,0,'Payments and subtotal are not merchandise');
+const paymentOnly=parse('楽天ペイ ¥1,985\n楽天ポイントカード 8\n合 33 ¥1,985');
+assert.equal(paymentOnly.items.length,0,
+ 'Missing subtotal must not turn payment, loyalty or malformed total into merchandise');
+assert.ok(paymentOnly.warnings.some(w=>w.code==='ambiguous_total_label'));
+assert.throws(()=>merchandiseExcerpt({
+ rawText:'楽天ペイ ¥1,985',
+ items:[{sourceLines:[1]}],taxBreakdown:[],taxBasis:'unknown'
+}),/UNSAFE_MERCHANDISE/,'Dangerous payment text must never enter the merchandise clipboard');
 console.log('Home-center JAN/3-line purchase PASS: 3 prices, included tax, subtotal/total, payment exclusion, safe excerpt roundtrip, incomplete JAN');
