@@ -1,0 +1,209 @@
+// Offline, in-memory trial-only mutation tests; no real GAS/Google Sheet access.
+import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
+import {createHash} from 'node:crypto';
+import vm from 'node:vm';
+const source=readFileSync(new URL('../gas/Code.gs',import.meta.url),'utf8');
+const columns={
+ households:['household_id','display_name','version','updated_at'],
+ users:['user_id','household_id','display_name','auth_subject'],
+ stores:['chain_id','household_id','canonical_name','normalized_name','aliases','version','updated_at'],
+ products:['product_id','household_id','item_group_id','name','normalized_name','package_quantity','package_unit','item_group_order','version','created_at','updated_at','deleted_at'],
+ product_aliases:['alias_id','product_id','chain_id','normalized_alias','version','updated_at'],
+ change_log:['change_id','sequence_no','household_id','entity_type','entity_id','action','occurred_at'],
+ processed_operations:['household_id','operation_id','request_hash','result','processed_at']
+};
+const trialLabel='[KURASHI_WRITE_TRIAL_ONLY]';
+function harness(){
+ const tables=Object.fromEntries(Object.entries(columns).map(([name,head])=>[name,[head]]));
+ tables.households.push(['h-trial',trialLabel,1,'']);
+ tables.users.push(['test-user','h-trial','Tester','1234567890']);
+ tables.stores.push(['s1','h-trial','STORE1','store1','',1,''],
+  ['s2','h-trial','STORE2','store2','',1,''],
+  ['s-foreign','h-foreign','other','other','',1,'']);
+ tables.products.push(
+  ['p1','h-trial','','MILK','milk','','',1,1,'','',''],
+  ['p2','h-trial','','EGG','egg','','',2,1,'','',''],
+  ['p-foreign','h-foreign','','FOREIGN','foreign','','',1,1,'','','']);
+ let enabled=false,active='test-sheet',trial='test-sheet',number=0,writes=0,
+  locked=false,shouldLock=true,fault=null,foreignMove=false;
+ const fail=(name,phase)=>{
+  if(fault?.name===name&&fault.phase===phase){
+   fault=null;throw Error('POWER_LOSS_'+name+'_'+phase);
+  }
+ };
+ const mock={
+  PropertiesService:{getScriptProperties(){return {getProperty(key){
+   return ({
+    SPREADSHEET_ID:active,WRITE_TRIAL_SPREADSHEET_ID:trial,
+    ENABLE_EXPERIMENTAL_WRITES:enabled?'true':null
+   })[key]||null;
+  }}}},
+  SpreadsheetApp:{openById(id){
+   assert.equal(id,active);
+   return {getSheetByName(name){
+    const data=tables[name];if(!data)return null;
+    return {
+     getLastRow(){return data.length},
+     getDataRange(){return {getValues(){return data.map(x=>x.slice())}}},
+     getRange(row,col,height,width){return {
+      getValues(){return Array.from({length:height},(_,i)=>data[row+i-1].slice(col-1,col-1+width))},
+      setValues(values){
+       assert.equal(col,1);assert.equal(height,1);assert.equal(values[0].length,width);
+       const phase=name==='processed_operations'?(row>data.length?'journal.prepare':'journal.finalize'):
+        name==='product_aliases'?'entity.write':name==='change_log'?'change.write':name;
+       fail(phase,'before');
+       while(data.length<row)data.push([]);
+       data[row-1]=values[0].slice();writes++;
+       if(name==='processed_operations'&&phase==='journal.prepare'&&foreignMove){
+        foreignMove=false;tables.product_aliases.splice(1,0,['alias-foreign','p-foreign','s-foreign','98765432',1,'']);
+       }
+       fail(phase,'after');
+      }
+     }}
+    };
+   }};
+  }},
+  LockService:{getScriptLock(){return {
+   tryLock(){if(!shouldLock)return false;assert.equal(locked,false);locked=true;return true},
+   releaseLock(){locked=false}
+  }}},
+  Utilities:{
+   getUuid(){return 'alias-uuid-'+(++number)},
+   DigestAlgorithm:{SHA_256:'sha256'},
+   computeDigest(_alg,s){return Array.from(createHash('sha256').update(s).digest())},
+   base64EncodeWebSafe(bytes){return Buffer.from(bytes).toString('base64url')}
+  },
+  Date,JSON
+ };
+ vm.createContext(mock);
+ vm.runInContext(source,mock,{filename:'gas/Code.gs'});
+ const user={userId:'test-user',householdId:'h-trial'};
+ const payload=(product_id='p1',product_code='00012345',chain_id='s1')=>
+  ({product_id,chain_id,product_code,confirmed:true});
+ const run=(p=payload(),id='alias-create-0001')=>mock.mutate_(user,'product.alias.create',p,id);
+ const error=(p,id,code)=>assert.throws(()=>run(p,id),e=>e?.code===code,'Expected '+code);
+ const records=(name)=>tables[name].slice(1).map(row=>Object.fromEntries(columns[name].map((col,i)=>[col,row[i]])));
+ return {tables,run,error,payload,records,
+  setEnabled(v){enabled=v},setTrial(v){trial=v},setActive(v){active=v},
+  setFault(name,phase){fault={name,phase}},
+  setLock(v){shouldLock=v},setExternalMove(){foreignMove=true},
+  get writes(){return writes},get locked(){return locked},user,mock
+ };
+}
+const phases=['journal.prepare','entity.write','change.write','journal.finalize'];
+for(const stage of phases)for(const phase of ['before','after']){
+ const h=harness(),p=h.payload();
+ h.setEnabled(true);
+ h.setFault(stage,phase);
+ assert.throws(()=>h.run(p),new RegExp('POWER_LOSS_'+stage.replace('.','\\.')+'_'+phase),
+  'Expected fault '+stage+'/'+phase);
+ assert.equal(h.locked,false,'Lock must release even on fault');
+ // After a failed prepare-before-write there is no durable intent; replay
+ // may generate a new alias ID, but still only one final alias is committed.
+ const done=h.run(p);
+ assert.equal(done.entity.normalized_alias,'00012345');
+ assert.equal(done.entity.version,1);
+ assert.equal(done.sequence_no,1);
+ assert.equal(h.records('product_aliases').length,1,'Never duplicate alias after '+stage+'/'+phase);
+ assert.equal(h.records('change_log').length,1,'Never duplicate change log after '+stage+'/'+phase);
+ assert.equal(h.records('processed_operations').length,1,'Never duplicate journal after '+stage+'/'+phase);
+ const writes=h.writes,replay=h.run(p);
+ assert.deepEqual(JSON.parse(JSON.stringify(replay)),JSON.parse(JSON.stringify(done)));
+ assert.equal(h.writes,writes,'Committed replay must be read-only');
+ assert.equal(h.locked,false);
+}
+// Production gate is NEVER enabled in this test or in the web client.
+{
+ const h=harness(),p=h.payload();
+ h.error(p,'deny-00000001','WRITES_DISABLED');
+ assert.equal(h.writes,0);
+ h.setEnabled(true);h.setTrial('wrong-sheet');
+ h.error(p,'deny-00000002','WRITES_DISABLED');assert.equal(h.writes,0);
+ h.setTrial('test-sheet');
+ h.tables.households[1][1]='NOT A TRIAL';
+ h.error(p,'deny-00000003','TRIAL_NOT_ISOLATED');assert.equal(h.writes,0);
+ h.tables.households[1][1]=trialLabel;
+ h.user.householdId='h-foreign';
+ h.error(p,'deny-00000004','TRIAL_NOT_ISOLATED');assert.equal(h.writes,0);
+ h.user.householdId='h-trial';
+ h.user.userId='wrong';
+ h.error(p,'deny-00000005','TRIAL_NOT_ISOLATED');assert.equal(h.writes,0);
+ h.user.userId='test-user';
+ h.setLock(false);
+ h.error(p,'deny-00000006','BUSY');assert.equal(h.writes,0);
+}
+// Negative cases do not create even an operation receipt.
+{
+ const h=harness();h.setEnabled(true);
+ const fail=(payload,code)=>h.error(payload,'bad-alias-'+String(h.writes).padStart(5,'0'),code);
+ fail({...h.payload(),confirmed:false},'CONFIRMATION_REQUIRED');
+ fail({...h.payload(),note:'extra'},'CONFIRMATION_REQUIRED');
+ for(const code of ['1.000','12,345','=FORMULA()', '123','123456789012345',' 12345', '１２３４\n'])
+  fail(h.payload('p1',code),'BAD_REQUEST');
+ fail(h.payload('p-foreign'),'NOT_FOUND');
+ fail(h.payload('missing'),'NOT_FOUND');
+ fail(h.payload('p1','00012345','s-foreign'),'NOT_FOUND');
+ fail(h.payload('p1','00012345','missing'),'NOT_FOUND');
+ assert.equal(h.writes,0);
+ assert.equal(h.records('product_aliases').length,0);
+}
+// Fully scoped conflict semantics. Foreign household and other-chain aliases
+// do not block the target, but global aliases can block all chains.
+{
+ const h=harness();h.setEnabled(true);
+ const a=h.run(h.payload(),'unique-0001');
+ assert.equal(a.entity.alias_id,'alias-uuid-1');
+ assert.equal(a.entity.chain_id,'s1');
+ assert.equal(a.entity.product_id,'p1');
+ const writes=h.writes;
+ h.error(h.payload(),'second-0002','ALREADY_REGISTERED');
+ h.error(h.payload('p2'),'another-0003','ALIAS_CONFLICT');
+ h.error(h.payload('p2','00012345','s1'),'conflict-0004','ALIAS_CONFLICT');
+ assert.equal(h.writes,writes,'Existing code must never create a duplicate operation');
+ const independent=h.run(h.payload('p2','00012345','s2'),'chain-two-0001');
+ assert.equal(independent.entity.chain_id,'s2','Different chain may have own alias');
+ h.tables.product_aliases.push(['global-code','p2','', '44444444',1,'']);
+ h.error(h.payload('p1','44444444','s1'),'global-block-0001','ALIAS_CONFLICT');
+ h.tables.product_aliases.push(['foreign','p-foreign','s-foreign','99999999',1,'']);
+ const foreign=h.run(h.payload('p1','99999999','s1'),'foreign-ignored');
+ assert.equal(foreign.entity.normalized_alias,'99999999');
+ const idReuse=h.payload('p2','88888888','s2');
+ h.error(idReuse,'unique-0001','OPERATION_REUSED');
+ assert.equal(h.records('product_aliases').length,5);
+}
+// Durable unresolved prepare blocks other mutations in the same household;
+// only retry of the original operation may finalize it.
+{
+ const h=harness();h.setEnabled(true);
+ h.setFault('entity.write','before');
+ assert.throws(()=>h.run(h.payload(),'pending-00001'),/POWER_LOSS/);
+ h.error(h.payload('p2','22222222'),'different-op','RECOVERY_REQUIRED');
+ const saved=h.run(h.payload(),'pending-00001');
+ assert.equal(saved.entity.product_id,'p1');
+}
+// Refuse changed rows on replay, to avoid assigning a changed alias.
+{
+ const h=harness();h.setEnabled(true);
+ h.setFault('change.write','before');
+ assert.throws(()=>h.run(h.payload(),'changed-row-0001'),/POWER_LOSS/);
+ h.tables.product_aliases[1][3]='99999999';
+ h.error(h.payload(),'changed-row-0001','RECOVERY_CONFLICT');
+ assert.equal(h.records('change_log').length,0);
+}
+// Corrupted/duplicated ownership and preflight conflicts fail closed.
+{
+ const h=harness();h.setEnabled(true);
+ h.tables.products.push(['p1','h-foreign','','x','x','','',1,1,'','','']);
+ h.error(h.payload(),'duplicate-product-id','CATALOG_CONFLICT');
+ assert.equal(h.writes,0);
+}
+// Re-running a stale "available" preflight under the lock correctly
+// rejects an alias newly registered by another writer/Sheet editor.
+{
+ const h=harness();h.setEnabled(true);
+ h.tables.product_aliases.push(['parallel-alias','p2','s1','00012345',1,'']);
+ h.error(h.payload(),'stale-preflight-001','ALIAS_CONFLICT');
+ assert.equal(h.writes,0);
+}
+console.log('GAS trial alias write PASS: 8 crash points, same-operation retry, trial gate, ownership, conflicts, no live writes');
