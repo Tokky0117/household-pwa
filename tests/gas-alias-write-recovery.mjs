@@ -32,7 +32,8 @@ function harness(){
   ['p2','h-trial','','EGG','egg','','',2,1,'','',''],
   ['p-foreign','h-foreign','','FOREIGN','foreign','','',1,1,'','','']);
  let enabled=false,active='test-sheet',trial='test-sheet',number=0,writes=0,
-  locked=false,shouldLock=true,fault=null,foreignMove=false,corruptAliasWrite=false;
+  locked=false,shouldLock=true,fault=null,foreignMove=false,corruptAliasWrite=false,
+  formattedAliases=[],logs=[];
  const fail=(name,phase)=>{
   if(fault?.name===name&&fault.phase===phase){
    fault=null;throw Error('POWER_LOSS_'+name+'_'+phase);
@@ -54,6 +55,11 @@ function harness(){
      getDataRange(){return {getValues(){return data.map(x=>x.slice())}}},
      getRange(row,col,height,width){return {
       getValues(){return Array.from({length:height},(_,i)=>data[row+i-1].slice(col-1,col-1+width))},
+      setNumberFormat(format){
+       assert.equal(name,'product_aliases');assert.equal(format,'@');
+       assert.equal(col,4);assert.equal(height,1);assert.equal(width,1);
+       formattedAliases.push({row,format});writes++;
+      },
       setValues(values){
        assert.equal(col,1);assert.equal(height,1);assert.equal(values[0].length,width);
        const phase=name==='processed_operations'?(row>data.length?'journal.prepare':'journal.finalize'):
@@ -100,7 +106,7 @@ function harness(){
   ContentService:{MimeType:{JSON:'application/json'},createTextOutput(content){
    return {setMimeType(){return this},getContent(){return content}};
   }},
-  Logger:{log(){}},
+  Logger:{log(...parts){logs.push(parts.map(String).join(' '))}},
   Date,JSON
  };
  vm.createContext(mock);
@@ -120,7 +126,7 @@ function harness(){
   setFault(name,phase){fault={name,phase}},
   setLock(v){shouldLock=v},setExternalMove(){foreignMove=true},
   corruptNextAliasWrite(){corruptAliasWrite=true},
-  get writes(){return writes},get locked(){return locked},user,mock,post
+  get writes(){return writes},get locked(){return locked},get formattedAliases(){return formattedAliases},get logs(){return logs},user,mock,post
  };
 }
 const phases=['journal.prepare','entity.write','change.write','journal.finalize'];
@@ -200,6 +206,45 @@ function seedPriorItemTrial(h,version=2){
  assert.throws(()=>h.mock.runIsolatedAliasWriteTrialOnce_(),
   e=>e?.code==='TRIAL_NOT_ISOLATED');
  assert.equal(h.writes,0,'Existing item belongs to another household');
+}
+
+// User-approved editor-visible write test: one fixed fixture, preserving the
+// original prototype household. Public POST remains disabled.
+{
+ const h=harness();prepareExistingPrototype(h);
+ assert.equal(h.mock.testAliasTrialPreflightReadOnly(),true);
+ assert.equal(h.mock.runAliasTrialWriteOnce(),true);
+ assert.equal(h.records('stores').length,1);
+ assert.equal(h.records('products').length,1);
+ assert.equal(h.records('product_aliases').length,1);
+ assert.equal(h.records('change_log').length,1);
+ assert.equal(h.records('processed_operations').length,1);
+ assert.equal(h.records('product_aliases')[0].normalized_alias,'00012345');
+ assert.equal(h.formattedAliases.length,1,'Before writing code, force plain-text cell format');
+ assert.ok(h.logs.some(x=>x.includes('ALIAS_TRIAL_EDITOR_WRITE_OK')));
+ const before=h.writes;
+ assert.equal(h.mock.runAliasTrialWriteOnce(),true);
+ assert.equal(h.writes,before,'Editor rerun must not make any write or format changes');
+ assert.equal(h.formattedAliases.length,1);
+ assert.equal(h.tables.households[1][1],'Existing prototype household');
+}
+{
+ const h=harness();prepareExistingPrototype(h);
+ h.tables.users[1][1]='different-household';
+ assert.throws(()=>h.mock.runAliasTrialWriteOnce(),
+  /ALIAS_TRIAL_EDITOR_WRITE_FAILED: TRIAL_NOT_ISOLATED/);
+ assert.equal(h.writes,0);
+ assert.ok(h.logs.some(x=>x.includes('ALIAS_TRIAL_EDITOR_WRITE_FAILED: TRIAL_NOT_ISOLATED')));
+ assert.ok(h.logs.every(x=>!x.includes('different-household')&&!x.includes('h-trial')));
+}
+// A code coerced to a numeric value on the actual Sheet is never reported
+// successful, even if the cells were initially formatted as plain text.
+{
+ const h=harness();prepareExistingPrototype(h);h.corruptNextAliasWrite();
+ assert.throws(()=>h.mock.runAliasTrialWriteOnce(),
+  /ALIAS_TRIAL_EDITOR_WRITE_FAILED: RECOVERY_CONFLICT/);
+ assert.equal(h.records('change_log').length,0);
+ assert.equal(h.records('processed_operations').length,1);
 }
 
 // Owner-only editor path: the existing isolated trial copy starts with no
