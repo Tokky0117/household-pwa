@@ -116,5 +116,59 @@
   if(taxBasis==='unknown')warn('unknown_tax_basis',null);
   return {rawText,items,adjustments,warnings,receiptTotal,subtotal,taxTotal,taxBreakdown,taxBasis,printedCount,reconciliation:{itemCount:items.length,quantity:items.reduce((s,x)=>s+x.quantity,0),printedCountMatches:printedCount===null?null:printedCount===items.reduce((s,x)=>s+x.quantity,0),netSum:sum,expectedTotal:expected,totalMatches:expected===null||receiptTotal===null?null:expected===receiptTotal,subtotalMatches:subtotal===null?null:sum===subtotal,individualItemsVerified:false}};
  }
- root.KurashiReceiptStructure={parse};
+ // Warnings from a neighbouring receipt or payment slip must not be
+ // presented as though a recognized merchandise row had failed.
+ // Keep every warning; classify location only (never silently suppress it).
+ function warningScopes(receipt){
+  const items=Array.isArray(receipt?.items)?receipt.items:[];
+  const lines=items.flatMap(item=>Array.isArray(item.sourceLines)?item.sourceLines:[])
+   .filter(n=>Number.isInteger(n)&&n>0);
+  const first=lines.length?Math.min(...lines):null;
+  const last=lines.length?Math.max(...lines):null;
+  const out={merchandise:0,outside:0,global:0};
+  for(const warning of receipt?.warnings||[]){
+   if(!warning||!Number.isInteger(warning.line)||warning.line<1){out.global++;continue;}
+   if(first!==null&&warning.line>=first&&warning.line<=last)out.merchandise++;
+   else out.outside++;
+  }
+  return out;
+ }
+ // Export an explicitly user-reviewed shopping excerpt instead of the
+ // surrounding payment/card/account text. A source item line is preserved
+ // exactly (not "corrected" using product master data); summaries contain
+ // only numeric amounts already parsed. If source line mapping is unsafe,
+ // do not copy a possibly sensitive footer.
+ function merchandiseExcerpt(receipt){
+  if(!Array.isArray(receipt?.items)||!receipt.items.length||
+    typeof receipt.rawText!=='string')throw Error('NO_MERCHANDISE');
+  const raw=receipt.rawText.split(/\r?\n/);
+  const sources=new Set();
+  for(const item of receipt.items){
+   if(!Array.isArray(item.sourceLines)||!item.sourceLines.length)
+    throw Error('UNSAFE_MERCHANDISE');
+   for(const line of item.sourceLines){
+    if(!Number.isInteger(line)||line<1||line>raw.length)
+     throw Error('UNSAFE_MERCHANDISE');
+    sources.add(line);
+   }
+  }
+  const excerpt=[...sources].sort((a,b)=>a-b).map(index=>raw[index-1].trim());
+  if(excerpt.some(line=>!line||line.length>200||
+    /(?:トークン|会員番号|カード番号|有効期限|承認番号|カード会社|クレジット売上票)/.test(line)||
+    /(?:\d{4}[- ]?){3}\d{4}/.test(line)))
+   throw Error('UNSAFE_MERCHANDISE');
+  for(const tax of receipt.taxBreakdown||[]){
+   if(![8,10].includes(tax.rate)||!Number.isSafeInteger(tax.amount)||tax.amount<0)
+    throw Error('UNSAFE_MERCHANDISE');
+   excerpt.push('税'+tax.rate+'% ¥'+tax.amount);
+  }
+  if(Number.isSafeInteger(receipt.receiptTotal)&&receipt.receiptTotal>=0)
+   excerpt.push('お買上 ¥'+receipt.receiptTotal);
+  if(Number.isSafeInteger(receipt.printedCount)&&receipt.printedCount>=0)
+   excerpt.push('お買上点数 '+receipt.printedCount+'点');
+  const result=excerpt.join('\n');
+  if(result.length>12000)throw Error('MERCHANDISE_TOO_LONG');
+  return result;
+ }
+ root.KurashiReceiptStructure={parse,warningScopes,merchandiseExcerpt};
 })(typeof window==='undefined'?globalThis:window);
