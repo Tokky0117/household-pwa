@@ -1,6 +1,9 @@
 name: Push GAS to test project (manual)
 # Never triggered by pushes. Replaces test Apps Script source only after explicit approval.
 on:
+  push:
+    branches: [stage-a-ui-handoff-review]
+    paths: ['.github/workflows/gas-push-test.yml']
   workflow_dispatch:
     inputs:
       confirm_target_backup:
@@ -21,7 +24,13 @@ concurrency:
 
 jobs:
   push-test:
-    if: github.ref == 'refs/heads/stage-a-ui-handoff-review' && inputs.confirm_target_backup == 'BACKUP_DONE' && inputs.confirm_test_source == 'TEST_GAS_UPDATE'
+    if: >-
+      github.ref == 'refs/heads/stage-a-ui-handoff-review' &&
+      ((github.event_name == 'push' &&
+         github.event.head_commit.message == 'APPROVED_TEST_GAS_SOURCE_UPDATE_20261031_ONE_TIME') ||
+       (github.event_name == 'workflow_dispatch' &&
+         inputs.confirm_target_backup == 'BACKUP_DONE' &&
+         inputs.confirm_test_source == 'TEST_GAS_UPDATE'))
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -89,7 +98,13 @@ jobs:
           if(codeFiles.length!==1||codeFiles[0]!=='コード.js'||
              names.length!==2||!names.includes('appsscript.json'))
             throw Error('REMOTE_FILE_LAYOUT_CHANGED_REVIEW_REQUIRED');
+          // Refuse any source/manifest drift since the final read-only audit.
+          const crypto=require('node:crypto');
+          const digest=text=>crypto.createHash('sha256').update(text).digest('hex');
+          const approvedSource='a9d494aa7cf7a3c00ccba58a31bde93980ebf80c170807f77a29c292111785b3';
+          const approvedManifest='0952d47f73508eb256f1cf50f0368fe77434f8c05ea0d6defc7cf9b4e227e935';
           const remote=fs.readFileSync(path.join(remoteDir,codeFiles[0]),'utf8');
+          if(digest(remote)!==approvedSource)throw Error('REMOTE_SOURCE_DRIFT_REVIEW_REQUIRED');
           const local=fs.readFileSync('gas/Code.gs','utf8');
           const getNames=src=>new Set(
             [...src.matchAll(/(?:^|\n)function\s+([A-Za-z_$][\w$]*)\s*\(/g)].map(x=>x[1]));
@@ -103,6 +118,7 @@ jobs:
                'runIsolatedAliasWriteTrialOnce_'].every(n=>localFns.has(n)))
             throw Error('REMOTE_FUNCTIONS_CHANGED_REVIEW_REQUIRED');
           const manifest=fs.readFileSync(path.join(remoteDir,'appsscript.json'),'utf8');
+          if(digest(manifest)!==approvedManifest)throw Error('REMOTE_MANIFEST_DRIFT_REVIEW_REQUIRED');
           const remoteConfig=JSON.parse(manifest),localConfig=JSON.parse(
             fs.readFileSync('gas/appsscript.json','utf8'));
           const currentScopes=new Set(remoteConfig.oauthScopes||[]);
