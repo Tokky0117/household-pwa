@@ -145,6 +145,22 @@ assert.match(homeSummary,/明細 3件・OCR要確認 0件/);
 assert.match(homeSummary,/未照合 3件/);
 assert.match(homeSummary,/合計金額一致/);
 assert.equal(actions.length,1,'Home-center text must never be transmitted');
+// Warehouse OCR often reads the quantity marker 1● as 10.
+// Show both the observed marker and the unit-price-derived candidate,
+// without assuming the user confirmed the original paper receipt.
+$('ocr-review-text').value='架空テスト商品\n72587 10 3298 3298 E\n合計 ¥3298';
+await $('ocr-review-text').fire('input');
+await $('ocr-parse').fire('click');
+assert.equal($('ocr-candidate-list').children.length,1);
+assert.match($('ocr-candidate-list').children[0].children.map(n=>n.textContent).join(' '),
+ /OCR数量表記「10」→ 数量候補 1/);
+await $('ocr-copy-products').fire('click');
+const qtyReport=JSON.parse(copiedProductReport);
+assert.equal(qtyReport.products[0].ocrQuantityToken,'10');
+assert.equal(qtyReport.products[0].quantity,1);
+assert.equal(qtyReport.products[0].quantitySource,'inferred_candidate');
+assert.equal(qtyReport.products[0].recognition.quantityConfirmed,false);
+assert.equal(actions.length,1,'Quantity visibility is local-only');
 // Return to the already-verified synthetic one-product fixture.
 await $('ocr-sample').fire('click');
 // Real-device follow-up: select the one known test chain and the candidate
