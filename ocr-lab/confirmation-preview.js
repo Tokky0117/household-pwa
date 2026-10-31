@@ -131,13 +131,18 @@ export function createConfirmationPreview({section,file,chain,status,list,summar
    }else card.append(element('p',catalog?
     '一致する登録商品候補なし。OCR誤読・未登録商品・チェーン選択を確認してください。':
     '商品マスタ未読み込み：正式な商品名は未確認'));
-   const correctionLabel=element('label','正しい商品名を手動入力（任意・未保存）');
+   // A collapsible editor avoids 13 visible text fields on a long receipt.
+   const nameDetails=element('details');nameDetails.className='review-manual';
+   nameDetails.open=manualNames.has(i);
+   nameDetails.append(element('summary','商品名を手動修正（未保存）'));
+   const correctionLabel=element('label','原本を確認した正しい商品名');
    const correction=element('input');
    correction.type='text';correction.maxLength=120;
-   correction.placeholder='原本を確認して入力（自動確定しません）';
+   correction.placeholder='OCR名は残し、修正名を別欄に記録';
    correction.dataset.action='name-correction';correction.dataset.index=String(i);
    correction.value=manualNames.get(i)||'';
-   correctionLabel.append(correction);card.append(correctionLabel);
+   correctionLabel.append(correction);nameDetails.append(correctionLabel);
+   card.append(nameDetails);
    const selectedId=selected.get(i);
    if(catalog&&chainId&&selectedId&&item.productCode&&
       !warnings.includes('invalid_jan_checksum')){
