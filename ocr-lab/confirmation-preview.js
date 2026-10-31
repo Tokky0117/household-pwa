@@ -29,7 +29,7 @@ export function validateCatalog(value){
 const element=(tag,text)=>{const n=document.createElement(tag);if(text!==undefined)n.textContent=text;return n};
 const yen=n=>Number.isSafeInteger(n)?n.toLocaleString('ja-JP')+'円':'不明';
 export function createConfirmationPreview({section,file,chain,status,list,summary}){
- let receipt=null,catalog=null,chainId=null,generation=0;
+ let receipt=null,catalog=null,chainId=null,generation=0,source='none';
  const searchQueries=new Map();
  const selected=new Map(),quantities=new Set();
  const refreshChains=()=>{
@@ -121,13 +121,13 @@ export function createConfirmationPreview({section,file,chain,status,list,summar
   summaryText(matches);
  }
  file.addEventListener('change',async()=>{
-  const token=++generation,chosen=file.files?.[0];catalog=null;chainId=null;
+  const token=++generation,chosen=file.files?.[0];catalog=null;chainId=null;source='none';
   selected.clear();quantities.clear();searchQueries.clear();refreshChains();
   if(!chosen){status.textContent='商品マスタ未読み込み';render();return}
   if(chosen.size>1024*1024){status.textContent='JSONは1MB以内にしてください。';render();return}
   try{
    const text=await chosen.text();if(token!==generation)return;
-   catalog=validateCatalog(JSON.parse(text));refreshChains();render();
+   catalog=validateCatalog(JSON.parse(text));source='local';refreshChains();render();
    status.textContent='端末内で '+catalog.products.length+'商品・'+catalog.aliases.length+
     '別名を読み込みました。外部送信なし。';
   }catch{if(token!==generation)return;catalog=null;refreshChains();render();
@@ -167,9 +167,52 @@ export function createConfirmationPreview({section,file,chain,status,list,summar
  });
  refreshChains();
  return {
+  // This method is only called by a separate, explicit authenticated action.
+  // The OCR lab itself never enables login, GAS requests or background fetch.
+  async loadAuthenticatedCatalog(connector){
+   if(!connector||typeof connector.load!=='function')throw Error('CATALOG_CONNECTOR_UNAVAILABLE');
+   const request=++generation;
+   catalog=null;chainId=null;source='authenticated';
+   selected.clear();quantities.clear();searchQueries.clear();
+   file.value='';refreshChains();render();
+   status.textContent='認証済み商品マスタを読み取り中…';
+   try{
+    const loaded=await connector.load();
+    if(request!==generation)return false;
+    // Revalidate at the view boundary, even if the connector already did.
+    // Never accept household IDs or product/alias rows from unchecked data.
+    const validated=validateCatalog({
+     household_id:loaded?.householdId,products:loaded?.products,
+     product_aliases:loaded?.aliases,stores:loaded?.stores
+    });
+    if(request!==generation)return false;
+    catalog=validated;source='authenticated';
+    refreshChains();render();
+    status.textContent='認証済みの商品マスタ '+catalog.products.length+
+     '商品・'+catalog.aliases.length+'別名を読み込みました。正式保存はしません。';
+    return true;
+   }catch(error){
+    if(request!==generation)return false;
+    catalog=null;chainId=null;source='none';refreshChains();render();
+    const code=String(error?.message||'');
+    status.textContent=code==='LOGIN_REQUIRED'||code==='AUTH_SESSION_CHANGED'?
+     'ログイン状態が変わったため商品マスタを使用できません。':
+     '認証済み商品マスタを読み込めませんでした。';
+    throw error;
+   }
+  },
+  // A signed-out household must not leave private catalog candidates onscreen.
+  clearAuthenticatedCatalog(){
+   if(source!=='authenticated')return false;
+   generation++;catalog=null;chainId=null;source='none';
+   selected.clear();quantities.clear();searchQueries.clear();
+   refreshChains();render();
+   status.textContent='ログイン状態の変更により商品マスタを破棄しました。';
+   return true;
+  },
   setParsed(value){receipt=value;selected.clear();quantities.clear();searchQueries.clear();render()},
-  reset(){generation++;receipt=null;catalog=null;chainId=null;selected.clear();quantities.clear();
+  reset(){generation++;receipt=null;catalog=null;chainId=null;source='none';selected.clear();quantities.clear();
    file.value='';status.textContent='';summary.textContent='';searchQueries.clear();refreshChains();render()},
-  getStatus(){return {catalogLoaded:!!catalog,selected:selected.size,quantityConfirmed:quantities.size}}
+  getStatus(){return {catalogLoaded:!!catalog,source,selected:selected.size,quantityConfirmed:quantities.size}}
  };
 }
