@@ -1,78 +1,153 @@
 name: Push GAS to test project (manual)
+# Never triggered by pushes. Replaces test Apps Script source only after explicit approval.
 on:
   workflow_dispatch:
     inputs:
       confirm_target_backup:
-        description: 'Confirm GAS target source was backed up and reviewed (type BACKUP_DONE)'
+        description: 'PCに現行GASのコード.jsとappsscript.jsonのバックアップ済みなら BACKUP_DONE'
+        required: true
+        type: string
+      confirm_test_source:
+        description: '試験用GASだけを更新することに同意する場合 TEST_GAS_UPDATE'
         required: true
         type: string
 
 permissions:
   contents: read
 
+concurrency:
+  group: test-gas-source-update
+  cancel-in-progress: false
+
 jobs:
   push-test:
-    if: github.ref == 'refs/heads/stage-a-ui-handoff-review' && inputs.confirm_target_backup == 'BACKUP_DONE'
+    if: github.ref == 'refs/heads/stage-a-ui-handoff-review' && inputs.confirm_target_backup == 'BACKUP_DONE' && inputs.confirm_test_source == 'TEST_GAS_UPDATE'
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    env:
+      GAS_WORK: ${{ runner.temp }}/kurashi-test-gas
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: Check credentials exist
+
+      - name: Check development source syntax
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp gas/Code.gs "$RUNNER_TEMP/kurashi-gas-syntax.js"
+          node --check "$RUNNER_TEMP/kurashi-gas-syntax.js"
+          rm "$RUNNER_TEMP/kurashi-gas-syntax.js"
+
+      - name: Check test GAS identity and prepare temporary credentials
+        shell: bash
         env:
           CLASPRC_JSON: ${{ secrets.CLASPRC_JSON }}
           GAS_SCRIPT_ID_TEST: ${{ secrets.GAS_SCRIPT_ID_TEST }}
         run: |
-          test -n "$CLASPRC_JSON" || { echo "Missing CLASPRC_JSON"; exit 1; }
-          test -n "$GAS_SCRIPT_ID_TEST" || { echo "Missing GAS_SCRIPT_ID_TEST"; exit 1; }
-      - name: Prepare temporary clasp config
-        env:
-          CLASPRC_JSON: ${{ secrets.CLASPRC_JSON }}
-          GAS_SCRIPT_ID_TEST: ${{ secrets.GAS_SCRIPT_ID_TEST }}
+          set -euo pipefail
+          mkdir -p "$GAS_WORK/remote" "$GAS_WORK/stage"
+          node - <<'NODE'
+          const fs=require('node:fs'),crypto=require('node:crypto'),path=require('node:path');
+          const credentials=process.env.CLASPRC_JSON,id=process.env.GAS_SCRIPT_ID_TEST;
+          if(!credentials||!id)throw Error('GAS_CREDENTIALS_MISSING');
+          const expected='9c4113806442904861bb84dede2d9c542449a5c9ed5b494abe451cda0c1f4739';
+          const hash=crypto.createHash('sha256').update(id).digest('hex');
+          if(hash!==expected)throw Error('TEST_GAS_TARGET_MISMATCH');
+          const auth=JSON.parse(credentials);
+          if(!auth||typeof auth!=='object'||Array.isArray(auth))throw Error('CLASP_AUTH_INVALID');
+          fs.writeFileSync(path.join(process.env.HOME,'.clasprc.json'),
+            JSON.stringify(auth),{mode:0o600});
+          for(const dir of ['remote','stage']){
+            fs.writeFileSync(path.join(process.env.GAS_WORK,dir,'.clasp.json'),
+              JSON.stringify({scriptId:id,rootDir:'.'})+'\n',{mode:0o600});
+          }
+          console.log('TEST_GAS_ID_VERIFIED: matching designated isolated test script');
+          NODE
+
+      - name: Read current source from test GAS before replacing anything
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p "$HOME"
-          node - <<'NODE'
-          const fs = require('node:fs');
-          const auth = JSON.parse(process.env.CLASPRC_JSON);
-          if (!auth || typeof auth !== 'object') throw new Error('Invalid clasp credentials');
-          fs.writeFileSync(process.env.HOME+'/.clasprc.json', JSON.stringify(auth), {mode:0o600});
-          const scriptId = process.env.GAS_SCRIPT_ID_TEST.trim();
-          if (!/^[A-Za-z0-9_-]{20,}$/.test(scriptId)) throw new Error('Invalid Script ID');
-          fs.writeFileSync('.clasp.json', JSON.stringify({scriptId,rootDir:'gas'})+'\n',{mode:0o600});
-          NODE
-      - name: Check GAS source syntax
-        run: cp gas/Code.gs /tmp/kurashi-gas-check.js && node --check /tmp/kurashi-gas-check.js && rm /tmp/kurashi-gas-check.js
-        shell: bash
-      - name: Back up current test GAS source
-        shell: bash
-        run: |
-          set -euo pipefail
-          mkdir -p gas-backup
-          node - <<'NODE'
-          const fs = require('node:fs');
-          const config = JSON.parse(fs.readFileSync('.clasp.json','utf8'));
-          fs.writeFileSync('gas-backup/.clasp.json', JSON.stringify({scriptId:config.scriptId,rootDir:'.'})+'\n');
-          NODE
-          cd gas-backup
+          cd "$GAS_WORK/remote"
           npx --yes @google/clasp@3 pull
-          test -f Code.gs || { echo "Remote Code.gs not found; aborting destructive push"; exit 1; }
 
-      - name: Store GAS source backup before overwriting
-        uses: actions/upload-artifact@v4
-        with:
-          name: gas-source-before-push
-          path: |
-            gas-backup/**
-            !gas-backup/.clasp.json
-          if-no-files-found: error
-          retention-days: 30
+      - name: Check remote-only functions, file layout, and preserve existing manifest
+        shell: bash
+        run: |
+          set -euo pipefail
+          node - <<'NODE'
+          const fs=require('node:fs'),path=require('node:path');
+          const base=process.env.GAS_WORK,remoteDir=path.join(base,'remote'),
+            stageDir=path.join(base,'stage');
+          const names=fs.readdirSync(remoteDir).filter(n=>!n.startsWith('.'));
+          const codeFiles=names.filter(n=>/\.(gs|js)$/.test(n));
+          // Never delete a custom/extra project file without a separate review.
+          if(codeFiles.length!==1||codeFiles[0]!=='コード.js'||
+             names.length!==2||!names.includes('appsscript.json'))
+            throw Error('REMOTE_FILE_LAYOUT_CHANGED_REVIEW_REQUIRED');
+          const remote=fs.readFileSync(path.join(remoteDir,codeFiles[0]),'utf8');
+          const local=fs.readFileSync('gas/Code.gs','utf8');
+          const getNames=src=>new Set(
+            [...src.matchAll(/(?:^|\n)function\s+([A-Za-z_$][\w$]*)\s*\(/g)].map(x=>x[1]));
+          const remoteFns=getNames(remote),localFns=getNames(local);
+          const oldOnly=[...remoteFns].filter(n=>!localFns.has(n)).sort();
+          const expectedOld=['append','initializeEmptySchema','mutate','testGoogleConnection','write'];
+          if(JSON.stringify(oldOnly)!==JSON.stringify(expectedOld)||
+             !['doGet','doPost','authenticate','bootstrap','testAllSheetsReadOnly']
+              .every(n=>remoteFns.has(n))||
+             !['productCatalog_','productAliasCheck_','mutateAliasSafely_',
+               'runIsolatedAliasWriteTrialOnce_'].every(n=>localFns.has(n)))
+            throw Error('REMOTE_FUNCTIONS_CHANGED_REVIEW_REQUIRED');
+          const manifest=fs.readFileSync(path.join(remoteDir,'appsscript.json'),'utf8');
+          const remoteConfig=JSON.parse(manifest),localConfig=JSON.parse(
+            fs.readFileSync('gas/appsscript.json','utf8'));
+          const currentScopes=new Set(remoteConfig.oauthScopes||[]);
+          if(remoteConfig.runtimeVersion!=='V8'||
+             !Array.isArray(remoteConfig.oauthScopes)||
+             !localConfig.oauthScopes.every(scope=>currentScopes.has(scope)))
+            throw Error('REMOTE_MANIFEST_SCOPE_REVIEW_REQUIRED');
+          // Preserve live project's manifest, including webapp and dependencies.
+          // Never broaden OAuth scopes or alter deployment configuration.
+          fs.copyFileSync(path.join(remoteDir,'appsscript.json'),
+            path.join(stageDir,'appsscript.json'));
+          fs.copyFileSync('gas/Code.gs',path.join(stageDir,'コード.js'));
+          console.log('TEST_GAS_REPLACE_PREFLIGHT_OK: 1 known Japanese script; existing manifest preserved');
+          console.log('Legacy functions being superseded (reviewed names): '+oldOnly.join(', '));
+          console.log('No Sheets read/write operations performed');
+          NODE
 
-      - name: Push source to test GAS project
-        run: npx --yes @google/clasp@3 push --force
-      - name: Remove temporary credentials
+      - name: Replace source code in test GAS only (manual approval required)
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$GAS_WORK/stage"
+          npx --yes @google/clasp@3 push --force
+
+      - name: Verify required trial functions after the source-only update
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$GAS_WORK/stage"
+          npx --yes @google/clasp@3 pull
+          node - <<'NODE'
+          const fs=require('node:fs');
+          const src=fs.readFileSync('コード.js','utf8');
+          const required=['doPost','authenticate','bootstrap','productCatalog_',
+            'productAliasCheck_','mutateAliasSafely_',
+            'testIsolatedAliasWriteTrialPreflightReadOnly_',
+            'runIsolatedAliasWriteTrialOnce_','testIsolatedAliasWriteTrialResultReadOnly_'];
+          if(!required.every(name=>src.includes('function '+name+'(')))
+            throw Error('TEST_GAS_SOURCE_VERIFY_FAILED');
+          fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY,
+            'TEST_GAS_SOURCE_UPDATE_OK: test GAS source only; no deployment, no Sheets writes.\n');
+          console.log('TEST_GAS_SOURCE_UPDATE_OK: no web app deployment, no spreadsheet writes');
+          NODE
+
+      - name: Remove temporary authentication and code
         if: always()
-        run: rm -f "$HOME/.clasprc.json" ".clasp.json" "gas-backup/.clasp.json"
+        shell: bash
+        run: |
+          rm -f "$HOME/.clasprc.json" "$RUNNER_TEMP/kurashi-gas-syntax.js"
+          rm -rf "$GAS_WORK"
