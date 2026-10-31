@@ -41,7 +41,7 @@ jobs:
           set -euo pipefail
           git fetch --prune origin '+refs/heads/*:refs/remotes/origin/*'
           mkdir -p _site/previews
-          files=(index.html app.js auth.js gas-api.js live-operation-journal.js receipt-ocr.js styles.css manifest.webmanifest icon.svg sw.js gas-setup.html gas-trial-setup.html gas-trial-connection.html gas-connection-test.html gas/Code.gs)
+          files=(index.html app.js auth.js gas-api.js live-operation-journal.js receipt-ocr.js styles.css manifest.webmanifest icon.svg sw.js gas-setup.html gas-trial-setup.html gas-trial-connection.html receipt-catalog-integration.js receipt-structure.js receipt-product-matching.js receipt-alias-preflight.js gas-connection-test.html gas/Code.gs)
 
           copy_site() {
             local ref="$1"
@@ -85,6 +85,13 @@ jobs:
                   OCR_LAB_OUT="$GITHUB_WORKSPACE/$dest/ocr-lab" npm run build
                 )
                 rm -rf "$build_root"
+                # The authenticated diagnostic reuses these small, pure
+                # confirmation modules. Copy after the Vite build so its
+                # output cleanup cannot remove them. They do not enable GAS
+                # calls in the standalone OCR lab itself.
+                for source in confirmation-preview.js catalog-search.js authenticated-catalog.js preview-auth-bridge.js; do
+                  git show "refs/remotes/$remote_ref:ocr-lab/$source" > "$dest/ocr-lab/$source"
+                done
               fi
               echo "Preview: /previews/$slug/"
             else
