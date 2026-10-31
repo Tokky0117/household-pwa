@@ -1446,6 +1446,72 @@ function testIsolatedAliasWriteTrialResultReadOnly_(){
  return true;
 }
 /**
+ * Editor-visible, READ-ONLY cross-check of the fixture already written to
+ * the user's exact prototype test Sheet. No token, household ID, alias ID,
+ * product row, or private catalog data is printed or returned.
+ *
+ * This proves the *same* catalog and alias-check implementations used by
+ * authenticated API actions can read the stored row. It does NOT by itself
+ * prove OAuth login or deployed Web app connectivity.
+ */
+function testAliasCatalogReadOnly(){
+ try{
+  const book=spreadsheet(),state=isolatedAliasTrialGuard_(book);
+  const fixture=ALIAS_TRIAL_FIXTURE_;
+  if(state.products.length!==1||state.stores.length!==1||
+     state.aliases.length!==1||state.aliasLogs.length!==1||
+     state.aliasOps.length!==1)
+   fail('CATALOG_FIXTURE_MISMATCH','試験用商品コード登録の完了状態を確認できません');
+  const home={householdId:state.householdId,userId:String(state.member.user_id)};
+  const data=productCatalog_(home,book);
+  if(String(data.household_id)!==state.householdId||
+     data.products.length!==1||data.stores.length!==1||
+     data.product_aliases.length!==1)
+   fail('CATALOG_FIXTURE_MISMATCH','商品マスタの件数や家庭の範囲が一致しません');
+  const product=data.products[0],store=data.stores[0],alias=data.product_aliases[0];
+  if(product.product_id!==fixture.product_id||
+     product.household_id!==state.householdId||
+     product.name!=='試験用・商品コード'||
+     store.chain_id!==fixture.store_id||
+     store.canonical_name!=='[KURASHI_ALIAS_TRIAL_ONLY]'||
+     alias.product_id!==product.product_id||
+     alias.chain_id!==store.chain_id||
+     alias.normalized_alias!==fixture.product_code||
+     typeof alias.normalized_alias!=='string')
+   fail('CATALOG_FIXTURE_MISMATCH','コードと商品・チェーンの対応が一致しません');
+  Logger.log('ALIAS_CATALOG_READ_OK: 1 product, 1 store, 1 alias, household-scoped');
+  const existing=productAliasCheck_(home,{
+   product_id:fixture.product_id,
+   chain_id:fixture.store_id,
+   product_code:fixture.product_code
+  },book);
+  if(existing.status!=='already_registered'||
+     existing.household_id!==state.householdId||
+     existing.product_code!=='00012345'||
+     existing.matched_product_ids.length!==1||
+     existing.matched_product_ids[0]!==fixture.product_id||
+     existing.write_permitted!==false)
+   fail('CATALOG_MATCH_MISMATCH','登録済みコードの照合結果が一致しません');
+  Logger.log('ALIAS_CODE_MATCH_OK: leading zeros retained, exactly one product, already_registered');
+  const missing=productAliasCheck_(home,{
+   product_id:fixture.product_id,
+   chain_id:fixture.store_id,
+   product_code:'00099999'
+  },book);
+  if(missing.status!=='available'||missing.matched_product_ids.length!==0||
+     missing.write_permitted!==false)
+   fail('CATALOG_MATCH_MISMATCH','未登録コードの照合結果が一致しません');
+  Logger.log('ALIAS_UNKNOWN_CODE_OK: unknown code unresolved, no writes');
+  Logger.log('ALIAS_CATALOG_TEST_DONE: read-only, actual sheet fixture verified');
+  return true;
+ }catch(err){
+  const code=typeof err?.code==='string'?err.code:'UNEXPECTED_ERROR';
+  Logger.log('ALIAS_CATALOG_TEST_FAILED: '+code);
+  throw new Error('ALIAS_CATALOG_TEST_FAILED: '+code);
+ }
+}
+
+/**
  * Editor-visible, explicitly user-approved, ONE fixture-only Sheets write test.
  * Do not expose this function through doGet, doPost or google.script.run.
  * The internal entrypoint revalidates Sheet identity, all trial rows, lock,
