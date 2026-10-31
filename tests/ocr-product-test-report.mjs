@@ -50,6 +50,7 @@ const json=createProductTestReport({
 });
 const report=JSON.parse(json);
 assert.equal(report.version,'product-test-1');
+assert.deepEqual(report.matchingContext,{catalogLoaded:false,chainSelected:null});
 assert.equal(report.products.length,13);
 assert.equal(report.counts.needsReview,12);
 assert.equal(report.counts.uncertainQuantities,12);
@@ -102,6 +103,17 @@ const withReview=createProductTestReport({receipt:parse('牛乳 ¥198'),diagnost
   household_id:'SECRET_HOUSEHOLD',product_id:'SECRET_PRODUCT_ID'
  }]}
 });
+const unselectedReport=JSON.parse(createProductTestReport({
+ receipt:parse('牛乳 ¥198'),diagnostic:diag,
+ review:{source:'local',chainSelected:false,items:[]}
+}));
+assert.deepEqual(unselectedReport.matchingContext,{catalogLoaded:true,chainSelected:false});
+const selectedScope=JSON.parse(createProductTestReport({
+ receipt:parse('牛乳 ¥198'),diagnostic:diag,
+ review:{source:'local',chainSelected:true,items:[]}
+}));
+assert.deepEqual(selectedScope.matchingContext,{catalogLoaded:true,chainSelected:true});
+assert.ok(!JSON.stringify(selectedScope.matchingContext).includes('fixture-store'));
 const verified=JSON.parse(withReview).products[0].recognition;
 const disabled=JSON.parse(createProductTestReport({receipt:parse('牛乳 ¥198'),diagnostic:{normalization:{mode:'none',changedCount:0}}}));
 assert.equal(disabled.ocrSettings.japaneseGlyphConversion,false);
