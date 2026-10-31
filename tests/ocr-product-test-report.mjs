@@ -147,6 +147,48 @@ assert.equal(manualQty.products[0].quantity,1);
 assert.equal(manualQty.products[0].quantityStatus,'manual_confirmed');
 assert.equal(manualQty.products[1].quantity,null);
 assert.equal(manualQty.receiptChecks.printedCountMatches,null,'One manual confirmation does not verify entire receipt');
+// Kansai-supermarket-style synthetic receipt: the totals and printed point
+// count can agree while two individual quantity=1 defaults are not verified.
+const kansai=parse([
+ '※白ねぎ 1本 ¥159','自動割引1 10.00 -15',
+ '※成田もやし ¥29','※ブナシメジ','5コ×単99 ¥495',
+ '自動割引1 10.00','5コ×単-9 -45',
+ '税8% ¥49','お買上 ¥672','お買上点数 7点'
+].join('\\n'));
+assert.equal(kansai.reconciliation.totalMatches,true);
+assert.equal(kansai.reconciliation.candidateCountMatches,true);
+assert.equal(kansai.reconciliation.printedCountMatches,null);
+assert.equal(kansai.reconciliation.quantityVerified,false);
+const kansaiReport=JSON.parse(createProductTestReport({
+ receipt:kansai,diagnostic:diag,warningScopes:warningScopes(kansai)
+}));
+assert.deepEqual(kansaiReport.products.map(x=>x.quantity),[null,null,5]);
+assert.deepEqual(kansaiReport.products.map(x=>x.quantityCandidate),[1,1,null]);
+assert.deepEqual(kansaiReport.products.map(x=>x.quantityStatus),
+ ['unverified_default_one','unverified_default_one','printed_consistent']);
+assert.equal(kansaiReport.counts.needsReview,2);
+assert.equal(kansaiReport.counts.uncertainQuantities,2);
+assert.equal(kansaiReport.receiptChecks.quantityVerified,false);
+assert.equal(kansaiReport.receiptChecks.quantity,null);
+assert.equal(kansaiReport.receiptChecks.quantityCandidateSum,7);
+assert.equal(kansaiReport.receiptChecks.printedCountMatches,null);
+assert.equal(kansaiReport.receiptChecks.candidateCountMatches,true);
+assert.equal(kansaiReport.receiptChecks.netSum,623);
+assert.equal(kansaiReport.receiptChecks.taxTotal,49);
+assert.equal(kansaiReport.receiptChecks.receiptTotal,672);
+assert.equal(kansaiReport.receiptChecks.totalMatches,true);
+// Explicit human confirmation of both defaults resolves the per-item count.
+const confirmedKansai=JSON.parse(createProductTestReport({
+ receipt:kansai,diagnostic:diag,
+ review:{items:[{quantityConfirmed:true},{quantityConfirmed:true},{}]}
+}));
+assert.equal(confirmedKansai.receiptChecks.quantityVerified,true);
+assert.equal(confirmedKansai.receiptChecks.printedCountMatches,true);
+assert.deepEqual(confirmedKansai.products.map(x=>x.quantity),[1,1,5]);
+assert.equal(confirmedKansai.counts.uncertainQuantities,0);
+assert.equal(JSON.parse(createProductTestReport({
+ receipt:parse('牛乳 ¥198'),diagnostic:diag
+})).products[0].quantityStatus,'unverified_default_one');
 assert.throws(()=>createProductTestReport({receipt:{items:Array(301).fill({})},diagnostic:diag}),
  /PRODUCT_REPORT_TOO_LARGE/);
 console.log('Product-level OCR clipboard report PASS: Costco R01 13 products, coupon math, quantity uncertainty, catalog choices, no member/payment/device leaks');
