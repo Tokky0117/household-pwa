@@ -89,7 +89,7 @@ jobs:
                 # confirmation modules. Copy after the Vite build so its
                 # output cleanup cannot remove them. They do not enable GAS
                 # calls in the standalone OCR lab itself.
-                for source in confirmation-preview.js catalog-search.js authenticated-catalog.js preview-auth-bridge.js; do
+                for source in confirmation-preview.js catalog-search.js authenticated-catalog.js preview-auth-bridge.js product-test-report.js; do
                   git show "refs/remotes/$remote_ref:ocr-lab/$source" > "$dest/ocr-lab/$source"
                 done
               fi
