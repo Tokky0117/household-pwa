@@ -48,7 +48,7 @@ try{
  // Search for an existing household product manually, even if the OCR failed to
  // generate any acceptable matching code. This remains only a local selection.
  const productName=firstItems[0].name||'MILK';
- await page.locator('.review-manual summary').first().click();
+ await page.locator('details.review-manual:has(input[data-action="search"]) summary').first().click();
  await page.locator('input[data-action="search"]').first().fill(Array.from(productName).slice(0,2).join(''));
  assert.ok(await page.locator('select[data-action="manual-product"]').first().locator('option').count()>1);
  await page.locator('select[data-action="manual-product"]').first().selectOption('p1');
