@@ -33,7 +33,7 @@ assert.equal(parse('※ ブナシメジ\n5コ×単99 ¥495').items[0].unitPrice,
 assert.equal(parse('商品名\n2000219735999 1 ¥1,290').items[0].unitPrice,1290);
 assert.equal(parse('商品名\n72587 1● 3,298 3,298 T').items[0].unitPrice,3298);
 assert.equal(parse('白ねぎ 1本 ¥159').items[0].quantitySource,'default');
-const printedSingle=parse('商品名\\n12345 1@ 100 100 T\\nお買上点数 1点');
+const printedSingle=parse('商品名\n12345 1@ 100 100 T\nお買上点数 1点');
 assert.equal(printedSingle.items[0].quantitySource,'printed');
 assert.equal(printedSingle.reconciliation.quantityVerified,true);
 assert.equal(printedSingle.reconciliation.printedCountMatches,true);
