@@ -1,9 +1,6 @@
 name: Push GAS to test project (manual)
-# One-time source-only deploy of the user-approved test fixture function; GSheets remains unchanged by CI.
+# Manual-only test GAS source update; the one-time approval trigger has been disabled.
 on:
-  push:
-    branches: [stage-a-ui-handoff-review]
-    paths: ['.github/workflows/gas-push-test.yml']
   workflow_dispatch:
     inputs:
       confirm_target_backup:
@@ -24,13 +21,7 @@ concurrency:
 
 jobs:
   push-test:
-    if: >-
-      github.ref == 'refs/heads/stage-a-ui-handoff-review' &&
-      ((github.event_name == 'push' &&
-         github.event.head_commit.message == 'APPROVED_ALIAS_SHEET_WRITE_FIXTURE_20261031_ONE_TIME') ||
-       (github.event_name == 'workflow_dispatch' &&
-         inputs.confirm_target_backup == 'BACKUP_DONE' &&
-         inputs.confirm_test_source == 'TEST_GAS_UPDATE'))
+    if: github.ref == 'refs/heads/stage-a-ui-handoff-review' && inputs.confirm_target_backup == 'BACKUP_DONE' && inputs.confirm_test_source == 'TEST_GAS_UPDATE'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
