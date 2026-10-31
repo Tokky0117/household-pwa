@@ -287,6 +287,15 @@ function rows(name,book){
 }
 function write_(name,row,obj,existingSheet){
  const sh=existingSheet||tab(name),h=TABLES[name];
+ if(name==='product_aliases'){
+  // Keep leading zeros of a product code even on newly created Sheet rows.
+  // The journal is written before this call, so a formatting/setValues
+  // exception can be recovered using the exact same operation ID.
+  const value=obj.normalized_alias;
+  if(typeof value!=='string'||!/^[0-9]{4,14}$/.test(value))
+   fail('BAD_REQUEST','商品コードの文字列形式が不正です');
+  sh.getRange(row,h.indexOf('normalized_alias')+1,1,1).setNumberFormat('@');
+ }
  sh.getRange(row,1,1,h.length).setValues([h.map(k=>obj[k]===null||obj[k]===undefined?'':obj[k])]);
 }
 function append_(name,obj,book){
@@ -1436,6 +1445,27 @@ function testIsolatedAliasWriteTrialResultReadOnly_(){
  Logger.log('ALIAS_TRIAL_RESULT_OK: store=1, product=1, aliases=1, change_log=1, journal=1, replay=verified, code_as_text=verified');
  return true;
 }
+/**
+ * Editor-visible, explicitly user-approved, ONE fixture-only Sheets write test.
+ * Do not expose this function through doGet, doPost or google.script.run.
+ * The internal entrypoint revalidates Sheet identity, all trial rows, lock,
+ * journal, and duplicate replay. No user/household IDs are printed.
+ */
+function runAliasTrialWriteOnce(){
+ try{
+  const ok=runIsolatedAliasWriteTrialOnce_();
+  if(ok!==true)fail('TRIAL_ASSERT_FAILED','書き込み試験が完了しませんでした');
+  Logger.log('ALIAS_TRIAL_EDITOR_WRITE_OK: fixture verified; identical replay produced no duplicates');
+  return true;
+ }catch(err){
+  // Apps Script prints thrown plain objects as "[object Object]".
+  // Preserve only the safe error code (never row data or credentials).
+  const code=typeof err?.code==='string'?err.code:'UNEXPECTED_ERROR';
+  Logger.log('ALIAS_TRIAL_EDITOR_WRITE_FAILED: '+code);
+  throw new Error('ALIAS_TRIAL_EDITOR_WRITE_FAILED: '+code);
+ }
+}
+
 function runIsolatedAliasWriteTrialOnce_(){
  // Editor-only; unlike doPost, intentionally bypasses the separate browser
  // experimental-writes flag. It still rechecks isolation under both locks.
