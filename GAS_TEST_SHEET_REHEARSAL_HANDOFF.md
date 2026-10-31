@@ -76,3 +76,13 @@
 - 試験用GASへ追加のコード更新が成功：<https://github.com/Tokky0117/household-pwa/actions/runs/41166432369>。更新後の読み取り専用再取得で **GitHubの開発版と完全一致**、マニフェストのSHA-256は更新前から不変：<https://github.com/Tokky0117/household-pwa/actions/runs/41166492359>。
 - 一度限りのGitHub Actions自動反映トリガーは再度無効化。現状のGASソースを取得・更新しただけで、**Webアプリのデプロイ、Script Properties、Google Sheetsには変更していない**。
 - **次のユーザー操作**：試験用GASエディタを再読み込み → 関数選択から `testAliasTrialPreflightReadOnly`（末尾の `_` なし）を選択 → 「実行」。`ALIAS_TRIAL_PREFLIGHT_OK` が出るか、失敗した場合はエラーコードを確認する。書き込み用の公開入口は追加しない。
+
+## 2026-10-31：既存試作用シートのリモート読み取り検査
+
+- ユーザーが既存の試作環境から引き継いだ**試作用GAS・シート**をそのまま再利用していることが判明。隔離された空の書き込み試験用コピーという前提が保証されないので、**households/usersなどの実データを試験ラベルに合わせて編集してはならない**。
+- 既存GASの `testAliasTrialPreflightReadOnly` で `assertIsolatedTrialIdentity` が安全停止。条件は家庭1件・ユーザー1件・家庭名 `[KURASHI_WRITE_TRIAL_ONLY]`・同じhousehold_id・numeric auth_subject。どの条件が実シートで違うかは未確認。
+- GitHub Actions `gas-test-sheet-readonly-audit.yml` からGoogle Drive APIのファイルメタデータにアクセスし、**ユーザー指定のシートIDが存在することをハッシュで確認**。ただしGoogle Sheets APIは `403 SERVICE_DISABLED`、Driveのxlsxエクスポートは `403 appNotAuthorizedToFile`。**セル内容・行数・列見出しの読み取りには失敗している**。
+- GitHub Actionsのログには、実際のシートID、Googleアカウント情報、アクセストークン、セルの値は出していない。Google SheetsおよびGASの変更・デプロイ・データ削除はなし。
+- 読み取り専用検査結果：<https://github.com/Tokky0117/household-pwa/actions/runs/41168206588>。
+- **現状の制約**：現在のclasp認証はGASのコード管理には有効だが、既存シート全体の内容へのアクセス権がない。実データの過不足を確認するには、ChatGPTのGoogle Drive連携を接続するか、利用者が試用シートのExcel形式エクスポートをこの会話に渡す必要がある。公開リンク化やユーザーの個人データの貼り付けは求めない。
+- 連携後はまず**読み取り専用で**12シートのタブ・見出し・行数、`households`と`users`の整合、カテゴリ5件、既存在庫試験の操作履歴、商品・店舗・別名・レシートの既存行を確認し、試作用として許容できるデータと、隔離書き込み試験に適さないデータを区別する。改修案は実態確認後に決める。
