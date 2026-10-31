@@ -19,7 +19,7 @@
  function status(){return {configured:!!endpoint};}
  async function request(action,payload,options={}){
    if(!endpoint)throw new Error('GAS_NOT_CONFIGURED');
-   if(!['bootstrap','sync','product.catalog'].includes(action)){
+   if(!['bootstrap','sync','product.catalog','product.alias.check'].includes(action)){
      if(!MUTATIONS.has(action))throw new Error('UNSUPPORTED');
      if(!LIVE_WRITE_ENABLED)throw new Error('WRITES_DISABLED');
      if(!options.operationId||!(/^[a-zA-Z0-9_-]{8,128}$/).test(options.operationId))throw new Error('OPERATION_ID_REQUIRED');
