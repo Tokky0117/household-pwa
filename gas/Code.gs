@@ -1252,6 +1252,15 @@ function isolatedAliasTrialGuard_(book){
  return {householdId:hid,member:rows('users',book)[0].obj,
   priorSequence,stores,products,aliases,logs,ops,aliasLogs,aliasOps};
 }
+/**
+ * Editor-visible READ-ONLY entrypoint. The underscored implementation is
+ * private and hidden from Apps Script's Run dropdown.
+ * Never writes to GAS Script Properties or Google Sheets.
+ */
+function testAliasTrialPreflightReadOnly(){
+ return testIsolatedAliasWriteTrialPreflightReadOnly_();
+}
+
 function testIsolatedAliasWriteTrialPreflightReadOnly_(){
  const book=spreadsheet();
  const state=isolatedAliasTrialGuard_(book);
