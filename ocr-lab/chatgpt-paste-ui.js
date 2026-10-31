@@ -3,6 +3,7 @@
  */
 import '../receipt-structure.js';
 import '../receipt-product-matching.js';
+import '../receipt-alias-preflight.js';
 import {createConfirmationPreview} from './confirmation-preview.js';
 import {
  IMPORT_VERSION,parseChatGptReceiptJson,editChatGptReceiptDraft,draftQuality
