@@ -57,7 +57,7 @@
     pending=null;janPending=null;continue;
    }
    if(m=l.match(/^小計(?:金額)?\s*[¥]?\s*([\d,]+)$/)){subtotal=num(m[1]);summary=true;pending=null;janPending=null;continue;}
-   if(m=l.match(/^(?:お買上点数|買上点数)\s*(\d+)点$/)){printedCount=+m[1];continue;}
+   if(m=l.match(/^(?:(?:お|御)?買上(?:げ)?点数)\s*(\d{1,3})(?:\s*点)?(?:\s*\([A-Za-z0-9]{1,3}\))?$/)){printedCount=+m[1];continue;}
    if(m=l.match(/^(?:税(?:8|10)%|外税額 (?:8|10)%)\s*¥([\d,]+)$/)){taxTotal=(taxTotal||0)+num(m[1]);continue;}
    if(summary)continue;
    // Barcode -> name -> tax-inclusive price. Fail closed when incomplete.
