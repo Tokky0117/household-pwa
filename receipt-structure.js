@@ -182,7 +182,10 @@
   const expected=taxBasis==='excluded'&&taxTotal!==null?sum+taxTotal:taxBasis==='included'?sum:null;
   if(taxBasis==='unknown')warn('unknown_tax_basis',null);
   const quantity=items.reduce((s,x)=>s+x.quantity,0);
-  const hasUnverifiedQuantity=items.some(x=>x.quantitySource==='inferred_candidate'||
+  // A missing quantity marker defaults to one for arithmetic only. A sum
+  // including those defaults is not proof of individual printed quantities.
+  const hasUnverifiedQuantity=items.some(x=>x.quantitySource==='default'||
+   x.quantitySource==='inferred_candidate'||
    x.issues.includes('quantity_ocr_ambiguous')||x.issues.includes('unit_quantity_mismatch'));
   const candidateCountMatches=printedCount===null?null:printedCount===quantity;
   return {rawText,items,adjustments,warnings,receiptTotal,subtotal,taxTotal,taxBreakdown,taxBasis,printedCount,reconciliation:{
