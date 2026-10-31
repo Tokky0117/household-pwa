@@ -4,10 +4,12 @@ import {prepareImage} from './prepare-image.js';
 import {createCropSelector} from './crop-preview.js';
 import {normalizeYenGrouping} from './normalize-money.js';
 import {createScanTimingTracker,formatDuration} from './scan-comparison.js';
+import {createProductTestReport} from './product-test-report.js';
 const $=id=>document.getElementById(id),photo=$('photo'),status=$('status'),scan=$('scan');
 const cropSelector=createCropSelector({input:photo,container:$('crop-area'),canvas:$('crop-canvas'),status:$('crop-status'),reset:$('clear-crop')});
 const confirmation=createConfirmationPreview({section:$('candidate-confirmation'),file:$('catalog-file'),chain:$('catalog-chain'),status:$('catalog-status'),list:$('candidate-list'),summary:$('candidate-summary')});
 let reader=null,busy=false,generation=0,report='',summaryReport='',timer=null;
+let lastParsed=null,lastDiagnostic=null;
 const timingTracker=createScanTimingTracker();
 const seconds=ms=>(ms/1000).toFixed(1)+'秒';
 // Explicit allowlist: never include receipt text, store, items, product codes,
@@ -41,7 +43,7 @@ function diagnosticSummary(d,receipt){
  return 'くらしストック OCR検証サマリー（商品名・コード・取引情報なし）\n'+JSON.stringify(detail,null,2);
 }
 function controls(){scan.disabled=busy||!photo.files?.length;photo.disabled=busy;$('scale').disabled=busy;$('clear-crop').disabled=busy;$('japanese-normalize').disabled=busy;}
-function clearResult(){$('result').hidden=true;$('timing-comparison').hidden=true;$('timing-comparison-rows').replaceChildren();$('timing-comparison-status').textContent='';confirmation.setParsed(null);for(const id of ['text','items','diagnostic','copy-status','metrics','elapsed','raw-text','normalization-diff']){const el=$(id);if(id==='text')el.value='';else el.textContent='';}report='';summaryReport='';}
+function clearResult(){$('result').hidden=true;$('timing-comparison').hidden=true;$('timing-comparison-rows').replaceChildren();$('timing-comparison-status').textContent='';confirmation.setParsed(null);for(const id of ['text','items','diagnostic','copy-status','metrics','elapsed','raw-text','normalization-diff']){const el=$(id);if(id==='text')el.value='';else el.textContent='';}report='';summaryReport='';lastParsed=null;lastDiagnostic=null;}
 photo.addEventListener('change',()=>{generation++;timingTracker.reset();clearResult();cropSelector.open(photo.files?.[0]||null);status.textContent=photo.files.length?'写真を選択しました。「読み取りを試す」を押してください。':'写真を選んでください。';controls();});
 $('scan-form').addEventListener('submit',async event=>{
  event.preventDefault();if(busy||!photo.files?.length)return;
@@ -78,7 +80,8 @@ $('scan-form').addEventListener('submit',async event=>{
    phases:{sdkModuleLoadMs,readerCallMs,modelRuntimeEstimateMs:runtimeEstimateMs},
    inference:r.metrics,observationCount:r.observations.length,lineCount:r.lines.length,extractedItems:parsed.items.length,reviewRequiredItems,normalization:{mode:japaneseEnabled?'japanese-glyphs-v1':'none',changedCount:changes.length,normalizationMs,originalPreserved:true},moneyGrouping:{mode:'yen-grouping-v1',changedCount:money.changes.length},device:navigator.userAgent};
   $('text').value=output;$('raw-text').textContent=r.text;$('normalization-diff').textContent=JSON.stringify({japaneseGlyphChanges:japaneseEnabled?changes:[],yenGroupingChanges:money.changes},null,2);
-  confirmation.setParsed(parsed);$('items').textContent=JSON.stringify(parsed,null,2);$('diagnostic').textContent=JSON.stringify(diagnostic,null,2);
+  confirmation.setParsed(parsed);lastParsed=parsed;lastDiagnostic=diagnostic;
+  $('items').textContent=JSON.stringify(parsed,null,2);$('diagnostic').textContent=JSON.stringify(diagnostic,null,2);
   summaryReport=diagnosticSummary(diagnostic,parsed);
   const timing=timingTracker.add(diagnostic);
   if(timing){
@@ -115,6 +118,21 @@ $('copy-summary').addEventListener('click',async()=>{
   $('copy-status').textContent='個人情報を含まない検証サマリーをコピーしました。';
  }catch{
   $('copy-status').textContent='検証サマリーをコピーできませんでした。ブラウザの権限を確認してください。';
+ }
+});
+$('copy-products').addEventListener('click',async()=>{
+ if(!lastParsed||!lastDiagnostic||$('result').hidden)return;
+ try{
+  const content=createProductTestReport({
+   receipt:lastParsed,diagnostic:lastDiagnostic,
+   review:confirmation.getProductReview(),
+   warningScopes:window.KurashiReceiptStructure.warningScopes(lastParsed)
+  });
+  await navigator.clipboard.writeText(content);
+  $('copy-status').textContent='商品名・コード・数量・値引き・照合状況の検証レポートをコピーしました。購入内容なので共有前に確認してください。';
+ }catch{
+  // Do not fall back to selecting full OCR text: that can contain payment IDs.
+  $('copy-status').textContent='商品検証レポートをコピーできませんでした。ブラウザのクリップボード権限を確認してください。';
  }
 });
 $('copy').addEventListener('click',async()=>{if(!report)return;try{await navigator.clipboard.writeText(report);$('copy-status').textContent='コピーしました。';}catch{$('text').focus();$('text').select();$('copy-status').textContent='文字起こしを選択しました。コピー操作を行ってください。';}});
