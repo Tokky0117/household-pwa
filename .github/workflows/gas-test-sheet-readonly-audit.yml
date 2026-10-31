@@ -1,0 +1,164 @@
+name: Audit existing test Spreadsheet (read-only)
+on:
+  push:
+    branches: [stage-a-ui-handoff-review]
+    paths: ['.github/workflows/gas-test-sheet-readonly-audit.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Establish test-GAS token without exposing credentials
+        shell: bash
+        env:
+          CLASPRC_JSON: \${{ secrets.CLASPRC_JSON }}
+          GAS_SCRIPT_ID_TEST: \${{ secrets.GAS_SCRIPT_ID_TEST }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/kurashi-sheet-inspect"
+          node - <<'NODE'
+          const fs=require('node:fs'),crypto=require('node:crypto');
+          const id=process.env.GAS_SCRIPT_ID_TEST,raw=process.env.CLASPRC_JSON;
+          const expected='9c4113806442904861bb84dede2d9c542449a5c9ed5b494abe451cda0c1f4739';
+          if(!id||!raw||crypto.createHash('sha256').update(id).digest('hex')!==expected)
+            throw Error('TEST_GAS_AUTH_OR_ID_MISSING');
+          const auth=JSON.parse(raw);
+          if(!auth||typeof auth!=='object'||Array.isArray(auth))
+            throw Error('INVALID_CLASP_AUTH');
+          fs.writeFileSync(process.env.HOME+'/.clasprc.json',JSON.stringify(auth),{mode:0o600});
+          fs.writeFileSync(process.env.RUNNER_TEMP+'/kurashi-sheet-inspect/.clasp.json',
+           JSON.stringify({scriptId:id,rootDir:'.'}),{mode:0o600});
+          NODE
+          cd "$RUNNER_TEMP/kurashi-sheet-inspect"
+          npx --yes @google/clasp@3 pull
+      - name: Inspect target Google Sheets only if existing read scope permits
+        shell: bash
+        run: |
+          node - <<'NODE'
+          const fs=require('node:fs'),path=require('node:path'),crypto=require('node:crypto');
+          const summary=process.env.GITHUB_STEP_SUMMARY;
+          const out=[];
+          const emit=s=>{out.push(s);console.log(s)};
+          const sha=s=>crypto.createHash('sha256').update(String(s)).digest('hex');
+          const EXPECTED_SHEET_HASH='e2383bb4d5a2df8271ac582e129e3d49450861fedf767f4986944c53bc83d43a';
+          const tableNames=['households','users','categories','stores','item_groups',
+           'products','product_aliases','records','record_items','change_log',
+           'processed_operations','receipt_rules'];
+          function getToken(obj,depth=0){
+           if(!obj||typeof obj!=='object'||depth>5)return null;
+           if(typeof obj.access_token==='string'&&obj.access_token.length>20)return obj;
+           for(const value of Object.values(obj)){
+            const found=getToken(value,depth+1);
+            if(found)return found;
+           }
+           return null;
+          }
+          const checked=JSON.parse(fs.readFileSync(path.join(process.env.HOME,'.clasprc.json'),'utf8'));
+          const token=getToken(checked);
+          if(!token)throw Error('TOKEN_NOT_AVAILABLE_AFTER_CLASP_PULL');
+          const scope=typeof token.scope==='string'?token.scope:'';
+          emit('SHEET_AUDIT: Authentication present; no source/Sheet data printed');
+          emit('OAuth metadata scope: '+(scope.includes('/auth/drive.metadata.readonly')?'YES':'NOT_RECORDED'));
+          emit('OAuth spreadsheet read scope: '+
+           (/\/auth\/spreadsheets(\.readonly)?(\s|$)/.test(scope)?'YES':'NOT_RECORDED'));
+          async function api(url){
+           const response=await fetch(url,{headers:{Authorization:'Bearer '+token.access_token}});
+           if(!response.ok)return {status:response.status,ok:false};
+           return {ok:true,status:response.status,data:await response.json()};
+          }
+          const driveRoot='https://www.googleapis.com/drive/v3/files';
+          let id=null,page='',pages=0,driveStatus=0;
+          do{
+           const p=new URLSearchParams({
+            q:"mimeType = 'application/vnd.google-apps.spreadsheet' and trashed = false",
+            fields:'nextPageToken,files(id,mimeType)',pageSize:'1000'});
+           if(page)p.set('pageToken',page);
+           const response=await api(driveRoot+'?'+p.toString());
+           if(!response.ok){driveStatus=response.status;break}
+           for(const v of response.data.files||[]){
+            if(v?.id&&sha(v.id)===EXPECTED_SHEET_HASH)id=v.id;
+           }
+           page=response.data.nextPageToken||'';pages++;
+          }while(!id&&page&&pages<20);
+          if(!id){
+           emit('TEST_SHEET_DISCOVERY: NOT_FOUND_OR_UNAVAILABLE (Drive HTTP '+driveStatus+', pages '+pages+')');
+           emit('SHEET_ROWS_READ: NO');
+           fs.appendFileSync(summary,out.join('\n')+'\n');
+           process.exit(0);
+          }
+          emit('TEST_SHEET_DISCOVERY: MATCH (hashed target identifier)');
+          const root='https://sheets.googleapis.com/v4/spreadsheets/'+encodeURIComponent(id);
+          const meta=await api(root+'?fields=sheets(properties(title,gridProperties(rowCount,columnCount)))');
+          if(!meta.ok){
+           emit('SHEETS_CONTENT_ACCESS: FAILED (HTTP '+meta.status+')');
+           emit('SHEET_ROWS_READ: NO');
+           fs.appendFileSync(summary,out.join('\n')+'\n');
+           process.exit(0);
+          }
+          emit('SHEETS_CONTENT_ACCESS: OK (read-only)');
+          const names=(meta.data.sheets||[]).map(x=>x.properties?.title).filter(Boolean);
+          emit('SHEET_COUNT: '+names.length);
+          const missing=tableNames.filter(name=>!names.includes(name));
+          const extras=names.filter(name=>!tableNames.includes(name));
+          emit('SCHEMA_TAB_NAMES: '+(missing.length||extras.length?'MISMATCH':'OK'));
+          emit('MISSING_TABS: '+(missing.length?missing.join(', '):'none'));
+          emit('EXTRA_TABS: '+(extras.length?extras.join(', '):'none'));
+          const values=new Map();
+          const ranges=tableNames.filter(n=>names.includes(n)).map(n=>"'"+n.replace(/'/g,"''")+"'!A1:Z1000");
+          const batch=new URLSearchParams({valueRenderOption:'UNFORMATTED_VALUE',majorDimension:'ROWS'});
+          for(const range of ranges)batch.append('ranges',range);
+          const result=await api(root+'/values:batchGet?'+batch.toString());
+          if(!result.ok){
+           emit('SHEET_ROWS_READ: FAILED (HTTP '+result.status+')');
+           fs.appendFileSync(summary,out.join('\n')+'\n');
+           process.exit(0);
+          }
+          ranges.forEach((r,i)=>values.set(tableNames.filter(n=>names.includes(n))[i],result.data.valueRanges?.[i]?.values||[]));
+          const data=name=>values.get(name)||[];
+          const headerMap=name=>{
+           const rows=data(name),hdr=(rows[0]||[]).map(String);
+           return {rows:rows.slice(1).filter(r=>r.some(v=>v!==''&&v!==null)),hdr};
+          };
+          const mapping=name=>{
+           const {hdr,rows}=headerMap(name);
+           return rows.map(row=>Object.fromEntries(hdr.map((h,i)=>[h,row[i]??''])));
+          };
+          const h=mapping('households'),u=mapping('users'),c=mapping('categories');
+          const expectedHouseholdLabel='[KURASHI_WRITE_TRIAL_ONLY]';
+          const hi=h.length===1,ui=u.length===1;
+          emit('SHEET_ROWS_READ: OK');
+          emit('HOUSEHOLDS_ROWS: '+h.length);
+          emit('USERS_ROWS: '+u.length);
+          emit('HOUSEHOLD_TRIAL_LABEL: '+(hi&&String(h[0].display_name)===expectedHouseholdLabel?'OK':'MISMATCH'));
+          emit('USER_HOUSEHOLD_LINK: '+(hi&&ui&&String(u[0].household_id)===String(h[0].household_id)?'OK':'MISMATCH'));
+          emit('USER_AUTH_SUBJECT_FORMAT: '+(ui&&/^[0-9]+$/.test(String(u[0].auth_subject||''))?'OK':'MISMATCH'));
+          emit('CATEGORIES_COUNT: '+c.length);
+          const expectedCategories=['飲食','キッチン','洗面・風呂','洗濯・掃除','その他'];
+          emit('CATEGORIES_VALUES: '+(c.length===5&&c.every((r,i)=>String(r.name)===expectedCategories[i]&&Number(r.fixed_order)===i+1)?'OK':'MISMATCH'));
+          for(const n of tableNames){
+           if(!names.includes(n))continue;
+           const {rows,hdr}=headerMap(n);
+           emit('TABLE '+n+': '+rows.length+' data row(s), '+hdr.length+' header(s)');
+          }
+          const {hdr:houseHdr}=headerMap('households'),{hdr:userHdr}=headerMap('users');
+          for(const [n,required,hdr] of [
+           ['households',['household_id','display_name','version','updated_at'],houseHdr],
+           ['users',['user_id','household_id','display_name','auth_subject'],userHdr]]){
+           emit('HEADERS '+n+': '+(required.every((x,i)=>hdr[i]===x)?'OK':'MISMATCH'));
+          }
+          emit('NO_CHANGES: metadata and cell values read only');
+          fs.appendFileSync(summary,out.join('\n')+'\n');
+          NODE
+      - name: Remove temporary credentials and downloaded code
+        if: always()
+        shell: bash
+        run: |
+          rm -f "$HOME/.clasprc.json"
+          rm -rf "$RUNNER_TEMP/kurashi-sheet-inspect"
