@@ -36,7 +36,7 @@ function harness(){
   PropertiesService:{getScriptProperties(){return {getProperty(key){
    return ({
     SPREADSHEET_ID:active,WRITE_TRIAL_SPREADSHEET_ID:trial,
-    ENABLE_EXPERIMENTAL_WRITES:enabled?'true':null
+    ENABLE_EXPERIMENTAL_WRITES:enabled?'true':null,GOOGLE_CLIENT_ID:'sandbox-client'
    })[key]||null;
   }}}},
   SpreadsheetApp:{openById(id){
@@ -74,6 +74,17 @@ function harness(){
    computeDigest(_alg,s){return Array.from(createHash('sha256').update(s).digest())},
    base64EncodeWebSafe(bytes){return Buffer.from(bytes).toString('base64url')}
   },
+  UrlFetchApp:{fetch(url,options){
+   assert.ok(url.startsWith('https://oauth2.googleapis.com/tokeninfo?id_token='));
+   assert.equal(options.muteHttpExceptions,true);
+   return {getResponseCode(){return 200},getContentText(){return JSON.stringify({
+    aud:'sandbox-client',iss:'https://accounts.google.com',sub:'1234567890',
+    exp:Math.floor(Date.now()/1000)+3600
+   })}};
+  }},
+  ContentService:{MimeType:{JSON:'application/json'},createTextOutput(content){
+   return {setMimeType(){return this},getContent(){return content}};
+  }},
   Date,JSON
  };
  vm.createContext(mock);
@@ -82,13 +93,17 @@ function harness(){
  const payload=(product_id='p1',product_code='00012345',chain_id='s1')=>
   ({product_id,chain_id,product_code,confirmed:true});
  const run=(p=payload(),id='alias-create-0001')=>mock.mutate_(user,'product.alias.create',p,id);
+ const post=(action,p=payload(),id='alias-post-00001',token='TEST_VALID_TOKEN_'.repeat(10))=>{
+  const request={id_token:token,action,payload:p,operation_id:id};
+  return JSON.parse(mock.doPost({postData:{contents:JSON.stringify(request)}}).getContent());
+ };
  const error=(p,id,code)=>assert.throws(()=>run(p,id),e=>e?.code===code,'Expected '+code);
  const records=(name)=>tables[name].slice(1).map(row=>Object.fromEntries(columns[name].map((col,i)=>[col,row[i]])));
  return {tables,run,error,payload,records,
   setEnabled(v){enabled=v},setTrial(v){trial=v},setActive(v){active=v},
   setFault(name,phase){fault={name,phase}},
   setLock(v){shouldLock=v},setExternalMove(){foreignMove=true},
-  get writes(){return writes},get locked(){return locked},user,mock
+  get writes(){return writes},get locked(){return locked},user,mock,post
  };
 }
 const phases=['journal.prepare','entity.write','change.write','journal.finalize'];
@@ -206,4 +221,39 @@ for(const stage of phases)for(const phase of ['before','after']){
  h.error(h.payload(),'stale-preflight-001','ALIAS_CONFLICT');
  assert.equal(h.writes,0);
 }
+
+ // The public POST action exists but remains locked behind the isolated
+ // spreadsheet AND explicit trial-only property. Production is not deployed.
+{
+ const h=harness(),p=h.payload();
+ let reply=h.post('product.alias.create',p,'api-alias-00001');
+ assert.equal(reply.ok,false);
+ assert.equal(reply.error.code,'WRITES_DISABLED');
+ assert.equal(h.writes,0);
+ reply=h.post('product.alias.create',p,'api-alias-00002','short');
+ assert.equal(reply.error.code,'UNAUTHORIZED');
+ assert.equal(h.writes,0);
+ h.setTrial('production-sheet');
+ h.setEnabled(true);
+ reply=h.post('product.alias.create',p,'api-alias-00003');
+ assert.equal(reply.error.code,'WRITES_DISABLED');
+ assert.equal(h.writes,0);
+ h.setTrial('test-sheet');
+ reply=h.post('product.alias.create',p,'api-alias-00004');
+ assert.equal(reply.ok,true);
+ assert.equal(reply.data.entity.product_id,'p1');
+ assert.equal(reply.data.entity.normalized_alias,'00012345');
+ assert.equal(h.records('product_aliases').length,1);
+ const before=h.writes;
+ reply=h.post('product.alias.create',p,'api-alias-00004');
+ assert.equal(reply.ok,true);
+ assert.equal(h.writes,before);
+ reply=h.post('product.alias.create',h.payload('p2'),'api-alias-00005');
+ assert.equal(reply.error.code,'ALIAS_CONFLICT');
+ assert.equal(h.records('product_aliases').length,1);
+ reply=h.post('product.alias.create',{...p,confirmed:false},'api-alias-00006');
+ assert.equal(reply.error.code,'CONFIRMATION_REQUIRED');
+ assert.equal(h.records('product_aliases').length,1);
+}
+
 console.log('GAS trial alias write PASS: 8 crash points, same-operation retry, trial gate, ownership, conflicts, no live writes');
