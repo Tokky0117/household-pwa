@@ -65,13 +65,16 @@ export function createConfirmationPreview({section,file,chain,status,list,summar
  const warningsHasQuantityIssue=item=>
   (item.issues||[]).some(x=>x==='quantity_ocr_ambiguous'||x==='unit_quantity_mismatch');
 
- const refreshChains=()=>{
+ const refreshChains=({keepManual=false}={})=>{
+  const manuallyChosen=keepManual&&chainSource==='manual'&&catalog?.stores.some(x=>x.chain_id===chainId)?
+   chainId:null;
   chain.replaceChildren();
   const empty=element('option','チェーン未選択（共通の別名のみ）');empty.value='';chain.append(empty);
   for(const s of catalog?.stores||[]){const o=element('option',s.canonical_name);o.value=s.chain_id;chain.append(o)}
   // Reconsider only with a new validated catalog/receipt. User can override.
-  chainId=detectReceiptChain(receipt,catalog?.stores);
-  chainSource=chainId?'receipt_header':null;
+  const detected=detectReceiptChain(receipt,catalog?.stores);
+  chainId=detected||manuallyChosen||null;
+  chainSource=detected?'receipt_header':manuallyChosen?'manual':null;
   chain.value=chainId||'';chain.disabled=!catalog;
  };
  const candidates=()=>catalog&&receipt?
@@ -336,7 +339,7 @@ export function createConfirmationPreview({section,file,chain,status,list,summar
   },
   setParsed(value){
    receipt=value;selected.clear();quantities.clear();searchQueries.clear();manualNames.clear();
-   if(catalog)refreshChains();else{chainId=null;chainSource=null;}
+   if(catalog)refreshChains({keepManual:true});else{chainId=null;chainSource=null;}
    render();
   },
   reset(){generation++;receipt=null;catalog=null;chainId=null;source='none';selected.clear();quantities.clear();
