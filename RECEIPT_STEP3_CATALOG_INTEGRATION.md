@@ -36,3 +36,11 @@
 ### 実運用への残課題
 
 本件は開発ブランチのコード差分に限る。既存の開発プレビューではGoogleログインが無効なため、実際の認証済みSheetsへの通信試験はできない。**実GASのデプロイ更新・商品コードの登録・Google Sheetsの書き込み・mainの更新は行っていない。** 端末内のJSON検証と、実GASでの認証済みカタログ利用は区別して扱う。
+
+## 2026-10-31：試験GAS実シート読み取り成功・OCR確認画面の接続境界
+
+- ユーザーが既存の試験用GASエディタで `testAliasCatalogReadOnly` を実行。提供された実行ログ画面で `SCHEMA_READ_OK: 12 sheets`、`ALIAS_CATALOG_READ_OK`、`ALIAS_CODE_MATCH_OK`、`ALIAS_UNKNOWN_CODE_OK`、`ALIAS_CATALOG_TEST_DONE`、実行完了を確認。商品・店舗・別名各1件、登録済み `00012345` と未登録コードを正しく読み分けた。**書き込みは0件**。GASが同一試験Sheetから直接読み取れた証拠であり、ブラウザからのGoogle認証付きWeb API疎通確認ではない。
+- `ocr-lab/confirmation-preview.js` に `loadAuthenticatedCatalog(connector)` を追加。将来の**ユーザー明示操作**で認証済み商品マスタを端末メモリへロードし、既存の候補表示・チェーン選択・手動商品検索に使用できる。読み込み元が変われば選択状態を破棄し、応答中の破棄や古い結果の後着による再表示を拒否する。ローカルJSON読込も維持。
+- `ocr-lab/preview-auth-bridge.js` に `createAuthenticatedPreviewBridge` を追加。既存の `product.catalog` 認証付き読み取りコネクタを呼び出す明示的な接続境界で、ログアウトまたは家庭の主体切り替え時には表示中の商品マスタを破棄する。モジュール読込だけではログイン開始・HTTP通信・データ保存は行わない。
+- `tests/receipt-preview-auth-bridge.mjs` は合成家庭・合成商品だけで、明示的読取、候補表示、ログアウト破棄、遅延した旧応答の拒否、家庭不一致応答の拒否、従来のローカルJSON維持を検査する。既存のオフラインCIへ追加。
+- **既存の公開OCRラボ（`ocr-lab/main.js` / `index.html`）は、この認証付きブリッジを読み込まず、ログイン・外部接続を起動しない。** 写真も商品マスタも送信しない現行挙動を維持する。試験GASの`doPost`の再デプロイ、実ユーザーのブラウザ認証API接続、CORS/通信方式の評価は未完了。正式商品コード登録 `product.alias.create` とPWAの書き込みは引き続き禁止。
