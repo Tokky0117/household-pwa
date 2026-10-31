@@ -57,6 +57,10 @@ assert.equal(report.products[0].ocrName,'TORRIDEN SERUM');
 assert.equal(report.products[0].code,'72587');
 assert.equal(report.products[0].quantity,1);
 assert.equal(report.products[0].quantitySource,'inferred_candidate');
+assert.equal(report.products[0].ocrQuantityToken,'10','Show the OCR glyph which led to a quantity=1 candidate');
+assert.ok(report.products.every(p=>p.ocrQuantityToken==='10'));
+assert.ok(!json.includes('SECRET_MEMBER_NUMBER'));
+
 assert.equal(report.products[0].discount,660);
 assert.equal(report.products[0].netAmount,2638);
 assert.ok(report.products.every(x=>x.issues.includes('quantity_ocr_ambiguous')));
@@ -90,12 +94,15 @@ assert.match(privacy.ocrName,/非表示/);
 assert.equal(privacy.code,null);
 assert.ok(!poisonedText.includes('987654321098'));
 assert.ok(!poisonedText.includes('SECRET_TRANSACTION'));
+poisoned.items[0].ocrQuantityToken='取引ID 1234567891234';
+assert.equal(JSON.parse(createProductTestReport({receipt:poisoned,diagnostic:diag})).products[0].ocrQuantityToken,null);
 // Valid SKUs/JAN codes and the signed quantities, but never raw fields.
 const known=parse('#015 JAN4900000000009\n商品名A\n437内');
 const jan=JSON.parse(createProductTestReport({receipt:known,diagnostic:diag})).products[0];
 assert.equal(jan.code,'4900000000009');
 assert.equal(jan.janChecksumValid,true);
 assert.equal(jan.amount,437);
+assert.equal(jan.ocrQuantityToken,null,'JAN triplets have no printed quantity marker');
 assert.throws(()=>createProductTestReport({receipt:{items:Array(301).fill({})},diagnostic:diag}),
  /PRODUCT_REPORT_TOO_LARGE/);
 console.log('Product-level OCR clipboard report PASS: Costco R01 13 products, coupon math, quantity uncertainty, catalog choices, no member/payment/device leaks');
