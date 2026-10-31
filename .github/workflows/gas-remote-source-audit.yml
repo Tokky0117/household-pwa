@@ -1,5 +1,5 @@
 name: Read-only audit of existing test GAS source
-# Re-run after adding GitHub Actions secrets; never deploy, push, or write Sheets.
+# Final read-only verification after the user-approved test GAS source-only update.
 on:
   push:
     branches: [stage-a-ui-handoff-review]
