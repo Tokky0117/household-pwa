@@ -85,6 +85,13 @@ jobs:
             'runIsolatedAliasWriteTrialOnce_',
             'testIsolatedAliasWriteTrialResultReadOnly_'];
           const match=functions.map(name=>({name,present:remote.includes('function '+name+'(')}));
+          const declared=source=>new Set([...source.matchAll(/(?:^|\n)function\s+([A-Za-z_$][\w$]*)\s*\(/g)].map(m=>m[1]));
+          const remoteDeclarations=declared(remote),localDeclarations=declared(local);
+          const remoteOnly=[...remoteDeclarations].filter(name=>!localDeclarations.has(name)).sort();
+          const manifestFile=fs.readFileSync('gas/appsscript.json','utf8');
+          const remoteManifest=fs.readFileSync(path.join(folder,'appsscript.json'),'utf8');
+          const normalManifest=text=>JSON.stringify(JSON.parse(text));
+          const manifestMatches=normalManifest(manifestFile)===normalManifest(remoteManifest);
           const baselineFunctions=['doGet','doPost','authenticate','bootstrap','testAllSheetsReadOnly',
             'mutateItemSafely_','runIsolatedItemWriteTrialOnce_'];
           const baseline=baselineFunctions.map(name=>({name,present:remote.includes('function '+name+'(')}));
@@ -93,6 +100,9 @@ jobs:
             'READ_ONLY_GAS_AUDIT: Test GAS source retrieved without modifying project or Sheets.',
             'Remote scripts: '+remoteFiles.length,
             'Remote and branch script source identical: '+(sha(local)===sha(remote)),
+            'Manifest JSON identical: '+manifestMatches,
+            'Remote-only named functions: '+(remoteOnly.length?remoteOnly.join(', '):'none'),
+            'Remote-only function count: '+remoteOnly.length,
             'Remote source bytes: '+Buffer.byteLength(remote),
             'Remote existing baseline functions:',
             ...baseline.map(x=>'- '+x.name+': '+(x.present?'YES':'NO')),
