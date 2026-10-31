@@ -34,6 +34,19 @@ const yen=n=>Number.isSafeInteger(n)?n.toLocaleString('ja-JP')+'円':'不明';
 export function detectReceiptChain(receipt,stores){
  if(!receipt||typeof receipt.rawText!=='string'||!Array.isArray(receipt.items)||
     !receipt.items.length||!Array.isArray(stores))return null;
+ // A manually pasted result has no OCR header coordinates. Match only a
+ // unique EXACT store name already in the catalog; it remains an unconfirmed
+ // chain suggestion, never a validated merchant identity.
+ if(receipt.importSource==='chatgpt_paste'&&typeof receipt.storeName==='string'){
+  const normalize=value=>String(value||'').normalize('NFKC').toUpperCase()
+   .replace(/[\s　・･☆★*]/gu,'').trim();
+  const wanted=normalize(receipt.storeName);
+  const ids=new Set(stores.filter(store=>
+   store&&typeof store.chain_id==='string'&&typeof store.canonical_name==='string'&&
+   wanted.length>=4&&normalize(store.canonical_name.split(/[（(]/)[0])===wanted
+  ).map(store=>store.chain_id));
+  return ids.size===1?[...ids][0]:null;
+ }
  const sourceLines=receipt.items.flatMap(item=>Array.isArray(item.sourceLines)?item.sourceLines:[])
   .filter(n=>Number.isInteger(n)&&n>0);
  if(!sourceLines.length)return null;
@@ -102,7 +115,9 @@ export function createConfirmationPreview({section,file,chain,status,list,summar
   const warnings=Array.isArray(receipt?.warnings)?receipt.warnings.length:0;
   const extras=[];
   if(catalog&&chainId&&chainSource==='receipt_header')
-   extras.push('チェーンをレシート上部から推定（商品登録前に確認してください）');
+   extras.push(receipt?.importSource==='chatgpt_paste'?
+    '貼り付けた店舗名からチェーンを推定（原本を確認してください）':
+    'チェーンをレシート上部から推定（商品登録前に確認してください）');
   if(catalog&&!chainId&&catalog.aliases.some(a=>a.chain_id!=null))
    extras.push('チェーン未選択：店舗別SKUは照合していません。上のチェーン欄を選択してください');
   if(catalog&&chainId){
