@@ -10,6 +10,11 @@
  // must still be consistent. Never silently treat an uncertain quantity as printed fact.
  const skuRow=/^(?:CPN\s+)?(\d{4,8})\s+(\d{1,2}[●@eEoO]?)\s+([\d,.]+)\s+([\d,.]+)(-)?\s*([ET])$/i;
  const ambiguousUnitRow=/^(\d{2,3})\s*[x×]\s*単\s*([\d,]+)\s*[¥]?\s*([\d,]+)$/i;
+ // Register/checkout identifiers are not products even when OCR flattens
+ // their right-hand terminal number into a trailing price-like column.
+ // Keep this narrow: a numbered register label, not arbitrary names that
+ // happen to contain "レジ" or a real retail product/price.
+ const registerMetadata=/^(?:\d{2,8}\s*)?(?:精算機|精算器|レジ(?:番号|端末)|POS端末)\s*#?\d{1,4}(?:\s+[¥]?#?\d{1,8})?$/i;
  // Home centers may print barcode, name and price on separate lines.
  const janHeader=/^#\d{1,4}\s+JAN\s*([0-9]{13})$/i;
  const janTaxPrice=/^[¥￥]?([\d,]+)\s*(?:内|込)$/;
@@ -60,6 +65,7 @@
    if(m=l.match(/^(?:(?:お|御)?買上(?:げ)?点数)\s*(\d{1,3})(?:\s*点)?(?:\s*\([A-Za-z0-9]{1,3}\))?$/)){printedCount=+m[1];continue;}
    if(m=l.match(/^(?:税(?:8|10)%|外税額 (?:8|10)%)\s*¥([\d,]+)$/)){taxTotal=(taxTotal||0)+num(m[1]);continue;}
    if(summary)continue;
+   if(registerMetadata.test(l)){pending=null;continue;}
    // Barcode -> name -> tax-inclusive price. Fail closed when incomplete.
    if(m=l.match(janHeader)){
     if(janPending)warn('jan_incomplete_item',janPending.line);
