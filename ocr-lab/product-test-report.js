@@ -41,12 +41,22 @@ export function createProductTestReport({receipt,diagnostic,review,warningScopes
  const products=receipt.items.map((item,index)=>{
   const matched=rows[index]||{};
   const candidates=Array.isArray(matched.candidateNames)?matched.candidateNames.slice(0,3):[];
+  const uncertain=item.quantitySource==='inferred_candidate'||
+   (item.issues||[]).includes('quantity_ocr_ambiguous')||
+   (item.issues||[]).includes('unit_quantity_mismatch');
+  const confirmed=matched.quantityConfirmed===true;
+  const correctedName=matched.manuallyCorrectedName?safeName(matched.manuallyCorrectedName):null;
+  const selectedName=matched.selectedProductName?safeName(matched.selectedProductName):null;
   return {
    no:index+1,
    ocrName:safeName(item.name),
    code:safeCode(item.productCode),
    janChecksumValid:typeof item.janChecksumValid==='boolean'?item.janChecksumValid:null,
-   quantity:number(item.quantity),
+   // Untrusted OCR counts never appear in the confirmed quantity field.
+   quantity:uncertain&&!confirmed?null:number(item.quantity),
+   quantityCandidate:uncertain?number(item.quantity):null,
+   quantityStatus:uncertain?(confirmed?'manual_confirmed':'unverified_candidate'):
+    item.quantitySource==='printed'?'printed_consistent':'default_one',
    // Only an OCR digit/marker token; do not export raw text lines.
    ocrQuantityToken:typeof item.ocrQuantityToken==='string'&&
     /^\d{1,2}[●@eEoO]?$/.test(item.ocrQuantityToken)?item.ocrQuantityToken:null,
@@ -62,13 +72,19 @@ export function createProductTestReport({receipt,diagnostic,review,warningScopes
      review.source:'none',
     candidateStatus:allowedStatus(matched.status),
     candidateNames:candidates.map(safeName),
-    selectedProductName:matched.selectedProductName?safeName(matched.selectedProductName):null,
-    quantityConfirmed:matched.quantityConfirmed===true
+    selectedProductName:selectedName,
+    manuallyCorrectedName:correctedName,
+    nameConfirmed:Boolean(selectedName||correctedName),
+    quantityConfirmed:confirmed
    }
   };
  });
  const r=receipt.reconciliation||{},p=diagnostic.phases||{},i=diagnostic.inference||{};
  const scope=warningScopes||{};
+ const quantitiesVerified=products.every(x=>x.quantity!==null);
+ const candidateCountMatches=typeof r.candidateCountMatches==='boolean'?
+  r.candidateCountMatches:null;
+ const printedCount=number(receipt.printedCount);
  // Receipt-level warnings may not include the line mapping of a product.
  // Export only counts/codes, not OCR lines or source text.
  const result={
@@ -92,7 +108,9 @@ export function createProductTestReport({receipt,diagnostic,review,warningScopes
   },
   counts:{
    extractedItems:products.length,
-   needsReview:products.filter(x=>x.issues.length||x.quantitySource==='inferred_candidate').length,
+   needsReview:products.filter(x=>x.issues.length||x.quantityStatus==='unverified_candidate').length,
+   uncertainQuantities:products.filter(x=>x.quantityStatus==='unverified_candidate').length,
+   unconfirmedNames:products.filter(x=>!x.recognition.nameConfirmed).length,
    // Product-level review reasons are not the same as warnings outside
    // the merchandise region. Keep both counts for test comparisons.
    itemIssueTypes:issueCounts(products.flatMap(x=>x.issues.map(code=>({code})))),
@@ -104,9 +122,13 @@ export function createProductTestReport({receipt,diagnostic,review,warningScopes
    }
   },
   receiptChecks:{
-   quantity: number(r.quantity),
-   printedCount:number(receipt.printedCount),
-   printedCountMatches:typeof r.printedCountMatches==='boolean'?r.printedCountMatches:null,
+   quantity:quantitiesVerified?number(r.quantity):null,
+   quantityCandidateSum:number(r.quantity),
+   quantityVerified:quantitiesVerified,
+   printedCount,
+   printedCountMatches:printedCount===null||!quantitiesVerified?null:
+    printedCount===number(r.quantity),
+   candidateCountMatches,
    grossSum:products.every(x=>x.amount!==null)?products.reduce((s,x)=>s+x.amount,0):null,
    discountSum:products.every(x=>x.discount!==null)?products.reduce((s,x)=>s+x.discount,0):null,
    netSum:signed(r.netSum),
