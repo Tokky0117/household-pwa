@@ -1,6 +1,9 @@
 name: Push GAS to test project (manual)
-# Manual-only test GAS source update; the one-time approval trigger has been disabled.
+# One-time source upgrade for trial-only read-only catalog match; no spreadsheet writes.
 on:
+  push:
+    branches: [stage-a-ui-handoff-review]
+    paths: ['.github/workflows/gas-push-test.yml']
   workflow_dispatch:
     inputs:
       confirm_target_backup:
@@ -21,7 +24,13 @@ concurrency:
 
 jobs:
   push-test:
-    if: github.ref == 'refs/heads/stage-a-ui-handoff-review' && inputs.confirm_target_backup == 'BACKUP_DONE' && inputs.confirm_test_source == 'TEST_GAS_UPDATE'
+    if: >-
+      github.ref == 'refs/heads/stage-a-ui-handoff-review' &&
+      ((github.event_name == 'push' &&
+         github.event.head_commit.message == 'READONLY_ALIAS_CATALOG_TEST_GAS_UPDATE_20261031_ONE_TIME') ||
+       (github.event_name == 'workflow_dispatch' &&
+         inputs.confirm_target_backup == 'BACKUP_DONE' &&
+         inputs.confirm_test_source == 'TEST_GAS_UPDATE'))
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -92,7 +101,7 @@ jobs:
           // Refuse any source/manifest drift since the final read-only audit.
           const crypto=require('node:crypto');
           const digest=text=>crypto.createHash('sha256').update(text).digest('hex');
-          const approvedSource='1fcb28f51424ac9647a8092a403bba3656254a7d3944709a7ec2339c565373b4';
+          const approvedSource='3d70888002c8651b3498041b81f5226599bd17955944139334b89818a8afc605';
           const approvedManifest='0952d47f73508eb256f1cf50f0368fe77434f8c05ea0d6defc7cf9b4e227e935';
           const remote=fs.readFileSync(path.join(remoteDir,codeFiles[0]),'utf8');
           if(digest(remote)!==approvedSource)throw Error('REMOTE_SOURCE_DRIFT_REVIEW_REQUIRED');
@@ -108,7 +117,8 @@ jobs:
              !['productCatalog_','productAliasCheck_','mutateAliasSafely_',
                'runIsolatedAliasWriteTrialOnce_','testAliasTrialPreflightReadOnly',
                'testTrialSheetInventoryReadOnly','approvedPrototypeAliasSheet_',
-               'assertAliasEditorTrialIdentity_','runAliasTrialWriteOnce'].every(n=>localFns.has(n)))
+               'assertAliasEditorTrialIdentity_','runAliasTrialWriteOnce',
+               'testAliasCatalogReadOnly','verifyAliasFixtureCommitted_'].every(n=>localFns.has(n)))
             throw Error('REMOTE_FUNCTIONS_CHANGED_REVIEW_REQUIRED');
           const manifest=fs.readFileSync(path.join(remoteDir,'appsscript.json'),'utf8');
           if(digest(manifest)!==approvedManifest)throw Error('REMOTE_MANIFEST_DRIFT_REVIEW_REQUIRED');
@@ -151,7 +161,7 @@ jobs:
             'runIsolatedAliasWriteTrialOnce_','testIsolatedAliasWriteTrialResultReadOnly_',
             'testAliasTrialPreflightReadOnly','testTrialSheetInventoryReadOnly',
             'approvedPrototypeAliasSheet_','assertAliasEditorTrialIdentity_',
-            'runAliasTrialWriteOnce'];
+            'runAliasTrialWriteOnce','testAliasCatalogReadOnly','verifyAliasFixtureCommitted_'];
           if(!required.every(name=>src.includes('function '+name+'(')))
             throw Error('TEST_GAS_SOURCE_VERIFY_FAILED');
           fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY,
