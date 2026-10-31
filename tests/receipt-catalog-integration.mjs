@@ -121,9 +121,9 @@ assert.equal(actions.length,1,'Realistic text summary must not trigger a GAS req
 // A home-center receipt has JAN, name and inclusive price on different
 // lines. Neither subtotal nor payment rows are merchandise candidates.
 $('ocr-review-text').value=[
- '#015 JAN4900000000001','洗たく槽KB2P550g×','437内',
- '#015 JAN4900000000002','リーゼ うるおいパーマもと','800内',
- '#015 JAN4900000000003','よもぎ温座パット3個','748内',
+ '#015 JAN4900000000009','洗たく槽KB2P550g×','437内',
+ '#015 JAN4900000000016','リーゼ うるおいパーマもと','800内',
+ '#015 JAN4900000000023','よもぎ温座パット3個','748内',
  '小計金額 ¥1,985','内税小計 3 ¥1,985','合 33 ¥1,985',
  '(10%対象 ¥1,985)','(10%対象消費税 ¥180)',
  '楽天ペイ ¥1,985','楽天ペイ ¥1,985'
