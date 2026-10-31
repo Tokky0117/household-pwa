@@ -27,6 +27,7 @@ assert.match(html,/id="catalog-result"/);
 assert.match(html,/id="catalog-detail"/);
 assert.match(html,/id="ocr-review"/);
 assert.match(html,/id="ocr-review-text"/);
+assert.match(html,/id="ocr-multi-sample"/);
 assert.match(html,/id="ocr-load-catalog"/);
 assert.match(html,/receipt-catalog-integration\.js/);
 assert.match(html,/receipt-product-matching\.js/);
