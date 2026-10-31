@@ -66,8 +66,19 @@ export function createConfirmationPreview({section,file,chain,status,list,summar
   if(conflicts)extras.push('コード・商品名の競合 '+conflicts+'件');
   if(ambiguous)extras.push('候補が複数 '+ambiguous+'件');
   if(suggestions)extras.push('類似名候補 '+suggestions+'件');
-  if(warnings)extras.push('抽出警告 '+warnings+'件');
-  if(receipt?.receiptTotal!=null&&receipt?.reconciliation?.totalMatches===false)
+  if(warnings){
+   const scope=window.KurashiReceiptStructure?.warningScopes?.(receipt);
+   extras.push('抽出警告 '+warnings+'件'+(scope?
+    '（明細欄内 '+scope.merchandise+'件・欄外 '+scope.outside+
+    '件・全体 '+scope.global+'件）':''));
+  }
+  if(receipt?.reconciliation?.printedCountMatches===true)
+   extras.push('購入点数一致');
+  else if(receipt?.reconciliation?.printedCountMatches===false)
+   extras.push('購入点数が不一致（要確認）');
+  if(receipt?.receiptTotal!=null&&receipt?.reconciliation?.totalMatches===true)
+   extras.push('合計金額一致');
+  else if(receipt?.receiptTotal!=null&&receipt?.reconciliation?.totalMatches===false)
    extras.push('レシート合計と明細が不一致');
   else if(receipt?.receiptTotal!=null&&receipt?.reconciliation?.totalMatches==null)
    extras.push('レシート合計は未検証');
