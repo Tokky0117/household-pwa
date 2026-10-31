@@ -1,9 +1,6 @@
 name: Push GAS to test project (manual)
-# Repeat source-only approved update after verifying original target code exactly matches previous GitHub snapshot.
+# Manual-only test GAS source update; temporary one-time push trigger disabled.
 on:
-  push:
-    branches: [stage-a-ui-handoff-review]
-    paths: ['.github/workflows/gas-push-test.yml']
   workflow_dispatch:
     inputs:
       confirm_target_backup:
@@ -24,13 +21,7 @@ concurrency:
 
 jobs:
   push-test:
-    if: >-
-      github.ref == 'refs/heads/stage-a-ui-handoff-review' &&
-      ((github.event_name == 'push' &&
-         github.event.head_commit.message == 'APPROVED_EXISTING_PROTOTYPE_ALIAS_PREFLIGHT_GAS_UPDATE_VERIFIED_20261031') ||
-       (github.event_name == 'workflow_dispatch' &&
-         inputs.confirm_target_backup == 'BACKUP_DONE' &&
-         inputs.confirm_test_source == 'TEST_GAS_UPDATE'))
+    if: github.ref == 'refs/heads/stage-a-ui-handoff-review' && inputs.confirm_target_backup == 'BACKUP_DONE' && inputs.confirm_test_source == 'TEST_GAS_UPDATE'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
