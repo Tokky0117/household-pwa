@@ -198,3 +198,12 @@
 - 既存のURLでの確認にPC操作、新規GAS、別デプロイ、公開範囲の緩和は不要。読み取り専用GETと認証済み `bootstrap` → `product.catalog` → `product.alias.check` のみ、通常の書き込みゲートは無効。
 - テストは旧 `MAIN_GAS` と一致するURLでもチェックした場合だけ読み取り可能になること、URL変更でチェックが外れること、未確認ではGET/POSTボタンが無効となることを確認。GitHub Actionsのオフライン回帰試験 https://github.com/Tokky0117/household-pwa/actions/runs/41178003387 は成功。
 - **実機では次に**診断ページを再読込し、①既存の試験用デプロイURLを入力、チェック欄を選択、②ログイン、③GETと認証付き読み取り、③が成功した場合だけ④照合。通信結果は未確定であり、CORS/アクセス制限や公開済み旧GASの可能性も残る。
+
+## 2026-10-31：iPhone実機で認証付きWeb API POSTの読み取り成功（次は④）
+
+- ユーザーが、**既存試験用GASの「デプロイを管理」で確認した `/exec` URL** を開発ブランチの `gas-trial-connection.html` に設定し、Googleログイン後の③ `bootstrap` を実行。本人提供のiPhone画面で「**POST：GAS認証付き読み取り成功（カテゴリ5件）。計測4.99秒**」「**日用品0件／商品1件／店舗1件**」を確認した。
+- **iPhoneの当該ブラウザ・セッション・デプロイURLに限って、GitHub Pagesから試験GASへ認証付きHTTP POSTを送信し、応答JSONを読み出す経路が実際に成立した。** これまでのCORS障害と混同しない。GET診断は未実行で、追加実行はこの目的には必須ではない。4.99秒はこの1回のクライアント計測で、継続的な通信性能や書き込みの応答時間を保証しない。
+- `bootstrap` のカテゴリ5件と商品・店舗各1件は、前回の `testAliasCatalogReadOnly` 実シート実行ログと整合している。今回のPOST成功はAPI・認証経路の実機証拠だが、③だけでは `product.catalog` の別名データや `product.alias.check` の照合まで成功したわけではない。
+- 続く④を実行する前に、診断画面の既知フィクスチャの**名前・店舗名・別名コード・照合応答形**が、開発ブランチ `gas/Code.gs` の `testAliasCatalogReadOnly`、`productCatalog_`、`productAliasCheck_` と一致することをコード照合で確認した。④はボタンから既存商品コード `00012345` と未登録コード `00099999` を順に認証付き・読み取り専用照合する。
+- **次のユーザー操作は④「登録済み・未登録コードを照合（読み取りのみ）」を押し、結果画面の成功／エラー文を共有すること。** この段階で再ログイン、デプロイ更新、GET診断、商品・レシートの書き込みは不要。
+- `ENABLE_EXPERIMENTAL_WRITES=false`、`LIVE_WRITE_ENABLED=false`、通常アプリへの認証付きOCRマスタ接続は未公開のまま。試験GAS、試験Sheets、Webアプリデプロイ設定、main、本番環境の変更は行っていない。
