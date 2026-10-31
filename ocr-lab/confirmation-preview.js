@@ -126,7 +126,10 @@ export function createConfirmationPreview({section,file,chain,status,list,summar
     select.value=selected.get(i)||'';label.append(select);card.append(label);
     const meaning={code_candidate:'商品コードが一致',name_candidate:'商品名が一致',
      name_suggestion:'商品名が類似',ambiguous:'複数候補',conflict:'コードと名前が矛盾'}[match.status];
-    card.append(element('small',meaning||'要確認'));
+    const evidence=match.candidates.some(c=>c.matchReason==='kana_variant')?
+     '濁点・小文字などのOCR表記ゆれから推定（未確定・原本確認が必要）':
+     (meaning||'要確認');
+    card.append(element('small',evidence));
 
    }else card.append(element('p',catalog?
     '一致する登録商品候補なし。OCR誤読・未登録商品・チェーン選択を確認してください。':
