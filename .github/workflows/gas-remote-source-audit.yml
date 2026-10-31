@@ -1,5 +1,5 @@
 name: Read-only audit of existing test GAS source
-# Recheck remote test GAS fingerprint after guarded source-only update detected unexpected drift.
+# Verify remote test GAS matches the approved prototype-only alias editor preflight update.
 on:
   push:
     branches: [stage-a-ui-handoff-review]
