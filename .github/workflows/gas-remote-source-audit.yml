@@ -26,6 +26,7 @@ jobs:
           if [ -z "$CLASPRC_JSON" ] || [ -z "$GAS_SCRIPT_ID_TEST" ]; then
             echo 'READY=false' >> "$GITHUB_OUTPUT"
             echo 'READ_ONLY_GAS_AUDIT: credentials not configured; no remote access attempted' >> "$GITHUB_STEP_SUMMARY"
+            echo 'READ_ONLY_GAS_AUDIT: credentials not configured; no remote access attempted'
             exit 0
           fi
           expected='9c4113806442904861bb84dede2d9c542449a5c9ed5b494abe451cda0c1f4739'
@@ -33,6 +34,7 @@ jobs:
           if [ "$actual" != "$expected" ]; then
             echo 'READY=false' >> "$GITHUB_OUTPUT"
             echo 'READ_ONLY_GAS_AUDIT: configured test-GAS target does not match supplied target; no access attempted' >> "$GITHUB_STEP_SUMMARY"
+            echo 'READ_ONLY_GAS_AUDIT: configured test-GAS target does not match supplied target; no access attempted'
             exit 0
           fi
           echo 'READY=true' >> "$GITHUB_OUTPUT"
