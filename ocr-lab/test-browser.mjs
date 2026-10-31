@@ -25,6 +25,20 @@ try{
  await page.locator('#scale').selectOption('contrast');await page.locator('#japanese-normalize').check();await page.locator('#scan').click();
  await page.waitForFunction(()=>!document.getElementById('result').hidden||document.getElementById('status').textContent.startsWith('読み取りできません'),{timeout:180000});
  assert.equal(await page.locator('#result').isVisible(),true,await page.locator('#status').textContent());
+ const firstItems=JSON.parse(await page.locator('#items').textContent()).items;
+ assert.ok(firstItems.length>0,'Synthetic receipt should provide a candidate item for local review');
+ const cat={household_id:'test-household',
+ products:[{household_id:'test-household',product_id:'p1',name:firstItems[0].name||'MILK'}],
+ product_aliases:[],stores:[{chain_id:'test-shop',canonical_name:'テスト店'}]};
+ await page.locator('#catalog-file').setInputFiles({name:'test-catalog.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(cat))});
+ await page.waitForFunction(()=>document.getElementById('catalog-status').textContent.includes('端末内で'));
+ assert.ok(await page.locator('#candidate-confirmation').isVisible());
+ await page.locator('#catalog-chain').selectOption('test-shop');
+ const candidateOptions=page.locator('#candidate-list select option');
+ assert.ok(await candidateOptions.count()>1,'Registered name must yield local candidate options');
+ await page.locator('#candidate-list select').first().selectOption('p1');
+ assert.match(await page.locator('#candidate-summary').textContent(),/商品選択 1件/);
+ 
  const cropped=JSON.parse(await page.locator('#diagnostic').textContent());assert.equal(cropped.preparation.mode,'contrast');assert.ok(cropped.preparation.crop.width>0);assert.equal(cropped.normalization.mode,'japanese-glyphs-v1');assert.equal(cropped.normalization.originalPreserved,true);assert.equal(cropped.moneyGrouping.mode,'yen-grouping-v1');assert.equal(cropped.moneyGrouping.changedCount,0);
  await page.locator('#copy').click();assert.match(await page.evaluate(()=>navigator.clipboard.readText()),/位置情報/);
  assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));await page.locator('#reset').click();assert.equal(await page.locator('#photo').inputValue(),'');assert.equal(await page.locator('#text').inputValue(),'');assert.equal(await page.locator('#result').isHidden(),true);
