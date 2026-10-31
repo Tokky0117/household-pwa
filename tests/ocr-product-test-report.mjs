@@ -12,6 +12,8 @@ assert.ok(r01,'Known 13-product R01 fixture should exist');
 // store a customer's actual member number, photo or transaction data.
 const costcoText=r01.text
  .replace(/ 1● /g,' 10 ').replace(/ 1@ /g,' 10 ')
+ // Product #3 was recognized as 1@ rather than 10 in this iPhone run.
+ .replace('51515 10 2,098 2,098 E','51515 1@ 2,098 2,098 E')
  // Reproduce the actual R1 OCR's tax lines and purchase-count suffix,
  // using a previously reviewed, synthetic shopping excerpt only.
  .replace('8%対象 12,120 (消費税 898)','8%対象 12,120（消費税 898)')
@@ -64,7 +66,9 @@ assert.equal(report.products[0].code,'72587');
 assert.equal(report.products[0].quantity,1);
 assert.equal(report.products[0].quantitySource,'inferred_candidate');
 assert.equal(report.products[0].ocrQuantityToken,'10','Show the OCR glyph which led to a quantity=1 candidate');
-assert.ok(report.products.every(p=>p.ocrQuantityToken==='10'));
+assert.equal(report.products.filter(p=>p.ocrQuantityToken==='10').length,12);
+assert.equal(report.products.filter(p=>p.ocrQuantityToken==='1@').length,1);
+assert.equal(report.products[2].ocrQuantityToken,'1@');
 assert.ok(!json.includes('SECRET_MEMBER_NUMBER'));
 
 assert.equal(report.products[0].discount,660);
