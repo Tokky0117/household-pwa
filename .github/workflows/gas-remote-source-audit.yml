@@ -85,10 +85,17 @@ jobs:
             'runIsolatedAliasWriteTrialOnce_',
             'testIsolatedAliasWriteTrialResultReadOnly_'];
           const match=functions.map(name=>({name,present:remote.includes('function '+name+'(')}));
+          const baselineFunctions=['doGet','doPost','authenticate','bootstrap','testAllSheetsReadOnly',
+            'mutateItemSafely_','runIsolatedItemWriteTrialOnce_'];
+          const baseline=baselineFunctions.map(name=>({name,present:remote.includes('function '+name+'(')}));
           const sha=s=>crypto.createHash('sha256').update(s).digest('hex').slice(0,12);
           const report=[
             'READ_ONLY_GAS_AUDIT: Test GAS source retrieved without modifying project or Sheets.',
             'Remote scripts: '+remoteFiles.length,
+            'Remote and branch script source identical: '+(sha(local)===sha(remote)),
+            'Remote source bytes: '+Buffer.byteLength(remote),
+            'Remote existing baseline functions:',
+            ...baseline.map(x=>'- '+x.name+': '+(x.present?'YES':'NO')),
             'Remote contains catalog/alias review and trial functions:',
             ...match.map(x=>'- '+x.name+': '+(x.present?'YES':'NO')),
             'No source code, script ID, token, or Sheet data included.'
