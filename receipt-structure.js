@@ -41,7 +41,13 @@
    if(m=l.match(/^(?:\*+\s*)?(?:合\s*計|お買上)\s*[¥\\]?\s*([\d,]+)$/)){receiptTotal=num(m[1]);summary=true;pending=null;janPending=null;continue;}
    // "合 33 ¥1,985": OCR merges summary label and count.
    // This pattern is admissible only after an actual subtotal.
-   if(summary&&(m=l.match(/^合\s*\d{1,2}\s*¥([\d,]+)$/))){receiptTotal=num(m[1]);continue;}
+   if(m=l.match(/^合\s*\d{1,2}\s*¥([\d,]+)$/)){
+    // Without a genuine subtotal, an OCR-mangled "合 33" is ambiguous:
+    // do not turn the total into a purchasable line item.
+    if(summary)receiptTotal=num(m[1]);
+    else warn('ambiguous_total_label',ix);
+    pending=null;janPending=null;continue;
+   }
    if(m=l.match(/^小計(?:金額)?\s*[¥]?\s*([\d,]+)$/)){subtotal=num(m[1]);summary=true;pending=null;janPending=null;continue;}
    if(m=l.match(/^(?:お買上点数|買上点数)\s*(\d+)点$/)){printedCount=+m[1];continue;}
    if(m=l.match(/^(?:税(?:8|10)%|外税額 (?:8|10)%)\s*¥([\d,]+)$/)){taxTotal=(taxTotal||0)+num(m[1]);continue;}
@@ -121,7 +127,9 @@
     if(pending){const item=add(pending.raw,+m[2],num(m[3])/(+m[2]),num(m[3]),[pending.line,ix]);if(item){item.quantitySource='printed';item.productCode=m[1];}}
     else warn('orphan_product_code',ix);continue;
    }
-   if(/^(?:現金|お預|預り|お釣|釣銭|クレジット|カード|支払|税|外税|内税|対象|ポイント|TEL|電話|会員)/.test(l)){pending=null;continue;}
+   if(/^(?:現金|お預|預り|お釣|釣銭|クレジット|カード|支払|税|外税|内税|対象|ポイント|TEL|電話|会員|楽天(?:ペイ|Pay|ポイント)|PayPay|d払い|au ?PAY|決済|取引(?:ID|ICD|番号)|受付番号)/i.test(l)){
+    pending=null;continue;
+   }
    if(m=l.match(/^(.+?)\s*¥([\d,]+)$/)||l.match(/^(.+?)\s+([\d,]+)(?:円)?$/)){
     if(!/税|対象|クレジット/.test(m[1]))add(lines[i].replace(/(?:[¥￥\\]\s*[0-9０-９,，]+|[\s　]+[0-9０-９,，]+(?:円)?)\s*$/,''),1,null,num(m[2]),[ix]);
     continue;
@@ -185,7 +193,7 @@
   }
   const excerpt=[...sources].sort((a,b)=>a-b).map(index=>raw[index-1].trim());
   if(excerpt.some(line=>!line||line.length>200||
-    /(?:トークン|会員番号|カード番号|有効期限|承認番号|カード会社|クレジット売上票)/.test(line)||
+    /(?:トークン|会員番号|カード番号|有効期限|承認番号|カード会社|クレジット売上票|楽天(?:ペイ|Pay|ポイント)|PayPay|決済|受付番号|取引(?:ID|ICD|番号)|電話番号|レシートNo)/i.test(line)||
     /(?:\d{4}[- ]?){3}\d{4}/.test(line)))
    throw Error('UNSAFE_MERCHANDISE');
   for(const tax of receipt.taxBreakdown||[]){
