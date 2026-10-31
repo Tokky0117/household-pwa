@@ -26,7 +26,7 @@ function harness(){
   ['p2','h-trial','','EGG','egg','','',2,1,'','',''],
   ['p-foreign','h-foreign','','FOREIGN','foreign','','',1,1,'','','']);
  let enabled=false,active='test-sheet',trial='test-sheet',number=0,writes=0,
-  locked=false,shouldLock=true,fault=null,foreignMove=false;
+  locked=false,shouldLock=true,fault=null,foreignMove=false,corruptAliasWrite=false;
  const fail=(name,phase)=>{
   if(fault?.name===name&&fault.phase===phase){
    fault=null;throw Error('POWER_LOSS_'+name+'_'+phase);
@@ -55,6 +55,9 @@ function harness(){
        fail(phase,'before');
        while(data.length<row)data.push([]);
        data[row-1]=values[0].slice();writes++;
+       if(name==='product_aliases'&&corruptAliasWrite){
+        corruptAliasWrite=false;data[row-1][3]=Number(data[row-1][3]);
+       }
        if(name==='processed_operations'&&phase==='journal.prepare'&&foreignMove){
         foreignMove=false;tables.product_aliases.splice(1,0,['alias-foreign','p-foreign','s-foreign','98765432',1,'']);
        }
@@ -103,6 +106,7 @@ function harness(){
   setEnabled(v){enabled=v},setTrial(v){trial=v},setActive(v){active=v},
   setFault(name,phase){fault={name,phase}},
   setLock(v){shouldLock=v},setExternalMove(){foreignMove=true},
+  corruptNextAliasWrite(){corruptAliasWrite=true},
   get writes(){return writes},get locked(){return locked},user,mock,post
  };
 }
@@ -213,6 +217,38 @@ for(const stage of phases)for(const phase of ['before','after']){
  h.error(h.payload(),'duplicate-product-id','CATALOG_CONFLICT');
  assert.equal(h.writes,0);
 }
+// External row insertion between prepare and apply must not change our
+// target: recovery uses logical IDs, never a stale physical row number.
+{
+ const h=harness();h.setEnabled(true);h.setExternalMove();
+ const done=h.run(h.payload(),'reordered-0001');
+ assert.equal(done.entity.normalized_alias,'00012345');
+ assert.equal(h.records('product_aliases').length,2);
+ assert.equal(h.records('product_aliases').filter(a=>a.product_id==='p1').length,1);
+ assert.equal(h.records('change_log').length,1);
+}
+// Sheets formatting that converts a code such as "00012345" to a number
+// must fail closed. Do not report success or log the wrong product code.
+{
+ const h=harness();h.setEnabled(true);h.corruptNextAliasWrite();
+ h.error(h.payload(),'formatted-code-001','RECOVERY_CONFLICT');
+ assert.equal(h.records('product_aliases')[0].normalized_alias,12345);
+ assert.equal(h.records('change_log').length,0);
+ h.error(h.payload(),'formatted-code-001','RECOVERY_CONFLICT');
+ assert.equal(h.records('product_aliases').length,1,'No retry duplication on corrupted code');
+}
+// A concurrently introduced alias after our intent is prepared must block
+// replay instead of incorrectly replacing another product's code.
+{
+ const h=harness();h.setEnabled(true);
+ h.setFault('entity.write','before');
+ assert.throws(()=>h.run(h.payload(),'collision-on-resume'),/POWER_LOSS/);
+ h.tables.product_aliases.push(['manual-new','p2','s1','00012345',1,'']);
+ h.error(h.payload(),'collision-on-resume','ALIAS_CONFLICT');
+ assert.equal(h.records('product_aliases').length,1);
+ assert.equal(h.records('change_log').length,0);
+}
+
 // Re-running a stale "available" preflight under the lock correctly
 // rejects an alias newly registered by another writer/Sheet editor.
 {
