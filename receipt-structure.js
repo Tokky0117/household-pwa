@@ -13,6 +13,14 @@
  // Home centers may print barcode, name and price on separate lines.
  const janHeader=/^#\d{1,4}\s+JAN\s*([0-9]{13})$/i;
  const janTaxPrice=/^[¥￥]?([\d,]+)\s*(?:内|込)$/;
+ // JAN/EAN-13 contains a final checksum digit. A valid OCR shape alone
+ // is insufficient evidence that the number was recognized correctly.
+ const validJan13=value=>{
+  if(typeof value!=='string'||!/^\d{13}$/.test(value))return false;
+  const sum=[...value.slice(0,12)].reduce((total,digit,index)=>
+   total+Number(digit)*(index%2?3:1),0);
+  return (10-sum%10)%10===Number(value[12]);
+ };
  const name=s=>norm(s).replace(/^[※*]\s*/,'').replace(/^委\)\s*/,'').replace(/\s*!$/,'').trim();
  function parse(source){
   const rawText=String(source||''), items=[], warnings=[], adjustments=[];
@@ -68,7 +76,14 @@
     }else if(m=l.match(janTaxPrice)){
      const item=add(janPending.rawName,1,null,num(m[1]),
       [janPending.line,janPending.nameLine,ix]);
-     if(item){item.productCode=janPending.code;item.taxBasis='included';}
+     if(item){
+      item.productCode=janPending.code;item.taxBasis='included';
+      item.janChecksumValid=validJan13(janPending.code);
+      if(!item.janChecksumValid){
+       item.issues.push('invalid_jan_checksum');
+       warn('invalid_jan_checksum',janPending.line);
+      }
+     }
      janPending=null;continue;
     }else{
      warn('jan_missing_price',janPending.line);janPending=null;
