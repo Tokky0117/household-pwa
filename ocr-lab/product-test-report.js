@@ -47,6 +47,9 @@ export function createProductTestReport({receipt,diagnostic,review,warningScopes
    code:safeCode(item.productCode),
    janChecksumValid:typeof item.janChecksumValid==='boolean'?item.janChecksumValid:null,
    quantity:number(item.quantity),
+   // Only an OCR digit/marker token; do not export raw text lines.
+   ocrQuantityToken:typeof item.ocrQuantityToken==='string'&&
+    /^\\d{1,2}[●@eEoO]?$/.test(item.ocrQuantityToken)?item.ocrQuantityToken:null,
    quantitySource:['default','printed','inferred_candidate'].includes(item.quantitySource)?
     item.quantitySource:'unknown',
    unitPrice:number(item.unitPrice),
