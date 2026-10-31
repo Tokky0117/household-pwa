@@ -8,7 +8,9 @@ assert.match(workflow,/gas-trial-connection\.html/);
 assert.match(html,/id="trial-url"/);
 assert.match(html,/type="url"/);
 assert.match(html,/validateTrialUrl\(value\)/);
-assert.match(html,/candidate\.href===MAIN_GAS/);
+assert.doesNotMatch(html,/candidate\.href===MAIN_GAS/);
+assert.match(html,/id="confirm-trial-target"/);
+assert.match(html,/confirmTarget\.checked=false/);
 assert.match(html,/KurashiAuth\.configure\(CLIENT_ID,\{manualOnly:true\}\)/);
 assert.match(html,/KurashiGasApi\.configure\(candidate\.href\)/);
 assert.match(html,/KurashiGasApi\.request\('bootstrap'\)/);
@@ -107,6 +109,11 @@ const ctx=vm.createContext({
 vm.runInContext(inline,ctx);
 node('trial-url').value='https://script.google.com/macros/s/ISOLATED_ONLY/exec';
 node('trial-url').listeners.input();
+assert.equal(node('probe-get').disabled,true,'Unverified endpoint must never allow a request');
+assert.match(node('endpoint-status').textContent,/デプロイ管理画面からコピーしたことを確認/);
+node('confirm-trial-target').checked=true;
+node('confirm-trial-target').listeners.change();
+assert.equal(node('probe-get').disabled,false,'Verified isolated endpoint permits read-only request');
 await node('probe-get').listeners.click();
 assert.match(node('probe-result').textContent,/GASのPOST_REQUIRED応答を確認/);
 assert.equal(getCalls.length,1);
@@ -133,11 +140,14 @@ getFetcher=()=>new Promise(resolve=>{respondGet=resolve});
 const pendingGet=node('probe-get').listeners.click();
 node('trial-url').value='https://script.google.com/macros/s/NEW_TRIAL/exec';
 node('trial-url').listeners.input();
+assert.equal(node('confirm-trial-target').checked,false,'Changing the deployment clears approval');
 respondGet({status:200,headers:{get:()=> 'application/json'},
  text:async()=>JSON.stringify({ok:false,error:{code:'POST_REQUIRED'}})});
 await pendingGet;
 assert.equal(node('probe-result').textContent,'未実行です。');
 // Authenticated POST still performs bootstrap only; no write methods.
+node('confirm-trial-target').checked=true;
+node('confirm-trial-target').listeners.change();
 await node('check').listeners.click();
 assert.deepEqual(postCalls,['bootstrap']);
 assert.match(node('result').textContent,/認証付き読み取り成功/);
@@ -157,6 +167,8 @@ assert.equal(node('result').textContent,'試験用URLを確認してください
 assert.equal(node('counts').textContent,'');
 // Re-verify bootstrap after URL changes before catalog actions are allowed.
 assert.equal(node('catalog-check').disabled,true);
+node('confirm-trial-target').checked=true;
+node('confirm-trial-target').listeners.change();
 await node('check').listeners.click();
 assert.equal(node('catalog-check').disabled,false);
 await node('catalog-check').listeners.click();
@@ -201,6 +213,14 @@ assert.equal(node('catalog-detail').textContent,'');
 assert.equal(node('catalog-result').textContent,'③の読み取り接続確認後に実行できます。');
 catalogMode='valid';
 
+// The old hard-coded "main" deployment URL is not proof of another GAS project.
+// User verifies identity in the actual script project's deployment manager.
+node('trial-url').value='https://script.google.com/macros/s/AKfycbx8el-F0XgEP2-1U6XKdduXF0nOuH1BrwmnWZUIkMVCKku1lqeBA8acBrPgbYDtIqokIw/exec';
+node('trial-url').listeners.input();
+assert.equal(node('check').disabled,true);
+node('confirm-trial-target').checked=true;
+node('confirm-trial-target').listeners.change();
+assert.equal(node('check').disabled,false,'Legacy-labeled URL must be accepted after identity confirmation');
 // An authentication transition invalidates all in-flight read checks.
 await node('check').listeners.click();
 assert.equal(node('catalog-check').disabled,false);
