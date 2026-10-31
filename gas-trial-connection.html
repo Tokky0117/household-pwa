@@ -7,7 +7,15 @@ h1{font-size:1.3rem}h2{font-size:1.06rem}.panel{background:#fff;border:1px solid
 label{display:block;font-weight:650;margin:10px 0 5px}.target-confirm{display:flex;gap:10px;align-items:flex-start;font-weight:500;line-height:1.6}.target-confirm input{width:20px;height:20px;flex:none;margin:4px 0 0}input[type=url]{box-sizing:border-box;width:100%;font-size:16px;padding:12px;border:1px solid #bdc9d8;border-radius:9px}
 button{min-height:48px;width:100%;border:0;border-radius:9px;background:#22538e;color:#fff;font-size:1rem;font-weight:700;margin:9px 0;padding:11px}
 button:disabled{background:#a1aaba}.secondary{background:#eef2f8;color:#20508c}
-.muted{font-size:.92rem;color:#56677b}.warning{border-left:4px solid #ac762a;padding-left:11px}a{color:#22538e}
+.muted{font-size:.92rem;color:#56677b}
+.review-list{list-style:none;padding:0;display:grid;gap:10px}.review-item{background:#f8fafc;border:1px solid #dce3ef;border-radius:12px;padding:13px}
+.review-item strong{display:block}.review-item p{font-size:.9rem;margin:8px 0}.review-item label{display:block}
+.review-item select,.review-item input{box-sizing:border-box;width:100%;font-size:16px;padding:10px;border:1px solid #bfcbd9;border-radius:8px}
+.review-item .review-warning{color:#8a451a;font-weight:600}.review-item .review-alias{color:#22538e}
+.review-manual{margin-top:8px}.review-check{display:flex!important;align-items:center;gap:8px}.review-check input{width:20px}
+#ocr-review-text{font:inherit;font-size:16px;line-height:1.5;width:100%;box-sizing:border-box;min-height:130px;border:1px solid #bdc9d8;border-radius:9px;padding:12px}
+#ocr-review-chain{box-sizing:border-box;width:100%;padding:12px;border:1px solid #bdc9d8;border-radius:9px;font-size:16px}
+.warning{border-left:4px solid #ac762a;padding-left:11px}a{color:#22538e}
 </style></head><body>
 <h1>試験用GAS｜読み取り接続確認</h1>
 <p>既存の<strong>試験用GAS</strong>へGoogleログインして、試験用シートの件数と架空の商品コードの照合結果を確認します。この画面から書き込み処理は呼び出しません。</p>
@@ -44,6 +52,28 @@ button:disabled{background:#a1aaba}.secondary{background:#eef2f8;color:#20508c}
 <p id="catalog-result" role="status" aria-live="polite">③の読み取り接続確認後に実行できます。</p>
 <p id="catalog-detail" class="muted"></p>
 </section>
+<section class="panel" id="ocr-review">
+<h2>⑤ OCR明細と登録商品を照合（読み取りのみ）</h2>
+<p>④の成功後に、端末内でレシート文字列から明細を抽出し、認証済み商品マスタと照合します。<strong>文字列・写真はGASに送信せず、商品マスタの読み取りのみ</strong>を行います。正式保存はできません。</p>
+<p><button id="ocr-sample" type="button" class="secondary">架空の試験明細をセット</button></p>
+<label for="ocr-review-text">レシートの文字起こし（端末内のみ・最大12,000文字）</label>
+<textarea id="ocr-review-text" rows="6" maxlength="12000" spellcheck="false" autocomplete="off" placeholder="OCRで読み取った文字列を貼り付けてください" ></textarea>
+<button id="ocr-parse" type="button" class="secondary">明細候補を抽出（通信なし）</button>
+<p id="ocr-parse-status" role="status" aria-live="polite">文字列を入力するか、架空の試験明細をセットしてください。</p>
+<button id="ocr-load-catalog" type="button" disabled>認証済み商品マスタを読み取って候補を表示</button>
+<p class="muted">③と④の成功が必要です。商品マスタを読み込むときだけ認証付きPOSTを1回行います。商品候補の自動確定や書き込みはしません。</p>
+<button id="ocr-clear" type="button" class="secondary">明細・商品マスタを破棄</button>
+<section id="ocr-candidate-confirmation" hidden>
+<h3>商品候補（要確認・未保存）</h3>
+<input id="ocr-catalog-file" type="file" hidden accept=".json,application/json" aria-hidden="true">
+<label for="ocr-review-chain">チェーン（手動選択）</label>
+<select id="ocr-review-chain" disabled></select>
+<p id="ocr-catalog-status" role="status"></p>
+<p id="ocr-candidate-summary" role="status"></p>
+<ol id="ocr-candidate-list" class="review-list"></ol>
+</section>
+<p class="muted">この画面は写真OCRエンジンとは別の接続検証です。商品候補は必ず人が確認してください。</p>
+</section>
 <section class="panel">
 <h2>失敗した場合</h2>
 <p class="muted">GETが成功してもPOST成功の証明にはなりません。また、GoogleログインHTMLが返る場合はGAS本体の応答とは限りません。ネットワーク失敗はCORS・アクセス権・通信など複数原因が考えられます。試験GASの公開範囲を広げたり、トークンをURLに載せたりしないでください。</p>
@@ -62,6 +92,8 @@ button:disabled{background:#a1aaba}.secondary{background:#eef2f8;color:#20508c}
  const probeGet=document.getElementById('probe-get'),probeResult=document.getElementById('probe-result');
  const catalogCheck=document.getElementById('catalog-check'),catalogResult=document.getElementById('catalog-result'),catalogDetail=document.getElementById('catalog-detail');
  let probing=false,catalogBusy=false,verifiedRevision=-1,verifiedSubject='';
+ let catalogVerifiedRevision=-1,catalogVerifiedSubject='';
+ const gateListeners=new Set(),notifyGate=()=>gateListeners.forEach(fn=>fn());
  let loading=false,attempt=0,scriptState='未開始',revision=0;
  function elapsed(started){return ((Date.now()-started)/1000).toFixed(2)+'秒'}
  // Never show a response or an identity from an endpoint no longer selected.
@@ -123,9 +155,21 @@ button:disabled{background:#a1aaba}.secondary{background:#eef2f8;color:#20508c}
  }
  function invalidateRead(){
   revision++;verifiedRevision=-1;verifiedSubject='';
+  catalogVerifiedRevision=-1;catalogVerifiedSubject='';
   catalogResult.textContent='③の読み取り接続確認後に実行できます。';
   catalogDetail.textContent='';
+  notifyGate();
  }
+ window.KurashiTrialCatalogGate={
+  ready:()=>{
+   const session=window.KurashiAuth.status();
+   return confirmTarget.checked&&session.signedIn&&
+    catalogVerifiedRevision===revision&&
+    catalogVerifiedSubject===session.subject&&
+    verifiedRevision===revision&&verifiedSubject===session.subject;
+  },
+  subscribe(fn){gateListeners.add(fn);return ()=>gateListeners.delete(fn)}
+ };
  window.KurashiAuth.configure(CLIENT_ID,{manualOnly:true});
  function validateTrialUrl(value){
   try{
@@ -216,7 +260,8 @@ button:disabled{background:#a1aaba}.secondary{background:#eef2f8;color:#20508c}
   if(!window.KurashiAuth.status().signedIn){result.textContent='ログインが必要です';update();return}
   const rev=revision,started=Date.now(),subject=window.KurashiAuth.status().subject;
   if(typeof subject!=='string'||!subject){result.textContent='ログイン状態を確認できません。';return}
-  loading=true;verifiedRevision=-1;verifiedSubject='';counts.textContent='';result.textContent='読み取り中です…';catalogDetail.textContent='';update();
+  loading=true;verifiedRevision=-1;verifiedSubject='';catalogVerifiedRevision=-1;catalogVerifiedSubject='';notifyGate();
+  counts.textContent='';result.textContent='読み取り中です…';catalogDetail.textContent='';update();
   try{
    // Only authenticated read action; write gate remains disabled.
    const data=await window.KurashiGasApi.request('bootstrap');
@@ -240,7 +285,8 @@ button:disabled{background:#a1aaba}.secondary{background:#eef2f8;color:#20508c}
   const subject=window.KurashiAuth.status().subject;
   if(!subject||!window.KurashiAuth.status().signedIn||subject!==verifiedSubject)return;
   const rev=revision,started=Date.now();
-  catalogBusy=true;catalogResult.textContent='商品マスタ・商品コードを照合中…';
+  catalogBusy=true;catalogVerifiedRevision=-1;catalogVerifiedSubject='';notifyGate();
+  catalogResult.textContent='商品マスタ・商品コードを照合中…';
   catalogDetail.textContent='';update();
   try{
    const master=await window.KurashiGasApi.request('product.catalog');
@@ -256,6 +302,7 @@ button:disabled{background:#a1aaba}.secondary{background:#eef2f8;color:#20508c}
    });
    if(!sameSession(rev,subject))return;
    requireAliasReply(unknown,fixture,UNKNOWN_CODE,'available');
+   catalogVerifiedRevision=rev;catalogVerifiedSubject=subject;notifyGate();
    catalogResult.textContent='POST：商品マスタ・登録済みコード・未登録コードの照合に成功しました。';
    catalogDetail.textContent='家庭を限定した読み取り3回。既存の架空データと一致・書き込み0件。計測 '+elapsed(started);
   }catch(e){
@@ -273,4 +320,8 @@ button:disabled{background:#a1aaba}.secondary{background:#eef2f8;color:#20508c}
  update();
 })();
 </script>
+<script src="./receipt-structure.js"></script>
+<script src="./receipt-product-matching.js"></script>
+<script src="./receipt-alias-preflight.js"></script>
+<script type="module" src="./receipt-catalog-integration.js"></script>
 </body></html>
