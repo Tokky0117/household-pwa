@@ -16,7 +16,7 @@ function node(tag='div'){
   async fire(name,target=this){return await handlers.get(name)?.({target})}
  };
 }
-const ids=['ocr-review-text','ocr-sample','ocr-parse','ocr-load-catalog','ocr-clear',
+const ids=['ocr-review-text','ocr-sample','ocr-multi-sample','ocr-parse','ocr-load-catalog','ocr-clear',
  'ocr-parse-status','ocr-candidate-confirmation','ocr-catalog-file',
  'ocr-review-chain','ocr-catalog-status','ocr-candidate-list','ocr-candidate-summary'];
 const elements=new Map(ids.map(id=>[id,node()]));
@@ -88,6 +88,19 @@ assert.ok(item.children.some(n=>n.tag==='label'&&
   c.children.some(option=>option.textContent==='試験用・商品コード'))),
  'Catalog from authenticated API must appear as product selection');
 assert.match($('ocr-catalog-status').textContent,/認証済みの商品マスタ 1商品・1別名/);
+// Mixed synthetic receipt: only the registered product should match.
+// Other items stay unresolved; the inferred quantity must demand review.
+await $('ocr-multi-sample').fire('click');
+assert.equal(review.getState().parsed,true);
+assert.equal($('ocr-candidate-list').children.length,3);
+assert.match($('ocr-candidate-summary').textContent,/明細 3件/);
+assert.match($('ocr-candidate-summary').textContent,/商品候補 1件/);
+assert.match($('ocr-candidate-summary').textContent,/未照合 2件/);
+assert.match($('ocr-candidate-summary').textContent,/OCR要確認 1件/);
+assert.equal(actions.length,1,'Mixed receipt parsing stays offline');
+assert.match($('ocr-candidate-list').children[2].children.map(n=>n.textContent).join(' '),/数量の印字を要確認/);
+// Return to the already-verified synthetic one-product fixture.
+await $('ocr-sample').fire('click');
 // Real-device follow-up: select the one known test chain and the candidate
 // explicitly. A matching digit code then becomes an already-registered hint,
 // not a second network request or an automatic product confirmation.
