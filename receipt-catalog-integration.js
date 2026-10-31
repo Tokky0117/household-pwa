@@ -33,7 +33,8 @@ export function mountReceiptCatalogIntegration({
   bridge.dispose();
   bridge=createAuthenticatedPreviewBridge({auth,api,confirmation:preview});
  }
- const unsubscribe=gate.subscribe(()=>{
+ function reconcileGate(){
+  if(disposed)return;
   const ready=gate.ready();
   if(!ready&&wasReady){
    resetBridge();
@@ -42,7 +43,13 @@ export function mountReceiptCatalogIntegration({
     '認証状態が変わりました。';
   }
   wasReady=ready;update();
- });
+ }
+ const unsubscribe=gate.subscribe(reconcileGate);
+ // auth.js has no expiration timer. Clear a private catalog when Safari
+ // returns to the foreground after the token has expired.
+ win.addEventListener?.('focus',reconcileGate);
+ win.addEventListener?.('pageshow',reconcileGate);
+ doc.addEventListener?.('visibilitychange',reconcileGate);
  function extract(){
   if(disposed)return;
   const raw=text.value;
@@ -108,7 +115,11 @@ export function mountReceiptCatalogIntegration({
   getState:()=>({parsed,busy,ready:gate.ready(),catalog:preview.getStatus()}),
   dispose(){
    if(disposed)return;
-   disposed=true;revision++;unsubscribe();bridge.dispose();preview.reset();
+   disposed=true;revision++;unsubscribe();
+   win.removeEventListener?.('focus',reconcileGate);
+   win.removeEventListener?.('pageshow',reconcileGate);
+   doc.removeEventListener?.('visibilitychange',reconcileGate);
+   bridge.dispose();preview.reset();
    parsed=false;busy=false;text.value='';update();
   }
  };
