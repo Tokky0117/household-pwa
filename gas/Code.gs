@@ -1253,6 +1253,108 @@ function isolatedAliasTrialGuard_(book){
   priorSequence,stores,products,aliases,logs,ops,aliasLogs,aliasOps};
 }
 /**
+ * Editor-only READ-ONLY inventory for an existing prototype spreadsheet.
+ * It deliberately does not require a special household label, an empty Sheet,
+ * or a previous write-trial history. Never prints any raw row values, IDs,
+ * Google subjects, credentials, or tokens; never writes or deploys.
+ */
+function testTrialSheetInventoryReadOnly(){
+ const settings=PropertiesService.getScriptProperties();
+ const active=settings.getProperty('SPREADSHEET_ID')||'';
+ const expected='10PFKxljb_H5UUJQSBIatgFqC8FKRdt63SrHz3hVIr48';
+ if(active!==expected){
+  Logger.log('INVENTORY_ABORT: SPREADSHEET_ID does not point to the supplied test Sheet');
+  return {ok:false,reason:'TARGET_MISMATCH'};
+ }
+ const book=SpreadsheetApp.openById(active);
+ const trial=settings.getProperty('WRITE_TRIAL_SPREADSHEET_ID')||'';
+ const writes=settings.getProperty('ENABLE_EXPERIMENTAL_WRITES')==='true';
+ const report={
+  ok:true,
+  sheetCount:book.getSheets().length,
+  missing:[],unexpected:[],headerIssues:[],
+  counts:{},households:'UNAVAILABLE',users:'UNAVAILABLE',
+  relation:'UNAVAILABLE',subject:'UNAVAILABLE',categories:'UNAVAILABLE',
+  trialIdMatches:trial===active,writeGateClosed:!writes
+ };
+ const expectedNames=Object.keys(TABLES),actual=book.getSheets().map(sh=>sh.getName());
+ report.missing=expectedNames.filter(name=>!actual.includes(name));
+ report.unexpected=actual.filter(name=>!expectedNames.includes(name));
+ const extract=(name)=>{
+  const sh=book.getSheetByName(name);
+  if(!sh)return null;
+  const expectedHeader=TABLES[name],last=sh.getLastRow();
+  if(last<1){report.headerIssues.push(name);report.counts[name]=0;return null}
+  const got=sh.getRange(1,1,1,expectedHeader.length).getValues()[0];
+  if(expectedHeader.some((c,i)=>String(got[i])!==c)){
+   report.headerIssues.push(name);
+   report.counts[name]=Math.max(0,last-1);
+   return null;
+  }
+  const occupied=Math.max(0,last-1);
+  report.counts[name]=occupied;
+  // Cap read work. A large prototype is still diagnosable without reading
+  // or exposing all its records.
+  if(occupied>1000)return {rows:null};
+  const raw=occupied?sh.getRange(2,1,occupied,expectedHeader.length).getValues():[];
+  return {rows:raw.filter(r=>r.some(x=>x!==''&&x!==null)),
+   keys:expectedHeader};
+ };
+ const household=extract('households'),user=extract('users');
+ for(const name of expectedNames){
+  if(name==='households'||name==='users')continue;
+  extract(name);
+ }
+ const toRecords=result=>result?.rows?.map(row=>
+  Object.fromEntries(result.keys.map((k,i)=>[k,row[i]??''])))||null;
+ const h=toRecords(household),u=toRecords(user);
+ if(h){
+  report.counts.households=h.length;
+  report.households=h.length===0?'EMPTY':h.length===1?'ONE':'MULTIPLE';
+  if(h.length===1){
+   report.householdLabel=String(h[0].display_name)===TRIAL_HOUSEHOLD_LABEL?
+    'TRIAL_LABEL':'OTHER_OR_EMPTY';
+  }
+ }
+ if(u){
+  report.counts.users=u.length;
+  report.users=u.length===0?'EMPTY':u.length===1?'ONE':'MULTIPLE';
+  if(u.length===1)report.subject=/^[0-9]+$/.test(String(u[0].auth_subject||''))?
+   'DIGITS':'MISSING_OR_NONNUMERIC';
+ }
+ if(h&&u&&h.length===1&&u.length===1)
+  report.relation=String(h[0].household_id)===String(u[0].household_id)?
+   'MATCH':'MISMATCH';
+ const cat=toRecords(extract('categories'));
+ // categories was already read above; avoid logging any category cell values.
+ if(cat){
+  report.counts.categories=cat.length;
+  report.categories=cat.length===CATEGORIES.length&&cat.every((r,i)=>
+   String(r.name)===CATEGORIES[i]&&Number(r.fixed_order)===i+1)?
+   'EXPECTED_5':'DIFFERENT';
+ }
+ Logger.log('INVENTORY_START: read-only, test spreadsheet ID verified');
+ Logger.log('SETTINGS: trialSheetMatches='+report.trialIdMatches+
+  ', writeGateClosed='+report.writeGateClosed);
+ Logger.log('TABS: total='+report.sheetCount+', missing='+
+  (report.missing.join(',')||'none')+', unexpected='+
+  (report.unexpected.join(',')||'none'));
+ Logger.log('HEADERS: mismatched='+ (report.headerIssues.join(',')||'none'));
+ for(const name of expectedNames){
+  Logger.log('TAB '+name+': '+(report.missing.includes(name)?'MISSING':
+   report.headerIssues.includes(name)?'HEADERS_MISMATCH':
+   String(report.counts[name]??'UNAVAILABLE')+' rows'));
+ }
+ Logger.log('HOUSEHOLDS: '+report.households+
+  ', label='+(report.householdLabel||'UNAVAILABLE'));
+ Logger.log('USERS: '+report.users+', authSubject='+report.subject+
+  ', linkedHousehold='+report.relation);
+ Logger.log('CATEGORIES: '+report.categories);
+ Logger.log('INVENTORY_DONE: no Sheet contents or IDs logged, no writes');
+ return report;
+}
+
+/**
  * Editor-visible READ-ONLY entrypoint. The underscored implementation is
  * private and hidden from Apps Script's Run dropdown.
  * Never writes to GAS Script Properties or Google Sheets.
