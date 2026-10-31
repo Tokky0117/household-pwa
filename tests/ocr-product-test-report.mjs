@@ -10,13 +10,25 @@ assert.ok(r01,'Known 13-product R01 fixture should exist');
 // Simulate the iPhone OCR error where "1●" or "1@" is read as "10".
 // This is generated from the existing reviewed synthetic text. Do not
 // store a customer's actual member number, photo or transaction data.
-const costcoText=r01.text.replace(/ 1● /g,' 10 ').replace(/ 1@ /g,' 10 ');
+const costcoText=r01.text
+ .replace(/ 1● /g,' 10 ').replace(/ 1@ /g,' 10 ')
+ // Reproduce the actual R1 OCR's tax lines and purchase-count suffix,
+ // using a previously reviewed, synthetic shopping excerpt only.
+ .replace('8%対象 12,120 (消費税 898)','8%対象 12,120（消費税 898)')
+ .replace('10%対象 2,638 (消費税 240)','10%対象 2,638（消費税 240)')
+ .replace('お買上点数 13点','御買上げ点数 13 (3D)');
 const r=parse(costcoText);
 assert.equal(r.items.length,13);
 assert.equal(r.items.filter(x=>x.issues.includes('quantity_ocr_ambiguous')).length,13);
 assert.equal(r.reconciliation.netSum,14758);
 assert.equal(r.receiptTotal,14758);
 assert.equal(r.reconciliation.totalMatches,true);
+assert.equal(r.printedCount,13);
+assert.equal(r.reconciliation.printedCountMatches,true);
+assert.equal(r.taxTotal,1138);
+assert.deepEqual(r.taxBreakdown.map(x=>({rate:x.rate,amount:x.amount})),[
+ {rate:8,amount:898},{rate:10,amount:240}
+]);
 const diag={
  firstRun:false,totalMs:11181,device:'SECRET_DEVICE_AGENT',
  rawText:'SECRET_RECEIPT_PAYMENT_DATA',
@@ -36,6 +48,10 @@ assert.equal(report.receiptChecks.discountSum,2490);
 assert.equal(report.receiptChecks.netSum,14758);
 assert.equal(report.receiptChecks.receiptTotal,14758);
 assert.equal(report.receiptChecks.totalMatches,true);
+assert.equal(report.receiptChecks.printedCount,13);
+assert.equal(report.receiptChecks.printedCountMatches,true);
+assert.equal(report.receiptChecks.taxTotal,1138);
+assert.equal(report.counts.needsReview,13,'A matching printed count cannot resolve ambiguous OCR quantities');
 assert.equal(report.timing.recognitionMs,8694);
 assert.equal(report.products[0].ocrName,'TORRIDEN SERUM');
 assert.equal(report.products[0].code,'72587');
