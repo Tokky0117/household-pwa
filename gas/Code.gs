@@ -912,6 +912,15 @@ function mutateAliasSafely_(user,payload,operationId){
       String(alias.updated_at)!==String(entity.updated_at))
     fail('RECOVERY_CONFLICT','復旧対象の別名が変更されています');
   }else append_('product_aliases',entity,book);
+  // Sheets may apply cell formatting or may have been edited. Read the
+  // committed row back before emitting a successful change-log event.
+  const written=rows('product_aliases',book).filter(x=>
+   String(x.obj.alias_id)===String(entity.alias_id));
+  if(written.length!==1||String(written[0].obj.product_id)!==productId||
+     String(written[0].obj.chain_id)!==chainId||
+     String(written[0].obj.normalized_alias)!==code||
+     Number(written[0].obj.version)!==1)
+   fail('RECOVERY_CONFLICT','別名の保存結果が一致しません');
   const logs=scopedPrefix_('change_log',hid,3,book);
   const existing=logs.find(x=>String(x.obj.change_id)===operationId);
   if(existing){
