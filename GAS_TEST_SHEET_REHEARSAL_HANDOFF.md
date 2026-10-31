@@ -170,3 +170,16 @@
 ### 以後
 
 実シートの読み取り照合が合格したら、認証済み `product.catalog` とOCR明細候補表示の統合を進める。OCR実行中は写真を送信しない、登録候補は確認必須、通常ブラウザからの書き込みは引き続き禁止。
+
+## 2026-10-31：ユーザーの実機画面でカタログ読み取り検証が成功
+
+- ユーザーから、既存試験用GASの `testAliasCatalogReadOnly` 実行ログを撮影したスクリーンショット2枚を受領し、下記を確認した。
+  - `READ_OK: categories = 5`、`SCHEMA_READ_OK: 12 sheets`
+  - `ALIAS_CATALOG_READ_OK: 1 product, 1 store, 1 alias, household-scoped`
+  - `ALIAS_CODE_MATCH_OK: leading zeros retained, exactly one product, already_registered`
+  - `ALIAS_UNKNOWN_CODE_OK: unknown code unresolved, no writes`
+  - `ALIAS_CATALOG_TEST_DONE: read-only, actual sheet fixture verified`、`実行完了`
+- **実際の試験用GASから既存Google Sheetsの商品・チェーン・別名を読み取り、登録済みコードと未登録コードの判定が整合したことを確認。** 新しいシート行の追加、デプロイ、GASコード変更は行っていない。これはユーザー提供ログの確認であり、ChatGPTがSheetの行を直接読んだものではない。
+- 続いて開発ブランチのOCR確認画面に、認証済みカタログを**明示的に**受け取るための画面境界とログアウト時破棄を実装。合成データによる回帰テストが成功した。
+- **次の未検証項目**：ブラウザから認証付き `product.catalog` / `product.alias.check` を実GAS Webアプリへ送る通信と、CORS・Googleログイン・家庭分離の実機検査。現在の公開OCRラボにこの通信は接続していない。
+- **維持する安全条件**：ブラウザの `product.alias.create` は `UNSUPPORTED`、`ENABLE_EXPERIMENTAL_WRITES` は無効、試験用データは保持、画像のアップロード・レシート本登録・本番環境の作成・既存デプロイ更新は実施しない。
