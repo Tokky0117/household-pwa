@@ -1,9 +1,6 @@
 name: Push GAS to test project (manual)
-# Guarded single update adds catalog test only; fixed test GAS identity remains pinned.
+# Manual-only trial GAS update: read-only catalog test installed; temporary push trigger disabled.
 on:
-  push:
-    branches: [stage-a-ui-handoff-review]
-    paths: ['.github/workflows/gas-push-test.yml']
   workflow_dispatch:
     inputs:
       confirm_target_backup:
@@ -24,13 +21,7 @@ concurrency:
 
 jobs:
   push-test:
-    if: >-
-      github.ref == 'refs/heads/stage-a-ui-handoff-review' &&
-      ((github.event_name == 'push' &&
-         github.event.head_commit.message == 'READONLY_ALIAS_CATALOG_TEST_GAS_UPDATE_20261031_ONE_TIME') ||
-       (github.event_name == 'workflow_dispatch' &&
-         inputs.confirm_target_backup == 'BACKUP_DONE' &&
-         inputs.confirm_test_source == 'TEST_GAS_UPDATE'))
+    if: github.ref == 'refs/heads/stage-a-ui-handoff-review' && inputs.confirm_target_backup == 'BACKUP_DONE' && inputs.confirm_test_source == 'TEST_GAS_UPDATE'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
