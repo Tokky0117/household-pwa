@@ -29,7 +29,7 @@ export function mountReceiptCatalogIntegration({
  let parsed=false,busy=false,revision=0,wasReady=gate.ready(),disposed=false;
  function update(){load.disabled=disposed||busy||!parsed||!gate.ready();}
  function resetBridge(){
-  revision++;
+  revision++;busy=false;
   bridge.dispose();
   bridge=createAuthenticatedPreviewBridge({auth,api,confirmation:preview});
  }
