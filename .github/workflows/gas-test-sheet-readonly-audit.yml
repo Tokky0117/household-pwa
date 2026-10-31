@@ -42,6 +42,7 @@ jobs:
         shell: bash
         run: |
           node - <<'NODE'
+          (async()=>{
           const fs=require('node:fs'),path=require('node:path'),crypto=require('node:crypto');
           const summary=process.env.GITHUB_STEP_SUMMARY;
           const out=[];
@@ -155,6 +156,7 @@ jobs:
           }
           emit('NO_CHANGES: metadata and cell values read only');
           fs.appendFileSync(summary,out.join('\n')+'\n');
+          })().catch(e=>{console.error('AUDIT_RUNTIME_ERROR: '+e.message);process.exitCode=1});
           NODE
       - name: Remove temporary credentials and downloaded code
         if: always()
