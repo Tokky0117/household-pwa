@@ -16,7 +16,7 @@
 <p>読めた商品情報を確認します。商品マスタを使う場合は、認証済みproduct.catalogの応答data部分をJSONファイルとして端末から選びます。</p>
 <label for="catalog-file">登録商品マスタJSON（任意・端末内のみ）</label><input id="catalog-file" type="file" accept=".json,application/json">
 <p class="muted">この開発プレビューからGASへ直接接続しません。ファイル内容を外部へ送信・保存しません。</p>
-<label for="catalog-chain">チェーン（登録マスタ内から選択）</label><select id="catalog-chain" disabled><option>チェーン未選択</option></select>
+<label for="catalog-chain">チェーン（店舗別SKUの照合に必要・マスタ読込後に選択）</label><select id="catalog-chain" disabled><option>チェーン未選択</option></select>
 <p id="catalog-status" role="status" class="muted"></p><p id="candidate-summary" role="status"></p>
 <ol id="candidate-list" class="review-list"></ol></section>
 <p class="muted">動作が止まった場合は、このページを閉じて開き直せます。初回の待ち時間と、2回目の読み取り時間を分けて確認します。</p>
