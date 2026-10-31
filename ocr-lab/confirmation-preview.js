@@ -159,7 +159,11 @@ export function createConfirmationPreview({section,file,chain,status,list,summar
   if(target.dataset.action==='quantity'){
    if(target.checked)quantities.add(index);else quantities.delete(index);
   }
-  render();
+  summaryText(candidates());
+  // Do not replace the select's parent synchronously in its native change
+  // event: WebKit/Chromium may still be processing selection and blur.
+  const currentGeneration=generation;
+  setTimeout(()=>{if(currentGeneration===generation&&receipt)render();},0);
  });
  refreshChains();
  return {
