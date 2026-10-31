@@ -92,6 +92,10 @@ jobs:
           const remoteManifest=fs.readFileSync(path.join(folder,'appsscript.json'),'utf8');
           const normalManifest=text=>JSON.stringify(JSON.parse(text));
           const manifestMatches=normalManifest(manifestFile)===normalManifest(remoteManifest);
+          const remoteConf=JSON.parse(remoteManifest),localConf=JSON.parse(manifestFile);
+          const scopes=obj=>Array.isArray(obj.oauthScopes)?obj.oauthScopes.slice().sort():[];
+          const localScopes=scopes(localConf),remoteScopes=scopes(remoteConf);
+          const missingScopes=localScopes.filter(x=>!remoteScopes.includes(x));
           const baselineFunctions=['doGet','doPost','authenticate','bootstrap','testAllSheetsReadOnly',
             'mutateItemSafely_','runIsolatedItemWriteTrialOnce_'];
           const baseline=baselineFunctions.map(name=>({name,present:remote.includes('function '+name+'(')}));
@@ -101,6 +105,10 @@ jobs:
             'Remote scripts: '+remoteFiles.length,
             'Remote and branch script source identical: '+(sha(local)===sha(remote)),
             'Manifest JSON identical: '+manifestMatches,
+            'Remote manifest keys: '+Object.keys(remoteConf).sort().join(', '),
+            'Remote and branch OAuth scope sets identical: '+(JSON.stringify(localScopes)===JSON.stringify(remoteScopes)),
+            'Source-required OAuth scopes missing on target: '+(missingScopes.length?missingScopes.join(', '):'none'),
+            'Target uses V8: '+(remoteConf.runtimeVersion==='V8'),
             'Remote-only named functions: '+(remoteOnly.length?remoteOnly.join(', '):'none'),
             'Remote-only function count: '+remoteOnly.length,
             'Remote source bytes: '+Buffer.byteLength(remote),
