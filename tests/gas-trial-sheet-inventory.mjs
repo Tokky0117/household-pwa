@@ -17,7 +17,8 @@ const schema={
  processed_operations:['household_id','operation_id','request_hash','result','processed_at'],
  receipt_rules:['rule_id','chain_id','pattern','priority','enabled','version','updated_at']
 };
-const target='10PFKxljb_H5UUJQSBIatgFqC8FKRdt63SrHz3hVIr48';
+const target='synthetic_test_spreadsheet';
+const expectedHash='e2383bb4d5a2df8271ac582e129e3d49450861fedf767f4986944c53bc83d43a';
 function create(){
  const tables=Object.fromEntries(Object.entries(schema).map(([n,headers])=>[n,[headers]]));
  tables.households.push(['h-demo','Original Prototype Label',1,'']);
@@ -46,6 +47,14 @@ function create(){
  };
  const mock={
   Logger:{log(s){state.logs.push(String(s))}},
+  Utilities:{
+   DigestAlgorithm:{SHA_256:'sha256'},
+   computeDigest(_,value){
+    const hex=value===target?expectedHash:'00'.repeat(32);
+    return hex.match(/../g).map(s=>Number.parseInt(s,16)>127?
+      Number.parseInt(s,16)-256:Number.parseInt(s,16));
+   }
+  },
   PropertiesService:{getScriptProperties(){return {getProperty(key){
    return key==='SPREADSHEET_ID'?state.target:key==='WRITE_TRIAL_SPREADSHEET_ID'?
     state.trial:key==='ENABLE_EXPERIMENTAL_WRITES'?(state.writesAllowed?'true':'false'):null

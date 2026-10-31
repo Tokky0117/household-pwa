@@ -1261,8 +1261,10 @@ function isolatedAliasTrialGuard_(book){
 function testTrialSheetInventoryReadOnly(){
  const settings=PropertiesService.getScriptProperties();
  const active=settings.getProperty('SPREADSHEET_ID')||'';
- const expected='10PFKxljb_H5UUJQSBIatgFqC8FKRdt63SrHz3hVIr48';
- if(active!==expected){
+ const expectedHash='e2383bb4d5a2df8271ac582e129e3d49450861fedf767f4986944c53bc83d43a';
+ const hash=active?Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256,active)
+  .map(b=>(b&255).toString(16).padStart(2,'0')).join(''):'';
+ if(hash!==expectedHash){
   Logger.log('INVENTORY_ABORT: SPREADSHEET_ID does not point to the supplied test Sheet');
   return {ok:false,reason:'TARGET_MISMATCH'};
  }
