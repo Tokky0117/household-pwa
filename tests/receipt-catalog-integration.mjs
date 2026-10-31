@@ -80,6 +80,8 @@ assert.equal($('ocr-copy-products').disabled,false);
 await $('ocr-copy-products').fire('click');
 assert.equal(JSON.parse(copiedProductReport).products[0].ocrName,'試験用・商品コード');
 assert.equal(JSON.parse(copiedProductReport).products[0].recognition.catalogSource,'none');
+assert.deepEqual(JSON.parse(copiedProductReport).matchingContext,
+ {catalogLoaded:false,chainSelected:null});
 assert.equal(actions.length,0,'Report must never trigger POST');
 assert.equal($('ocr-load-catalog').disabled,true,'Fourth test must succeed before catalog read');
 setGate(true);
@@ -90,6 +92,11 @@ assert.deepEqual(actions[0].payload,{},'OCR text cannot be included in POST payl
 assert.equal(JSON.stringify(actions).includes('00012345'),false,'OCR code is not sent');
 assert.equal(review.getState().catalog.catalogLoaded,true);
 assert.equal(review.getState().catalog.source,'authenticated');
+assert.match($('ocr-candidate-summary').textContent,
+ /チェーン未選択：店舗別SKUは照合していません/);
+await $('ocr-copy-products').fire('click');
+assert.deepEqual(JSON.parse(copiedProductReport).matchingContext,
+ {catalogLoaded:true,chainSelected:false});
 const item=$('ocr-candidate-list').children[0];
 assert.ok(item.children.some(n=>n.tag==='label'&&
  n.children.some(c=>c.tag==='select'&&
@@ -213,6 +220,9 @@ assert.equal(chain.children.length,2);
 assert.equal(chain.children[1].textContent,'[KURASHI_ALIAS_TRIAL_ONLY]');
 chain.value='fixture-store';
 await chain.fire('change');
+assert.doesNotMatch($('ocr-candidate-summary').textContent,
+ /チェーン未選択：店舗別SKUは照合していません/);
+assert.match($('ocr-candidate-summary').textContent,/店舗別SKU一致 1件/);
 assert.match(list.children[0].children.map(c=>c.textContent).join(' '),/商品コードが一致/);
 let chooser=list.children[0].children.flatMap(x=>x.children||[]).find(x=>x.dataset.action==='product');
 assert.ok(chooser,'The product selector must be available');
@@ -226,6 +236,8 @@ assert.equal(review.getState().catalog.selected,1);
 await $('ocr-copy-products').fire('click');
 const selectedReport=JSON.parse(copiedProductReport);
 assert.equal(selectedReport.products[0].recognition.catalogSource,'authenticated');
+assert.deepEqual(selectedReport.matchingContext,
+ {catalogLoaded:true,chainSelected:true});
 assert.equal(selectedReport.products[0].recognition.candidateStatus,'code_candidate');
 assert.equal(selectedReport.products[0].recognition.selectedProductName,'試験用・商品コード');
 assert.equal(selectedReport.products[0].code,'00012345');
