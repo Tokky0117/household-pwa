@@ -3,5 +3,12 @@
 <form id="scan-form"><label for="photo">レシート写真</label><input id="photo" type="file" accept="image/*"><div id="crop-area" hidden><label for="crop-canvas">レシート部分を指定（任意）</label><canvas id="crop-canvas" aria-label="写真の切り抜き範囲を指で囲む"></canvas><p id="crop-status" class="muted"></p><button id="clear-crop" type="button">範囲指定を解除</button></div><label for="scale">画像の処理</label><select id="scale"><option value="gray">拡大・グレー化（比較用）</option><option value="original">カラー（補正なし）</option><option value="contrast">グレー＋局所コントラスト</option><option value="sharpen">グレー＋シャープ</option><option value="binary">グレー＋局所二値化</option></select><label class="normalization-label" for="japanese-normalize"><input id="japanese-normalize" type="checkbox"><span>日本語向け漢字変換を試す（認識原文は保持）<small>中国語字体に認識された漢字を日本語表記へ。商品名の推測補完はしません。</small></span></label><button id="scan" type="submit" disabled>読み取りを試す</button></form>
 <p id="status" role="status" aria-live="polite">写真を選んでください。初回は読み取りに必要なデータをダウンロードします。</p><p id="elapsed" class="muted"></p><button id="reset" type="button">写真と結果を破棄</button>
 <section id="result" hidden><h2>読み取り結果</h2><p>同じ写真で切り抜きと画像処理を比較できます。元画像の切り抜き後に360万画素以内へ調整します。</p><p>商品名・金額を原本と比べてください。この画面から購入記録は登録されません。</p><dl id="metrics"></dl><label for="text">文字起こし（位置から行を整理）</label><textarea id="text" readonly rows="14"></textarea><button id="copy" type="button">結果と計測情報をコピー</button><p id="copy-status" role="status"></p><details><summary>OCR原文と漢字変換箇所</summary><p>OCRが実際に認識した文章は変更せず保持しています。</p><pre id="raw-text"></pre><h3>変換箇所（漢字・金額区切り）</h3><pre id="normalization-diff"></pre></details><details><summary>抽出した明細候補</summary><p>誤読や対応違いを含むことがあります。</p><pre id="items"></pre></details><details><summary>診断情報</summary><pre id="diagnostic"></pre></details></section>
+<section id="candidate-confirmation" hidden><h2>商品候補の確認（試験・保存なし）</h2>
+<p>読めた商品情報を確認します。商品マスタを使う場合は、認証済みproduct.catalogの応答data部分をJSONファイルとして端末から選びます。</p>
+<label for="catalog-file">登録商品マスタJSON（任意・端末内のみ）</label><input id="catalog-file" type="file" accept=".json,application/json">
+<p class="muted">この開発プレビューからGASへ直接接続しません。ファイル内容を外部へ送信・保存しません。</p>
+<label for="catalog-chain">チェーン（登録マスタ内から選択）</label><select id="catalog-chain" disabled><option>チェーン未選択</option></select>
+<p id="catalog-status" role="status" class="muted"></p><p id="candidate-summary" role="status"></p>
+<ol id="candidate-list" class="review-list"></ol></section>
 <p class="muted">動作が止まった場合は、このページを閉じて開き直せます。初回の待ち時間と、2回目の読み取り時間を分けて確認します。</p>
 </main><script type="module" src="./main.js"></script></body></html>

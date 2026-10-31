@@ -3,3 +3,12 @@
 #crop-area{margin-bottom:18px;padding:12px;background:#f6f8f5;border:1px solid #dce4df;border-radius:10px}#crop-canvas{display:block;max-width:100%;height:auto;touch-action:none;border:1px solid #94aaa0;border-radius:5px;cursor:crosshair}#clear-crop{background:#e5ece7;color:#253e31}#crop-status{margin:8px 0}
 
 .normalization-label{display:flex;align-items:flex-start;gap:10px;line-height:1.5;margin:0 0 18px}.normalization-label input{width:auto;flex:none;margin:4px 0 0}.normalization-label small{display:block;font-size:13px;color:#607367;font-weight:400;margin-top:4px}
+
+.review-list{padding:0;margin:12px 0;list-style:none;display:grid;gap:10px}
+.review-item{border:1px solid #d7e2da;border-radius:12px;padding:14px;background:#fafcfa;overflow-wrap:anywhere}
+.review-item p{font-size:14px;color:#546b5c;margin:8px 0}
+.review-item strong{display:block}
+.review-item .review-warning{color:#954613;font-weight:600}
+.review-check{display:flex;gap:10px;align-items:center;font-weight:400}
+.review-check input{width:20px;height:20px;margin:0}
+#candidate-summary{font-weight:600}
