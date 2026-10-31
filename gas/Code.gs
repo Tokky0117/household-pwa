@@ -266,6 +266,7 @@ function doPost(e){
   const payload=input.payload||{};
   if(action==='bootstrap')return jsonReply({ok:true,data:bootstrap(user,readContext.book)});
    if(action==='product.catalog')return jsonReply({ok:true,data:productCatalog_(user,readContext.book)});
+   if(action==='product.alias.check')return jsonReply({ok:true,data:productAliasCheck_(user,payload,readContext.book)});
   if(action==='sync')return jsonReply({ok:true,data:changes(user,payload,readContext.book)});
   if(!['item.create','item.update','product.create','product.update','product.move'].includes(action))fail('UNSUPPORTED','未対応の操作です');
   return jsonReply({ok:true,data:mutate_(user,action,payload,input.operation_id)});
@@ -497,6 +498,44 @@ function productCatalog_(user,book){
   chain_id:r.obj.chain_id==null||r.obj.chain_id===''?null:String(r.obj.chain_id),
   normalized_alias:String(r.obj.normalized_alias||'')}));
  return {household_id:hid,products,product_aliases:aliases,stores};
+}
+
+/**
+ * Read-only alias feasibility check; no reservation, write, or implicit
+ * confirmation. Actual registration MUST repeat under a write lock.
+ */
+function productAliasCheck_(user,payload,book){
+ if(!payload||typeof payload!=='object'||Array.isArray(payload)||
+   Object.keys(payload).sort().join(',')!=='chain_id,product_code,product_id')
+  fail('BAD_REQUEST','照合対象が不正です');
+ const pid=requiredId(payload.product_id),cid=requiredId(payload.chain_id);
+ if(typeof payload.product_code!=='string')fail('BAD_REQUEST','商品コードが不正です');
+ const code=payload.product_code.normalize('NFKC');
+ if(!/^[0-9]{4,14}$/.test(code))fail('BAD_REQUEST','商品コードは数字4〜14桁で指定してください');
+ const hid=String(user.householdId),b=book||spreadsheet(),owners=new Map(),all=rows('products',b);
+ for(const p of all){
+  const id=String(p.obj.product_id||'');
+  if(!id||owners.has(id))fail('CATALOG_CONFLICT','商品IDが重複しています');
+  owners.set(id,String(p.obj.household_id||''));
+ }
+ if(all.filter(p=>String(p.obj.product_id)===pid&&String(p.obj.household_id)===hid&&!p.obj.deleted_at).length!==1)
+  fail('NOT_FOUND','この家庭の商品が見つかりません');
+ const stores=rows('stores',b).filter(s=>String(s.obj.household_id)===hid);
+ if(stores.filter(s=>String(s.obj.chain_id)===cid).length!==1)
+  fail('NOT_FOUND','この家庭のチェーンが見つかりません');
+ const known=new Set(stores.map(s=>String(s.obj.chain_id))),matching=new Set();
+ for(const row of rows('product_aliases',b)){
+  const a=row.obj,id=String(a.product_id||'');
+  if(owners.get(id)!==hid)continue;
+  if(String(a.normalized_alias||'').normalize('NFKC')!==code)continue;
+  const c=a.chain_id==null||a.chain_id===''?null:String(a.chain_id);
+  if(c!==null&&!known.has(c))fail('CATALOG_CONFLICT','別名のチェーン指定が不正です');
+  if(c===null||c===cid)matching.add(id);
+ }
+ const ids=[...matching].sort();
+ const status=ids.some(id=>id!==pid)?'conflict':ids.includes(pid)?'already_registered':'available';
+ return {household_id:hid,product_id:pid,chain_id:cid,product_code:code,
+  status,matched_product_ids:ids,checked_at:new Date().toISOString(),write_permitted:false};
 }
 
 function currentSequence(hid,book){return scopedPrefix_('change_log',hid,3,book).reduce((n,x)=>Math.max(n,Number(x.obj.sequence_no)||0),0)}
