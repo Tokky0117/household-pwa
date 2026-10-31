@@ -52,9 +52,19 @@
    }
    scores.sort((a,b)=>a.d-b.d||a.id.localeCompare(b.id));
    if(!scores.length)return answer;
-   const best=scores[0].d,ids=new Set(scores.filter(x=>x.d===best).map(x=>x.id));
-   answer.status=ids.size===1?'name_suggestion':'ambiguous';
-   answer.candidates=details(ids).map(c=>({...c,editDistance:best}));return answer;
+   // Preserve plausible runners-up instead of hiding them behind a single
+   // top edit-distance score. All results remain suggestions, never identity.
+   const best=scores[0].d,ranked=new Map();
+   for(const entry of scores){
+    if(entry.d>best+1)break;
+    ranked.set(entry.id,Math.min(entry.d,ranked.get(entry.id)??Infinity));
+   }
+   const sorted=[...ranked].sort((a,b)=>a[1]-b[1]||a[0].localeCompare(b[0]));
+   answer.status=sorted.length===1?'name_suggestion':'ambiguous';
+   // A bounded list is for human review; truncation does not imply uniqueness.
+   answer.candidates=sorted.slice(0,3).map(([id,d])=>({
+    productId:id,name:products.get(id).name,editDistance:d
+   }));return answer;
   });
  }
  root.KurashiProductMatching={suggest};
