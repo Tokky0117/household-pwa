@@ -110,7 +110,14 @@
     }
     if(pending){
      const item=add(pending.raw,q,unit,total,[pending.line,ix]);
-     if(item){item.quantitySource=qtyIssue?'inferred_candidate':'printed';item.productCode=m[1];item.taxBasis='included';if(qtyIssue)item.issues.push(qtyIssue);}
+     if(item){
+     item.quantitySource=qtyIssue?'inferred_candidate':'printed';
+     item.productCode=m[1];item.taxBasis='included';
+     // Short quantity glyph only. Never store the entire OCR row in the
+     // product verification report: it may contain unrelated text.
+     item.ocrQuantityToken=originalQtyToken;
+     if(qtyIssue)item.issues.push(qtyIssue);
+    }
     }else warn(coupon?'coupon_positive_without_item':'orphan_sku',ix);
     coupon=false;pending=null;continue;
    }
