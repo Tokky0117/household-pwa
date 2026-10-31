@@ -248,6 +248,19 @@ export function createConfirmationPreview({section,file,chain,status,list,summar
   setParsed(value){receipt=value;selected.clear();quantities.clear();searchQueries.clear();render()},
   reset(){generation++;receipt=null;catalog=null;chainId=null;source='none';selected.clear();quantities.clear();
    file.value='';status.textContent='';summary.textContent='';searchQueries.clear();refreshChains();render()},
-  getStatus(){return {catalogLoaded:!!catalog,source,selected:selected.size,quantityConfirmed:quantities.size}}
+  getStatus(){return {catalogLoaded:!!catalog,source,selected:selected.size,quantityConfirmed:quantities.size}},
+  // For the explicit clipboard-only product test report. Expose names and
+  // non-sensitive match states, never household IDs or internal product IDs.
+  getProductReview(){
+   const rows=candidates();
+   return {source,chainSelected:!!chainId,items:(receipt?.items||[]).map((_,index)=>{
+    const row=rows[index]||{};
+    const selectedId=selected.get(index),product=catalog?.products.find(p=>p.product_id===selectedId);
+    return {status:row.status||'unresolved',
+     candidateNames:(row.candidates||[]).slice(0,3).map(p=>p.name),
+     selectedProductName:product?.name||null,
+     quantityConfirmed:quantities.has(index)};
+   })};
+  }
  };
 }
