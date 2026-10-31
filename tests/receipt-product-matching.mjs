@@ -1,8 +1,9 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
+import {validateCatalog} from '../ocr-lab/confirmation-preview.js';
 const context={};
-for(const file of ['receipt-structure.js','receipt-product-matching.js'])
+for(const file of ['receipt-structure.js','receipt-product-matching.js','receipt-alias-preflight.js'])
  vm.runInNewContext(fs.readFileSync(new URL('../'+file,import.meta.url),'utf8'),context);
 const parse=s=>JSON.parse(JSON.stringify(context.KurashiReceiptStructure.parse(s)));
 const suggest=(items,x)=>JSON.parse(JSON.stringify(context.KurashiProductMatching.suggest(items,x)));
@@ -88,5 +89,50 @@ assert.equal(warehouse.items.reduce((sum,x)=>sum+x.netAmount,0),
  Array.from({length:13},(_,i)=>100+i*10).reduce((a,b)=>a+b,0)-30);
 assert.equal(parse('SampleItem\n12345 10 1.36 1.36 E').items.length,0,
  'Decimal/non-thousands tokens must not be reinterpreted as integer yen');
+
+// Reproduce the EXACT synthetic store/product/alias fixture written through
+// the real GAS editor, without ever using the user's actual household data.
+const savedAliasFixture=validateCatalog({
+ household_id:'synthetic-household',
+ stores:[{chain_id:'alias-trial-store-0001',canonical_name:'[KURASHI_ALIAS_TRIAL_ONLY]'}],
+ products:[{
+  household_id:'synthetic-household',product_id:'alias-trial-product-0001',
+  name:'試験用・商品コード',normalized_name:'試験用・商品コード'
+ }],
+ product_aliases:[{
+  alias_id:'synthetic-alias',product_id:'alias-trial-product-0001',
+  chain_id:'alias-trial-store-0001',normalized_alias:'00012345'
+ }]
+});
+const syntheticReceipt=parse('試験用・商品コード\n00012345 10 120 120 T');
+assert.equal(syntheticReceipt.items.length,1,'The receipt parser recognizes 8-digit SKU rows');
+assert.equal(syntheticReceipt.items[0].productCode,'00012345','Leading-zero SKU is not a number');
+assert.equal(syntheticReceipt.items[0].quantity,1,'Inferred quantities must not silently become verified');
+assert.equal(syntheticReceipt.items[0].quantitySource,'inferred_candidate');
+const checkedFixture=suggest(syntheticReceipt.items,{
+ ...savedAliasFixture,chainId:'alias-trial-store-0001'
+});
+assert.equal(checkedFixture[0].status,'code_candidate');
+assert.equal(checkedFixture[0].requiresConfirmation,true);
+assert.equal(checkedFixture[0].candidates.length,1);
+assert.equal(checkedFixture[0].candidates[0].productId,'alias-trial-product-0001');
+const trialInspection=JSON.parse(JSON.stringify(context.KurashiAliasPreflight.inspect({
+ catalog:savedAliasFixture,chainId:'alias-trial-store-0001',
+ productId:'alias-trial-product-0001',productCode:'00012345'
+})));
+assert.equal(trialInspection.status,'already_registered');
+assert.equal(trialInspection.writePermitted,false);
+assert.deepEqual(trialInspection.matchedProductIds,['alias-trial-product-0001']);
+const noOtherChain=suggest(syntheticReceipt.items,{
+ ...savedAliasFixture,chainId:'different-chain'
+});
+assert.ok(noOtherChain.every(x=>x.status!=='code_candidate'),
+ 'A fixture alias may never match another chain');
+const novelCode=JSON.parse(JSON.stringify(context.KurashiAliasPreflight.inspect({
+ catalog:savedAliasFixture,chainId:'alias-trial-store-0001',
+ productId:'alias-trial-product-0001',productCode:'00099999'
+})));
+assert.equal(novelCode.status,'available');
+assert.equal(novelCode.writePermitted,false);
 
 console.log('STEP2/STEP3 candidate matching PASS: 5/5 exact code proposals, household/chain isolation, conflict detection, incomplete OCR and uncertain quantities flagged; no product auto-registration');
