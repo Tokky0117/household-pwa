@@ -68,3 +68,11 @@
 4. 読み取り専用の合格を確認した後に限り、ユーザーの意図を確認してから `runIsolatedAliasWriteTrialOnce_` に進む。実行すると架空の1商品・1チェーン・1コードがSheetsに書き込まれる。
 
 注意：開発ブランチの `gas-push-test.yml` は現在 `workflow_dispatch` のみに戻されているため、ユーザーによるGASソース更新は明示的な別工程として扱う。
+
+## 2026-10-31最終：GASエディタ用の読み取り専用入口を反映
+
+- Apps Scriptでは名前が `_` で終わる関数はエディタの実行候補に出ない場合がある。内部実装 `testIsolatedAliasWriteTrialPreflightReadOnly_` はそのまま保持し、エディタから選べる公開ラッパー **`testAliasTrialPreflightReadOnly`** を追加した。このラッパーは内部の読み取り専用関数だけを呼び出し、**Google Sheetsへの書き込み処理を含まない**。
+- 開発ブランチのオフライン回帰テストでは、ラッパー実行時の書き込み数が0件であることを確認し成功。
+- 試験用GASへ追加のコード更新が成功：<https://github.com/Tokky0117/household-pwa/actions/runs/41166432369>。更新後の読み取り専用再取得で **GitHubの開発版と完全一致**、マニフェストのSHA-256は更新前から不変：<https://github.com/Tokky0117/household-pwa/actions/runs/41166492359>。
+- 一度限りのGitHub Actions自動反映トリガーは再度無効化。現状のGASソースを取得・更新しただけで、**Webアプリのデプロイ、Script Properties、Google Sheetsには変更していない**。
+- **次のユーザー操作**：試験用GASエディタを再読み込み → 関数選択から `testAliasTrialPreflightReadOnly`（末尾の `_` なし）を選択 → 「実行」。`ALIAS_TRIAL_PREFLIGHT_OK` が出るか、失敗した場合はエラーコードを確認する。書き込み用の公開入口は追加しない。
