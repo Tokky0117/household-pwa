@@ -33,7 +33,7 @@ function issueCounts(warnings){
  }
  return [...map].sort((a,b)=>a[0].localeCompare(b[0],'en')).map(([code,count])=>({code,count}));
 }
-export function createProductTestReport({receipt,diagnostic,review}={}){
+export function createProductTestReport({receipt,diagnostic,review,warningScopes}={}){
  if(!receipt||!Array.isArray(receipt.items)||!diagnostic||typeof diagnostic!=='object')
   throw Error('PRODUCT_REPORT_UNAVAILABLE');
  if(receipt.items.length>300)throw Error('PRODUCT_REPORT_TOO_LARGE');
@@ -65,9 +65,7 @@ export function createProductTestReport({receipt,diagnostic,review}={}){
   };
  });
  const r=receipt.reconciliation||{},p=diagnostic.phases||{},i=diagnostic.inference||{};
- const scope={
-  merchandise:0,outside:0,global:0
- };
+ const scope=warningScopes||{};
  // Receipt-level warnings may not include the line mapping of a product.
  // Export only counts/codes, not OCR lines or source text.
  const result={
@@ -86,7 +84,12 @@ export function createProductTestReport({receipt,diagnostic,review}={}){
   counts:{
    extractedItems:products.length,
    needsReview:products.filter(x=>x.issues.length||x.quantitySource==='inferred_candidate').length,
-   warningTypes:issueCounts(receipt.warnings)
+   warningTypes:issueCounts(receipt.warnings),
+   warningsByPosition:{
+    merchandise:number(scope.merchandise),
+    outside:number(scope.outside),
+    global:number(scope.global)
+   }
   },
   receiptChecks:{
    quantity: number(r.quantity),
