@@ -621,6 +621,38 @@ function assertIsolatedTrialIdentity(book){
     !String(members[0].obj.auth_subject||'').match(/^[0-9]+$/))
   fail('TRIAL_NOT_ISOLATED','試験専用の家庭とユーザーが確認できません');
 }
+/**
+ * Allow an editor-only alias rehearsal on exactly the existing prototype Sheet.
+ * Normal POST writes and item mutations keep their original strict trial label.
+ * Never infer a writable sheet from the household display name alone.
+ */
+const EXISTING_PROTOTYPE_SHEET_SHA256_='e2383bb4d5a2df8271ac582e129e3d49450861fedf767f4986944c53bc83d43a';
+function approvedPrototypeAliasSheet_(){
+ const props=PropertiesService.getScriptProperties();
+ const active=props.getProperty('SPREADSHEET_ID')||'';
+ const trial=props.getProperty('WRITE_TRIAL_SPREADSHEET_ID')||'';
+ if(!active||active!==trial||props.getProperty('ENABLE_EXPERIMENTAL_WRITES')==='true')
+  return false;
+ const hash=Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256,active)
+  .map(b=>(b&255).toString(16).padStart(2,'0')).join('');
+ return hash===EXISTING_PROTOTYPE_SHEET_SHA256_;
+}
+function assertAliasEditorTrialIdentity_(book){
+ if(!approvedPrototypeAliasSheet_()){
+  // Other isolated copies retain the existing fixed household label.
+  assertIsolatedTrialIdentity(book);
+  return;
+ }
+ const families=rows('households',book),members=rows('users',book);
+ const home=families[0]?.obj||{},member=members[0]?.obj||{};
+ if(families.length!==1||members.length!==1||
+    !String(home.household_id||'').trim()||
+    !String(member.user_id||'').trim()||
+    String(member.household_id)!==String(home.household_id)||
+    !/^[0-9]+$/.test(String(member.auth_subject||'')))
+  fail('TRIAL_NOT_ISOLATED','既存試作用シートの家庭とユーザーが一致しません');
+}
+
 function requireIsolatedWriteTrial(localEditorTrial){
  const props=PropertiesService.getScriptProperties();
  const configured=props.getProperty('SPREADSHEET_ID');
@@ -807,7 +839,11 @@ function mutateAliasSafely_(user,payload,operationId,localEditorTrial){
  const lock=LockService.getScriptLock();
  if(!lock.tryLock(20000))fail('BUSY','しばらくして再試行してください');
  try{
-  const book=requireIsolatedWriteTrial(localEditorTrial===true),hid=String(user.householdId);
+  // The known prototype is allowed ONLY through the editor-only path.
+  // Public POSTs still use requireIsolatedWriteTrial(false) with fixed label.
+  const book=localEditorTrial===true?spreadsheet():requireIsolatedWriteTrial(false);
+  if(localEditorTrial===true)isolatedAliasTrialGuard_(book);
+  const hid=String(user.householdId);
   const members=rows('users',book),homes=rows('households',book);
   if(homes.length!==1||String(homes[0].obj.household_id)!==hid||
      members.length!==1||String(members[0].obj.household_id)!==hid||
@@ -1173,7 +1209,7 @@ function isolatedAliasTrialGuard_(book){
    p.getProperty('SPREADSHEET_ID')!==p.getProperty('WRITE_TRIAL_SPREADSHEET_ID')||
    p.getProperty('ENABLE_EXPERIMENTAL_WRITES')==='true')
   fail('TRIAL_NOT_ISOLATED','独立した試験用シートと書き込み無効設定を確認してください');
- assertIsolatedTrialIdentity(book);
+ assertAliasEditorTrialIdentity_(book);
  testAllSheetsReadOnly();
  const hid=String(rows('households',book)[0].obj.household_id);
  for(const table of ['records','record_items','receipt_rules'])
@@ -1362,7 +1398,12 @@ function testTrialSheetInventoryReadOnly(){
  * Never writes to GAS Script Properties or Google Sheets.
  */
 function testAliasTrialPreflightReadOnly(){
- return testIsolatedAliasWriteTrialPreflightReadOnly_();
+ try{return testIsolatedAliasWriteTrialPreflightReadOnly_()}
+ catch(error){
+  const code=typeof error?.code==='string'?error.code:'UNEXPECTED_ERROR';
+  Logger.log('ALIAS_TRIAL_PREFLIGHT_FAILED: '+code);
+  throw new Error('ALIAS_TRIAL_PREFLIGHT_FAILED: '+code);
+ }
 }
 
 function testIsolatedAliasWriteTrialPreflightReadOnly_(){
