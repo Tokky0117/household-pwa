@@ -10,6 +10,7 @@ function node(tag='div'){
   files:[],size:0,
   append(...items){this.children.push(...items)},
   replaceChildren(...items){this.children=items},
+  setAttribute(name,value){this[name]=String(value)},
   addEventListener(name,callback){listeners.set(name,callback)},
   async dispatch(name){const cb=listeners.get(name);if(cb)await cb({target:this})}
  };
