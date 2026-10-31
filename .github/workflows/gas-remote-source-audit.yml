@@ -1,5 +1,5 @@
 name: Read-only audit of existing test GAS source
-# Final read-only verification after the user-approved test GAS source-only update.
+# Final read-only verification after adding the editor-visible trial preflight wrapper.
 on:
   push:
     branches: [stage-a-ui-handoff-review]
