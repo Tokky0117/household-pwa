@@ -43,4 +43,15 @@ $('scan-form').addEventListener('submit',async event=>{
 });
 $('reset').addEventListener('click',async()=>{generation++;photo.value='';cropSelector.clear();clearResult();confirmation.reset();status.textContent=busy?'処理の終了を待って破棄しています…':'写真と結果を破棄しました。';if(reader){const old=reader;reader=null;await old.dispose().catch(()=>{});}controls();});
 $('copy').addEventListener('click',async()=>{if(!report)return;try{await navigator.clipboard.writeText(report);$('copy-status').textContent='コピーしました。';}catch{$('text').focus();$('text').select();$('copy-status').textContent='文字起こしを選択しました。コピー操作を行ってください。';}});
+$('copy-text').addEventListener('click',async()=>{
+ const text=$('text').value;
+ if(!text||$('result').hidden)return;
+ try{
+  await navigator.clipboard.writeText(text);
+  $('copy-status').textContent='文字起こしだけコピーしました。⑤の照合テスト画面に貼り付けてください。';
+ }catch{
+  $('text').focus();$('text').select();
+  $('copy-status').textContent='文字起こしを選択しました。コピー操作を行ってください。';
+ }
+});
 controls();
