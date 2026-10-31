@@ -3,6 +3,13 @@
  'use strict';
  const norm=s=>String(s).normalize('NFKC').replace(/\s+/g,' ').trim();
  const num=s=>Number(s.replace(/,/g,''));
+ // Only treat a dot as a thousands separator in clearly typed numeric SKU price columns.
+ // Product names, quantities, weights and arbitrary decimal numbers are not rewritten.
+ const skuAmount=s=>Number(/^(?:\d+|\d{1,3}(?:[,.]\d{3})+)$/.test(s)?s.replace(/[,.]/g,''):NaN);
+ // A warehouse SKU row can contain an OCR-deformed quantity marker, but the total
+ // must still be consistent. Never silently treat an uncertain quantity as printed fact.
+ const skuRow=/^(?:CPN\s+)?(\d{4,8})\s+(\d{1,2}[●@eEoO]?)\s+([\d,.]+)\s+([\d,.]+)(-)?\s*([ET])$/i;
+ const ambiguousUnitRow=/^(\d{2,3})\s*[x×]\s*単\s*([\d,]+)\s*[¥]?\s*([\d,]+)$/i;
  const name=s=>norm(s).replace(/^[※*]\s*/,'').replace(/^委\)\s*/,'').replace(/\s*!$/,'').trim();
  function parse(source){
   const rawText=String(source||''), items=[], warnings=[], adjustments=[];
@@ -14,6 +21,7 @@
    if(!Number.isSafeInteger(amount)||amount<0||amount>1000000||q<1||q>99){warn('invalid_item',indices[0]);return;}
    last={rawName,name:name(rawName),quantity:q,quantitySource:q===1?'default':'printed',unitPrice:unit,grossAmount:amount,discount:0,netAmount:amount,taxBasis:'unknown',taxIncludedAmount:null,sourceLines:indices,rawLines:indices.map(i=>lines[i-1]),issues:[]};
    if(unit!==null&&unit*q!==amount)last.issues.push('unit_quantity_mismatch');
+   if(!last.name||(/^[A-Za-z]$/.test(last.name)))last.issues.push('missing_product_name');
    items.push(last);pending=null;return last;
   };
   const discount=(amount,i)=>{
@@ -31,10 +39,29 @@
    if(m=l.match(/^(?:税(?:8|10)%|外税額 (?:8|10)%)\s*¥([\d,]+)$/)){taxTotal=(taxTotal||0)+num(m[1]);continue;}
    if(summary)continue;
    if(/^CPN$/i.test(l)){coupon=true;pending=null;continue;}
-   if(m=l.match(/^(\d{4,8})\s+(\d{1,2})[^\d\s,]*\s+([\d,]+)\s+([\d,]+)(-)?\s*([ET])$/)){
-    if(coupon||m[5]){discount(num(m[4]),ix);coupon=false;pending=null;continue;}
-    if(pending){const item=add(pending.raw,+m[2],num(m[3]),num(m[4]),[pending.line,ix]);if(item){item.quantitySource='printed';item.taxBasis='included';}}
-    else warn('orphan_sku',ix);continue;
+   if(m=l.match(skuRow)){
+    const unit=skuAmount(m[3]),total=skuAmount(m[4]);
+    if(!Number.isSafeInteger(unit)||!Number.isSafeInteger(total)||unit<=0||total<0){warn('invalid_sku_amount',ix);pending=null;coupon=false;continue;}
+    const originalQtyToken=m[2],rawQty=Number(originalQtyToken.match(/^\d+/)[0]),ratio=total/unit;
+    let q=rawQty,qtyIssue=null;
+    if(!m[5]&&(!Number.isSafeInteger(rawQty)||rawQty<1||rawQty>99||rawQty*unit!==total)){
+     // e.g. printed 1● was read as 10. Retain a clearly flagged candidate
+     // only when unit and total independently establish a valid integer count.
+     if(Number.isSafeInteger(ratio)&&ratio>=1&&ratio<=99&&originalQtyToken.startsWith(String(ratio))){
+      q=ratio;qtyIssue='quantity_ocr_ambiguous';
+     }
+    }
+    if(!m[5]&&/[●@eEoO]$/.test(originalQtyToken)&&!/[●]$/.test(originalQtyToken))qtyIssue='quantity_ocr_ambiguous';
+    if(m[5]){
+     discount(total,ix);
+     if(last){last.discountCodes=last.discountCodes||[];last.discountCodes.push(m[1]);}
+     coupon=false;pending=null;continue;
+    }
+    if(pending){
+     const item=add(pending.raw,q,unit,total,[pending.line,ix]);
+     if(item){item.quantitySource=qtyIssue?'inferred_candidate':'printed';item.productCode=m[1];item.taxBasis='included';if(qtyIssue)item.issues.push(qtyIssue);}
+    }else warn(coupon?'coupon_positive_without_item':'orphan_sku',ix);
+    coupon=false;pending=null;continue;
    }
    if(coupon){continue;}
    if(/値引|割引/.test(l)){
@@ -46,6 +73,14 @@
     if(+m[1]<1||+m[1]>99){warn('invalid_quantity',ix);continue;}
     if(last){last.quantity=+m[1];last.quantitySource='printed';last.unitPrice=num(m[2]);last.sourceLines.push(ix);last.rawLines.push(lines[i]);if(last.quantity*last.unitPrice!==last.grossAmount)last.issues.push('unit_quantity_mismatch');}
     else warn('orphan_quantity',ix);continue;
+   }
+   if(m=l.match(ambiguousUnitRow)){
+    const unit=num(m[2]),total=num(m[3]),q=total/unit;
+    if(pending&&Number.isSafeInteger(q)&&q>0&&q<=99&&m[1].startsWith(String(q))){
+     const item=add(pending.raw,q,unit,total,[pending.line,ix]);
+     if(item){item.quantitySource='inferred_candidate';item.issues.push('quantity_ocr_ambiguous');}
+    }else warn('ambiguous_quantity_row',ix);
+    pending=null;continue;
    }
    if(m=l.match(/^(\d+)(?:コ|個)\s*[x×]\s*単\s*(-?[\d,]+)\s*[¥]?\s*(-?[\d,]+)$/i)){
     if(num(m[3])<0){if(num(m[2])*(+m[1])!==num(m[3]))warn('discount_quantity_mismatch',ix);discount(-num(m[3]),ix);}
