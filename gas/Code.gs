@@ -1176,12 +1176,53 @@ function isolatedAliasTrialGuard_(book){
  assertIsolatedTrialIdentity(book);
  testAllSheetsReadOnly();
  const hid=String(rows('households',book)[0].obj.household_id);
- for(const table of ['item_groups','records','record_items','receipt_rules'])
+ for(const table of ['records','record_items','receipt_rules'])
   if(rows(table,book).length!==0)
    fail('TRIAL_NOT_EMPTY','試験専用以外のデータがあります: '+table);
+ const items=rows('item_groups',book);
  const fixture=ALIAS_TRIAL_FIXTURE_,stores=rows('stores',book),
        products=rows('products',book),aliases=rows('product_aliases',book),
        logs=rows('change_log',book),ops=rows('processed_operations',book);
+ const priorLogs=logs.filter(x=>String(x.obj.change_id)!==fixture.operation_id);
+ const priorOps=ops.filter(x=>String(x.obj.operation_id)!==fixture.operation_id);
+ let priorSequence=0;
+ if(items.length===1){
+  const item=items[0].obj,itemId=String(item.item_group_id||'');
+  if(String(item.household_id)!==hid||item.name!=='試験用・牛乳'||
+     item.deleted_at||!itemId||
+     priorLogs.length<2||priorLogs.length!==priorOps.length||
+     Number(item.version)!==priorLogs.length)
+   fail('TRIAL_NOT_ISOLATED','既存の在庫試験データが一致しません');
+  const byId=new Map();
+  for(const r of priorOps){
+   const id=String(r.obj.operation_id||'');
+   if(String(r.obj.household_id)!==hid||!id||byId.has(id))
+    fail('TRIAL_NOT_ISOLATED','在庫試験の操作履歴が不正です');
+   byId.set(id,r.obj);
+  }
+  const sorted=priorLogs.slice().sort((x,y)=>
+   Number(x.obj.sequence_no)-Number(y.obj.sequence_no));
+  for(let i=0;i<sorted.length;i++){
+   const log=sorted[i].obj,id=String(log.change_id);
+   if(String(log.household_id)!==hid||
+      Number(log.sequence_no)!==i+1||
+      String(log.entity_type)!=='item_groups'||
+      String(log.entity_id)!==itemId||
+      String(log.action)!==(i===0?'item.create':'item.update')||
+      !byId.has(id))
+    fail('TRIAL_NOT_ISOLATED','在庫試験の変更履歴が一致しません');
+   let result;
+   try{result=JSON.parse(String(byId.get(id).result))}
+   catch(_){fail('TRIAL_NOT_ISOLATED','在庫試験の操作履歴が破損しています')}
+   if(result.status==='prepared'||Number(result.sequence_no)!==i+1||
+      String(result.entity?.item_group_id)!==itemId)
+    fail('TRIAL_NOT_ISOLATED','未完了の在庫試験が残っています');
+  }
+  priorSequence=priorLogs.length;
+ }else if(items.length!==0||priorLogs.length||priorOps.length)
+  fail('TRIAL_NOT_ISOLATED','別名試験と無関係なデータがあります');
+ const aliasLogs=logs.filter(x=>String(x.obj.change_id)===fixture.operation_id);
+ const aliasOps=ops.filter(x=>String(x.obj.operation_id)===fixture.operation_id);
  if(stores.some(x=>String(x.obj.chain_id)!==fixture.store_id||
     String(x.obj.household_id)!==hid||
     String(x.obj.canonical_name)!=='[KURASHI_ALIAS_TRIAL_ONLY]')||
@@ -1194,51 +1235,49 @@ function isolatedAliasTrialGuard_(book){
       String(x.obj.chain_id)!==fixture.store_id||
       String(x.obj.normalized_alias)!==fixture.product_code)||
     aliases.length>1||
-    logs.some(x=>String(x.obj.change_id)!==fixture.operation_id||
-      String(x.obj.household_id)!==hid||
-      String(x.obj.action)!=='product.alias.create')||
-    logs.length>1||
-    ops.some(x=>String(x.obj.operation_id)!==fixture.operation_id||
-      String(x.obj.household_id)!==hid)||
-    ops.length>1)
+    aliasLogs.some(x=>String(x.obj.household_id)!==hid||
+      String(x.obj.entity_type)!=='product_aliases'||
+      String(x.obj.action)!=='product.alias.create'||
+      Number(x.obj.sequence_no)!==priorSequence+1)||
+    aliasLogs.length>1||
+    aliasOps.some(x=>String(x.obj.household_id)!==hid)||
+    aliasOps.length>1)
   fail('TRIAL_NOT_ISOLATED','試験専用の既知データ以外が存在します');
- // The row-count combination must represent a valid prefix of our one-time
- // procedure, not an externally inserted partial or arbitrary operation.
  if((products.length>0&&stores.length===0)||
     (aliases.length>0&&products.length===0)||
-    (logs.length>0&&aliases.length===0)||
-    (ops.length>0&&products.length===0)||
-    (aliases.length>0&&ops.length===0))
+    (aliasLogs.length>0&&aliases.length===0)||
+    (aliasOps.length>0&&products.length===0)||
+    (aliases.length>0&&aliasOps.length===0))
   fail('TRIAL_NOT_ISOLATED','試験データの作成順序が不正です');
  return {householdId:hid,member:rows('users',book)[0].obj,
-  stores,products,aliases,logs,ops};
+  priorSequence,stores,products,aliases,logs,ops,aliasLogs,aliasOps};
 }
 function testIsolatedAliasWriteTrialPreflightReadOnly_(){
  const book=spreadsheet();
  const state=isolatedAliasTrialGuard_(book);
  if(state.stores.length||state.products.length||state.aliases.length||
-   state.logs.length||state.ops.length)
+   state.aliasLogs.length||state.aliasOps.length)
   fail('TRIAL_NOT_EMPTY','別名試験を開始済みです');
- Logger.log('ALIAS_TRIAL_PREFLIGHT_OK: 12 sheets, 5 categories, all alias-trial tables empty');
+ Logger.log('ALIAS_TRIAL_PREFLIGHT_OK: 12 sheets, 5 categories, no existing alias trial');
  return true;
 }
 function testIsolatedAliasWriteTrialResultReadOnly_(){
  const book=spreadsheet(),state=isolatedAliasTrialGuard_(book);
  const fixture=ALIAS_TRIAL_FIXTURE_;
  if(state.stores.length!==1||state.products.length!==1||
-    state.aliases.length!==1||state.logs.length!==1||
-    state.ops.length!==1||
+    state.aliases.length!==1||state.aliasLogs.length!==1||
+    state.aliasOps.length!==1||
     Number(state.aliases[0].obj.version)!==1||
-    Number(state.logs[0].obj.sequence_no)!==1||
-    String(state.logs[0].obj.entity_id)!==String(state.aliases[0].obj.alias_id))
+    Number(state.aliasLogs[0].obj.sequence_no)!==state.priorSequence+1||
+    String(state.aliasLogs[0].obj.entity_id)!==String(state.aliases[0].obj.alias_id))
   fail('TRIAL_RESULT_MISMATCH','別名登録試験の行数または変更履歴が一致しません');
  let result;
- try{result=JSON.parse(String(state.ops[0].obj.result))}
+ try{result=JSON.parse(String(state.aliasOps[0].obj.result))}
  catch(_){fail('TRIAL_RESULT_MISMATCH','操作履歴を解釈できません')}
  if(result.status==='prepared'||
     String(result.entity?.alias_id)!==String(state.aliases[0].obj.alias_id)||
     String(result.entity?.normalized_alias)!==fixture.product_code||
-    Number(result.sequence_no)!==1)
+    Number(result.sequence_no)!==state.priorSequence+1)
   fail('TRIAL_RESULT_MISMATCH','操作履歴と別名データが一致しません');
  Logger.log('ALIAS_TRIAL_RESULT_OK: store=1, product=1, aliases=1, change_log=1, journal=1, replay=verified, code_as_text=verified');
  return true;
@@ -1276,7 +1315,7 @@ function runIsolatedAliasWriteTrialOnce_(){
   fixture.operation_id,true);
  if(String(answer.entity?.product_id)!==fixture.product_id||
    String(answer.entity?.normalized_alias)!==fixture.product_code||
-   Number(answer.sequence_no)!==1)
+   Number(answer.sequence_no)!==state.priorSequence+1)
   fail('TRIAL_ASSERT_FAILED','別名の登録結果が想定外です');
  const replay=mutateAliasSafely_(
   {householdId:state.householdId,userId:String(state.member.user_id)},
