@@ -38,6 +38,14 @@ try{
  assert.ok(await candidateOptions.count()>1,'Registered name must yield local candidate options');
  await page.locator('#candidate-list select').first().selectOption('p1');
  assert.match(await page.locator('#candidate-summary').textContent(),/商品選択 1件/);
+ // Search for an existing household product manually, even if the OCR failed to
+ // generate any acceptable matching code. This remains only a local selection.
+ const productName=firstItems[0].name||'MILK';
+ await page.locator('input[data-action="search"]').first().fill(Array.from(productName).slice(0,2).join(''));
+ assert.ok(await page.locator('select[data-action="manual-product"]').first().locator('option').count()>1);
+ await page.locator('select[data-action="manual-product"]').first().selectOption('p1');
+ assert.match(await page.locator('#candidate-summary').textContent(),/商品選択 1件/);
+
  
  const cropped=JSON.parse(await page.locator('#diagnostic').textContent());assert.equal(cropped.preparation.mode,'contrast');assert.ok(cropped.preparation.crop.width>0);assert.equal(cropped.normalization.mode,'japanese-glyphs-v1');assert.equal(cropped.normalization.originalPreserved,true);assert.equal(cropped.moneyGrouping.mode,'yen-grouping-v1');assert.equal(cropped.moneyGrouping.changedCount,0);
  await page.locator('#copy').click();assert.match(await page.evaluate(()=>navigator.clipboard.readText()),/位置情報/);

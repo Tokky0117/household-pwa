@@ -12,3 +12,9 @@
 .review-check{display:flex;gap:10px;align-items:center;font-weight:400}
 .review-check input{width:20px;height:20px;margin:0}
 #candidate-summary{font-weight:600}
+
+.review-manual{margin-top:10px;border-top:1px solid #e3ebe5}
+.review-manual summary{font-size:14px;color:#28604c}
+.review-manual input{margin:4px 0 8px;padding:10px;border:1px solid #bbc9c0;border-radius:8px}
+.review-manual select{margin:0 0 6px}
+.review-alias{font-weight:600;color:#256148}
