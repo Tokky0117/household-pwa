@@ -32,6 +32,9 @@ export function createConfirmationPreview({section,file,chain,status,list,summar
  let receipt=null,catalog=null,chainId=null,generation=0,source='none';
  const searchQueries=new Map(),manualNames=new Map();
  const selected=new Map(),quantities=new Set();
+ const warningsHasQuantityIssue=item=>
+  (item.issues||[]).some(x=>x==='quantity_ocr_ambiguous'||x==='unit_quantity_mismatch');
+
  const refreshChains=()=>{
   chain.replaceChildren();
   const empty=element('option','チェーン未選択（共通の別名のみ）');empty.value='';chain.append(empty);
@@ -54,7 +57,7 @@ export function createConfirmationPreview({section,file,chain,status,list,summar
   // Keep OCR reliability, catalog matching, and manual confirmation separate.
   // "No OCR warnings" never means that an unmatched item is verified.
   const uncertain=items.filter(x=>!x.name||x.issues?.length||
-   x.quantitySource==='inferred_candidate').length;
+   x.quantitySource==='default'||x.quantitySource==='inferred_candidate').length;
   const matched=rows.filter(x=>x.candidates.length).length;
   const unmatched=catalog?rows.filter(x=>!x.candidates.length).length:0;
   const conflicts=catalog?rows.filter(x=>x.status==='conflict').length:0;
@@ -97,8 +100,12 @@ export function createConfirmationPreview({section,file,chain,status,list,summar
   matches.forEach((match,i)=>{
    const item=receipt.items[i],card=element('li');card.className='review-item';
    const head=element('strong','OCR商品名（未確定）：'+(item.name||'（商品名が認識できませんでした）'));
-   const qtyText=item.quantitySource==='inferred_candidate'?
-    '数量未確定（計算候補 '+item.quantity+'）':'数量 '+item.quantity;
+   const qtyUncertain=item.quantitySource==='default'||item.quantitySource==='inferred_candidate'||
+    warningsHasQuantityIssue(item);
+   const qtyText=qtyUncertain?(quantities.has(i)?
+    '数量 '+item.quantity+'（手動確認済み）':
+    '数量未確定（'+(item.quantitySource==='default'?'初期候補 ':'計算候補 ')+item.quantity+'）'):
+    '数量 '+item.quantity;
    card.append(head,element('p',qtyText+'・金額 '+yen(item.grossAmount)+
     '・値引き '+yen(item.discount)+'・差引 '+yen(item.netAmount)));
    if(item.productCode)card.append(element('p','商品コード '+item.productCode));
@@ -177,7 +184,7 @@ export function createConfirmationPreview({section,file,chain,status,list,summar
     populate(chooser,searchCatalogProducts(catalog,input.value),selected.get(i));
     details.append(input,chooser);card.append(details);
    }
-   if(item.quantitySource==='inferred_candidate'||warnings.includes('quantity_ocr_ambiguous')){
+   if(qtyUncertain){
     const label=element('label');label.className='review-check';
     const checkbox=element('input');checkbox.type='checkbox';checkbox.dataset.action='quantity';
     checkbox.dataset.index=String(i);checkbox.checked=quantities.has(i);
