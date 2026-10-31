@@ -6,6 +6,24 @@
  const key=s=>String(s||'').normalize('NFKC').toLowerCase().replace(/\s+/gu,'').trim();
  const code=s=>/^\d{4,14}$/.test(String(s||''))?String(s):null;
  const length=s=>Array.from(s).length;
+ // Weak key only for suggesting stored names, never OCR correction or identity.
+ const smallKana=Object.freeze({
+  'ぁ':'あ','ぃ':'い','ぅ':'う','ぇ':'え','ぉ':'お','っ':'つ',
+  'ゃ':'や','ゅ':'ゆ','ょ':'よ','ゎ':'わ','ゕ':'か','ゖ':'け',
+  'ァ':'ア','ィ':'イ','ゥ':'ウ','ェ':'エ','ォ':'オ','ッ':'ツ',
+  'ャ':'ヤ','ュ':'ユ','ョ':'ヨ','ヮ':'ワ','ヵ':'カ','ヶ':'ケ'
+ });
+ const weakKanaKey=s=>key(s).replace(/[・･·•]/gu,'')
+  .normalize('NFD').replace(/[\u3099\u309a]/gu,'')
+  .replace(/[ぁぃぅぇぉっゃゅょゎゕゖァィゥェォッャュョヮヵヶ]/gu,c=>smallKana[c]||c)
+  .normalize('NFC');
+ const kanaCount=s=>(s.match(/[ぁ-ゖァ-ヿ]/gu)||[]).length;
+ // A 450g pack must not be suggested as a 400g pack by fuzzy spelling.
+ const numericTokens=s=>s.match(/\d+(?:[.,]\d+)?/gu)||[];
+ const compatibleNumbers=(a,b)=>{
+  const x=numericTokens(a),y=numericTokens(b);
+  return !x.length||!y.length||(x.length===y.length&&x.every((n,i)=>n===y[i]));
+ };
  function distance(a,b){
   const x=Array.from(a),y=Array.from(b);if(Math.abs(x.length-y.length)>3)return 4;
   let row=Array.from({length:y.length+1},(_,i)=>i);
@@ -40,15 +58,36 @@
    if(coded.size){
     const conflict=[...exact].some(id=>!coded.has(id));
     answer.status=coded.size===1&&!conflict?'code_candidate':'conflict';
-    answer.candidates=details(new Set([...coded,...(conflict?exact:[])]));return answer;
+    // Prioritize exact scoped SKU over contradictory name matches.
+    answer.candidates=[...details(coded),...details(new Set([...exact].filter(id=>!coded.has(id))))];return answer;
    }
    if(exact.size){answer.status=exact.size===1?'name_candidate':'ambiguous';answer.candidates=details(exact);return answer;}
    if(length(nameKey)<4||/^\d+$/.test(nameKey))return answer;
+   // Do not treat a code registered at another chain as a local alias.
+   // This guards both weak kana matching and ordinary fuzzy matching.
+   const hasForeignCode=id=>!!sku&&context.aliases.some(alias=>
+    String(alias?.product_id)===id&&key(alias?.normalized_alias)===sku&&
+    alias?.chain_id!=null&&String(alias.chain_id)!==chain);
+   // Kana voicing (カ/ガ/パ/バ), small kana (ャ/ヤ), and OCR middle dots.
+   // Require a long kana name; a folded match is merely a suggestion.
+   const weak=weakKanaKey(nameKey);
+   if(kanaCount(nameKey)>=4){
+    const variantIds=new Set();
+    for(const [candidate,ids] of names){
+     if(weakKanaKey(candidate)!==weak||!compatibleNumbers(nameKey,candidate))continue;
+     for(const id of ids)if(!hasForeignCode(id))variantIds.add(id);
+    }
+    if(variantIds.size){
+     answer.status=variantIds.size===1?'name_suggestion':'ambiguous';
+     answer.candidates=details(variantIds).slice(0,3).map(c=>({...c,matchReason:'kana_variant'}));
+     return answer;
+    }
+   }
    const scores=[];
    for(const [candidate,ids] of names){
-    if(Math.abs(length(candidate)-length(nameKey))>3)continue;
+    if(Math.abs(length(candidate)-length(nameKey))>3||!compatibleNumbers(nameKey,candidate))continue;
     const d=distance(nameKey,candidate),allowed=Math.min(3,Math.max(1,Math.floor(length(candidate)*.2)));
-    if(d<=allowed)for(const id of ids)scores.push({id,d});
+    if(d<=allowed)for(const id of ids)if(!hasForeignCode(id))scores.push({id,d});
    }
    scores.sort((a,b)=>a.d-b.d||a.id.localeCompare(b.id));
    if(!scores.length)return answer;
