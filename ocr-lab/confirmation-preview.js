@@ -65,6 +65,12 @@ export function createConfirmationPreview({section,file,chain,status,list,summar
   const suggestions=catalog?rows.filter(x=>x.status==='name_suggestion').length:0;
   const warnings=Array.isArray(receipt?.warnings)?receipt.warnings.length:0;
   const extras=[];
+  if(catalog&&!chainId&&catalog.aliases.some(a=>a.chain_id!=null))
+   extras.push('チェーン未選択：店舗別SKUは照合していません。上のチェーン欄を選択してください');
+  if(catalog&&chainId){
+   const skuHits=rows.filter(x=>x.status==='code_candidate').length;
+   if(skuHits)extras.push('店舗別SKU一致 '+skuHits+'件');
+  }
   if(catalog)extras.push('未照合 '+unmatched+'件');
   if(conflicts)extras.push('コード・商品名の競合 '+conflicts+'件');
   if(ambiguous)extras.push('候補が複数 '+ambiguous+'件');
