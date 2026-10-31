@@ -37,4 +37,42 @@ assert.equal(parse('※委)ばれいしょ ￥210').items[0].rawName,'※委)ば
 assert.equal(parse('※委)ばれいしょ ￥210').items[0].name,'ばれいしょ');
 assert.equal(parse('商品 ¥100\nお買上点数 2点').reconciliation.printedCountMatches,false);
 assert.ok(parse('商品名\n12345 2● 100 199 E').items[0].issues.includes('unit_quantity_mismatch'));
+// Generic mixed-photo OCR: extraneous headers and a payment footer must
+// not be transferred to the separate authenticated catalog-matching surface.
+// Synthetic numbers only; no customer or transaction data is in this test.
+const mixedOcr=[
+ '隣の伝票','お知らせ見出し','営業時間のご案内',
+ '※白ねぎ 1本 ¥159','自動割引1 10.00 -15',
+ '※成田もやし ¥29','※ブナシメジ',
+ '5コ×単99 ¥495','自動割引1 10.00','5コ×単-9 -45',
+ '税8% ¥49','お買上 ¥672','お買上点数 7点',
+ 'クレジット売上票','トークン 0000-0000-0000-0000',
+ 'カード番号 1111-2222-3333-4444'
+].join('\n');
+const mixed=parse(mixedOcr);
+assert.equal(mixed.items.length,3);
+assert.deepEqual(mixed.items.map(i=>i.netAmount),[144,29,450]);
+assert.equal(mixed.reconciliation.quantity,7);
+assert.equal(mixed.reconciliation.printedCountMatches,true);
+assert.equal(mixed.reconciliation.totalMatches,true);
+const mixedScope=JSON.parse(JSON.stringify(c.KurashiReceiptStructure.warningScopes(mixed)));
+assert.ok(mixedScope.outside>0,'Unrelated header text must be distinguishable from item failures');
+assert.equal(mixedScope.merchandise,0);
+const safeCopy=c.KurashiReceiptStructure.merchandiseExcerpt(mixed);
+assert.match(safeCopy,/白ねぎ 1本/);
+assert.match(safeCopy,/5コ×単99 ¥495/);
+assert.match(safeCopy,/税8% ¥49/);
+assert.match(safeCopy,/お買上 ¥672/);
+assert.match(safeCopy,/お買上点数 7点/);
+assert.doesNotMatch(safeCopy,/隣の伝票|お知らせ見出し|クレジット売上票|トークン|カード番号|1111-/);
+const roundtrip=parse(safeCopy);
+assert.equal(roundtrip.items.length,3);
+assert.deepEqual(roundtrip.items.map(i=>i.netAmount),mixed.items.map(i=>i.netAmount));
+assert.equal(roundtrip.reconciliation.printedCountMatches,true);
+assert.equal(roundtrip.reconciliation.totalMatches,true);
+assert.throws(()=>c.KurashiReceiptStructure.merchandiseExcerpt({
+ rawText:'トークン 0000-0000-0000-0000',
+ items:[{sourceLines:[1]}],taxBreakdown:[],
+}),/UNSAFE_MERCHANDISE/);
+
 console.log(JSON.stringify({verifiedItems:count,report},null,2));
