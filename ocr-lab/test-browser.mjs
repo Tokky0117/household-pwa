@@ -11,13 +11,13 @@ try{
  browser=await chromium.launch({headless:true});const context=await browser.newContext({viewport:{width:390,height:844},permissions:['clipboard-read','clipboard-write']}),page=await context.newPage();
  await page.route('**/*',async route=>{const r=route.request(),u=new URL(r.url());requests.push({path:u.pathname,method:r.method(),external:u.hostname!=='127.0.0.1'});if(u.hostname!=='127.0.0.1'||r.method()!=='GET')await route.abort();else await route.continue();});
  page.on('pageerror',e=>errors.push(e.message));const url=`http://127.0.0.1:${server.address().port}/`;await page.goto(url);
- assert.equal(await page.locator('#scan').isDisabled(),true);assert.equal(requests.filter(r=>r.path.includes('/models/')).length,0);
+ assert.equal(await page.locator('#scan').isDisabled(),true);assert.equal(await page.locator('#japanese-normalize').isChecked(),true,'Japanese glyph normalization is on by default');assert.equal(requests.filter(r=>r.path.includes('/models/')).length,0);
  const png=await page.evaluate(()=>{const c=document.createElement('canvas');c.width=500;c.height=220;const x=c.getContext('2d');x.fillStyle='white';x.fillRect(0,0,c.width,c.height);x.fillStyle='black';x.font='32px Arial';x.fillText('MILK 198',30,65);x.fillText('TOTAL 198',30,135);return c.toDataURL('image/png').split(',')[1];});
  await page.locator('#photo').setInputFiles({name:'synthetic-receipt.png',mimeType:'image/png',buffer:Buffer.from(png,'base64')});
  for(const firstRun of [true,false]){
   await page.locator('#scan').click();await page.waitForFunction(()=>!document.getElementById('result').hidden||document.getElementById('status').textContent.startsWith('読み取りできません'),{timeout:180000});
   assert.equal(await page.locator('#result').isVisible(),true,await page.locator('#status').textContent());
-  const diag=JSON.parse(await page.locator('#diagnostic').textContent());assert.equal(diag.firstRun,firstRun);assert.ok(diag.totalMs>0);assert.ok(diag.phases.readerCallMs>0);assert.ok(diag.phases.sdkModuleLoadMs>=0);assert.ok(diag.phases.modelRuntimeEstimateMs>=0);if(!firstRun)assert.equal(diag.phases.sdkModuleLoadMs,0);assert.ok(diag.observationCount>0);assert.match(await page.locator('#text').inputValue(),/198/);
+  const diag=JSON.parse(await page.locator('#diagnostic').textContent());assert.equal(diag.firstRun,firstRun);assert.ok(diag.totalMs>0);assert.ok(diag.phases.readerCallMs>0);assert.ok(diag.phases.sdkModuleLoadMs>=0);assert.ok(diag.phases.modelRuntimeEstimateMs>=0);if(!firstRun)assert.equal(diag.phases.sdkModuleLoadMs,0);assert.ok(diag.observationCount>0);assert.equal(diag.normalization.mode,'japanese-glyphs-v1');assert.match(await page.locator('#text').inputValue(),/198/);
  }
  assert.equal(await page.locator('#timing-comparison').isVisible(),true,
  'The second read of the same image should display a comparison');
@@ -29,7 +29,7 @@ try{
  await page.waitForFunction(()=>document.getElementById('crop-canvas').width>1);
  const canvas=page.locator('#crop-canvas'),r=await canvas.boundingBox();
  await page.mouse.move(r.x+r.width*.02,r.y+r.height*.02);await page.mouse.down();await page.mouse.move(r.x+r.width*.98,r.y+r.height*.98);await page.mouse.up();
- await page.locator('#scale').selectOption('contrast');await page.locator('#japanese-normalize').check();await page.locator('#scan').click();
+ await page.locator('#scale').selectOption('contrast');await page.locator('#japanese-normalize').uncheck();await page.locator('#scan').click();
  await page.waitForFunction(()=>!document.getElementById('result').hidden||document.getElementById('status').textContent.startsWith('読み取りできません'),{timeout:180000});
  assert.equal(await page.locator('#result').isVisible(),true,await page.locator('#status').textContent());
  const firstItems=JSON.parse(await page.locator('#items').textContent()).items;
@@ -57,7 +57,7 @@ try{
  
  assert.match(await page.locator('#timing-comparison-status').textContent(),/画像処理設定が変わったため参考値/,
  'Comparison must warn that image processing settings differ');
- const cropped=JSON.parse(await page.locator('#diagnostic').textContent());assert.equal(cropped.preparation.mode,'contrast');assert.ok(cropped.preparation.crop.width>0);assert.equal(cropped.normalization.mode,'japanese-glyphs-v1');assert.equal(cropped.normalization.originalPreserved,true);assert.equal(cropped.moneyGrouping.mode,'yen-grouping-v1');assert.equal(cropped.moneyGrouping.changedCount,0);
+ const cropped=JSON.parse(await page.locator('#diagnostic').textContent());assert.equal(cropped.preparation.mode,'contrast');assert.ok(cropped.preparation.crop.width>0);assert.equal(cropped.normalization.mode,'none','User can opt out of Japanese glyph conversion');assert.equal(cropped.normalization.originalPreserved,true);assert.equal(cropped.moneyGrouping.mode,'yen-grouping-v1');assert.equal(cropped.moneyGrouping.changedCount,0);
  await page.locator('#copy-products').click();
  const productReport=JSON.parse(await page.evaluate(()=>navigator.clipboard.readText()));
  assert.equal(productReport.version,'product-test-1');
