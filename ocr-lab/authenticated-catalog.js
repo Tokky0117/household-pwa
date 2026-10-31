@@ -40,7 +40,16 @@ export function createAuthenticatedCatalogConnector({auth,api}){
     !['available','already_registered','conflict'].includes(data?.status)||
     data?.write_permitted!==false||!Array.isArray(data.matched_product_ids))
     throw Error('ALIAS_RESPONSE_INVALID');
-   return {status:data.status,matchedProductIds:[...data.matched_product_ids],
+   const ids=data.matched_product_ids;
+   // Fail closed if the preflight status and matched IDs contradict each
+   // other. Never display an erroneous "available" suggestion as safe.
+   if(ids.some(id=>typeof id!=='string'||!id)||
+    new Set(ids).size!==ids.length||
+    (data.status==='available'&&ids.length!==0)||
+    (data.status==='already_registered'&&(ids.length!==1||ids[0]!==productId))||
+    (data.status==='conflict'&&!ids.some(id=>id!==productId)))
+    throw Error('ALIAS_RESPONSE_INVALID');
+   return {status:data.status,matchedProductIds:[...ids],
     code:data.product_code,checkedAt:data.checked_at,writePermitted:false};
   }
  };
