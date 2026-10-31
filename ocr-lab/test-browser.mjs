@@ -50,6 +50,8 @@ try{
  
  const cropped=JSON.parse(await page.locator('#diagnostic').textContent());assert.equal(cropped.preparation.mode,'contrast');assert.ok(cropped.preparation.crop.width>0);assert.equal(cropped.normalization.mode,'japanese-glyphs-v1');assert.equal(cropped.normalization.originalPreserved,true);assert.equal(cropped.moneyGrouping.mode,'yen-grouping-v1');assert.equal(cropped.moneyGrouping.changedCount,0);
  await page.locator('#copy').click();assert.match(await page.evaluate(()=>navigator.clipboard.readText()),/位置情報/);
+ await page.locator('#copy-text').click();
+ assert.equal(await page.evaluate(()=>navigator.clipboard.readText()),await page.locator('#text').inputValue(),'Only OCR text, never diagnostics, is copied for the separate matching screen');
  assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));await page.locator('#reset').click();assert.equal(await page.locator('#photo').inputValue(),'');assert.equal(await page.locator('#text').inputValue(),'');assert.equal(await page.locator('#result').isHidden(),true);
  assert.equal(errors.length,0,errors.join('\n'));assert.ok(requests.every(r=>!r.external&&r.method==='GET'));
  console.log('Browser OCR PASS: real WASM inference, cold/warm runs, mobile width, clipboard, discard; same-origin GET only');
