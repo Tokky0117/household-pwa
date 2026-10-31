@@ -139,6 +139,60 @@ for(const stage of phases)for(const phase of ['before','after']){
  assert.equal(h.writes,writes,'Committed replay must be read-only');
  assert.equal(h.locked,false);
 }
+// Existing isolated stock-trial Sheet must be safely reusable without
+// creating a separate spreadsheet. Its completed item operations are checked,
+// while a pending or foreign item operation MUST prevent alias seeding.
+function seedPriorItemTrial(h,version=2){
+ const id='completed-item-001';
+ h.tables.item_groups.push([id,'h-trial',0,'試験用・牛乳','試験用・牛乳',
+  version===2?false:true,1,false,version,'','','']);
+ for(let i=0;i<version;i++){
+  const opId='stock-trial-'+(i+1),action=i===0?'item.create':'item.update';
+  h.tables.change_log.push([opId,i+1,'h-trial','item_groups',id,action,'']);
+  h.tables.processed_operations.push(['h-trial',opId,'hash',
+   JSON.stringify({entity:{item_group_id:id,version:i+1},sequence_no:i+1}),'']);
+ }
+}
+{
+ const h=harness();h.tables.products.splice(1);h.tables.stores.splice(1);
+ seedPriorItemTrial(h,2);
+ assert.equal(h.mock.testIsolatedAliasWriteTrialPreflightReadOnly_(),true);
+ assert.equal(h.mock.runIsolatedAliasWriteTrialOnce_(),true);
+ assert.equal(h.mock.testIsolatedAliasWriteTrialResultReadOnly_(),true);
+ assert.equal(h.records('change_log').length,3);
+ assert.equal(h.records('processed_operations').length,3);
+ assert.equal(h.records('product_aliases').length,1);
+ assert.equal(h.records('change_log')[2].sequence_no,3);
+ const before=h.writes;
+ assert.equal(h.mock.runIsolatedAliasWriteTrialOnce_(),true);
+ assert.equal(h.writes,before,'Prior completed stock trial remains untouched');
+}
+{
+ const h=harness();h.tables.products.splice(1);h.tables.stores.splice(1);
+ seedPriorItemTrial(h,3);
+ assert.equal(h.mock.runIsolatedAliasWriteTrialOnce_(),true);
+ assert.equal(h.records('change_log')[3].sequence_no,4);
+ assert.equal(h.records('product_aliases').length,1);
+}
+{
+ const h=harness();h.tables.products.splice(1);h.tables.stores.splice(1);
+ seedPriorItemTrial(h,2);
+ h.tables.processed_operations[2][3]=JSON.stringify({
+  status:'prepared',entity:{item_group_id:'completed-item-001'},sequence_no:2
+ });
+ assert.throws(()=>h.mock.runIsolatedAliasWriteTrialOnce_(),
+  e=>e?.code==='TRIAL_NOT_ISOLATED');
+ assert.equal(h.writes,0,'Unfinished prior item trial requires recovery before alias test');
+}
+{
+ const h=harness();h.tables.products.splice(1);h.tables.stores.splice(1);
+ seedPriorItemTrial(h,2);
+ h.tables.item_groups[1][1]='another-home';
+ assert.throws(()=>h.mock.runIsolatedAliasWriteTrialOnce_(),
+  e=>e?.code==='TRIAL_NOT_ISOLATED');
+ assert.equal(h.writes,0,'Existing item belongs to another household');
+}
+
 // Owner-only editor path: the existing isolated trial copy starts with no
 // products, stores, aliases, or history. It is never exposed via doPost.
 {
