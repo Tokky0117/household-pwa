@@ -68,4 +68,25 @@ assert.equal(verifiedSuggestions.filter(x=>x.status==='code_candidate').length,5
 assert.ok(verifiedSuggestions.every((x,i)=>x.candidates[0].productId==='verified'+i));
 assert.ok(verifiedSuggestions.every(x=>x.requiresConfirmation===true));
 
+
+// Synthetic 13-item warehouse layout: all SKU rows are recovered without OCR text
+// reconstruction and six adjacent coupons must attach to the right items.
+const warehouseLines=[];
+for(let i=0;i<13;i++){
+ const amount=100+i*10;
+ warehouseLines.push('SampleItem'+i);
+ warehouseLines.push(String(70000+i)+' 10 '+amount+' '+amount+' E');
+ if(i<6){warehouseLines.push('CPN','Sample coupon label');warehouseLines.push(String(80000+i)+' 10 5 5-E');}
+}
+const warehouse=parse(warehouseLines.join('\n'));
+assert.equal(warehouse.items.length,13);
+assert.equal(warehouse.items.filter(x=>x.discount===5).length,6);
+assert.equal(warehouse.adjustments.length,0);
+assert.equal(warehouse.items.filter(x=>x.productCode).length,13);
+assert.ok(warehouse.items.every(x=>x.quantity===1&&x.quantitySource==='inferred_candidate'&&x.issues.includes('quantity_ocr_ambiguous')));
+assert.equal(warehouse.items.reduce((sum,x)=>sum+x.netAmount,0),
+ Array.from({length:13},(_,i)=>100+i*10).reduce((a,b)=>a+b,0)-30);
+assert.equal(parse('SampleItem\n12345 10 1.36 1.36 E').items.length,0,
+ 'Decimal/non-thousands tokens must not be reinterpreted as integer yen');
+
 console.log('STEP2/STEP3 candidate matching PASS: 5/5 exact code proposals, household/chain isolation, conflict detection, incomplete OCR and uncertain quantities flagged; no product auto-registration');
