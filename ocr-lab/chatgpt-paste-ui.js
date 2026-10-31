@@ -49,8 +49,11 @@ function fieldValue(key,value){
  return n;
 }
 function inputRow(item,index){
- const entry=document.createElement('div');entry.className='chatgpt-draft-item';
- const title=document.createElement('h3');title.textContent='明細 '+(index+1);entry.append(title);
+ const entry=document.createElement('details');entry.className='chatgpt-draft-item';
+ const title=document.createElement('summary');
+ title.textContent='明細 '+(index+1)+'：'+(item.name||'商品名未読')+
+  '　差引 '+(item.netAmount===null?'不明':item.netAmount+'円')+'（修正するには開く）';
+ entry.append(title);
  const fields=new Map();
  const record={
   name:item.name||'',code:item.productCode||'',quantity:item.quantity,
