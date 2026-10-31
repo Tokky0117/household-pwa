@@ -29,9 +29,13 @@
   }
   const details=ids=>[...ids].sort().filter(id=>products.has(id)).map(id=>({productId:id,name:products.get(id).name}));
   return items.map((item,index)=>{
-   const nameKey=key(item?.name),sku=code(item?.productCode),issues=Array.isArray(item?.issues)?[...item.issues]:[];
+   const nameKey=key(item?.name),issues=Array.isArray(item?.issues)?[...item.issues]:[];
+   // Keep a malformed OCR code visible for manual correction, but never
+   // use it for exact-code matching against the household product catalog.
+   const visibleCode=code(item?.productCode);
+   const sku=issues.includes('invalid_jan_checksum')?null:visibleCode;
    const coded=sku?(codes.get(sku)||new Set()):new Set(),exact=nameKey?(names.get(nameKey)||new Set()):new Set();
-   const answer={index,ocrName:String(item?.name||''),ocrCode:sku,issues,
+   const answer={index,ocrName:String(item?.name||''),ocrCode:visibleCode,issues,
     requiresConfirmation:true,status:'unresolved',candidates:[]};
    if(coded.size){
     const conflict=[...exact].some(id=>!coded.has(id));
