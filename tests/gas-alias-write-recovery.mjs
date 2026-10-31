@@ -227,6 +227,16 @@ function seedPriorItemTrial(h,version=2){
  assert.equal(h.writes,before,'Editor rerun must not make any write or format changes');
  assert.equal(h.formattedAliases.length,1);
  assert.equal(h.tables.households[1][1],'Existing prototype household');
+ const beforeCatalog=h.writes;
+ assert.equal(h.mock.testAliasCatalogReadOnly(),true,
+  'Backend catalog and registered code lookup match the real-sheet fixture');
+ assert.equal(h.writes,beforeCatalog,
+  'Catalog verification cannot mutate or format any Sheet');
+ assert.ok(h.logs.some(line=>line.includes('ALIAS_CATALOG_READ_OK')));
+ assert.ok(h.logs.some(line=>line.includes('ALIAS_CODE_MATCH_OK')));
+ assert.ok(h.logs.some(line=>line.includes('ALIAS_UNKNOWN_CODE_OK')));
+ assert.ok(h.logs.some(line=>line.includes('ALIAS_CATALOG_TEST_DONE')));
+ assert.ok(h.logs.every(line=>!line.includes('h-trial')&&!line.includes('test-user')));
 }
 {
  const h=harness();prepareExistingPrototype(h);
@@ -237,6 +247,41 @@ function seedPriorItemTrial(h,version=2){
  assert.ok(h.logs.some(x=>x.includes('ALIAS_TRIAL_EDITOR_WRITE_FAILED: TRIAL_NOT_ISOLATED')));
  assert.ok(h.logs.every(x=>!x.includes('different-household')&&!x.includes('h-trial')));
 }
+// Bad or incomplete fixture must be diagnosed without performing a write.
+{
+ const h=harness();prepareExistingPrototype(h);
+ assert.throws(()=>h.mock.testAliasCatalogReadOnly(),
+  /ALIAS_CATALOG_TEST_FAILED: CATALOG_FIXTURE_MISMATCH/);
+ assert.equal(h.writes,0);
+}
+{
+ const h=harness();prepareExistingPrototype(h);
+ assert.equal(h.mock.runAliasTrialWriteOnce(),true);
+ const before=h.writes;
+ h.tables.product_aliases[1][3]='12345';
+ assert.throws(()=>h.mock.testAliasCatalogReadOnly(),
+  /ALIAS_CATALOG_TEST_FAILED: TRIAL_NOT_ISOLATED/);
+ assert.equal(h.writes,before,'Wrong code is never fixed by a read-only checker');
+}
+{
+ const h=harness();prepareExistingPrototype(h);
+ assert.equal(h.mock.runAliasTrialWriteOnce(),true);
+ const before=h.writes;
+ h.tables.products[1][1]='foreign-household';
+ assert.throws(()=>h.mock.testAliasCatalogReadOnly(),
+  /ALIAS_CATALOG_TEST_FAILED: TRIAL_NOT_ISOLATED/);
+ assert.equal(h.writes,before,'Foreign product must never be accessed by fixture checker');
+}
+{
+ const h=harness();prepareExistingPrototype(h);
+ assert.equal(h.mock.runAliasTrialWriteOnce(),true);
+ const before=h.writes;
+ h.tables.product_aliases[1][3]=Number('00012345');
+ assert.throws(()=>h.mock.testAliasCatalogReadOnly(),
+  /ALIAS_CATALOG_TEST_FAILED: TRIAL_NOT_ISOLATED/);
+ assert.equal(h.writes,before,'Numeric coerce must fail safely, not repair data');
+}
+
 // A code coerced to a numeric value on the actual Sheet is never reported
 // successful, even if the cells were initially formatted as plain text.
 {
