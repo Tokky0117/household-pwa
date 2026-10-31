@@ -34,7 +34,9 @@ const diag={
  rawText:'SECRET_RECEIPT_PAYMENT_DATA',
  merchant:'SECRET_STORE_ADDRESS',customer:'SECRET_MEMBER_NUMBER',
  inference:{totalMs:10930,detMs:2221,recMs:8694},
- phases:{sdkModuleLoadMs:0,modelRuntimeEstimateMs:0}
+ phases:{sdkModuleLoadMs:0,modelRuntimeEstimateMs:0},
+ normalization:{mode:'japanese-glyphs-v1',changedCount:3},
+ moneyGrouping:{mode:'yen-grouping-v1',changedCount:2}
 };
 const json=createProductTestReport({
  receipt:r,diagnostic:diag,warningScopes:warningScopes(r)
@@ -43,6 +45,10 @@ const report=JSON.parse(json);
 assert.equal(report.version,'product-test-1');
 assert.equal(report.products.length,13);
 assert.equal(report.counts.needsReview,13);
+assert.deepEqual(report.counts.itemIssueTypes,[{code:'quantity_ocr_ambiguous',count:13}]);
+assert.equal(report.ocrSettings.japaneseGlyphConversion,true);
+assert.equal(report.ocrSettings.japaneseGlyphChanges,3);
+assert.equal(report.ocrSettings.yenGroupingChanges,2);
 assert.equal(report.receiptChecks.grossSum,17248);
 assert.equal(report.receiptChecks.discountSum,2490);
 assert.equal(report.receiptChecks.netSum,14758);
@@ -77,6 +83,11 @@ const withReview=createProductTestReport({receipt:parse('牛乳 ¥198'),diagnost
  }]}
 });
 const verified=JSON.parse(withReview).products[0].recognition;
+const disabled=JSON.parse(createProductTestReport({receipt:parse('牛乳 ¥198'),diagnostic:{normalization:{mode:'none',changedCount:0}}}));
+assert.equal(disabled.ocrSettings.japaneseGlyphConversion,false);
+assert.equal(disabled.ocrSettings.yenGroupingChanges,null);
+const unknown=JSON.parse(createProductTestReport({receipt:parse('牛乳 ¥198'),diagnostic:{}}));
+assert.equal(unknown.ocrSettings.japaneseGlyphConversion,null);
 assert.equal(verified.candidateStatus,'name_candidate');
 assert.deepEqual(verified.candidateNames,['牛乳']);
 assert.equal(verified.selectedProductName,'牛乳');
