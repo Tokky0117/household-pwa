@@ -44,6 +44,61 @@ assert.equal(suggest(lindorOcr,{...lindorCatalog,chainId:'other-warehouse'})[0].
  'Warehouse-specific SKU must not be matched across unrelated chains');
 // Without a catalog or a chain-specific code mapping, the OCR name stays
 // unresolved, not forcibly changed into a known test-receipt name.
+// A registered name can recover R1's voicing/half-voicing/middle-dot OCR
+// errors even without a code. The returned string is always the real catalog
+// name, with no automatic correction or purchase confirmation.
+const lindorWithoutCode=suggest([{name:'リンツリント・ールヒ・ンク450G'}],lindorCatalog)[0];
+assert.equal(lindorWithoutCode.status,'name_suggestion');
+assert.equal(lindorWithoutCode.candidates[0].name,'リンツリンドールピンク450G');
+assert.equal(lindorWithoutCode.candidates[0].matchReason,'kana_variant');
+assert.equal(lindorWithoutCode.requiresConfirmation,true);
+// The wrong chain must never re-use that chain's SKU as a name variant hint.
+assert.equal(suggest(lindorOcr,{...lindorCatalog,chainId:'other-warehouse'})[0].status,'unresolved');
+// OCR small kana can be confused with large kana; NFKC already covers halfwidth.
+const smallKana=suggest([{name:'ﾖｰｸﾞﾙﾄ'},{name:'ョーグルト'}],{
+ householdId:h,chainId,products:[{household_id:h,product_id:'yogurt',name:'ヨーグルト'}],
+ aliases:[]
+});
+assert.equal(smallKana[0].status,'name_candidate');
+assert.equal(smallKana[1].status,'name_suggestion');
+assert.equal(smallKana[1].candidates[0].productId,'yogurt');
+// OCR-proof similarity must not conceal different package sizes.
+assert.equal(suggest([{name:'カフェラテ450G'}],{
+ householdId:h,chainId,
+ products:[{household_id:h,product_id:'wrong-size',name:'カフェラテ400G'}],
+ aliases:[]
+})[0].status,'unresolved');
+// Voicing fold collisions are ambiguous rather than silently selecting one.
+const voicedChoices=suggest([{name:'カラカミルク'}],{
+ householdId:h,chainId,
+ products:[
+  {household_id:h,product_id:'one',name:'ガラカミルク'},
+  {household_id:h,product_id:'two',name:'カラガミルク'}
+ ],aliases:[]
+})[0];
+assert.equal(voicedChoices.status,'ambiguous');
+assert.equal(voicedChoices.candidates.length,2);
+// Kanji conversion is a lookup of verified kana aliases, not guessed kanji.
+const meatMaster={householdId:h,chainId,
+ products:[{household_id:h,product_id:'meat',name:'豚こま切れ'}],
+ aliases:[{chain_id:chainId,product_id:'meat',normalized_alias:'ブタコマギレ'}]};
+const meat=suggest([{name:'ブタコマギレ'}],meatMaster)[0];
+assert.equal(meat.status,'name_candidate');
+assert.equal(meat.candidates[0].name,'豚こま切れ');
+assert.equal(suggest([{name:'ブタコマギレ'}],{...meatMaster,chainId:'different-chain'})[0].status,'unresolved');
+// An exact SKU is displayed first, even if a conflicting exact name has a
+// lexicographically earlier product ID. No selection is performed.
+const prioritized=suggest([{name:'似ている別商品',productCode:'00123456'}],{
+ householdId:h,chainId,
+ products:[
+  {household_id:h,product_id:'a-name',name:'似ている別商品'},
+  {household_id:h,product_id:'z-code',name:'コードで一致する商品'}
+ ],
+ aliases:[{chain_id:chainId,product_id:'z-code',normalized_alias:'00123456'}]
+})[0];
+assert.equal(prioritized.status,'conflict');
+assert.deepEqual(prioritized.candidates.map(x=>x.productId),['z-code','a-name']);
+assert.equal(prioritized.requiresConfirmation,true);
 const uncertain=suggest([{name:'I',grossAmount:148}],{householdId:h,chainId,products:[{household_id:h,product_id:'p0',name:'エリンギ'}],aliases:[]});
 assert.equal(uncertain[0].status,'unresolved');
 const typo=suggest([{name:'牛肉じ肉'}],{householdId:h,chainId,products:[{household_id:h,product_id:'p0',name:'牛肉すじ肉'}],aliases:[]});
