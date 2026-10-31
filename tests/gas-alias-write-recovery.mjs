@@ -247,6 +247,20 @@ function seedPriorItemTrial(h,version=2){
  assert.ok(h.logs.some(x=>x.includes('ALIAS_TRIAL_EDITOR_WRITE_FAILED: TRIAL_NOT_ISOLATED')));
  assert.ok(h.logs.every(x=>!x.includes('different-household')&&!x.includes('h-trial')));
 }
+// Even when a row looks valid, the read-only catalog must not assert that
+// registration succeeded if the durable operation journal is still pending.
+{
+ const h=harness();prepareExistingPrototype(h);
+ assert.equal(h.mock.runAliasTrialWriteOnce(),true);
+ const before=h.writes;
+ const row=h.tables.processed_operations[1];
+ const successful=JSON.parse(row[3]);
+ row[3]=JSON.stringify({status:'prepared',entity:successful.entity,
+  sequence_no:successful.sequence_no});
+ assert.throws(()=>h.mock.testAliasCatalogReadOnly(),
+  /ALIAS_CATALOG_TEST_FAILED: TRIAL_RESULT_MISMATCH/);
+ assert.equal(h.writes,before);
+}
 // Bad or incomplete fixture must be diagnosed without performing a write.
 {
  const h=harness();prepareExistingPrototype(h);
