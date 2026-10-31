@@ -7,9 +7,14 @@ const source=readFileSync(new URL('../gas/Code.gs',import.meta.url),'utf8');
 const columns={
  households:['household_id','display_name','version','updated_at'],
  users:['user_id','household_id','display_name','auth_subject'],
+ categories:['category_id','name','fixed_order'],
+ item_groups:['item_group_id','household_id','category_id','name','normalized_name','in_stock','sort_order','is_hidden','version','created_at','updated_at','deleted_at'],
  stores:['chain_id','household_id','canonical_name','normalized_name','aliases','version','updated_at'],
  products:['product_id','household_id','item_group_id','name','normalized_name','package_quantity','package_unit','item_group_order','version','created_at','updated_at','deleted_at'],
  product_aliases:['alias_id','product_id','chain_id','normalized_alias','version','updated_at'],
+ records:['record_id','household_id','record_type','chain_id','branch_name','raw_store_name','record_date','created_at','updated_at','version','deleted_at'],
+ record_items:['record_item_id','record_id','line_order','raw_name','product_id','quantity','amount_tax_included','category_id','price_eligible','created_at','updated_at','version','deleted_at'],
+ receipt_rules:['rule_id','chain_id','pattern','priority','enabled','version','updated_at'],
  change_log:['change_id','sequence_no','household_id','entity_type','entity_id','action','occurred_at'],
  processed_operations:['household_id','operation_id','request_hash','result','processed_at']
 };
@@ -18,6 +23,7 @@ function harness(){
  const tables=Object.fromEntries(Object.entries(columns).map(([name,head])=>[name,[head]]));
  tables.households.push(['h-trial',trialLabel,1,'']);
  tables.users.push(['test-user','h-trial','Tester','1234567890']);
+ tables.categories.push(...['飲食','キッチン','洗面・風呂','洗濯・掃除','その他'].map((name,i)=>[i,name,i+1]));
  tables.stores.push(['s1','h-trial','STORE1','store1','',1,''],
   ['s2','h-trial','STORE2','store2','',1,''],
   ['s-foreign','h-foreign','other','other','',1,'']);
@@ -132,6 +138,64 @@ for(const stage of phases)for(const phase of ['before','after']){
  assert.equal(h.writes,writes,'Committed replay must be read-only');
  assert.equal(h.locked,false);
 }
+// Owner-only editor path: the existing isolated trial copy starts with no
+// products, stores, aliases, or history. It is never exposed via doPost.
+{
+ const h=harness();h.tables.products.splice(1);h.tables.stores.splice(1);
+ const initial=h.writes;
+ assert.equal(h.mock.testIsolatedAliasWriteTrialPreflightReadOnly_(),true);
+ assert.equal(h.writes,initial,'Preflight is strictly read-only');
+ assert.equal(h.mock.runIsolatedAliasWriteTrialOnce_(),true);
+ assert.equal(h.mock.testIsolatedAliasWriteTrialResultReadOnly_(),true);
+ assert.equal(h.records('stores').length,1);
+ assert.equal(h.records('products').length,1);
+ assert.equal(h.records('product_aliases').length,1);
+ assert.equal(h.records('change_log').length,1);
+ assert.equal(h.records('processed_operations').length,1);
+ assert.equal(h.records('product_aliases')[0].normalized_alias,'00012345');
+ assert.equal(h.mock.testIsolatedAliasWriteTrialPreflightReadOnly_ instanceof Function,true);
+ const n=h.writes;
+ assert.equal(h.mock.runIsolatedAliasWriteTrialOnce_(),true,'Identical editor retry is allowed');
+ assert.equal(h.writes,n,'Idempotent editor rerun never appends rows');
+ assert.equal(h.locked,false);
+}
+{
+ const h=harness();h.tables.products.splice(1);h.tables.stores.splice(1);
+ // No production flag should ever be necessary for editor-only trial.
+ h.setEnabled(true);
+ assert.throws(()=>h.mock.runIsolatedAliasWriteTrialOnce_(),e=>e?.code==='TRIAL_NOT_ISOLATED');
+ assert.equal(h.writes,0);
+ h.setEnabled(false);h.setTrial('production-sheet');
+ assert.throws(()=>h.mock.runIsolatedAliasWriteTrialOnce_(),e=>e?.code==='TRIAL_NOT_ISOLATED');
+ assert.equal(h.writes,0);
+}
+{
+ const h=harness();h.tables.products.splice(1);h.tables.stores.splice(1);
+ h.setFault('products','before');
+ assert.throws(()=>h.mock.runIsolatedAliasWriteTrialOnce_(),/POWER_LOSS_products_before/);
+ assert.equal(h.records('stores').length,1,'Seed can pause after writing only store');
+ assert.equal(h.records('products').length,0);
+ assert.equal(h.locked,false);
+ assert.equal(h.mock.runIsolatedAliasWriteTrialOnce_(),true);
+ assert.equal(h.records('product_aliases').length,1);
+}
+{
+ const h=harness();h.tables.products.splice(1);h.tables.stores.splice(1);
+ h.setFault('entity.write','after');
+ assert.throws(()=>h.mock.runIsolatedAliasWriteTrialOnce_(),/POWER_LOSS_entity.write_after/);
+ assert.equal(h.records('product_aliases').length,1);
+ assert.equal(h.mock.runIsolatedAliasWriteTrialOnce_(),true);
+ assert.equal(h.records('product_aliases').length,1);
+ assert.equal(h.records('processed_operations').length,1);
+ assert.equal(h.records('change_log').length,1);
+}
+{
+ const h=harness();h.tables.products.splice(1);h.tables.stores.splice(1);
+ h.tables.receipt_rules.push(['unexpected','s1','pattern',1,true,1,'']);
+ assert.throws(()=>h.mock.runIsolatedAliasWriteTrialOnce_(),e=>e?.code==='TRIAL_NOT_EMPTY');
+ assert.equal(h.writes,0);
+}
+
 // Production gate is NEVER enabled in this test or in the web client.
 {
  const h=harness(),p=h.payload();
