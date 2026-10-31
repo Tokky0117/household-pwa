@@ -15,6 +15,16 @@ check('完全な印字・円記号なし','牛乳 198\n合計 198',r=>assert.equ
 check('完全な印字・円サフィックス','牛乳 198円\n合計 198',r=>assert.equal(r.items.length,1));
 check('数値で始まる別行商品名','100%オレンジジュース\n2000999999999 1 ¥198\n合計 ¥198',r=>{assert.equal(r.items.length,1);assert.equal(r.items[0].name,'100%オレンジジュース');});
 check('支払行は商品ではない','現金 ¥1000\n牛乳 ¥198\n合計 ¥198',r=>assert.equal(r.items.length,1));
+check('小計がOCR欠落しても決済金額は商品ではない',
+ 'お支払 ¥1,985\n電子マネー決済 ¥1,985\nQUICPay ¥1,985\n交通系IC決済 ¥1,985\nQRコード決済 ¥1,985',
+ r=>assert.equal(r.items.length,0));
+check('ポイント利用を商品と混同しない',
+ 'ポイント利用 ¥120\n利用ポイント 120\n牛乳 ¥198\n合計 ¥198',
+ r=>assert.equal(r.items.length,1));
+check('日付とJANが中途半端でも支払を購入明細として扱わない',
+ '2026年10月31日 10:12\n#015 JAN4900000000009\n試験商品名\nお支払 ¥437',
+ r=>{assert.equal(r.items.length,0);assert.ok(r.warnings.some(x=>/jan_missing_price/.test(x.code)));});
+
 check('全角空白と金額','※牛乳　￥１９８\n合計 ￥１９８',r=>assert.equal(r.items[0].name,'牛乳'));
 check('単価の印字なし','牛乳 ¥198\n合計 ¥198',r=>assert.equal(r.items[0].unitPrice,null));
 check('全角の内税表記','商品 ￥１００\n（内１０％ ￥９）\n合計 ￥１００',r=>assert.equal(r.taxBasis,'included'));
