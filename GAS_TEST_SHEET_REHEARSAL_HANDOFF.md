@@ -207,3 +207,12 @@
 - 続く④を実行する前に、診断画面の既知フィクスチャの**名前・店舗名・別名コード・照合応答形**が、開発ブランチ `gas/Code.gs` の `testAliasCatalogReadOnly`、`productCatalog_`、`productAliasCheck_` と一致することをコード照合で確認した。④はボタンから既存商品コード `00012345` と未登録コード `00099999` を順に認証付き・読み取り専用照合する。
 - **次のユーザー操作は④「登録済み・未登録コードを照合（読み取りのみ）」を押し、結果画面の成功／エラー文を共有すること。** この段階で再ログイン、デプロイ更新、GET診断、商品・レシートの書き込みは不要。
 - `ENABLE_EXPERIMENTAL_WRITES=false`、`LIVE_WRITE_ENABLED=false`、通常アプリへの認証付きOCRマスタ接続は未公開のまま。試験GAS、試験Sheets、Webアプリデプロイ設定、main、本番環境の変更は行っていない。
+
+## 2026-10-31：iPhone ④商品コード照合は `UNSUPPORTED`（GASのデプロイ旧版と判定）
+
+- ユーザーが、③ `bootstrap` 実機成功（カテゴリ5・日用品0・商品1・店舗1、4.99秒）に続いて④を実行し、**「POST：現在の公開済みGASに読み取りAPIが含まれていない可能性があります。デプロイ版を確認してください。」** および **「コード照合は完了していません。書き込みは行っていません。」** を撮影したスクリーンショットを提供した。
+- ④の診断UIは `product.catalog` → `product.alias.check` 2回を呼ぶ。まず最初の `product.catalog` で旧版が `UNSUPPORTED` と返した可能性が高いが、フロント画面だけからサーバー版番号を直接確定したわけではない。
+- 開発ブランチ `gas/Code.gs` の `doPost` は `product.catalog` と `product.alias.check` の両アクションに対応。実GASソースの読み取り専用監査 <https://github.com/Tokky0117/household-pwa/actions/runs/41172459132> は「remote and branch source identical: true」「両関数あり」を確認。**ソース自体を再度pushしない。**
+- 原因の最有力は、GASの**現在のエディタ/HEADソース**と **既存 `/exec` のバージョン付きデプロイ**に差があること。Google公式手順に従い、ユーザーが既存の試験用GASを開き「デプロイ → デプロイを管理 → 現行ウェブアプリ → 編集 → バージョン：新しいバージョン → デプロイ」を行うと、**既存のデプロイIDと `/exec` URLを維持**して更新できる。参照：<https://developers.google.com/apps-script/concepts/deployments>、<https://developers.google.com/apps-script/guides/versions>。
+- 変更前に**試験用スクリプトIDと既存の管理画面で選んだウェブアプリ**を確認。実行ユーザー・アクセスできるユーザー・スクリプトプロパティは絶対に拡張・変更しない。特に `ENABLE_EXPERIMENTAL_WRITES=false` を維持。本番環境を作らず、シートへ書き込まず、新規デプロイも作らない。
+- 更新後は開発ブランチの診断画面を再読込、既存の同じ `/exec` URLと試験用である旨を再確認し、必要ならログイン→③ `bootstrap` →④照合。成功文言だけ共有し、機密ID・トークン・Googleアカウント詳細を公開しない。④が引き続き失敗する場合は**再デプロイを繰り返さず**、表示されたエラー文を基に検証する。
