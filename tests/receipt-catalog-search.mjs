@@ -19,5 +19,5 @@ assert.equal(searchCatalogProducts(catalog,'エリン',999).length,2);
 const all={...catalog,products:Array.from({length:500},(_,i)=>({household_id:'home',product_id:String(i),name:'商品'+i}))};
 assert.equal(searchCatalogProducts(all,'商品').length,12,'bounded to twelve suggestions by default');
 const wrong={...catalog,householdId:'another'};
-assert.equal(searchCatalogProducts(wrong,'エリン').length,1,'only matching household rows');
+assert.equal(searchCatalogProducts(wrong,'エリン').length,0,'only matching household rows');
 console.log('Manual product search PASS: household scope, 2-character minimum, limited options, no inferred assignments');
