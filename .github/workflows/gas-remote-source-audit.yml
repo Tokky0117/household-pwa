@@ -1,5 +1,5 @@
 name: Read-only audit of existing test GAS source
-# Read-only fingerprint of existing test GAS before matching/cross-check upgrade.
+# Read-only audit after installing editor-only catalog and alias match test.
 on:
   push:
     branches: [stage-a-ui-handoff-review]
