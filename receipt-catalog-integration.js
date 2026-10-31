@@ -17,9 +17,9 @@ export function mountReceiptCatalogIntegration({
     typeof win.KurashiAliasPreflight?.inspect!=='function')
   throw Error('RECEIPT_REVIEW_UNAVAILABLE');
  const $=id=>doc.getElementById(id);
- const text=$('ocr-review-text'),sample=$('ocr-sample'),parse=$('ocr-parse'),
+ const text=$('ocr-review-text'),sample=$('ocr-sample'),multiSample=$('ocr-multi-sample'),parse=$('ocr-parse'),
   load=$('ocr-load-catalog'),clear=$('ocr-clear'),message=$('ocr-parse-status');
- if(!text||!sample||!parse||!load||!clear||!message)throw Error('RECEIPT_REVIEW_UNAVAILABLE');
+ if(!text||!sample||!multiSample||!parse||!load||!clear||!message)throw Error('RECEIPT_REVIEW_UNAVAILABLE');
  const preview=createConfirmationPreview({
   section:$('ocr-candidate-confirmation'),file:$('ocr-catalog-file'),
   chain:$('ocr-review-chain'),status:$('ocr-catalog-status'),
@@ -79,6 +79,14 @@ export function mountReceiptCatalogIntegration({
  sample.addEventListener('click',()=>{
   if(disposed)return;
   text.value='試験用・商品コード\n00012345 1 198 198 E\n合計 ¥198';
+  extract();
+ });
+ multiSample.addEventListener('click',()=>{
+  if(disposed)return;
+  // Only synthetic, non-user data. This sample deliberately contains two
+  // items absent from the one-product GAS fixture and uncertain quantity.
+  text.value='試験用・商品コード\n00012345 1 198 198 E\n'+
+   '架空の牛乳 ¥228\n架空のタオル\n22×単 105 ¥210\n合計 ¥636';
   extract();
  });
  parse.addEventListener('click',extract);
