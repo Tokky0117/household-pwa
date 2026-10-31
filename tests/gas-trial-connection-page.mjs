@@ -12,12 +12,19 @@ assert.match(html,/candidate\.href===MAIN_GAS/);
 assert.match(html,/KurashiAuth\.configure\(CLIENT_ID,\{manualOnly:true\}\)/);
 assert.match(html,/KurashiGasApi\.configure\(candidate\.href\)/);
 assert.match(html,/KurashiGasApi\.request\('bootstrap'\)/);
-assert.doesNotMatch(html,/KurashiGasApi\.request\('(item\.|product\.)/);
+assert.match(html,/KurashiGasApi\.request\('product\.catalog'\)/);
+assert.match(html,/KurashiGasApi\.request\('product\.alias\.check'/);
+assert.doesNotMatch(html,/KurashiGasApi\.request\('(item\.create|item\.update|product\.alias\.create|product\.create|product\.update)'/);
 assert.doesNotMatch(html,/localStorage|sessionStorage|document\.cookie/);
 assert.doesNotMatch(html,/new URLSearchParams|location\.search|location\.hash/);
 assert.match(html,/data\.categories\.length!==5/);
 assert.match(html,/id="probe-get"/);
 assert.match(html,/id="probe-result"/);
+assert.match(html,/id="catalog-check"/);
+assert.match(html,/id="catalog-result"/);
+assert.match(html,/id="catalog-detail"/);
+assert.match(html,/write_permitted!==false/);
+assert.match(html,/FIXTURE_CODE='00012345'/);
 assert.match(html,/probeGet\.addEventListener\('click',async\(\)=>/);
 const getHandler=html.match(/probeGet\.addEventListener\('click',async\(\)=>\{([\s\S]*?)\n \}\);/);
 assert.ok(getHandler,'GET probe handler found');
@@ -42,20 +49,54 @@ const node=id=>{
  });
  return elements.get(id);
 };
-let getCalls=[],postCalls=[],getFetcher=async()=>({
+let getCalls=[],postCalls=[],postPayloads=[],catalogMode='valid',slowCatalog=null,getFetcher=async()=>({
  status:200,headers:{get:()=> 'application/json'},
  text:async()=>JSON.stringify({ok:false,error:{code:'POST_REQUIRED'}})
 });
+const catalog={
+ household_id:'trial',
+ products:[{household_id:'trial',product_id:'p-test',name:'試験用・商品コード'}],
+ stores:[{chain_id:'c-test',canonical_name:'[KURASHI_ALIAS_TRIAL_ONLY]'}],
+ product_aliases:[{product_id:'p-test',chain_id:'c-test',normalized_alias:'00012345'}]
+};
 const apiMock={
  configure(endpoint){if(!endpoint)return;assert.match(endpoint,/^https:\/\/script\.google\.com\/macros\/s\/[A-Za-z0-9_-]+\/exec$/)},
- async request(action){postCalls.push(action);return {
-  household_id:'trial',categories:['飲食','キッチン','洗面・風呂','洗濯・掃除','その他'].map(name=>({name})),
-  item_groups:[{}],products:[],stores:[]
- }}
+ async request(action,payload={}){
+  postCalls.push(action);postPayloads.push({action,payload});
+  if(action==='bootstrap')return {
+   household_id:'trial',categories:['飲食','キッチン','洗面・風呂','洗濯・掃除','その他'].map(name=>({name})),
+   item_groups:[{}],products:[],stores:[]
+  };
+  if(action==='product.catalog'){
+   if(catalogMode==='unsupported')throw Error('UNSUPPORTED');
+   if(catalogMode==='pending')return new Promise(resolve=>{slowCatalog=resolve});
+   if(catalogMode==='foreign')return {...catalog,household_id:'other-family'};
+   return structuredClone(catalog);
+  }
+  if(action==='product.alias.check'){
+   if(catalogMode==='bad-match')return {
+    household_id:'trial',product_id:'p-test',chain_id:'c-test',
+    product_code:payload.product_code,status:'available',
+    matched_product_ids:[],write_permitted:false
+   };
+   const registered=payload.product_code==='00012345';
+   return {household_id:'trial',product_id:'p-test',chain_id:'c-test',
+    product_code:payload.product_code,status:registered?'already_registered':'available',
+    matched_product_ids:registered?['p-test']:[],write_permitted:false};
+  }
+  throw Error('UNEXPECTED_ACTION');
+ }
 };
+const authSubscribers=[];
+let authState={signedIn:true,subject:'example-test-sub'};
 const authMock={
- configure(){},subscribe(){},status:()=>({signedIn:true}),signOut(){},signIn(){}
+ configure(){},
+ subscribe(fn){authSubscribers.push(fn)},
+ status:()=>({...authState}),
+ signOut(){authState={signedIn:false,subject:null};authSubscribers.forEach(fn=>fn(authMock.status()))},
+ signIn(){}
 };
+const signIn=()=>{authState={signedIn:true,subject:'example-test-sub'};authSubscribers.forEach(fn=>fn(authMock.status()))};
 const ctx=vm.createContext({
  window:{KurashiAuth:authMock,KurashiGasApi:apiMock,addEventListener(){}},
  document:{getElementById:node},
@@ -112,4 +153,66 @@ respondPost({household_id:'previous',categories:['飲食','キッチン','洗面
 await pendingPost;
 assert.equal(node('result').textContent,'試験用URLを確認してください。');
 assert.equal(node('counts').textContent,'');
-console.log('Isolated GAS read-only diagnostics: HTTP/HTML distinction, no stale results, no mutation PASS');
+// Re-verify bootstrap after URL changes before catalog actions are allowed.
+assert.equal(node('catalog-check').disabled,true);
+await node('check').listeners.click();
+assert.equal(node('catalog-check').disabled,false);
+await node('catalog-check').listeners.click();
+assert.match(node('catalog-result').textContent,/商品マスタ・登録済みコード・未登録コードの照合に成功/);
+assert.match(node('catalog-detail').textContent,/書き込み0件/);
+assert.equal(node('catalog-detail').textContent.includes('p-test'),false);
+assert.deepEqual(postCalls.slice(-3),['product.catalog','product.alias.check','product.alias.check']);
+const aliasCalls=postPayloads.filter(x=>x.action==='product.alias.check');
+assert.equal(aliasCalls[0].payload.product_code,'00012345');
+assert.equal(aliasCalls[1].payload.product_code,'00099999');
+assert.equal(aliasCalls[0].payload.operation_id,undefined);
+assert.equal(postCalls.filter(x=>x==='product.catalog').length,1);
+assert.ok(postCalls.every(a=>['bootstrap','product.catalog','product.alias.check'].includes(a)),
+ 'The diagnostic must never call a mutation');
+
+// A malformed or foreign catalog must stop before the alias-check request.
+catalogMode='foreign';
+const beforeForeign=postCalls.filter(x=>x==='product.alias.check').length;
+await node('catalog-check').listeners.click();
+assert.match(node('catalog-result').textContent,/試験データと照合結果が一致しません/);
+assert.equal(postCalls.filter(x=>x==='product.alias.check').length,beforeForeign);
+catalogMode='bad-match';
+await node('catalog-check').listeners.click();
+assert.match(node('catalog-result').textContent,/一致しません/);
+assert.equal(postCalls.filter(x=>x==='product.alias.check').length,beforeForeign+1);
+catalogMode='unsupported';
+await node('catalog-check').listeners.click();
+assert.match(node('catalog-result').textContent,/公開済みGAS/);
+catalogMode='valid';
+
+// A late catalog response is ignored after an endpoint switch.
+catalogMode='pending';
+const pendingCatalog=node('catalog-check').listeners.click();
+await Promise.resolve();
+assert.equal(typeof slowCatalog,'function');
+node('trial-url').value='https://script.google.com/macros/s/FOURTH_TRIAL/exec';
+node('trial-url').listeners.input();
+slowCatalog(structuredClone(catalog));
+await pendingCatalog;
+assert.equal(node('catalog-check').disabled,true);
+assert.equal(node('catalog-detail').textContent,'');
+assert.equal(node('catalog-result').textContent,'③の読み取り接続確認後に実行できます。');
+catalogMode='valid';
+
+// An authentication transition invalidates all in-flight read checks.
+await node('check').listeners.click();
+assert.equal(node('catalog-check').disabled,false);
+catalogMode='pending';slowCatalog=null;
+const pendingLogout=node('catalog-check').listeners.click();
+await Promise.resolve();
+assert.equal(typeof slowCatalog,'function');
+authMock.signOut();
+slowCatalog(structuredClone(catalog));
+await pendingLogout;
+assert.equal(node('catalog-detail').textContent,'');
+assert.equal(node('catalog-check').disabled,true);
+assert.match(node('result').textContent,/ログイン状態/);
+signIn();
+assert.equal(node('catalog-check').disabled,true,'Signing in again requires a fresh bootstrap');
+assert.doesNotMatch(JSON.stringify(postPayloads),/id_token|Authorization|operation_id|00012345.*p-test.*trial/i);
+console.log('Isolated GAS read-only diagnostics PASS: GET/POST, fixed catalog, known/unknown alias, stale responses, no mutation');
