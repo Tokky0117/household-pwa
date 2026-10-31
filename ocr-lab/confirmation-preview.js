@@ -30,7 +30,7 @@ const element=(tag,text)=>{const n=document.createElement(tag);if(text!==undefin
 const yen=n=>Number.isSafeInteger(n)?n.toLocaleString('ja-JP')+'円':'不明';
 export function createConfirmationPreview({section,file,chain,status,list,summary}){
  let receipt=null,catalog=null,chainId=null,generation=0,source='none';
- const searchQueries=new Map();
+ const searchQueries=new Map(),manualNames=new Map();
  const selected=new Map(),quantities=new Set();
  const refreshChains=()=>{
   chain.replaceChildren();
@@ -72,9 +72,12 @@ export function createConfirmationPreview({section,file,chain,status,list,summar
     '（明細欄内 '+scope.merchandise+'件・欄外 '+scope.outside+
     '件・全体 '+scope.global+'件）':''));
   }
-  if(receipt?.reconciliation?.printedCountMatches===true)
+  if(receipt?.reconciliation?.candidateCountMatches===true&&
+     receipt?.reconciliation?.quantityVerified===false)
+   extras.push('数量候補の合計は印字点数と一致（未確定の数量あり）');
+  else if(receipt?.reconciliation?.printedCountMatches===true)
    extras.push('購入点数一致');
-  else if(receipt?.reconciliation?.printedCountMatches===false)
+  else if(receipt?.reconciliation?.candidateCountMatches===false)
    extras.push('購入点数が不一致（要確認）');
   if(receipt?.receiptTotal!=null&&receipt?.reconciliation?.totalMatches===true)
    extras.push('合計金額一致');
@@ -93,10 +96,15 @@ export function createConfirmationPreview({section,file,chain,status,list,summar
   const matches=candidates();
   matches.forEach((match,i)=>{
    const item=receipt.items[i],card=element('li');card.className='review-item';
-   const head=element('strong',item.name||'（商品名が認識できませんでした）');
-   card.append(head,element('p','数量 '+item.quantity+'・金額 '+yen(item.grossAmount)+
+   const head=element('strong','OCR商品名（未確定）：'+(item.name||'（商品名が認識できませんでした）'));
+   const qtyText=item.quantitySource==='inferred_candidate'?
+    '数量未確定（計算候補 '+item.quantity+'）':'数量 '+item.quantity;
+   card.append(head,element('p',qtyText+'・金額 '+yen(item.grossAmount)+
     '・値引き '+yen(item.discount)+'・差引 '+yen(item.netAmount)));
    if(item.productCode)card.append(element('p','商品コード '+item.productCode));
+   if(item.quantitySource==='printed'&&item.ocrQuantityToken?.endsWith('@')){
+    card.append(element('small','数量表記「'+item.ocrQuantityToken+'」：印字と金額が一致'));
+   }
    if(item.quantitySource==='inferred_candidate'&&
       typeof item.ocrQuantityToken==='string'&&
       /^\d{1,2}[●@eEoO]?$/.test(item.ocrQuantityToken)){
@@ -120,7 +128,16 @@ export function createConfirmationPreview({section,file,chain,status,list,summar
      name_suggestion:'商品名が類似',ambiguous:'複数候補',conflict:'コードと名前が矛盾'}[match.status];
     card.append(element('small',meaning||'要確認'));
 
-   }else card.append(element('p',catalog?'一致する登録商品候補なし。OCR誤読・未登録商品・チェーン選択を確認してください。':'商品マスタ未読み込み'));
+   }else card.append(element('p',catalog?
+    '一致する登録商品候補なし。OCR誤読・未登録商品・チェーン選択を確認してください。':
+    '商品マスタ未読み込み：正式な商品名は未確認'));
+   const correctionLabel=element('label','正しい商品名を手動入力（任意・未保存）');
+   const correction=element('input');
+   correction.type='text';correction.maxLength=120;
+   correction.placeholder='原本を確認して入力（自動確定しません）';
+   correction.dataset.action='name-correction';correction.dataset.index=String(i);
+   correction.value=manualNames.get(i)||'';
+   correctionLabel.append(correction);card.append(correctionLabel);
    const selectedId=selected.get(i);
    if(catalog&&chainId&&selectedId&&item.productCode&&
       !warnings.includes('invalid_jan_checksum')){
@@ -178,6 +195,12 @@ export function createConfirmationPreview({section,file,chain,status,list,summar
  chain.addEventListener('change',()=>{chainId=chain.value||null;selected.clear();render()});
  list.addEventListener('input',event=>{
   const target=event.target,index=Number(target?.dataset?.index);
+  if(target?.dataset?.action==='name-correction'&&receipt&&
+     Number.isInteger(index)&&index>=0&&index<receipt.items.length){
+   const value=String(target.value||'').replace(/[\r\n\t]/g,' ').trim().slice(0,120);
+   if(value)manualNames.set(index,value);else manualNames.delete(index);
+   return;
+  }
   if(target?.dataset?.action!=='search'||!receipt||!catalog||
    !Number.isInteger(index)||index<0||index>=receipt.items.length)return;
   searchQueries.set(index,target.value);
@@ -252,9 +275,9 @@ export function createConfirmationPreview({section,file,chain,status,list,summar
    status.textContent='ログイン状態の変更により商品マスタを破棄しました。';
    return true;
   },
-  setParsed(value){receipt=value;selected.clear();quantities.clear();searchQueries.clear();render()},
+  setParsed(value){receipt=value;selected.clear();quantities.clear();searchQueries.clear();manualNames.clear();render()},
   reset(){generation++;receipt=null;catalog=null;chainId=null;source='none';selected.clear();quantities.clear();
-   file.value='';status.textContent='';summary.textContent='';searchQueries.clear();refreshChains();render()},
+   file.value='';status.textContent='';summary.textContent='';searchQueries.clear();manualNames.clear();refreshChains();render()},
   getStatus(){return {catalogLoaded:!!catalog,source,selected:selected.size,quantityConfirmed:quantities.size}},
   // For the explicit clipboard-only product test report. Expose names and
   // non-sensitive match states, never household IDs or internal product IDs.
@@ -266,7 +289,9 @@ export function createConfirmationPreview({section,file,chain,status,list,summar
     return {status:row.status||'unresolved',
      candidateNames:(row.candidates||[]).slice(0,3).map(p=>p.name),
      selectedProductName:product?.name||null,
-     quantityConfirmed:quantities.has(index)};
+     quantityConfirmed:quantities.has(index),
+     manuallyCorrectedName:manualNames.get(index)||null,
+     nameConfirmed:!!product||manualNames.has(index)};
    })};
   }
  };
