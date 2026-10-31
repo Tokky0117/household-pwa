@@ -33,9 +33,14 @@ assert.equal(parse('※ ブナシメジ\n5コ×単99 ¥495').items[0].unitPrice,
 assert.equal(parse('商品名\n2000219735999 1 ¥1,290').items[0].unitPrice,1290);
 assert.equal(parse('商品名\n72587 1● 3,298 3,298 T').items[0].unitPrice,3298);
 assert.equal(parse('白ねぎ 1本 ¥159').items[0].quantitySource,'default');
+const printedSingle=parse('商品名\\n12345 1@ 100 100 T\\nお買上点数 1点');
+assert.equal(printedSingle.items[0].quantitySource,'printed');
+assert.equal(printedSingle.reconciliation.quantityVerified,true);
+assert.equal(printedSingle.reconciliation.printedCountMatches,true);
 assert.equal(parse('※委)ばれいしょ ￥210').items[0].rawName,'※委)ばれいしょ ');
 assert.equal(parse('※委)ばれいしょ ￥210').items[0].name,'ばれいしょ');
-assert.equal(parse('商品 ¥100\nお買上点数 2点').reconciliation.printedCountMatches,false);
+assert.equal(parse('商品 ¥100\nお買上点数 2点').reconciliation.printedCountMatches,null);
+assert.equal(parse('商品 ¥100\nお買上点数 2点').reconciliation.candidateCountMatches,false);
 assert.ok(parse('商品名\n12345 2● 100 199 E').items[0].issues.includes('unit_quantity_mismatch'));
 // Generic mixed-photo OCR: extraneous headers and a payment footer must
 // not be transferred to the separate authenticated catalog-matching surface.
@@ -53,7 +58,10 @@ const mixed=parse(mixedOcr);
 assert.equal(mixed.items.length,3);
 assert.deepEqual(mixed.items.map(i=>i.netAmount),[144,29,450]);
 assert.equal(mixed.reconciliation.quantity,7);
-assert.equal(mixed.reconciliation.printedCountMatches,true);
+assert.equal(mixed.reconciliation.printedCountMatches,null,
+ 'Default-one items are not individually verified by printed total alone');
+assert.equal(mixed.reconciliation.quantityVerified,false);
+assert.equal(mixed.reconciliation.candidateCountMatches,true);
 assert.equal(mixed.reconciliation.totalMatches,true);
 const mixedScope=JSON.parse(JSON.stringify(c.KurashiReceiptStructure.warningScopes(mixed)));
 assert.ok(mixedScope.outside>0,'Unrelated header text must be distinguishable from item failures');
@@ -68,7 +76,8 @@ assert.doesNotMatch(safeCopy,/隣の伝票|お知らせ見出し|クレジット
 const roundtrip=parse(safeCopy);
 assert.equal(roundtrip.items.length,3);
 assert.deepEqual(roundtrip.items.map(i=>i.netAmount),mixed.items.map(i=>i.netAmount));
-assert.equal(roundtrip.reconciliation.printedCountMatches,true);
+assert.equal(roundtrip.reconciliation.printedCountMatches,null);
+assert.equal(roundtrip.reconciliation.candidateCountMatches,true);
 assert.equal(roundtrip.reconciliation.totalMatches,true);
 assert.throws(()=>c.KurashiReceiptStructure.merchandiseExcerpt({
  rawText:'トークン 0000-0000-0000-0000',
