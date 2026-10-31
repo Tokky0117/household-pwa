@@ -92,6 +92,13 @@ export function createProductTestReport({receipt,diagnostic,review,warningScopes
   title:'くらしストック 商品検証レポート',
   version:'product-test-1',
   sharingNotice:'商品名・購入内容・商品コードを含みます。共有前に内容を確認してください。会員・決済・OCR全文は含めません。',
+  // A loaded catalog is not enough for store-specific SKU lookup. Do not
+  // export the store/household identifier or any authorization information.
+  matchingContext:{
+   catalogLoaded:review?.source==='local'||review?.source==='authenticated',
+   chainSelected:review?.source==='local'||review?.source==='authenticated'?
+    review?.chainSelected===true:null
+  },
   ocrSettings:{
    japaneseGlyphConversion:diagnostic.normalization?.mode==='japanese-glyphs-v1'?true:
     diagnostic.normalization?.mode==='none'?false:null,
