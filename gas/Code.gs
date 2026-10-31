@@ -268,7 +268,7 @@ function doPost(e){
    if(action==='product.catalog')return jsonReply({ok:true,data:productCatalog_(user,readContext.book)});
    if(action==='product.alias.check')return jsonReply({ok:true,data:productAliasCheck_(user,payload,readContext.book)});
   if(action==='sync')return jsonReply({ok:true,data:changes(user,payload,readContext.book)});
-  if(!['item.create','item.update','product.create','product.update','product.move'].includes(action))fail('UNSUPPORTED','未対応の操作です');
+  if(!['item.create','item.update','product.create','product.update','product.move','product.alias.create'].includes(action))fail('UNSUPPORTED','未対応の操作です');
   return jsonReply({ok:true,data:mutate_(user,action,payload,input.operation_id)});
  }catch(err){
   return jsonReply({ok:false,error:{code:err.code||'SERVER_ERROR',message:err.code?err.message:'処理できませんでした'}});
@@ -782,8 +782,163 @@ function mutateItemSafely_(user,action,payload,operationId,localEditorTrial,tria
   return result;
  }finally{lock.releaseLock()}
 }
+/**
+ * Durable product-code alias creation for the ISOLATED WRITE-TRIAL SHEET ONLY.
+ * Requires explicit confirmation, an exact operation ID, the existing isolated
+ * trial identity and property gates, and a script lock. No production writes.
+ *
+ * "available" from product.alias.check is advisory; collision checks here
+ * use fresh Sheets rows INSIDE the write lock. Writes are journaled before
+ * changing the alias sheet, and identical retries reconcile partial writes.
+ */
+function mutateAliasSafely_(user,payload,operationId){
+ requiredId(operationId);
+ if(!/^[A-Za-z0-9_-]{8,128}$/.test(operationId))
+  fail('BAD_REQUEST','操作IDが不正です');
+ if(!payload||typeof payload!=='object'||Array.isArray(payload)||
+    Object.keys(payload).sort().join(',')!=='chain_id,confirmed,product_code,product_id'||
+    payload.confirmed!==true)
+  fail('CONFIRMATION_REQUIRED','商品の確認が必要です');
+ const productId=requiredId(payload.product_id),chainId=requiredId(payload.chain_id);
+ if(typeof payload.product_code!=='string')fail('BAD_REQUEST','商品コードが不正です');
+ const code=payload.product_code.normalize('NFKC');
+ if(!/^[0-9]{4,14}$/.test(code))
+  fail('BAD_REQUEST','商品コードは数字4〜14桁で指定してください');
+ const lock=LockService.getScriptLock();
+ if(!lock.tryLock(20000))fail('BUSY','しばらくして再試行してください');
+ try{
+  const book=requireIsolatedWriteTrial(false),hid=String(user.householdId);
+  const members=rows('users',book),homes=rows('households',book);
+  if(homes.length!==1||String(homes[0].obj.household_id)!==hid||
+     members.length!==1||String(members[0].obj.household_id)!==hid||
+     String(members[0].obj.user_id)!==String(user.userId))
+   fail('TRIAL_NOT_ISOLATED','試験用家庭と認証されたユーザーが一致しません');
+  const digest=Utilities.base64EncodeWebSafe(Utilities.computeDigest(
+   Utilities.DigestAlgorithm.SHA_256,JSON.stringify({action:'product.alias.create',payload})));
+  const operations=operationRowsForHousehold_(hid,book),seen=new Set();
+  for(const row of operations){
+   const id=String(row.obj.operation_id);
+   if(seen.has(id))fail('RECOVERY_CONFLICT','操作IDが重複しています');
+   seen.add(id);
+  }
+  const old=operations.find(x=>String(x.obj.operation_id)===operationId);
+  if(old&&String(old.obj.request_hash)!==digest)fail('OPERATION_REUSED','操作IDが再利用されています');
+  const prepared=operations.find(x=>{
+   try{
+    const obj=JSON.parse(String(x.obj.result));
+    return obj.status==='prepared';
+   }catch(_){return true;}
+  });
+  if(prepared&&String(prepared.obj.operation_id)!==operationId)
+   fail('RECOVERY_REQUIRED','未完了の操作を先に再送してください');
+  let plan,operationRow=old?.row;
+  if(old){
+   try{plan=JSON.parse(String(old.obj.result))}
+   catch(_){fail('RECOVERY_CONFLICT','操作履歴が破損しています')}
+   if(plan.status!=='prepared')return plan;
+   if(plan.action!=='product.alias.create'||!plan.entity||
+      String(plan.entity.product_id)!==productId||
+      String(plan.entity.chain_id)!==chainId||
+      String(plan.entity.normalized_alias)!==code||
+      !Number.isSafeInteger(plan.sequence_no)||plan.sequence_no<1)
+    fail('RECOVERY_CONFLICT','復旧する操作内容が不正です');
+  }
+  // Fresh ownership validation also guards duplicated product IDs globally,
+  // because aliases do not have their own household_id column.
+  const allProducts=rows('products',book),owners=new Map();
+  for(const entry of allProducts){
+   const id=String(entry.obj.product_id||'');
+   if(!id||owners.has(id))fail('CATALOG_CONFLICT','商品IDが重複しています');
+   owners.set(id,String(entry.obj.household_id||''));
+  }
+  if(allProducts.filter(x=>String(x.obj.product_id)===productId&&
+     String(x.obj.household_id)===hid&&!x.obj.deleted_at).length!==1)
+   fail('NOT_FOUND','商品の登録を確認できません');
+  const stores=rows('stores',book).filter(x=>String(x.obj.household_id)===hid);
+  if(stores.filter(x=>String(x.obj.chain_id)===chainId).length!==1)
+   fail('NOT_FOUND','チェーンの登録を確認できません');
+  const allowedChains=new Set(stores.map(x=>String(x.obj.chain_id)));
+  const allAliases=rows('product_aliases',book);
+  if(!old){
+   for(const row of allAliases){
+    const alias=row.obj,owner=owners.get(String(alias.product_id||''));
+    if(owner!==hid)continue;
+    const aliasedChain=alias.chain_id==null||alias.chain_id===''?null:String(alias.chain_id);
+    if(aliasedChain!==null&&!allowedChains.has(aliasedChain))
+     fail('CATALOG_CONFLICT','別名のチェーン指定が不正です');
+    if(String(alias.normalized_alias||'').normalize('NFKC')!==code)continue;
+    if(aliasedChain===null||aliasedChain===chainId)
+     fail(owner===hid&&String(alias.product_id)===productId?
+      'ALREADY_REGISTERED':'ALIAS_CONFLICT','この商品コードは登録されています');
+   }
+   const now=new Date().toISOString(),entity={
+    alias_id:Utilities.getUuid(),product_id:productId,chain_id:chainId,
+    normalized_alias:code,version:1,updated_at:now
+   };
+   if(allAliases.some(x=>String(x.obj.alias_id)===entity.alias_id))
+    fail('RECOVERY_CONFLICT','生成した別名IDが重複しています');
+   const seq=currentSequence(hid,book)+1;
+   plan={status:'prepared',action:'product.alias.create',entity,
+    sequence_no:seq};
+   // Intent is durable before any change to product_aliases.
+   operationRow=append_('processed_operations',{household_id:hid,operation_id:operationId,
+    request_hash:digest,result:JSON.stringify(plan),processed_at:now},book);
+  }
+  const entity=plan.entity;
+  if(String(entity.alias_id||'').length===0||String(entity.product_id)!==productId)
+   fail('RECOVERY_CONFLICT','復旧する別名IDが不正です');
+  // Re-check after prepare, and on retries. This detects external edits
+  // and competing entries, rather than assuming a stale preflight is safe.
+  const current=rows('product_aliases',book);
+  const sameId=current.filter(x=>String(x.obj.alias_id)===String(entity.alias_id));
+  if(sameId.length>1)fail('RECOVERY_CONFLICT','別名IDが重複しています');
+  for(const row of current){
+   const alias=row.obj,owner=owners.get(String(alias.product_id||''));
+   if(owner!==hid)continue;
+   const c=alias.chain_id==null||alias.chain_id===''?null:String(alias.chain_id);
+   if(c!==null&&!allowedChains.has(c))fail('CATALOG_CONFLICT','別名のチェーン指定が不正です');
+   if(String(alias.normalized_alias||'').normalize('NFKC')!==code)continue;
+   if(c===null||c===chainId){
+    if(String(alias.alias_id)!==String(entity.alias_id))
+     fail('ALIAS_CONFLICT','このコードは別の明細で登録されています');
+   }
+  }
+  if(sameId.length){
+   const alias=sameId[0].obj;
+   if(String(alias.product_id)!==productId||
+      String(alias.chain_id)!==chainId||
+      String(alias.normalized_alias)!==code||
+      Number(alias.version)!==1||
+      String(alias.updated_at)!==String(entity.updated_at))
+    fail('RECOVERY_CONFLICT','復旧対象の別名が変更されています');
+  }else append_('product_aliases',entity,book);
+  const logs=scopedPrefix_('change_log',hid,3,book);
+  const existing=logs.find(x=>String(x.obj.change_id)===operationId);
+  if(existing){
+   const logged=changeReplayDetails_(existing,book);
+   if(Number(logged.sequence_no)!==plan.sequence_no||
+      String(logged.entity_type)!=='product_aliases'||
+      String(logged.entity_id)!==String(entity.alias_id)||
+      String(logged.action)!=='product.alias.create')
+    fail('RECOVERY_CONFLICT','変更履歴が一致しません');
+  }else{
+   if(logs.some(x=>Number(x.obj.sequence_no)>=plan.sequence_no))
+    fail('RECOVERY_CONFLICT','変更履歴の順序が競合しています');
+   append_('change_log',{change_id:operationId,sequence_no:plan.sequence_no,
+    household_id:hid,entity_type:'product_aliases',entity_id:entity.alias_id,
+    action:'product.alias.create',occurred_at:entity.updated_at},book);
+  }
+  const result={entity:publicRow(entity),sequence_no:plan.sequence_no};
+  write_('processed_operations',operationRow,{household_id:hid,operation_id:operationId,
+   request_hash:digest,result:JSON.stringify(result),processed_at:entity.updated_at},
+   tab('processed_operations',book));
+  return result;
+ }finally{lock.releaseLock()}
+}
+
 function mutate_(user,action,payload,operationId){
  if(action==='item.create'||action==='item.update')return mutateItemSafely_(user,action,payload,operationId);
+ if(action==='product.alias.create')return mutateAliasSafely_(user,payload,operationId);
  // Product writes retain the old non-transactional implementation: do not expose it.
  fail('WRITES_DISABLED','商品の書き込みは安全確認中です');
  requiredId(operationId);
