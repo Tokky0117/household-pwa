@@ -150,3 +150,23 @@
 1. `product.catalog` と `product.alias.check` の認証済み読み取りを、試験用GASで確認する。既に登録した架空店舗・商品・別名を利用し、シートデータを追加しない。
 2. OCR確認画面への取得・候補マッチング接続を、認証と家庭分離が確認できた範囲に限って試験する。
 3. フロントエンドからの `product.alias.create` は現在も `UNSUPPORTED` のまま。本番運用・他家庭・未確認商品についての書き込み解禁は行わない。
+
+## 2026-10-31：実Sheets登録済みコードの読み取り専用照合（次ステップ）
+
+- 前段の実Apps Scriptログに基づく試験用コードの登録は成功済み。ここでは**シートへの追加/変更/削除をせず**、既存登録を `productCatalog_` と `productAliasCheck_` で読み出すエディタ用関数 `testAliasCatalogReadOnly` を追加した。
+- 指定試験シートの識別、家庭とユーザーの対応、他シートへの混入なし、1件ずつの店舗/商品/コードの整合、変更履歴・操作履歴が完了していることを検証し、合格後に `product.catalog` と同じ内部実装で家庭限定マスタ取得を検証する。
+- 商品コード `00012345` を登録済み `already_registered` と判定し、別商品への競合や異チェーンでの混同が起きていないことを確認する。未登録コード `00099999` は `available`（＝未登録、ただし書き込み許可ではない）として確認。どちらも `write_permitted:false` を要求する。
+- 実データの家庭ID・ユーザーID・商品ID・アクセストークン・シート内容はGASログへ出さない。成功ログは `ALIAS_CATALOG_READ_OK`、`ALIAS_CODE_MATCH_OK`、`ALIAS_UNKNOWN_CODE_OK`、`ALIAS_CATALOG_TEST_DONE`。失敗時は `ALIAS_CATALOG_TEST_FAILED: <code>`。
+- OCRエンジンによる新しいレシート画像処理とは分け、既存 `receipt-structure.js` と `receipt-product-matching.js`、`receipt-alias-preflight.js` の**合成レシート**検証も追加した。同じ架空8桁コードのパース→登録済み1商品のコード候補→人手確認必須→他チェーン除外→書き込み禁止を固定テストで確認。
+- GASの試験用ソース反映成功：<https://github.com/Tokky0117/household-pwa/actions/runs/41172385314>。GitHub開発版と試験用GASソースの再照合も成功し、マニフェスト・権限・Webアプリ設定は不変：<https://github.com/Tokky0117/household-pwa/actions/runs/41172459132>。一時的なGitHub Actions自動反映トリガーは再び無効化。
+- オフライン回帰テスト成功。ただし、**この新しい読み取り検証の実Google Sheetsエディタ実行はまだ未完了**。認証されたWeb APIから `product.catalog` を実際に取得したわけでもなく、OCRプレビューから直接GASへ接続する状態でもない。
+
+### 次のユーザー操作（読み取り専用）
+
+1. [試験用GASエディタ](https://script.google.com/home/projects/15pyx5qYzEMEqgGQmbSyRdx5U2DywTxnRYgWpQb9lazE__tGwQ58DJGIU/edit) を再読み込みする。
+2. 関数選択から **`testAliasCatalogReadOnly`** を選んで「実行」。既存の登録行を読むだけで、新しいデータは書かない。
+3. `ALIAS_CATALOG_READ_OK`、`ALIAS_CODE_MATCH_OK`、`ALIAS_UNKNOWN_CODE_OK`、`ALIAS_CATALOG_TEST_DONE` が順に表示されたら合格。失敗した場合はコードだけを共有する。家庭名や実データを貼る必要はない。
+
+### 以後
+
+実シートの読み取り照合が合格したら、認証済み `product.catalog` とOCR明細候補表示の統合を進める。OCR実行中は写真を送信しない、登録候補は確認必須、通常ブラウザからの書き込みは引き続き禁止。
