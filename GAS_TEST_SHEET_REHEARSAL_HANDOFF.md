@@ -86,3 +86,14 @@
 - 読み取り専用検査結果：<https://github.com/Tokky0117/household-pwa/actions/runs/41168206588>。
 - **現状の制約**：現在のclasp認証はGASのコード管理には有効だが、既存シート全体の内容へのアクセス権がない。実データの過不足を確認するには、ChatGPTのGoogle Drive連携を接続するか、利用者が試用シートのExcel形式エクスポートをこの会話に渡す必要がある。公開リンク化やユーザーの個人データの貼り付けは求めない。
 - 連携後はまず**読み取り専用で**12シートのタブ・見出し・行数、`households`と`users`の整合、カテゴリ5件、既存在庫試験の操作履歴、商品・店舗・別名・レシートの既存行を確認し、試作用として許容できるデータと、隔離書き込み試験に適さないデータを区別する。改修案は実態確認後に決める。
+
+## 2026-10-31：既存の試作用シートを壊さない診断を追加
+
+- ユーザーはプラグインを当面使わない方針。GitHub側の既存clasp認証で対象シートの存在は確認できたが、Sheets APIは `403 SERVICE_DISABLED`、Drive Excelエクスポートは `403 appNotAuthorizedToFile`。この2経路では行データの読み取りはできない。
+- **GASエディタから手動実行する読み取り専用関数** `testTrialSheetInventoryReadOnly` を追加。既存の試作家庭名、usersの件数、既存データの存在を前提条件にしない。
+- 対象スプレッドシートは、ユーザー提供IDのSHA-256フィンガープリントが一致するときだけ `SpreadsheetApp.openById` で開く。シートIDそのものは公開ソースや実行ログへ出さない。
+- 12タブの有無、想定外タブ、見出し一致、不足件数、householdsの行数、家庭名が隔離試験ラベルに一致するか、usersの行数、家庭参照とauth_subjectの形式、categories 5件の一致を**値をログに出さず**診断する。1タブあたり1000行まで検査し、超過時も値を公開しない。
+- `testTrialSheetInventoryReadOnly` は**書き込みしない**。`testAliasTrialPreflightReadOnly` のような隔離された家庭名と空の既存シートを前提にしないので、先にこちらを使用すること。
+- GitHubでオフライン回帰テスト `tests/gas-trial-sheet-inventory.mjs` が成功し、試験用GASへのソース反映・関数検査が成功：<https://github.com/Tokky0117/household-pwa/actions/runs/41168937997>。自動更新トリガーは終了後に無効化した。
+- **次のユーザー操作**：既存試験用Apps Scriptエディタの画面をリロードし、上部の関数選択で `testTrialSheetInventoryReadOnly` を選び実行。実行ログの `INVENTORY_START` ～ `INVENTORY_DONE` を共有する。個人IDや実商品データは共有不要。
+- この検査結果を確認するまで、家庭名のリネームや `auth_subject` の追加、データ削除、表の初期化、別名登録の書き込み試験は実施しない。
