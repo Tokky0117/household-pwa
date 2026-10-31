@@ -25,6 +25,12 @@ assert.match(html,/id="probe-result"/);
 assert.match(html,/id="catalog-check"/);
 assert.match(html,/id="catalog-result"/);
 assert.match(html,/id="catalog-detail"/);
+assert.match(html,/id="ocr-review"/);
+assert.match(html,/id="ocr-review-text"/);
+assert.match(html,/id="ocr-load-catalog"/);
+assert.match(html,/receipt-catalog-integration\.js/);
+assert.match(html,/receipt-product-matching\.js/);
+assert.match(html,/KurashiTrialCatalogGate/);
 assert.match(html,/write_permitted!==false/);
 assert.match(html,/FIXTURE_CODE='00012345'/);
 assert.match(html,/probeGet\.addEventListener\('click',async\(\)=>/);
@@ -152,6 +158,8 @@ await node('check').listeners.click();
 assert.deepEqual(postCalls,['bootstrap']);
 assert.match(node('result').textContent,/認証付き読み取り成功/);
 assert.match(node('counts').textContent,/日用品 1 件/);
+assert.equal(ctx.window.KurashiTrialCatalogGate.ready(),false,
+ 'The OCR review may not fetch catalog until the explicit alias check also succeeds');
 // A stale authenticated POST response is also ignored after URL changes.
 let respondPost;
 const normalRequest=apiMock.request;
@@ -174,6 +182,8 @@ assert.equal(node('catalog-check').disabled,false);
 await node('catalog-check').listeners.click();
 assert.match(node('catalog-result').textContent,/商品マスタ・登録済みコード・未登録コードの照合に成功/);
 assert.match(node('catalog-detail').textContent,/書き込み0件/);
+assert.equal(ctx.window.KurashiTrialCatalogGate.ready(),true,
+ 'The authenticated OCR catalog bridge is unlocked by the verified fixture check');
 assert.equal(node('catalog-detail').textContent.includes('p-test'),false);
 assert.deepEqual(postCalls.slice(-3),['product.catalog','product.alias.check','product.alias.check']);
 const aliasCalls=postPayloads.filter(x=>x.action==='product.alias.check');
@@ -209,6 +219,8 @@ node('trial-url').listeners.input();
 slowCatalog(structuredClone(catalog));
 await pendingCatalog;
 assert.equal(node('catalog-check').disabled,true);
+assert.equal(ctx.window.KurashiTrialCatalogGate.ready(),false,
+ 'Changing the URL invalidates the live OCR catalog grant');
 assert.equal(node('catalog-detail').textContent,'');
 assert.equal(node('catalog-result').textContent,'③の読み取り接続確認後に実行できます。');
 catalogMode='valid';
@@ -234,6 +246,8 @@ await pendingLogout;
 assert.equal(node('catalog-detail').textContent,'');
 assert.equal(node('catalog-check').disabled,true);
 assert.match(node('result').textContent,/ログイン状態/);
+assert.equal(ctx.window.KurashiTrialCatalogGate.ready(),false,
+ 'Sign-out invalidates the OCR catalog grant');
 signIn();
 assert.equal(node('catalog-check').disabled,true,'Signing in again requires a fresh bootstrap');
 assert.doesNotMatch(JSON.stringify(postPayloads),/id_token|Authorization|operation_id|00012345.*p-test.*trial/i);
