@@ -322,6 +322,27 @@ assert.equal(review.getState().catalog.catalogLoaded,false);
 assert.equal(review.getState().parsed,false);
 assert.equal($('ocr-copy-products').disabled,true);
 assert.equal(actions.length,count,'Clear must not send a request');
+// Reproduce the local JSON-file workflow which previously appeared to have
+// loaded the 13-product master but showed only name-based suggestions.
+await $('ocr-sample').fire('click');
+const localFile=$('ocr-catalog-file');
+localFile.files=[{size:500,text:async()=>JSON.stringify(originalFixture)}];
+await localFile.fire('change');
+assert.equal(review.getState().catalog.source,'local');
+assert.equal($('ocr-review-chain').value,'');
+assert.match($('ocr-candidate-summary').textContent,/チェーン未選択：店舗別SKUは照合していません/);
+await $('ocr-copy-products').fire('click');
+const localUnselected=JSON.parse(copiedProductReport);
+assert.equal(localUnselected.products[0].recognition.candidateStatus,'name_candidate');
+assert.deepEqual(localUnselected.matchingContext,{catalogLoaded:true,chainSelected:false});
+$('ocr-review-chain').value='fixture-store';
+await $('ocr-review-chain').fire('change');
+assert.match($('ocr-candidate-summary').textContent,/店舗別SKU一致 1件/);
+await $('ocr-copy-products').fire('click');
+const localSelected=JSON.parse(copiedProductReport);
+assert.equal(localSelected.products[0].recognition.candidateStatus,'code_candidate');
+assert.deepEqual(localSelected.matchingContext,{catalogLoaded:true,chainSelected:true});
+assert.equal(actions.length,count,'Local file and chain selection must remain offline');
 review.dispose();
 assert.equal(gateListeners.size,0);
 assert.equal(authListeners.size,0);
