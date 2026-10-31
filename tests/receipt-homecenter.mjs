@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import '../receipt-structure.js';
+import '../receipt-product-matching.js';
 
 const {parse,merchandiseExcerpt,warningScopes}=globalThis.KurashiReceiptStructure;
 
@@ -47,6 +48,17 @@ assert.equal(bad.items[0].productCode,'4900000000008');
 assert.equal(bad.items[0].janChecksumValid,false);
 assert.ok(bad.items[0].issues.includes('invalid_jan_checksum'));
 assert.ok(bad.warnings.some(x=>x.code==='invalid_jan_checksum'&&x.line===4));
+const context={
+ householdId:'fictional-home',chainId:'fictional-chain',
+ products:[{household_id:'fictional-home',product_id:'p',name:'別の名前'}],
+ aliases:[{product_id:'p',chain_id:'fictional-chain',normalized_alias:'4900000000008'}]
+};
+const badSuggestion=globalThis.KurashiProductMatching.suggest(bad.items,context);
+assert.equal(badSuggestion[0].ocrCode,'4900000000008');
+assert.notEqual(badSuggestion[0].status,'code_candidate',
+ 'Bad checksum cannot become a registered-code match');
+assert.equal(badSuggestion[0].candidates.length,0);
+assert.equal(badSuggestion[0].requiresConfirmation,true);
 assert.equal(warningScopes(bad).merchandise,1,
  'The invalid JAN warning belongs to merchandise, not the footer');
 const scope=warningScopes(r);
