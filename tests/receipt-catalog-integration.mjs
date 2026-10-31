@@ -20,7 +20,11 @@ const ids=['ocr-review-text','ocr-sample','ocr-parse','ocr-load-catalog','ocr-cl
  'ocr-parse-status','ocr-candidate-confirmation','ocr-catalog-file',
  'ocr-review-chain','ocr-catalog-status','ocr-candidate-list','ocr-candidate-summary'];
 const elements=new Map(ids.map(id=>[id,node()]));
-const doc={getElementById:id=>elements.get(id),createElement:node};
+const docListeners=new Map(),winListeners=new Map();
+const doc={getElementById:id=>elements.get(id),createElement:node,
+ addEventListener(name,fn){docListeners.set(name,fn)},
+ removeEventListener(name){docListeners.delete(name)}
+};
 globalThis.document=doc;
 const originalFixture={
  household_id:'fixture-home',
@@ -54,7 +58,10 @@ function setGate(v){ready=v;for(const fn of gateListeners)fn()}
 function setSession(v){session=v;for(const fn of authListeners)fn({...session})}
 const win={KurashiReceiptStructure:globalThis.KurashiReceiptStructure,
  KurashiProductMatching:globalThis.KurashiProductMatching,
- KurashiAliasPreflight:globalThis.KurashiAliasPreflight};
+ KurashiAliasPreflight:globalThis.KurashiAliasPreflight,
+ addEventListener(name,fn){winListeners.set(name,fn)},
+ removeEventListener(name){winListeners.delete(name)}
+};
 globalThis.window=win;
 const review=mountReceiptCatalogIntegration({doc,win,auth,api,gate});
 const $=id=>elements.get(id);
@@ -81,6 +88,15 @@ assert.ok(item.children.some(n=>n.tag==='label'&&
   c.children.some(option=>option.textContent==='試験用・商品コード'))),
  'Catalog from authenticated API must appear as product selection');
 assert.match($('ocr-catalog-status').textContent,/認証済みの商品マスタ 1商品・1別名/);
+// Session may expire while Safari is in the background without a callback.
+session={signedIn:false,subject:null};
+winListeners.get('focus')();
+assert.equal(review.getState().catalog.catalogLoaded,false,
+ 'Returning to an expired login cannot expose a stale household catalog');
+session={signedIn:true,subject:'user-A'};
+setGate(false);setGate(true);
+await $('ocr-load-catalog').fire('click');
+assert.equal(review.getState().catalog.catalogLoaded,true);
 
 // Logout discards the private master but keeps local draft text.
 setSession({signedIn:false,subject:null});
@@ -129,5 +145,7 @@ assert.equal(actions.length,count,'Clear must not send a request');
 review.dispose();
 assert.equal(gateListeners.size,0);
 assert.equal(authListeners.size,0);
+assert.equal(docListeners.size,0);
+assert.equal(winListeners.size,0);
 assert.equal(actions.every(r=>r.action==='product.catalog'),true,'No mutation or alias write');
 console.log('Authenticated receipt text review PASS: explicit fixture matching, zero writes, no OCR upload, logout, stale reply, cross-household denial, clear');
