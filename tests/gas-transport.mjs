@@ -15,6 +15,7 @@ assert.equal(api.status().configured,true);
 await assert.rejects(api.request('item.create'),/WRITES_DISABLED/);
 assert.equal(api.writeEnabled(),false);
 await assert.rejects(api.request('product.create'),/UNSUPPORTED/);
+await assert.rejects(api.request('product.alias.create',{product_id:'p1',chain_id:'s1',product_code:'00012345',confirmed:true},{operationId:'would-write-0001'}),/UNSUPPORTED/);
 await assert.rejects(api.request('bootstrap',{}, {token:''}),/LOGIN_REQUIRED/);
 let calls=0;
 const fetcher=async (url,opts)=>{
