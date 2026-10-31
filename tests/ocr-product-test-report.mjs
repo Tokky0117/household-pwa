@@ -21,12 +21,17 @@ const costcoText=r01.text
  .replace('お買上点数 13点','御買上げ点数 13 (3D)');
 const r=parse(costcoText);
 assert.equal(r.items.length,13);
-assert.equal(r.items.filter(x=>x.issues.includes('quantity_ocr_ambiguous')).length,13);
+assert.equal(r.items.filter(x=>x.issues.includes('quantity_ocr_ambiguous')).length,12);
+assert.equal(r.items[2].quantitySource,'printed','Costco paper prints 1@ for one item');
+assert.equal(r.items[2].ocrQuantityToken,'1@');
+assert.equal(r.items[2].issues.length,0);
 assert.equal(r.reconciliation.netSum,14758);
 assert.equal(r.receiptTotal,14758);
 assert.equal(r.reconciliation.totalMatches,true);
 assert.equal(r.printedCount,13);
-assert.equal(r.reconciliation.printedCountMatches,true);
+assert.equal(r.reconciliation.printedCountMatches,null,'A sum of quantity guesses is not a verified count');
+assert.equal(r.reconciliation.candidateCountMatches,true);
+assert.equal(r.reconciliation.quantityVerified,false);
 assert.equal(r.taxTotal,1138);
 assert.deepEqual(r.taxBreakdown.map(x=>({rate:x.rate,amount:x.amount})),[
  {rate:8,amount:898},{rate:10,amount:240}
@@ -46,8 +51,10 @@ const json=createProductTestReport({
 const report=JSON.parse(json);
 assert.equal(report.version,'product-test-1');
 assert.equal(report.products.length,13);
-assert.equal(report.counts.needsReview,13);
-assert.deepEqual(report.counts.itemIssueTypes,[{code:'quantity_ocr_ambiguous',count:13}]);
+assert.equal(report.counts.needsReview,12);
+assert.equal(report.counts.uncertainQuantities,12);
+assert.equal(report.counts.unconfirmedNames,13);
+assert.deepEqual(report.counts.itemIssueTypes,[{code:'quantity_ocr_ambiguous',count:12}]);
 assert.equal(report.ocrSettings.japaneseGlyphConversion,true);
 assert.equal(report.ocrSettings.japaneseGlyphChanges,3);
 assert.equal(report.ocrSettings.yenGroupingChanges,2);
@@ -57,13 +64,22 @@ assert.equal(report.receiptChecks.netSum,14758);
 assert.equal(report.receiptChecks.receiptTotal,14758);
 assert.equal(report.receiptChecks.totalMatches,true);
 assert.equal(report.receiptChecks.printedCount,13);
-assert.equal(report.receiptChecks.printedCountMatches,true);
+assert.equal(report.receiptChecks.printedCountMatches,null);
+assert.equal(report.receiptChecks.candidateCountMatches,true);
+assert.equal(report.receiptChecks.quantity,null);
+assert.equal(report.receiptChecks.quantityCandidateSum,13);
+assert.equal(report.receiptChecks.quantityVerified,false);
 assert.equal(report.receiptChecks.taxTotal,1138);
-assert.equal(report.counts.needsReview,13,'A matching printed count cannot resolve ambiguous OCR quantities');
+assert.equal(report.counts.needsReview,12,'A matching arithmetic count cannot resolve 12 uncertain quantities');
 assert.equal(report.timing.recognitionMs,8694);
 assert.equal(report.products[0].ocrName,'TORRIDEN SERUM');
 assert.equal(report.products[0].code,'72587');
-assert.equal(report.products[0].quantity,1);
+assert.equal(report.products[0].quantity,null,'OCR token 10 cannot become a confirmed quantity');
+assert.equal(report.products[0].quantityCandidate,1);
+assert.equal(report.products[0].quantityStatus,'unverified_candidate');
+assert.equal(report.products[2].quantity,1,'1@ is an explicit printed quantity after amount reconciliation');
+assert.equal(report.products[2].quantityCandidate,null);
+assert.equal(report.products[2].quantityStatus,'printed_consistent');
 assert.equal(report.products[0].quantitySource,'inferred_candidate');
 assert.equal(report.products[0].ocrQuantityToken,'10','Show the OCR glyph which led to a quantity=1 candidate');
 assert.equal(report.products.filter(p=>p.ocrQuantityToken==='10').length,12);
@@ -73,7 +89,7 @@ assert.ok(!json.includes('SECRET_MEMBER_NUMBER'));
 
 assert.equal(report.products[0].discount,660);
 assert.equal(report.products[0].netAmount,2638);
-assert.ok(report.products.every(x=>x.issues.includes('quantity_ocr_ambiguous')));
+assert.ok(report.products.filter(x=>x.issues.includes('quantity_ocr_ambiguous')).length===12);
 assert.ok(report.products.every(x=>x.recognition.catalogSource==='none'));
 for(const secret of ['SECRET_DEVICE_AGENT','SECRET_RECEIPT_PAYMENT_DATA','SECRET_STORE_ADDRESS','SECRET_MEMBER_NUMBER',
  'rawText','sourceLines','rawLines','observations','household_id','product_id']){
@@ -96,6 +112,13 @@ assert.equal(verified.candidateStatus,'name_candidate');
 assert.deepEqual(verified.candidateNames,['牛乳']);
 assert.equal(verified.selectedProductName,'牛乳');
 assert.equal(verified.quantityConfirmed,true);
+assert.equal(verified.nameConfirmed,true);
+assert.equal(verified.manuallyCorrectedName,null);
+const manual=JSON.parse(createProductTestReport({receipt:parse('リンツリント・ールヒ・ンク450G ¥2,980'),diagnostic:diag,
+ review:{source:'none',items:[{manuallyCorrectedName:'リンツリンドールピンク450G'}]}})).products[0];
+assert.equal(manual.ocrName,'リンツリント・ールヒ・ンク450G');
+assert.equal(manual.recognition.manuallyCorrectedName,'リンツリンドールピンク450G');
+assert.equal(manual.recognition.nameConfirmed,true);
 assert.equal(withReview.includes('SECRET_HOUSEHOLD'),false);
 assert.equal(withReview.includes('SECRET_PRODUCT_ID'),false);
 // Potentially private OCR name must be suppressed, not exported verbatim.
@@ -118,6 +141,12 @@ assert.equal(jan.code,'4900000000009');
 assert.equal(jan.janChecksumValid,true);
 assert.equal(jan.amount,437);
 assert.equal(jan.ocrQuantityToken,null,'JAN triplets have no printed quantity marker');
+const manualQty=JSON.parse(createProductTestReport({receipt:r,diagnostic:diag,
+ review:{items:r.items.map((_,index)=>({quantityConfirmed:index===0}))}}));
+assert.equal(manualQty.products[0].quantity,1);
+assert.equal(manualQty.products[0].quantityStatus,'manual_confirmed');
+assert.equal(manualQty.products[1].quantity,null);
+assert.equal(manualQty.receiptChecks.printedCountMatches,null,'One manual confirmation does not verify entire receipt');
 assert.throws(()=>createProductTestReport({receipt:{items:Array(301).fill({})},diagnostic:diag}),
  /PRODUCT_REPORT_TOO_LARGE/);
 console.log('Product-level OCR clipboard report PASS: Costco R01 13 products, coupon math, quantity uncertainty, catalog choices, no member/payment/device leaks');
