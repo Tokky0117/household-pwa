@@ -104,6 +104,8 @@ jobs:
             'READ_ONLY_GAS_AUDIT: Test GAS source retrieved without modifying project or Sheets.',
             'Remote scripts: '+remoteFiles.length,
             'Remote and branch script source identical: '+(sha(local)===sha(remote)),
+            'Remote source SHA256: '+crypto.createHash('sha256').update(remote).digest('hex'),
+            'Remote manifest SHA256: '+crypto.createHash('sha256').update(remoteManifest).digest('hex'),
             'Manifest JSON identical: '+manifestMatches,
             'Remote manifest keys: '+Object.keys(remoteConf).sort().join(', '),
             'Remote and branch OAuth scope sets identical: '+(JSON.stringify(localScopes)===JSON.stringify(remoteScopes)),
