@@ -13,6 +13,8 @@ jobs:
     timeout-minutes: 8
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
@@ -74,6 +76,10 @@ jobs:
           node - <<'NODE'
           const fs=require('node:fs'),crypto=require('node:crypto');
           const local=fs.readFileSync('gas/Code.gs','utf8');
+          const child=require('node:child_process');
+          const priorSource=child.execFileSync('git',['show',
+            'e00cd8f2cc8b1927ee7a899884a1bec6c5c1758b:gas/Code.gs'],
+            {encoding:'utf8'});
           const path=require('node:path');
           const folder=path.join(process.env.RUNNER_TEMP,'remote-gas');
           const remoteFiles=fs.readdirSync(folder).filter(name=>
@@ -103,6 +109,7 @@ jobs:
           const report=[
             'READ_ONLY_GAS_AUDIT: Test GAS source retrieved without modifying project or Sheets.',
             'Remote scripts: '+remoteFiles.length,
+            'Remote matches previous verified GitHub gas source: '+(sha(priorSource)===sha(remote)),
             'Remote and branch script source identical: '+(sha(local)===sha(remote)),
             'Remote source SHA256: '+crypto.createHash('sha256').update(remote).digest('hex'),
             'Remote manifest SHA256: '+crypto.createHash('sha256').update(remoteManifest).digest('hex'),
