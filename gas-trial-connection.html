@@ -55,7 +55,8 @@ button:disabled{background:#a1aaba}.secondary{background:#eef2f8;color:#20508c}
 <section class="panel" id="ocr-review">
 <h2>⑤ OCR明細と登録商品を照合（読み取りのみ）</h2>
 <p>④の成功後に、端末内でレシート文字列から明細を抽出し、認証済み商品マスタと照合します。<strong>文字列・写真はGASに送信せず、商品マスタの読み取りのみ</strong>を行います。正式保存はできません。</p>
-<p><button id="ocr-sample" type="button" class="secondary">架空の試験明細をセット</button></p>
+<p><button id="ocr-sample" type="button" class="secondary">架空の試験明細をセット（1商品）</button> <button id="ocr-multi-sample" type="button" class="secondary">複数明細の架空サンプル（3商品）</button></p>
+<p class="muted">3商品サンプルには、登録済み1商品・未照合2商品・数量印字が曖昧な1明細を含めています。実レシートのOCR精度を示すものではありません。</p>
 <label for="ocr-review-text">レシートの文字起こし（端末内のみ・最大12,000文字）</label>
 <textarea id="ocr-review-text" rows="6" maxlength="12000" spellcheck="false" autocomplete="off" placeholder="OCRで読み取った文字列を貼り付けてください" ></textarea>
 <button id="ocr-parse" type="button" class="secondary">明細候補を抽出（通信なし）</button>
