@@ -1424,8 +1424,7 @@ function testIsolatedAliasWriteTrialPreflightReadOnly_(){
  Logger.log('ALIAS_TRIAL_PREFLIGHT_OK: 12 sheets, 5 categories, no existing alias trial');
  return true;
 }
-function testIsolatedAliasWriteTrialResultReadOnly_(){
- const book=spreadsheet(),state=isolatedAliasTrialGuard_(book);
+function verifyAliasFixtureCommitted_(state){
  const fixture=ALIAS_TRIAL_FIXTURE_;
  if(state.stores.length!==1||state.products.length!==1||
     state.aliases.length!==1||state.aliasLogs.length!==1||
@@ -1440,8 +1439,15 @@ function testIsolatedAliasWriteTrialResultReadOnly_(){
  if(result.status==='prepared'||
     String(result.entity?.alias_id)!==String(state.aliases[0].obj.alias_id)||
     String(result.entity?.normalized_alias)!==fixture.product_code||
+    String(result.entity?.product_id)!==fixture.product_id||
+    String(result.entity?.chain_id)!==fixture.store_id||
     Number(result.sequence_no)!==state.priorSequence+1)
   fail('TRIAL_RESULT_MISMATCH','操作履歴と別名データが一致しません');
+ return true;
+}
+function testIsolatedAliasWriteTrialResultReadOnly_(){
+ const book=spreadsheet(),state=isolatedAliasTrialGuard_(book);
+ verifyAliasFixtureCommitted_(state);
  Logger.log('ALIAS_TRIAL_RESULT_OK: store=1, product=1, aliases=1, change_log=1, journal=1, replay=verified, code_as_text=verified');
  return true;
 }
@@ -1462,6 +1468,8 @@ function testAliasCatalogReadOnly(){
      state.aliases.length!==1||state.aliasLogs.length!==1||
      state.aliasOps.length!==1)
    fail('CATALOG_FIXTURE_MISMATCH','試験用商品コード登録の完了状態を確認できません');
+  // Check durable journal consistency, not only the registered alias.
+  verifyAliasFixtureCommitted_(state);
   const home={householdId:state.householdId,userId:String(state.member.user_id)};
   const data=productCatalog_(home,book);
   if(String(data.household_id)!==state.householdId||
