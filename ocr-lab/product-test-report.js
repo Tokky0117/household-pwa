@@ -41,7 +41,7 @@ export function createProductTestReport({receipt,diagnostic,review,warningScopes
  const products=receipt.items.map((item,index)=>{
   const matched=rows[index]||{};
   const candidates=Array.isArray(matched.candidateNames)?matched.candidateNames.slice(0,3):[];
-  const uncertain=item.quantitySource==='inferred_candidate'||
+  const uncertain=item.quantitySource==='default'||item.quantitySource==='inferred_candidate'||
    (item.issues||[]).includes('quantity_ocr_ambiguous')||
    (item.issues||[]).includes('unit_quantity_mismatch');
   const confirmed=matched.quantityConfirmed===true;
@@ -55,8 +55,9 @@ export function createProductTestReport({receipt,diagnostic,review,warningScopes
    // Untrusted OCR counts never appear in the confirmed quantity field.
    quantity:uncertain&&!confirmed?null:number(item.quantity),
    quantityCandidate:uncertain?number(item.quantity):null,
-   quantityStatus:uncertain?(confirmed?'manual_confirmed':'unverified_candidate'):
-    item.quantitySource==='printed'?'printed_consistent':'default_one',
+   quantityStatus:uncertain?(confirmed?'manual_confirmed':
+    item.quantitySource==='default'?'unverified_default_one':'unverified_candidate'):
+    'printed_consistent',
    // Only an OCR digit/marker token; do not export raw text lines.
    ocrQuantityToken:typeof item.ocrQuantityToken==='string'&&
     /^\d{1,2}[●@eEoO]?$/.test(item.ocrQuantityToken)?item.ocrQuantityToken:null,
@@ -108,8 +109,10 @@ export function createProductTestReport({receipt,diagnostic,review,warningScopes
   },
   counts:{
    extractedItems:products.length,
-   needsReview:products.filter(x=>x.issues.length||x.quantityStatus==='unverified_candidate').length,
-   uncertainQuantities:products.filter(x=>x.quantityStatus==='unverified_candidate').length,
+   needsReview:products.filter(x=>x.issues.length||
+    ['unverified_candidate','unverified_default_one'].includes(x.quantityStatus)).length,
+   uncertainQuantities:products.filter(x=>
+    ['unverified_candidate','unverified_default_one'].includes(x.quantityStatus)).length,
    unconfirmedNames:products.filter(x=>!x.recognition.nameConfirmed).length,
    // Product-level review reasons are not the same as warnings outside
    // the merchandise region. Keep both counts for test comparisons.
