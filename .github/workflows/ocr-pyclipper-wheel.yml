@@ -1,0 +1,26 @@
+name: Export public pyclipper cp313 wheel for faithful Paddle detection comparison
+on:
+  push:
+    branches: [stage-a-ui-handoff-review]
+    paths: ['.github/workflows/ocr-pyclipper-wheel.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  wheel:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Obtain open-source pyclipper wheel
+        run: |
+          python -m pip download --only-binary=:all: --no-deps -d /tmp/public-wheel pyclipper==1.4.0
+          ls -lh /tmp/public-wheel
+      - name: Export public wheel only
+        uses: actions/upload-artifact@v4
+        with:
+          name: pyclipper-public-wheel
+          path: /tmp/public-wheel/*
+          retention-days: 1
+          compression-level: 0
