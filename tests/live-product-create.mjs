@@ -76,3 +76,63 @@ assert.match(app.liveListView(),/900mLの牛乳/);
 assert.equal(new Set(requests.filter(x=>x.action==='product.create')
  .map(x=>x.operationId)).size,1);
 console.log('Normal product master UI: create, uncertain response, exact-ID retry and stock catalog reload PASS');
+// A malformed successful response must not clear the durable intent,
+// show the unverified product or trigger a fresh bootstrap.
+const originalRequest=gas.request.bind(gas);
+let badReply=true,secondWriteCount=0,secondReadCount=0;
+const secondProduct={item_group_id:'group-A',name:'低脂肪乳',
+ package_quantity:1000,package_unit:'mL'};
+gas.request=async (action,payload,options={})=>{
+ if(action==='bootstrap'){secondReadCount++;return structuredClone(sheet)}
+ if(action!=='product.create')throw Error('Unexpected '+action);
+ if(badReply)return {status:'completed',action,sequence_no:8,
+  entity:{product_id:'bogus',household_id:'other-family',
+   item_group_id:payload.item_group_id,name:payload.name,
+   package_quantity:payload.package_quantity,package_unit:payload.package_unit,version:1}};
+ secondWriteCount++;
+ const entity={product_id:'product-new-002',household_id:'home-A',
+  item_group_id:payload.item_group_id,name:payload.name,
+  package_quantity:payload.package_quantity,package_unit:payload.package_unit,version:1};
+ if(!sheet.products.some(p=>p.product_id===entity.product_id))sheet.products.push(entity);
+ return {status:'completed',action,entity,sequence_no:8};
+};
+await app.liveMutate('product.create',secondProduct);
+assert.equal(win.KurashiLiveJournal.read()?.state,'uncertain');
+assert.equal(app.state().liveSnapshot.products.length,1,'Unverified product must not be shown');
+assert.equal(secondReadCount,0,'Unverified write must not refresh the snapshot');
+badReply=false;
+await app.retryLive();
+assert.equal(win.KurashiLiveJournal.read(),null);
+assert.equal(secondWriteCount,1);
+assert.equal(app.state().liveSnapshot.products.length,2);
+
+// The stock toggle must update the view as soon as GAS confirms, even
+// while the subsequent readback is still waiting on a network response.
+sheet.item_groups[0].version=1;
+await app.refreshLive();
+let releaseBootstrap=null;
+let appliedStock=0;
+gas.request=async (action,payload,options={})=>{
+ if(action==='bootstrap')return new Promise(resolve=>{
+  releaseBootstrap=()=>resolve(structuredClone(sheet));
+ });
+ if(action!=='item.update')throw Error('Unexpected '+action);
+ appliedStock++;
+ assert.equal(payload.item_group_id,'group-A');
+ const entity={...sheet.item_groups[0],version:2,in_stock:false};
+ sheet.item_groups[0]=entity;
+ return {entity,sequence_no:9};
+};
+const stockSave=app.liveMutate('item.update',
+ {item_group_id:'group-A',version:1,in_stock:false});
+for(let i=0;i<30&&!releaseBootstrap;i++)await Promise.resolve();
+assert.equal(appliedStock,1,'Stock write acknowledged');
+assert.ok(releaseBootstrap,'Readback is still pending');
+assert.equal(app.state().liveSnapshot.item_groups[0].in_stock,false,
+ 'Confirmed stock must render immediately before a slow bootstrap');
+assert.equal(win.KurashiLiveJournal.read(),null);
+releaseBootstrap();
+await stockSave;
+assert.equal(app.state().liveSnapshot.item_groups[0].version,2);
+console.log('Mutation reply validation: reject wrong household, preserve retry, immediate confirmed stock PASS');
+
