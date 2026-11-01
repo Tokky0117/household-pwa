@@ -30,7 +30,7 @@ function boot(){
     if(networkError)throw Error('SIMULATED_TIMEOUT');
     return {status:badAck?'broken':'completed',action:'record.create',
      entity:{household_id:'h1',record_id:'receipt-1'},
-     item_ids:['line-1']};
+     item_ids:['line-1'],sequence_no:1};
    }
   }
  };
