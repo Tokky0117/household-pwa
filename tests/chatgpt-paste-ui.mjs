@@ -25,7 +25,8 @@ const context=vm.createContext({
  createConfirmationPreview(){return{
   setParsed(receipt){reviews.push(receipt)},reset(){resets.push(true)}
  }},
- IMPORT_VERSION,parseChatGptReceiptJson,editChatGptReceiptDraft,draftQuality
+ IMPORT_VERSION,parseChatGptReceiptJson,editChatGptReceiptDraft,draftQuality,
+ makeChatGptReceiptPrompt
 });
 const src=fs.readFileSync(new URL('../ocr-lab/chatgpt-paste-ui.js',import.meta.url),'utf8');
 assert.match(src,/from '\.\/confirmation-preview\.js'/);
