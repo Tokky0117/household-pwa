@@ -1243,17 +1243,159 @@ function receiptCompletedReplay_(result,payload,hid,operationId,book){
  return result;
 }
 
+/**
+ * Existing, already-registered ALIAS trial Sheet only. No newly created
+ * Sheet, script properties, production household, public doPost or extra
+ * write-enable toggle. Read-only checks run before every editor-only write.
+ */
+const RECEIPT_TRIAL_FIXTURE_={
+ operation_id:'receipt-trial-create-00000001',
+ store_id:'alias-trial-store-0001',
+ product_id:'alias-trial-product-0001'
+};
+function receiptTrialPayload_(){
+ const fixture=RECEIPT_TRIAL_FIXTURE_;
+ return {version:'receipt-create-1',record_type:'receipt',
+  chain_id:fixture.store_id,record_date:'2026-11-01',
+  branch_name:null,raw_store_name:'[KURASHI_RECEIPT_TRIAL_ONLY]',
+  items:[
+   {line_order:1,raw_name:'試験用・商品コード',
+    product_id:fixture.product_id,quantity:1,
+    amount_tax_included:198,category_id:0,price_eligible:false},
+   {line_order:2,raw_name:'試験用・卵',
+    product_id:null,quantity:2,
+    amount_tax_included:298,category_id:0,price_eligible:false}
+  ]};
+}
+function receiptTrialGuard_(book){
+ const props=PropertiesService.getScriptProperties();
+ if(!approvedPrototypeAliasSheet_()||
+    props.getProperty('ENABLE_EXPERIMENTAL_WRITES')==='true'||
+    props.getProperty('RECEIPT_WRITES_ENABLED')==='true')
+  fail('TRIAL_NOT_ISOLATED','既存の試験用シート以外では実行できません');
+ assertAliasEditorTrialIdentity_(book);
+ const hid=String(rows('households',book)[0].obj.household_id),
+       member=rows('users',book)[0].obj;
+ const fixtures=ALIAS_TRIAL_FIXTURE_,trial=RECEIPT_TRIAL_FIXTURE_;
+ const stores=rows('stores',book),products=rows('products',book),
+       aliases=rows('product_aliases',book),cats=rows('categories',book),
+       rules=rows('receipt_rules',book);
+ if(cats.length!==5||cats.some((r,i)=>Number(r.obj.category_id)!==i||
+     String(r.obj.name)!==CATEGORIES[i])||
+    stores.length!==1||String(stores[0].obj.chain_id)!==fixtures.store_id||
+    String(stores[0].obj.household_id)!==hid||
+    String(stores[0].obj.canonical_name)!=='[KURASHI_ALIAS_TRIAL_ONLY]'||
+    products.length!==1||String(products[0].obj.product_id)!==fixtures.product_id||
+    String(products[0].obj.household_id)!==hid||
+    String(products[0].obj.name)!=='試験用・商品コード'||
+    aliases.length!==1||String(aliases[0].obj.product_id)!==fixtures.product_id||
+    String(aliases[0].obj.chain_id)!==fixtures.store_id||
+    String(aliases[0].obj.normalized_alias)!==fixtures.product_code||
+    rules.length!==0)
+  fail('TRIAL_NOT_ISOLATED','既存の試験用商品・店舗・カテゴリを確認できません');
+ const ops=rows('processed_operations',book),logs=rows('change_log',book),
+       receipts=rows('records',book),lines=rows('record_items',book);
+ const baseAlias=ops.filter(r=>String(r.obj.operation_id)===fixtures.operation_id),
+       baseLog=logs.filter(r=>String(r.obj.change_id)===fixtures.operation_id);
+ if(baseAlias.length!==1||baseLog.length!==1)
+  fail('TRIAL_NOT_ISOLATED','既存の商品コード試験が完了していません');
+ const trialOps=ops.filter(r=>String(r.obj.operation_id)===trial.operation_id),
+       trialLogs=logs.filter(r=>String(r.obj.change_id)===trial.operation_id);
+ if(trialOps.length>1||trialLogs.length>1||
+    ops.some(x=>String(x.obj.household_id)!==hid)||
+    logs.some(x=>String(x.obj.household_id)!==hid))
+  fail('TRIAL_NOT_ISOLATED','操作履歴に別家庭または重複があります');
+ for(const op of ops){
+  let state;
+  try{state=JSON.parse(String(op.obj.result))}
+  catch(_){fail('TRIAL_NOT_ISOLATED','既存の保存履歴が破損しています')}
+  if(String(op.obj.operation_id)!==trial.operation_id&&
+     state?.status==='prepared')
+   fail('RECOVERY_REQUIRED','別の未完了操作が残っています');
+ }
+ let expectedRecord=null,expectedItems=[];
+ if(trialOps.length){
+  let state;
+  try{state=JSON.parse(String(trialOps[0].obj.result))}
+  catch(_){fail('TRIAL_NOT_ISOLATED','試験レシートの履歴が破損しています')}
+  if(!['prepared','completed'].includes(state?.status)||
+     state?.action!=='record.create')
+   fail('TRIAL_NOT_ISOLATED','試験レシートの記録が不正です');
+  expectedRecord=state.status==='prepared'?state.entity:state.entity;
+  expectedItems=state.items;
+  if(!expectedRecord||!Array.isArray(expectedItems)||
+     expectedItems.length!==2||
+     String(expectedRecord.household_id)!==hid||
+     String(expectedRecord.chain_id)!==trial.store_id||
+     String(expectedRecord.raw_store_name)!=='[KURASHI_RECEIPT_TRIAL_ONLY]'||
+     expectedItems.some((line,i)=>line.line_order!==i+1||
+       line.amount_tax_included!==(i===0?198:298)||
+       String(line.product_id??'')!==String(i===0?trial.product_id:'')||
+       line.quantity!==(i===0?1:2)||
+       String(line.record_id)!==String(expectedRecord.record_id)))
+   fail('TRIAL_NOT_ISOLATED','保存計画が固定の試験内容と一致しません');
+ }
+ if((!expectedRecord&&(receipts.length||lines.length||trialLogs.length))||
+    (expectedRecord&&(receipts.length>1||lines.length>2||
+       receipts.some(x=>!receiptSameRow_(x.obj,expectedRecord,'records'))||
+       lines.some(x=>!expectedItems.some(e=>
+         String(e.record_item_id)===String(x.obj.record_item_id)&&
+         receiptSameRow_(x.obj,e,'record_items'))))))
+  fail('TRIAL_NOT_ISOLATED','試験以外の購入履歴があります');
+ if(trialLogs.length&&
+    (!expectedRecord||trialLogs[0].obj.entity_id!==expectedRecord.record_id))
+  fail('TRIAL_NOT_ISOLATED','変更履歴に想定外のレシートが存在します');
+ return {householdId:hid,userId:String(member.user_id),
+  records:receipts.length,items:lines.length,completed:trialOps.length>0&&
+    (()=>{try{return JSON.parse(String(trialOps[0].obj.result)).status==='completed'}
+     catch(_){return false}})()};
+}
+/** Owner runs one public editor function after deploying updated trial code.
+ * The editor-only helper is intentionally not a doPost action.
+ */
+function runReceiptWriteTrialOnce(){
+ const pre=receiptTrialGuard_(spreadsheet()),
+       user={householdId:pre.householdId,userId:pre.userId},
+       payload=receiptTrialPayload_(),id=RECEIPT_TRIAL_FIXTURE_.operation_id;
+ const saved=mutateReceiptSafely_(user,payload,id,true);
+ const retry=mutateReceiptSafely_(user,payload,id,true);
+ if(saved.status!=='completed'||saved.entity?.record_id!==retry.entity?.record_id||
+    JSON.stringify(saved.item_ids)!==JSON.stringify(retry.item_ids))
+  fail('TRIAL_RESULT_MISMATCH','同じレシートの再送結果が一致しません');
+ const after=receiptTrialGuard_(spreadsheet()),
+       visible=receiptList_(user);
+ if(!after.completed||after.records!==1||after.items!==2||
+    visible.records.length!==1||visible.record_items.length!==2)
+  fail('TRIAL_RESULT_MISMATCH','保存行・明細・読取結果が一致しません');
+ Logger.log('RECEIPT_TRIAL_OK: record=1, lines=2, amount=496, replay=same, writes=isolated');
+ return {ok:true,records:1,items:2,amount:496,replay:true};
+}
+/** Same assertions as above, no write: safe to run repeatedly in editor. */
+function checkReceiptTrialReadOnly(){
+ const state=receiptTrialGuard_(spreadsheet());
+ const result={completed:state.completed,records:state.records,items:state.items};
+ Logger.log('RECEIPT_TRIAL_READ_ONLY: '+JSON.stringify(result));
+ return result;
+}
+
 /** Called only from reviewed isolated tests; NOT from the public dispatcher. */
-function mutateReceiptSafely_(user,payload,operationId){
+function mutateReceiptSafely_(user,payload,operationId,localEditorTrial){
  if(typeof operationId!=='string'||!/^[A-Za-z0-9_-]{8,128}$/.test(operationId))
   fail('BAD_REQUEST','操作IDが不正です');
  // Explicit independent gate: doPost still rejects this action unconditionally.
- if(PropertiesService.getScriptProperties().getProperty('RECEIPT_WRITES_ENABLED')!=='true')
+ if(localEditorTrial!==true&&
+    PropertiesService.getScriptProperties().getProperty('RECEIPT_WRITES_ENABLED')!=='true')
   fail('RECEIPT_WRITES_DISABLED','レシート保存は許可されていません');
  const lock=LockService.getScriptLock();
  if(!lock.tryLock(20000))fail('BUSY','保存が混み合っています');
  try{
-  const book=requireIsolatedWriteTrial(false),hid=String(user.householdId);
+  const book=localEditorTrial===true?spreadsheet():requireIsolatedWriteTrial(false),
+        hid=String(user.householdId);
+  if(localEditorTrial===true){
+   const trial=receiptTrialGuard_(book);
+   if(hid!==trial.householdId||String(user.userId)!==trial.userId)
+    fail('TRIAL_NOT_ISOLATED','試験用ユーザーの所属が一致しません');
+  }
   const valid=receiptPayload_(payload),digest=receiptDigest_(valid);
   const allOps=rows('processed_operations',book),matching=allOps.filter(
    x=>String(x.obj.operation_id)===operationId);
