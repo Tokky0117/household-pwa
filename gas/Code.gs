@@ -67,6 +67,10 @@ function doPost(e){
     fail('WRITES_DISABLED','対象の保存環境を確認してください');
    return jsonReply({ok:true,data:mutateProductSafely_(user,payload,input.operation_id)});
   }
+  if(action==='product.update'){
+   if(!approvedPrototypeAliasSheet_())fail('WRITES_DISABLED','対象の保存環境を確認してください');
+   return jsonReply({ok:true,data:mutateProductUpdateSafely_(user,payload,input.operation_id)});
+  }
   // Existing pinned household Sheet: ordinary item/stock operations.
   // Reuse the existing locked, crash-recoverable item transaction.
   if(action==='item.create'||action==='item.update'){
@@ -539,7 +543,7 @@ function mutateItemSafely_(user,action,payload,operationId){
      fail('DUPLICATE','同名の日用品は非表示データを含めて再利用してください');
     const sort=Math.max(0,...items.filter(x=>String(x.obj.category_id)===String(payload.category_id)).map(x=>Number(x.obj.sort_order)||0))+1;
     output={item_group_id:Utilities.getUuid(),household_id:hid,category_id:payload.category_id,
-     name:name,normalized_name:normalized(name),in_stock:true,sort_order:sort,is_hidden:false,
+     name:name,normalized_name:normalized(name),in_stock:false,sort_order:sort,is_hidden:false,
      version:1,created_at:now,updated_at:now,deleted_at:null};
    }else{
     const itemId=requiredId(payload.item_group_id);
@@ -1003,6 +1007,122 @@ function mutateProductSafely_(user,payload,operationId){
  * prototype only. A durable journal precedes the store and change-log rows.
  * A retry reconciles the SAME immutable operation without creating duplicates.
  */
+/* Journaled single-product edit, link/unlink. Reorder is a separate batch API. */
+function mutateProductUpdateSafely_(user,p,opId){
+ if(typeof opId!=='string'||!/^[A-Za-z0-9_-]{8,128}$/.test(opId))fail('BAD_REQUEST','操作IDを確認してください');
+ if(!p||typeof p!=='object'||Array.isArray(p)||
+    Object.keys(p).sort().join(',')!=='item_group_id,name,package_quantity,package_unit,product_id,version')
+  fail('BAD_REQUEST','商品編集の項目が不正です');
+ const pid=requiredId(p.product_id),group=p.item_group_id===null?null:requiredId(p.item_group_id);
+ if(!Number.isSafeInteger(p.version)||p.version<1)fail('BAD_REQUEST','バージョンを確認してください');
+ const shape=productShape(p);
+ const clean={product_id:pid,version:p.version,item_group_id:group,...shape};
+ const digest=Utilities.base64EncodeWebSafe(Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256,
+  JSON.stringify({action:'product.update',payload:clean})));
+ const lock=LockService.getScriptLock();
+ if(!lock.tryLock(20000))fail('BUSY','保存が混み合っています');
+ try{
+  const book=spreadsheet(),hid=String(user.householdId);
+  assertPrototypeReceiptIdentity_(book,user);
+  const ops=rows('processed_operations',book);
+  const mine=ops.filter(x=>String(x.obj.household_id)===hid);
+  const found=ops.filter(x=>String(x.obj.operation_id)===opId);
+  if(found.length>1||found.some(x=>String(x.obj.household_id)!==hid)||
+     new Set(mine.map(x=>String(x.obj.operation_id))).size!==mine.length)
+   fail('RECOVERY_CONFLICT','操作履歴を確認できません');
+  if(found.length&&String(found[0].obj.request_hash)!==digest)
+   fail('OPERATION_REUSED','操作IDが異なる変更に使われました');
+  for(const row of mine){
+   let state;
+   try{state=JSON.parse(String(row.obj.result))}catch(_){fail('RECOVERY_CONFLICT','操作履歴が壊れています')}
+   if(state?.status==='prepared'&&String(row.obj.operation_id)!==opId)
+    fail('RECOVERY_REQUIRED','未完了の操作を先に復旧してください');
+  }
+  const products=rows('products',book),row=products.filter(x=>String(x.obj.product_id)===pid);
+  if(row.length!==1||String(row[0].obj.household_id)!==hid||row[0].obj.deleted_at)
+   fail('NOT_FOUND','対象の商品が見つかりません');
+  const groups=rows('item_groups',book);
+  if(group!==null&&groups.filter(x=>String(x.obj.item_group_id)===group&&
+     String(x.obj.household_id)===hid&&!x.obj.deleted_at&&
+     x.obj.is_hidden!==true&&String(x.obj.is_hidden).toLowerCase()!=='true').length!==1)
+   fail('NOT_FOUND','登録先の日用品が見つかりません');
+  if(products.some(x=>String(x.obj.product_id)!==pid&&String(x.obj.household_id)===hid&&
+     !x.obj.deleted_at&&normalized(x.obj.name)===shape.normalized_name&&
+     String(x.obj.package_quantity??'')===String(shape.package_quantity??'')&&
+     String(x.obj.package_unit??'')===String(shape.package_unit??'')))
+   fail('DUPLICATE','同じ商品が既に登録されています');
+  let plan,opRow=found[0]?.row;
+  if(found.length){
+   try{plan=JSON.parse(String(found[0].obj.result))}catch(_){fail('RECOVERY_CONFLICT','操作履歴が壊れています')}
+   if(!plan||!['prepared','completed'].includes(plan.status)||
+      plan.action!=='product.update'||!plan.base||!plan.entity||
+      String(plan.entity.product_id)!==pid||String(plan.entity.household_id)!==hid||
+      Number(plan.base.version)!==p.version||Number(plan.entity.version)!==p.version+1||
+      String(plan.entity.item_group_id??'')!==String(group??'')||
+      String(plan.entity.name)!==shape.name||
+      String(plan.entity.package_quantity??'')!==String(shape.package_quantity??'')||
+      String(plan.entity.package_unit??'')!==String(shape.package_unit??'')||
+      (plan.status==='prepared'&&(!plan.log||plan.log.change_id!==opId||
+       plan.log.action!=='product.update'||plan.log.entity_id!==pid))||
+      (plan.status==='completed'&&(!Number.isSafeInteger(plan.sequence_no)||plan.sequence_no<1)))
+    fail('RECOVERY_CONFLICT','再送する商品変更が一致しません');
+  }else{
+   assertVersion(row[0],p.version);
+   const base=row[0].obj,now=new Date().toISOString();
+   const order=group===null?null:
+    String(base.item_group_id??'')===group?base.item_group_order:
+     Math.max(0,...products.filter(x=>String(x.obj.household_id)===hid&&
+       String(x.obj.item_group_id)===group&&!x.obj.deleted_at)
+       .map(x=>Number(x.obj.item_group_order)||0))+1;
+   const entity={...base,...shape,item_group_id:group,item_group_order:order,
+    version:p.version+1,updated_at:now};
+   const log={change_id:opId,sequence_no:currentSequence(hid,book)+1,
+    household_id:hid,entity_type:'products',entity_id:pid,
+    action:'product.update',occurred_at:now};
+   plan={status:'prepared',action:'product.update',base:publicRow(base),entity,log};
+   opRow=append_('processed_operations',{household_id:hid,operation_id:opId,
+     request_hash:digest,result:JSON.stringify(plan),processed_at:now},book);
+   const confirmed=rows('processed_operations',book).filter(x=>String(x.obj.operation_id)===opId);
+   if(confirmed.length!==1||confirmed[0].row!==opRow||
+      String(confirmed[0].obj.result)!==JSON.stringify(plan))
+    fail('RECOVERY_CONFLICT','操作記録の確認に失敗しました');
+  }
+  if(!receiptSameRow_(row[0].obj,plan.entity,'products')){
+   if(plan.status==='completed'||!receiptSameRow_(row[0].obj,plan.base,'products'))
+    fail('RECOVERY_CONFLICT','編集中に商品が変わりました');
+   write_('products',row[0].row,plan.entity,tab('products',book));
+  }
+  const logs=rows('change_log',book),entries=logs.filter(x=>String(x.obj.change_id)===opId);
+  if(entries.length>1)fail('RECOVERY_CONFLICT','変更履歴が重複しています');
+  if(plan.status==='completed'){
+   if(entries.length!==1||String(entries[0].obj.household_id)!==hid||
+     entries[0].obj.action!=='product.update'||
+     String(entries[0].obj.entity_id)!==pid||
+     Number(entries[0].obj.sequence_no)!==plan.sequence_no)
+    fail('RECOVERY_CONFLICT','確定履歴が一致しません');
+   return plan;
+  }
+  if(entries.length){
+   if(!receiptSameRow_(entries[0].obj,plan.log,'change_log'))
+    fail('RECOVERY_CONFLICT','履歴が一致しません');
+  }else{
+   if(logs.some(x=>String(x.obj.household_id)===hid&&
+      Number(x.obj.sequence_no)>=Number(plan.log.sequence_no)))
+    fail('RECOVERY_CONFLICT','履歴の連番が競合しています');
+   append_('change_log',plan.log,book);
+  }
+  if(rows('products',book).filter(x=>String(x.obj.product_id)===pid&&
+     receiptSameRow_(x.obj,plan.entity,'products')).length!==1)
+   fail('RECOVERY_CONFLICT','商品変更を検証できません');
+  const result={status:'completed',action:'product.update',
+   entity:publicRow(plan.entity),sequence_no:plan.log.sequence_no};
+  write_('processed_operations',opRow,{household_id:hid,operation_id:opId,
+   request_hash:digest,result:JSON.stringify(result),processed_at:plan.entity.updated_at},
+   tab('processed_operations',book));
+  return result;
+ }finally{lock.releaseLock()}
+}
+
 function mutateStoreSafely_(user,payload,operationId){
  if(typeof operationId!=='string'||!/^[A-Za-z0-9_-]{8,128}$/.test(operationId))
   fail('BAD_REQUEST','操作IDが不正です');
