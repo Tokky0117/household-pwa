@@ -81,7 +81,7 @@ jobs:
           const sha=s=>crypto.createHash('sha256').update(s).digest('hex');
           const original=fs.readFileSync(path.join(remoteDir,'コード.js'),'utf8');
           const baseline=cp.execFileSync('git',
-            ['show','f719da65aeac1ec766918a3f16391847624590c0:gas/Code.gs'],
+            ['show','a768edba8d61e45f444813cf5a9c2f76de3733d9:gas/Code.gs'],
             {encoding:'utf8'});
           if(sha(original)!==sha(baseline))throw Error('REMOTE_SOURCE_DRIFT_REVIEW_REQUIRED');
           const code=fs.readFileSync('gas/Code.gs','utf8');
@@ -110,7 +110,7 @@ jobs:
           const added=[...updated].filter(n=>!existing.has(n));
           if(removed.length!==allowedRemoved.size||
              removed.some(n=>!allowedRemoved.has(n))||
-             JSON.stringify(added.sort())!==JSON.stringify(['mutateProductSafely_']))
+             added.length!==0)
             throw Error('SOURCE_FUNCTION_DIFF_NOT_REVIEWED');
           for(const fn of ['doPost','authenticate','bootstrap','mutateItemSafely_',
             'mutateProductSafely_','mutateReceiptSafely_','mutateStoreSafely_','receiptList_']){
