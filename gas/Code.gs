@@ -265,6 +265,11 @@ function doPost(e){
   const action=String(input.action||'');
   const payload=input.payload||{};
   if(action==='bootstrap')return jsonReply({ok:true,data:bootstrap(user,readContext.book)});
+  if(action==='household.status'){
+   if(!payload||typeof payload!=='object'||Array.isArray(payload)||Object.keys(payload).length)
+    fail('BAD_REQUEST','家庭の接続診断では入力を受け付けません');
+   return jsonReply({ok:true,data:householdStatus_(user,readContext.book)});
+  }
    if(action==='product.catalog')return jsonReply({ok:true,data:productCatalog_(user,readContext.book)});
    if(action==='product.alias.check')return jsonReply({ok:true,data:productAliasCheck_(user,payload,readContext.book)});
   if(action==='record.list'){
@@ -468,6 +473,37 @@ function authenticate(idToken,readContext){
  return {userId:String(member.obj.user_id),householdId:String(member.obj.household_id)};
 }
 function publicRow(obj){return JSON.parse(JSON.stringify(obj))}
+/**
+ * Read-only household binding diagnostic. It returns NO personal identity,
+ * name, email, Google subject, invite token, or user_id. Each spouse must
+ * independently authenticate and compare the scoped household identifier.
+ * Never creates/links accounts: membership changes remain manual and audited.
+ */
+function householdStatus_(user,book){
+ const b=book||spreadsheet(),hid=String(user.householdId);
+ const homes=rows('households',b).filter(x=>String(x.obj.household_id)===hid);
+ if(homes.length!==1)fail('FORBIDDEN','家庭の登録が一意ではありません');
+ const allUsers=rows('users',b),members=allUsers.filter(x=>
+  String(x.obj.household_id)===hid);
+ if(!members.length||members.length>20||members.some(x=>
+    !x.obj.user_id||!x.obj.auth_subject||String(x.obj.auth_subject).length>256))
+  fail('HOUSEHOLD_MEMBERSHIP_INVALID','家庭の登録を確認できません');
+ const subjects=new Set(),userIds=new Set();
+ for(const member of members){
+  const sub=String(member.obj.auth_subject),id=String(member.obj.user_id);
+  if(subjects.has(sub)||userIds.has(id)||
+     allUsers.filter(x=>String(x.obj.auth_subject)===sub).length!==1)
+   fail('HOUSEHOLD_MEMBERSHIP_INVALID','家庭の利用者登録が重複しています');
+  subjects.add(sub);userIds.add(id);
+ }
+ if(!members.some(x=>String(x.obj.user_id)===String(user.userId)))
+  fail('FORBIDDEN','家庭の所属を確認できません');
+ return {household_id:hid,member_count:members.length,
+  // This is advisory. A count of two does NOT prove they are the intended
+  // people. Both spouses need their own authenticated successful response.
+  two_member_count:members.length===2,receipt_write_enabled:false};
+}
+
 function bootstrap(user,book){
  // A single request uses one handle for all five logical Sheet reads.
  // Do not cache rows: household and schema checks remain per-request.
