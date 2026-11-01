@@ -82,9 +82,15 @@ let receiptChatGptText='',receiptChatGptNotice='';
 let receiptRemoteCatalog=null,receiptCatalogSubject=null,
  receiptCatalogBusy=false,receiptCatalogStatus='未取得',receiptCatalogEpoch=0,
  receiptSaveBusy=false;
+function receiptTrialWritable(){
+ return window.KURASHI_RECEIPT_TEST_MODE!==true&&
+  window.KurashiReceiptSaveSession?.trialWriteEnabled?.()===true&&
+  window.KurashiAuth?.status?.()?.signedIn===true;
+}
 function receiptRemoteWritable(){
  return window.KURASHI_RECEIPT_TEST_MODE!==true&&
-  window.KurashiReceiptSaveSession?.writeEnabled?.()===true&&
+  (window.KurashiReceiptSaveSession?.writeEnabled?.()===true||
+   receiptTrialWritable())&&
   window.KurashiAuth?.status?.()?.signedIn===true;
 }
 function currentReceiptCatalog(){
@@ -169,18 +175,26 @@ async function saveConfirmedReceiptToSheets(approvals){
   render();return;
  }
  receiptSaveBusy=true;receiptScan.status='確認した明細を保存しています…';render();
+ const trial=receiptTrialWritable();
  try{
-  const preflight=await window.KurashiGasApi.request('record.preflight',payload);
+  const preflight=await window.KurashiGasApi.request(
+   trial?'record.trial.preflight':'record.preflight',payload);
   if(!receiptRemoteWritable()||window.KurashiAuth?.status?.()?.subject!==subject||
      epoch!==receiptCatalogEpoch)throw Error('RECEIPT_SESSION_CHANGED');
   const sum=payload.items.reduce((n,item)=>n+item.amount_tax_included,0);
-  if(!preflight||preflight.household_id!==catalog.household_id||
-     preflight.version!==payload.version||preflight.item_count!==payload.items.length||
-     preflight.total_tax_included!==sum||preflight.blocked_by_pending_operation!==false||
-     preflight.write_enabled!==false)
+  if(!preflight||preflight.version!==payload.version||
+     preflight.item_count!==payload.items.length||
+     preflight.total_tax_included!==sum||preflight.write_enabled!==false||
+     (trial?(preflight.trial_ready!==true||
+       Object.keys(preflight).sort().join(',')!==
+        'item_count,total_tax_included,trial_ready,version,write_enabled'):
+      (preflight.household_id!==catalog.household_id||
+       preflight.blocked_by_pending_operation!==false)))
    throw Error('RECEIPT_PREFLIGHT_FAILED');
-  await window.KurashiReceiptSaveSession.create({
-   subject,householdId:catalog.household_id,payload,operationId:id()
+  const operationId=trial?'receipt-trial-main-'+id():id();
+  await (trial?window.KurashiReceiptSaveSession.trialCreate:
+    window.KurashiReceiptSaveSession.create)({
+   subject,householdId:catalog.household_id,payload,operationId
   });
   if(window.KurashiAuth?.status?.()?.subject!==subject)return;
   discardReceiptScan();receiptRecoveryNotice='';
@@ -350,7 +364,7 @@ function receiptPendingView(){
  try{safe=window.KurashiReceiptSaveSession?.pending?.(subject,household)}
  catch{safe={status:'invalid'}}
  const belongs=safe?.status==='pending';
- const canRetry=belongs&&window.KurashiReceiptSaveSession?.writeEnabled?.()===true;
+ const canRetry=belongs&&receiptRemoteWritable();
  return '<section class="panel"><h2>未完了のレシート保存操作</h2>'+
   '<p class="hint">結果不明の操作は自動再送しません。別のレシートとして登録し直さないでください。</p>'+
   (belongs?'<p class="hint">対象：'+hasPending.payload.items.length+
@@ -363,8 +377,7 @@ function receiptPendingView(){
   '</section>';
 }
 async function retryReceiptSave(){
- if(window.KURASHI_RECEIPT_TEST_MODE===true||
-    window.KurashiReceiptSaveSession?.writeEnabled?.()!==true)return;
+ if(!receiptRemoteWritable())return;
  const auth=window.KurashiAuth?.status?.();
  const hid=currentReceiptCatalog()?.household_id||
   (remoteReceiptSubject===auth?.subject?remoteReceipts?.household_id:null);
@@ -401,7 +414,7 @@ function remoteReceiptView(){
    '</ul></details>';
  }).join('');
  return '<section class="receipt-remote-read"><h2 class="sectiontitle">Google Sheetsの確定レシート（読み取り専用）</h2>'+
-  '<p class="hint">正式保存済みで、記録が完了した明細のみ表示します。試作データは混ぜません。保存機能はまだ無効です。</p>'+
+  '<p class="hint">確定したGoogle Sheetsの明細だけを表示します。端末の試作データは混ぜません。</p>'+
   '<button type="button" class="secondary" data-act="refreshRemoteReceipts"'+
   ((!allowed||remoteReceiptBusy)?' disabled':'')+'>確定レシートを読み取る</button>'+
   '<p class="hint" role="status">状態：'+esc(allowed?remoteReceiptStatus:
