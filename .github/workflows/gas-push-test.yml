@@ -1,10 +1,7 @@
 name: Push GAS to test project (manual)
-# One authorized source-only sync for the existing isolated test GAS.
-# The push trigger is single-message gated and will be removed immediately.
+# Manual-only after successful receipt candidate source sync (2026-11-01).
+# Source updates require reviewed target, backup and explicit approval.
 on:
-  push:
-    branches: [stage-a-ui-handoff-review]
-    paths: ['.github/workflows/gas-push-test.yml']
   workflow_dispatch:
     inputs:
       confirm_target_backup:
@@ -25,7 +22,7 @@ concurrency:
 
 jobs:
   push-test:
-    if: github.ref == 'refs/heads/stage-a-ui-handoff-review' && ((github.event_name == 'workflow_dispatch' && inputs.confirm_target_backup == 'BACKUP_DONE' && inputs.confirm_test_source == 'TEST_GAS_UPDATE') || (github.event_name == 'push' && github.event.head_commit.message == 'IMPLEMENT9_MAIN_TRIAL_GAS_SOURCE_SYNC_ONCE_20261101'))
+    if: github.ref == 'refs/heads/stage-a-ui-handoff-review' && inputs.confirm_target_backup == 'BACKUP_DONE' && inputs.confirm_test_source == 'TEST_GAS_UPDATE'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
