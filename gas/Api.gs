@@ -125,20 +125,35 @@ function kurashiSequence_(hid,book) {
 }
 function kurashiBootstrap_(user) {
   const book=user.book,hid=user.householdId;
-  return {
-    household_id:hid,
-    categories:kurashiRows_('categories',book).map(x=>kurashiPublic_(x.value)),
-    item_groups:kurashiRows_('item_groups',book)
+  const lock=LockService.getScriptLock();
+  if (!lock.tryLock(20000)) kurashiFail_('BUSY','読み込みが混み合っています');
+  try {
+    const pending=kurashiRows_('processed_operations',book)
       .filter(x=>String(x.value.household_id)===hid)
-      .map(x=>kurashiPublic_(x.value)),
-    products:kurashiRows_('products',book)
-      .filter(x=>String(x.value.household_id)===hid && !x.value.deleted_at)
-      .map(x=>kurashiPublic_(x.value)),
-    stores:kurashiRows_('stores',book)
-      .filter(x=>String(x.value.household_id)===hid)
-      .map(x=>kurashiPublic_(x.value)),
-    sequence_no:kurashiSequence_(hid,book)
-  };
+      .some(x=>{
+        let state;
+        try {state=JSON.parse(String(x.value.result));}
+        catch (_) {kurashiFail_('RECOVERY_CONFLICT','保存履歴を確認できません');}
+        return state.status==='prepared';
+      });
+    if (pending) kurashiFail_('RECOVERY_REQUIRED','前回の保存を先に確認してください');
+    return {
+      household_id:hid,
+      categories:kurashiRows_('categories',book).map(x=>kurashiPublic_(x.value)),
+      item_groups:kurashiRows_('item_groups',book)
+        .filter(x=>String(x.value.household_id)===hid)
+        .map(x=>kurashiPublic_(x.value)),
+      products:kurashiRows_('products',book)
+        .filter(x=>String(x.value.household_id)===hid && !x.value.deleted_at)
+        .map(x=>kurashiPublic_(x.value)),
+      stores:kurashiRows_('stores',book)
+        .filter(x=>String(x.value.household_id)===hid)
+        .map(x=>kurashiPublic_(x.value)),
+      sequence_no:kurashiSequence_(hid,book)
+    };
+  } finally {
+    lock.releaseLock();
+  }
 }
 function kurashiNormalize_(name) {
   return String(name).normalize('NFKC').trim().replace(/\s+/g,' ').toLocaleLowerCase('ja');
