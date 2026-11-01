@@ -27,7 +27,7 @@ const ctx=vm.createContext({window:win,document:{getElementById:id=>id==='app'?a
  removeItem(k){mutations++;storage.delete(k)}
 },navigator:{},location:{protocol:'file:'},Date,Intl,URL,console,setTimeout:()=>1,clearTimeout(){}});
 const extra='\n({refreshRemoteReceipts,remoteReceiptView,clearRemoteReceipts,'+
- 'validateRemoteReceipts,render,budgetView,'+
+ 'validateRemoteReceipts,render,budgetView,receiptView,'+
  'state:()=>({remoteReceipts,remoteReceiptSubject,remoteReceiptStatus,remoteReceiptBusy}),'+
  "setReceiptTab(){tab='receipt';page='list'},"+
  "setBudgetTab(){tab='budget';page='list';budgetMonth='2026-10'},"+
@@ -51,6 +51,13 @@ assert.match(familyBudget,/確定レシート（家計簿・読み取り専用�
 assert.match(familyBudget,/2026-10の確定購入額/);
 assert.match(familyBudget,/198円/);
 assert.match(familyBudget,/合算しません/);
+assert.doesNotMatch(familyBudget,/以下はサンプルと端末内の試作記録だけです/,
+ 'Authenticated household budget must never display fake totals');
+const familyHistory=ui.receiptView();
+assert.match(familyHistory,/Google Sheetsの確定レシート/);
+assert.doesNotMatch(familyHistory,/このSafari内の試作記録（Google Sheetsには未保存）/,
+ 'Authenticated receipt screen must not mix a fake browser-local history');
+
 const beforeBudgetRefresh=requests.length;
 await ui.refreshRemoteReceipts();
 assert.equal(requests.length,beforeBudgetRefresh+1,
