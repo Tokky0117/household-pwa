@@ -146,6 +146,17 @@ const savedStock=temp.call('bootstrap').data.item_groups.find(x=>x.item_group_id
 assert.equal(savedStock.in_stock,false,'server stock matches tap');
 assert.equal(savedStock.version,3,'server version advanced');
 assert.equal(window.KurashiLive.state().mutating,false,'save slot released');
+// Two quick taps must perform two sequential versioned writes, not ignore tap #2.
+const repeatedOne=window.KurashiLive.toggleStock(id);
+const repeatedTwo=window.KurashiLive.toggleStock(id);
+const twoResults=await Promise.all([repeatedOne,repeatedTwo]);
+assert.equal(twoResults[0].version,4,'first queued tap commits version 4');
+assert.equal(twoResults[1].version,5,'second queued tap commits version 5');
+const twice=temp.call('bootstrap').data.item_groups.find(x=>x.item_group_id===id);
+assert.equal(twice.in_stock,false,'two additional taps return to original stock');
+assert.equal(twice.version,5,'two taps must create two writes');
+assert.ok(app.includes("const APP_VERSION='0.51.0'"),'app has version constant');
+assert.ok(app.includes('アプリバージョン'),'settings shows version number');
 assert.ok(app.includes('pullToRefresh'),'PWA includes standalone pull refresh');
 assert.ok(app.includes("window.KurashiLive.load().then"),'pull refresh fetches Sheets');
 
