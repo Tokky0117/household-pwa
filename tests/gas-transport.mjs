@@ -59,6 +59,27 @@ assert.equal(check.status,'already_registered');
 assert.equal(check.write_permitted,false);
 assert.equal(calls,3);
 assert.equal(api.receiptWriteEnabled(),false);
+// Only a verified trial operator may request a completed fixed-fixture replay.
+await assert.rejects(api.request('record.trial.replay',{}),/TRIAL_REPLAY_NOT_CONFIRMED/);
+await assert.rejects(api.request('record.trial.replay',{items:[]},
+ {confirmedTrialReplay:true}),/TRIAL_REPLAY_NOT_CONFIRMED/);
+await assert.rejects(api.request('record.trial.replay',{},
+ {confirmedTrialReplay:true,operationId:'unexpected-op-01'}),
+ /TRIAL_REPLAY_NOT_CONFIRMED/);
+const replay=await api.request('record.trial.replay',{},
+ {confirmedTrialReplay:true,fetcher:async (_url,opts)=>{
+  const sent=JSON.parse(opts.body);
+  assert.equal(sent.action,'record.trial.replay');
+  assert.equal(sent.operation_id,undefined);
+  assert.deepEqual(sent.payload,{});
+  assert.equal(sent.id_token,'test-id-token');
+  assert.equal(opts.credentials,'omit');
+  return {ok:true,text:async()=>JSON.stringify({ok:true,data:{
+   status:'completed',replayed:true,records:1,items:2,amount:496
+  }})};
+ }});
+assert.equal(replay.replayed,true);
+assert.equal(api.receiptWriteEnabled(),false,'Trial replay never releases production writes');
 const preflight=await api.request('record.preflight',{
  version:'receipt-create-1',record_type:'receipt',chain_id:'s-a',
  record_date:'2026-10-14',branch_name:null,raw_store_name:null,
