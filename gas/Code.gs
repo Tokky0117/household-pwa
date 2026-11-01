@@ -272,6 +272,8 @@ function doPost(e){
   }
    if(action==='product.catalog')return jsonReply({ok:true,data:productCatalog_(user,readContext.book)});
    if(action==='product.alias.check')return jsonReply({ok:true,data:productAliasCheck_(user,payload,readContext.book)});
+  if(action==='record.preflight')
+   return jsonReply({ok:true,data:receiptPreflight_(user,payload,readContext.book)});
   if(action==='record.list'){
    if(!payload||typeof payload!=='object'||Array.isArray(payload)||Object.keys(payload).length)
     fail('BAD_REQUEST','一覧の取得条件が不正です');
@@ -1083,6 +1085,53 @@ function receiptPayload_(p){
  return p;
 }
 /** All catalog references MUST be unique and belong to the verified home. */
+/**
+ * Authorized, READ-ONLY receipt trial preflight. This is not write approval.
+ * Rechecks full canonical input and current server-side catalog ownership.
+ * Pending operations or malformed journals are blockers. A later write
+ * would repeat every check inside a lock; no stale approval token is issued.
+ */
+function receiptPreflight_(user,payload,book){
+ const hid=String(user.householdId),b=book||spreadsheet();
+ const checked=receiptPayload_(payload);
+ receiptOwnership_(hid,checked,b);
+ const ops=operationRowsForHousehold_(hid,b);
+ let pending=false;
+ const ids=new Set();
+ for(const op of ops){
+  const id=String(op.obj.operation_id||'');
+  if(!id||ids.has(id))
+   fail('RECOVERY_CONFLICT','操作履歴が重複しています');
+  ids.add(id);
+  let state;
+  try{state=JSON.parse(String(op.obj.result))}
+  catch(_){fail('RECOVERY_CONFLICT','操作履歴が破損しています')}
+  if(!state||typeof state!=='object'||Array.isArray(state)||
+     (state.status!=='prepared'&&state.status!=='completed'&&
+      state.status!=='committed'&&state.status!=='applied'))
+   fail('RECOVERY_CONFLICT','操作履歴を解釈できません');
+  if(state.status==='prepared')pending=true;
+ }
+ const sum=checked.items.reduce((n,item)=>n+item.amount_tax_included,0);
+ const allSubjects=rows('users',b).filter(x=>String(x.obj.household_id)===hid);
+ const uniqueSubjects=new Set(allSubjects.map(x=>String(x.obj.auth_subject||'')));
+ if(!allSubjects.length||uniqueSubjects.size!==allSubjects.length||
+    [...uniqueSubjects].some(x=>!x))
+  fail('HOUSEHOLD_MEMBERSHIP_INVALID','家庭の登録を確認できません');
+ return {
+  household_id:hid,
+  version:checked.version,
+  item_count:checked.items.length,
+  total_tax_included:sum,
+  member_count:allSubjects.length,
+  blocked_by_pending_operation:pending,
+  // A successful preflight is never proof that the sheet is unchanged
+  // or that the user reviewed the original receipt.
+  checked_at:new Date().toISOString(),
+  write_enabled:false
+ };
+}
+
 function receiptOwnership_(hid,payload,book){
  const stores=rows('stores',book);
  if(stores.filter(r=>String(r.obj.chain_id)===payload.chain_id&&
