@@ -55,6 +55,7 @@ const ctx={
  Date,JSON
 };
 vm.createContext(ctx);vm.runInContext(source,ctx,{filename:'Code.gs'});
+books.processed_operations=[Array.from(vm.runInContext('TABLES.processed_operations',ctx))];
 const token='x'.repeat(110);
 const request=(action,payload={})=>{
  const before=spreadsheetOpens;
