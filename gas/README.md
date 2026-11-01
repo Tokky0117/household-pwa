@@ -83,3 +83,15 @@
 - 作成したSheetは、最初のGoogleログインまで `users` が空。最初のログイン時に限り、登録された2メールアドレスとGoogleの確認済みメールが一致すれば、`users` に不変のGoogle `sub` を記録する。登録できるのは最大2名。ログイン用メールはSheetに保存せず、Script Propertiesでのみ使用する。
 - ユーザーがまだGASへ接続していない段階では、復元したv46のPWAは**端末内試作状態のまま**。これをSheetへ保存済みと誤認させない。
 - 初回のWebアプリデプロイとPWA接続は未実施。以後の実機テストで確認する。
+
+## 2026-11-01 — 以後のGASソース／公開版更新はGitHub Actions経由
+
+- ワークフロー: [gas-deploy-new.yml](../.github/workflows/gas-deploy-new.yml)
+- **正しいブランチ**: `preview-v46-clean-base`。旧試験用 `stage-a-ui-handoff-review` のワークフロー、`GAS_SCRIPT_ID_TEST` は一切使用しない。
+- GASコード `gas/Setup.gs` または `gas/Api.gs` をGitHubで更新した場合、**新GASの既存WebアプリURLをそのまま**自動更新する。新デプロイは作らない。
+- 新GASの既存デプロイIDはユーザーが提供した `/exec` の `AKfycbwn-SfXqRBIjJWVUUIKEsJuaUR6DLAEWbMVR-_rEB3iVZy2zi0ZNSA7JjNmyykvKjvdoQ` に固定。
+- スクリプトIDはデプロイIDと異なり、`/exec` URLから推測しない。GitHubのRepository Variables `GAS_SCRIPT_ID_NEW` に新GASプロジェクトのスクリプトIDを設定する（初回のみ）。未設定ならワークフローは安全にスキップ。
+- 認証は既にGitHub Actionsへ登録済みの `CLASPRC_JSON` Secretを利用する。認可期限切れなどで失敗した場合は**再設定が必要**で、更新成功を偽らない。Secretの値をログに出さない。
+- 更新前には新GASの既存デプロイID、ソースファイル構成、既知のGitHub履歴との一致を確認。想定外の手動変更があれば**書き込み停止**。更新前ソースを30日バックアップし、`clasp push` 後に内容を確認してから既存デプロイを更新。
+- **まだ初回の自動配信は未実行**。変数登録とワークフローの実行成功まではGAS公開版の更新を断言しない。
+- 日常のコード更新ではGASへの貼付、手動保存、手動の「デプロイ管理」操作は不要。Script Propertiesの家庭メンバー設定など、コードではないプライベート設定はGitHubから上書きしない。
