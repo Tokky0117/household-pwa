@@ -99,6 +99,24 @@ const preflight=await api.request('record.preflight',{
 }});
 assert.equal(preflight.write_enabled,false);
 assert.equal(preflight.total_tax_included,198);
+const isolated=await api.request('record.trial.preflight',{
+ version:'receipt-create-1',record_type:'receipt',chain_id:'s-a',
+ record_date:'2026-11-01',branch_name:null,raw_store_name:'検証用店舗',
+ items:[{line_order:1,raw_name:'試験商品',product_id:null,quantity:2,
+  amount_tax_included:300,category_id:0,price_eligible:false}]
+},{fetcher:async (_url,opts)=>{
+ const sent=JSON.parse(opts.body);
+ assert.equal(sent.action,'record.trial.preflight');
+ assert.equal(sent.operation_id,undefined);
+ assert.equal(sent.id_token,'test-id-token');
+ return {ok:true,text:async()=>JSON.stringify({ok:true,data:{
+  version:'receipt-create-1',item_count:1,
+  total_tax_included:300,trial_ready:true,write_enabled:false
+ }})};
+}});
+assert.equal(isolated.trial_ready,true);
+assert.equal(isolated.write_enabled,false);
+assert.equal(api.receiptWriteEnabled(),false);
 assert.equal(calls,4);
 await assert.rejects(api.request('record.create',{version:'receipt-create-1'},
  {operationId:'receipt-0001',fetcher:async()=>{throw Error('WRITE_NETWORK_REACHED')}}),
