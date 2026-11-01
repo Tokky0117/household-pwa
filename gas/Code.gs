@@ -332,6 +332,35 @@ function doPost(e){
     status:'completed',replayed:true,records:1,items:2,amount:496
    }});
   }
+  // One fixed SECOND synthetic receipt, no caller-controlled payload/ID/household.
+  // Existing first receipt and pinned test Sheet must be verified before and
+  // after the shared locked journal mutation. Production record.create stays off.
+  if(action==='record.trial.second.save'){
+   if(!payload||typeof payload!=='object'||Array.isArray(payload)||
+      Object.keys(payload).length||input.operation_id!==undefined)
+    fail('BAD_REQUEST','2件目の試験は固定明細だけを受け付けます');
+   const trial=receiptTrialGuard_(readContext.book);
+   if(!trial.completed||trial.records<1||trial.records>2||
+      trial.items<2||trial.items>4)
+    fail('TRIAL_RECEIPT_NOT_READY','先に1件目を確定してください');
+   if(String(user.householdId)!==trial.householdId||
+      String(user.userId)!==trial.userId)
+    fail('TRIAL_NOT_ISOLATED','試験用の家庭・ユーザーが一致しません');
+   const result=mutateReceiptSafely_(user,receiptTrialSecondPayload_(),
+      RECEIPT_TRIAL_SECOND_ID_,true);
+   if(result.status!=='completed'||result.action!=='record.create'||
+      String(result.entity?.household_id)!==trial.householdId||
+      !Array.isArray(result.item_ids)||result.item_ids.length!==2)
+    fail('TRIAL_RESULT_MISMATCH','2件目の保存結果が一致しません');
+   const after=receiptTrialGuard_(spreadsheet());
+   if(!after.completed||!after.secondCompleted||
+      after.records!==2||after.items!==4)
+    fail('TRIAL_RESULT_MISMATCH','レシートの保存件数が一致しません');
+   return jsonReply({ok:true,data:{
+    status:'completed',replayed:trial.secondStarted,
+    records:2,items:4,amount:458
+   }});
+  }
   // Deliberate hard gate: receipt parent+child writes have no recovery journal yet.
   // Even enabling ENABLE_EXPERIMENTAL_WRITES must never enable this endpoint.
   if(action==='record.create')fail('RECEIPT_WRITES_DISABLED','レシート一括保存は安全検証中です');
