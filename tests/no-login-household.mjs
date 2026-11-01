@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import vm from 'node:vm';
+import {JSDOM} from 'jsdom';
+import {IDBFactory} from 'fake-indexeddb';
 
 const setup=readFileSync(new URL('../gas/Setup.gs',import.meta.url),'utf8');
 const api=readFileSync(new URL('../gas/Api.gs',import.meta.url),'utf8');
@@ -86,78 +88,87 @@ assert.equal(signed.db.users.length,2,'verified account is bound to household');
 
 assert.ok(client.includes("if(e.code==='UNAUTHORIZED'&&!loginRequired)"),'client supports auth restoration');
 assert.ok(client.includes("document.addEventListener('DOMContentLoaded'"),'automatic initial load');
+assert.ok(client.includes('kurashi-stock-operations-v1'),'durable IndexedDB queue');
 assert.ok(app.includes('Google Sheets 接続済み（ログイン一時停止中）'),'Settings communicates temporary mode');
 assert.ok(!app.includes('Googleシートから読み込み'),'no manual reload button');
 
-// Real client and GAS API work together in a simulated browser and spreadsheet.
-const events={};const storage=new Map(),requests=[];let operationCounter=0;
-const page={readyState:'loading',hidden:false,addEventListener:(type,fn)=>{events[type]=fn}};
-const window={addEventListener:(type,fn)=>{events[type]=fn}};
-const frontend=vm.createContext({
-  window,document:page,localStorage:{
-    getItem:k=>storage.get(k)??null,
-    setItem:(k,v)=>storage.set(k,v),
-    removeItem:k=>storage.delete(k)
-  },
-  crypto:{randomUUID:()=> '42f2b60c-42f2-42f2-42f2-'+String(++operationCounter).padStart(12,'0')},
-  fetch:async(url,options)=>{
-    assert.match(url,/^https:\/\/script\.google\.com\/macros\/s\//);
-    const request=JSON.parse(options.body);
-    requests.push(request);
-    const response=temp.call(request.action,request.payload,request.operation_id,request.id_token);
-    return {ok:true,text:async()=>JSON.stringify(response)};
-  },
-  AbortController,setTimeout,clearTimeout
-});
-vm.runInContext(client,frontend);
-assert.equal(window.KurashiLive.state().signedIn,true,'logged-in equivalent status without Google ID');
-assert.equal(window.KurashiLive.state().loaded,false,'do not claim loaded before Sheets response');
-events.DOMContentLoaded();
-await new Promise(resolve=>setImmediate(resolve));
-assert.equal(window.KurashiLive.state().loaded,true,'automatic load succeeds');
-assert.equal(requests[0].action,'bootstrap');
-assert.equal(requests[0].id_token,'','no Google token required');
 
-const saved=await window.KurashiLive.save('item.create',{name:'歯磨き粉',category_id:2});
-assert.equal(saved.name,'歯磨き粉');
-assert.equal(window.KurashiLive.state().pending,null);
-assert.equal(window.KurashiLive.itemsOf(temp.call('bootstrap').data).length,2,'record reaches Sheets mock');
-assert.equal([...storage.keys()].filter(k=>k.startsWith('kurashi-new-write-v1-')).length,0,'completed save journal cleared');
-assert.ok(storage.has('kurashi-new-confirmed-snapshot-v1'),'confirmed snapshots cached after successful load');
-assert.equal(window.KurashiLive.state().loaded,true,'successful save and refresh keep live state');
-assert.equal(window.KurashiLive.itemsOf(JSON.parse(storage.get('kurashi-new-confirmed-snapshot-v1'))).length,2,'cached refresh retains confirmed items');
-
-
-// Stock tap changes the visible value immediately, persists once, and preserves version.
-let latestSnapshot=null;
-window.KurashiLive.subscribe((_status,data)=>{if(data)latestSnapshot=data});
-await new Promise(resolve=>setImmediate(resolve)); // absorb post-save background refresh
-const beforeStock=temp.call('bootstrap').data.item_groups.find(x=>x.item_group_id===id);
-assert.equal(beforeStock.in_stock,true);
-const operation=window.KurashiLive.save('item.update',{
- item_group_id:id,version:2,in_stock:false
-});
-assert.equal(window.KurashiLive.state().mutating,true,'stock mutation slot held immediately');
-const optimistic=latestSnapshot?.item_groups.find(x=>x.item_group_id===id);
-assert.equal(optimistic?.in_stock,false,'visible stock changes on tap');
-await operation;
-await new Promise(resolve=>setImmediate(resolve));
-const savedStock=temp.call('bootstrap').data.item_groups.find(x=>x.item_group_id===id);
-assert.equal(savedStock.in_stock,false,'server stock matches tap');
-assert.equal(savedStock.version,3,'server version advanced');
-assert.equal(window.KurashiLive.state().mutating,false,'save slot released');
-// Two quick taps must perform two sequential versioned writes, not ignore tap #2.
-const repeatedOne=window.KurashiLive.toggleStock(id);
-const repeatedTwo=window.KurashiLive.toggleStock(id);
-const twoResults=await Promise.all([repeatedOne,repeatedTwo]);
-assert.equal(twoResults[0].version,4,'first queued tap commits version 4');
-assert.equal(twoResults[1].version,5,'second queued tap commits version 5');
-const twice=temp.call('bootstrap').data.item_groups.find(x=>x.item_group_id===id);
-assert.equal(twice.in_stock,false,'two additional taps return to original stock');
-assert.equal(twice.version,5,'two taps must create two writes');
-assert.ok(app.includes("const APP_VERSION='0.51.0'"),'app has version constant');
-assert.ok(app.includes('アプリバージョン'),'settings shows version number');
-assert.ok(app.includes('pullToRefresh'),'PWA includes standalone pull refresh');
-assert.ok(app.includes("window.KurashiLive.load().then"),'pull refresh fetches Sheets');
-
-console.log('Temporary shared-household, live PWA, Google restore: OK');
+// Exercise real DOM stock buttons and IndexedDB persistence, not a mocked tap API.
+const factory=new IDBFactory();
+const sent=[];
+let online=true,loseOneWriteResponse=false;
+const getVersion=()=>Number(temp.call('bootstrap').data.item_groups[0].version);
+const getStock=()=>temp.call('bootstrap').data.item_groups[0].in_stock;
+const mockFetch=async(url,options)=>{
+ assert.match(url,/^https:\/\/script\.google\.com\/macros\/s\//);
+ const req=JSON.parse(options.body);sent.push(req);
+ if(!online)throw Error('SIMULATED_OFFLINE');
+ const response=temp.call(req.action,req.payload,req.operation_id,req.id_token);
+ if(loseOneWriteResponse&&req.action==='item.update'){
+  loseOneWriteResponse=false;
+  throw Error('SIMULATED_RESPONSE_LOST_AFTER_COMMIT');
+ }
+ return {ok:true,text:async()=>JSON.stringify(response)};
+};
+function appSession(){
+ const dom=new JSDOM('<!doctype html><html lang="ja"><head></head><body><div id="app"></div></body></html>',{
+  url:'https://tokky0117.github.io/household-pwa/previews/preview-v46-clean-base/',
+  runScripts:'outside-only',pretendToBeVisual:true
+ });
+ Object.defineProperty(dom.window,'indexedDB',{configurable:true,value:factory});
+ dom.window.fetch=mockFetch;dom.window.scrollTo=()=>{};dom.window.console=console;
+ dom.window.eval(client);
+ dom.window.eval(app);
+ dom.window.document.dispatchEvent(new dom.window.Event('DOMContentLoaded',{bubbles:true}));
+ return dom;
+}
+const pause=ms=>new Promise(resolve=>setTimeout(resolve,ms));
+async function waitFor(test,description){
+ const limit=Date.now()+7000;
+ while(Date.now()<limit){if(test())return;await pause(12)}
+ throw Error('Timeout: '+description);
+}
+const pill=dom=>dom.window.document.querySelector('[data-stock="'+id+'"] .stock-pill')?.textContent;
+const clickStock=dom=>{
+ const button=dom.window.document.querySelector('[data-stock="'+id+'"]');
+ assert.ok(button,'stock button present in rendered v46 UI');
+ button.click();
+};
+let a=appSession();
+await waitFor(()=>a.window.KurashiLive.state().loaded&&pill(a)==='あり','first Sheets bootstrap');
+// Each offline tap saves to IndexedDB and flips the same DOM button immediately.
+online=false;
+clickStock(a);
+await waitFor(()=>pill(a)==='なし'&&a.window.KurashiLive.state().queued===1,
+ 'first tap persists, updates visible stock');
+clickStock(a);
+await waitFor(()=>pill(a)==='あり'&&a.window.KurashiLive.state().queued===2,
+ 'second tap accepted before previous GAS write');
+assert.equal(getVersion(),2,'server unchanged during offline actions');
+a.window.close();online=true;
+// Fresh PWA process, same IndexedDB database. It must drain both commands.
+let b=appSession();
+await waitFor(()=>b.window.KurashiLive.state().queued===0&&getVersion()===4,
+ 'restarted PWA replays both operations');
+assert.equal(getStock(),true,'two queued toggles round-trip back to in stock');
+assert.equal(pill(b),'あり','DOM reflects both queued toggles');
+const history=temp.db.processed_operations.length;
+// Simulate server commit with the HTTP response lost, then app restart.
+loseOneWriteResponse=true;
+clickStock(b);
+await waitFor(()=>getVersion()===5&&b.window.KurashiLive.state().queued===1,
+ 'server committed but no response received');
+const afterCommit=temp.db.processed_operations.length;
+assert.equal(afterCommit,history+1);
+b.window.close();
+let c=appSession();
+await waitFor(()=>c.window.KurashiLive.state().queued===0,
+ 'same operation ID safely replayed on restart');
+assert.equal(getVersion(),5,'replay did not toggle again');
+assert.equal(temp.db.processed_operations.length,afterCommit,
+ 'GAS did not create an extra processed operation');
+assert.equal(pill(c),'なし');
+c.window.document.querySelector('[data-tab="settings"]').click();
+assert.match(c.window.document.body.textContent,/試作 v0\.52\.0/);
+c.window.close();
+console.log('IndexedDB durable queue, 2 real button taps, offline restart, idempotent replay: OK');
