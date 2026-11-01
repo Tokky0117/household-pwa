@@ -20,7 +20,7 @@ const api={
   if(action==='bootstrap')return sheet;
   mutationCalls.push({action,payload,operationId:options.operationId});
   if(failOnce){failOnce=false;throw Error('SIMULATED_DISCONNECT')}
-  sheet.item_groups.push({item_group_id:'new-item',name:payload.name,category_id:payload.category_id});
+  sheet.item_groups.push({item_group_id:'new-item',household_id:'house-1',name:payload.name,category_id:payload.category_id,version:1,in_stock:true});
   return {entity:sheet.item_groups[0],sequence_no:1};
  }
 };
@@ -97,7 +97,7 @@ api.request=async (action,payload,opts)=>{
  if(action==='bootstrap')return sheet;
  mutationCalls.push({action,payload,operationId:opts.operationId});
  await delayed;
- return {entity:{item_group_id:'another'},sequence_no:2};
+ return {entity:{item_group_id:'another',household_id:'house-1',name:payload.name,category_id:payload.category_id,version:1,in_stock:true},sequence_no:2};
 };
 const tabA=launch(),tabB=launch();
 await tabA.app.refreshLive();await tabB.app.refreshLive();
@@ -138,7 +138,7 @@ assert.equal(mutationCalls.length,beforeSignOut+1,'Test must have a real pending
 leaving.signOut();
 assert.equal(leaving.app.previewState().liveMode,false,'Logout clears live view immediately');
 assert.equal(leaving.app.previewState().liveSnapshot,null,'Logout clears all household rows');
-finishMutation({entity:{item_group_id:'late-item',name:'非公開の日用品'},sequence_no:3});
+finishMutation({entity:{item_group_id:'late-item',household_id:'house-1',name:'非公開の日用品',category_id:0,version:1,in_stock:true},sequence_no:3});
 await saveInFlight;
 assert.equal(leaving.journal.read(),null,'A confirmed operation clears its own durable journal');
 assert.equal(leaving.app.previewState().liveSnapshot,null,'Late confirmed write cannot restore old household');
