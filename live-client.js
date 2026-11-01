@@ -71,7 +71,7 @@
    }
    const target=snap.item_groups.find(i=>i.item_group_id===op.targetId);
    if(!target)continue;
-   if(op.kind==='toggle')target.in_stock=!toBoolean(target.in_stock);
+   if(op.kind==='toggle')target.in_stock=op.stock;
    else if(op.kind==='set-stock')target.in_stock=op.stock;
    else if(op.kind==='edit'){
     target.name=op.name;target.category_id=op.category_id;
@@ -298,9 +298,12 @@
  }
  async function toggleStock(itemId){
   return enqueue(doc=>{
-   const exists=project(doc)?.item_groups.some(i=>i.item_group_id===itemId&&!i.deleted_at);
-   if(!exists)throw Error('日用品が見つかりません');
-   return {id:operationId(),kind:'toggle',targetId:itemId,retries:0};
+   const item=project(doc)?.item_groups.find(i=>i.item_group_id===itemId&&!i.deleted_at);
+   if(!item)throw Error('日用品が見つかりません');
+   // Persist desired state, not an unbounded "flip" instruction: the user's
+   // intent survives retries, concurrent-device version rebases and restart.
+   return {id:operationId(),kind:'toggle',targetId:itemId,
+    stock:!toBoolean(item.in_stock),retries:0};
   });
  }
  function resolveOperation(op,base){
@@ -310,7 +313,7 @@
   const item=base?.item_groups.find(x=>x.item_group_id===op.targetId);
   if(!item||item.deleted_at)throw Error('保存対象の日用品が見つかりません');
   const payload={item_group_id:item.item_group_id,version:Number(item.version)};
-  if(op.kind==='toggle')payload.in_stock=!toBoolean(item.in_stock);
+  if(op.kind==='toggle')payload.in_stock=op.stock;
   else if(op.kind==='set-stock')payload.in_stock=op.stock;
   else if(op.kind==='hide')payload.is_hidden=op.hidden;
   else if(op.kind==='edit'){payload.name=op.name;payload.category_id=op.category_id}
