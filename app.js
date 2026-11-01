@@ -84,7 +84,7 @@ let receiptRemoteCatalog=null,receiptCatalogSubject=null,
  receiptCatalogBusy=false,receiptCatalogStatus='未取得',receiptCatalogEpoch=0,
  receiptSaveBusy=false;
 function receiptRemoteWritable(){
- return window.KURASHI_RECEIPT_TEST_MODE!==true&&
+ return 
   window.KurashiReceiptSaveSession?.writeEnabled?.()===true&&
   window.KurashiAuth?.status?.()?.signedIn===true;
 }
@@ -203,7 +203,7 @@ async function saveConfirmedReceiptToSheets(approvals){
 
 
 function receiptStorePendingView(){
- if(window.KURASHI_RECEIPT_TEST_MODE===true)return '';
+ 
  let entry;
  try{entry=window.KurashiLiveJournal?.read?.()}catch{
   return '<section class="panel"><p class="ui-field-notice">保存操作記録を確認できません。新規保存を停止しています。</p></section>';
@@ -317,7 +317,7 @@ function validateHouseholdCheck(data){
  return true;
 }
 async function checkHouseholdConnection(){
- if(window.KURASHI_RECEIPT_TEST_MODE===true||householdCheckBusy||
+ if(householdCheckBusy||
     tab!=='settings'||page!=='list')return;
  const auth=window.KurashiAuth?.status?.();
  if(auth?.signedIn!==true||!auth.subject){
@@ -417,12 +417,12 @@ async function refreshRemoteReceipts(){
  }
 }
 function connectedReceiptHousehold(){
- return window.KURASHI_RECEIPT_TEST_MODE!==true&&
+ return 
   window.KurashiAuth?.status?.()?.signedIn===true&&
   window.KurashiGasApi?.status?.()?.configured===true;
 }
 function remoteBudgetView(){
- if(window.KURASHI_RECEIPT_TEST_MODE===true)return '';
+ 
  const auth=window.KurashiAuth?.status?.();
  const allowed=auth?.signedIn===true&&window.KurashiGasApi?.status?.()?.configured;
  const collection=remoteReceipts&&remoteReceiptSubject===auth?.subject?remoteReceipts:null;
@@ -443,7 +443,7 @@ function remoteBudgetView(){
 
 let receiptRecoveryNotice='';
 function receiptPendingView(){
- if(window.KURASHI_RECEIPT_TEST_MODE===true)return '';
+ 
  let hasPending;
  try{hasPending=window.KurashiReceiptJournal?.read?.()}
  catch{return '<section class="panel"><h2>レシート保存の操作記録</h2><p class="ui-field-notice">端末内の保存操作記録を確認できません。新しい保存を停止しています。</p></section>'}
@@ -488,7 +488,7 @@ async function retryReceiptSave(){
  }finally{if(window.KurashiAuth?.status?.()?.subject===previous)render()}
 }
 function remoteReceiptView(){
- if(window.KURASHI_RECEIPT_TEST_MODE===true)return '';
+ 
  const auth=window.KurashiAuth?.status?.();
  const allowed=auth?.signedIn===true&&window.KurashiGasApi?.status?.()?.configured;
  const collection=remoteReceipts&&remoteReceiptSubject===auth?.subject?remoteReceipts:null;
@@ -1328,8 +1328,8 @@ function receiptScanReview(){
  ${chat&&scan.taxBasis!=='included'?'<label class="receipt-scan-confirm"><input type="checkbox" name="taxResolved" value="yes" required><span>各明細の税込金額を原本・税額と照合して入力しました</span></label>':''}
  <label class="receipt-scan-confirm"><input type="checkbox" name="confirmed" value="yes" required><span>レシート原本と明細・購入日・チェーン・金額を確認しました</span></label>
  ${total!==null?'<label class="receipt-scan-confirm"><input type="checkbox" name="totalsChecked" value="yes" required><span>支払合計と、税・値引きを含む明細金額の差を確認しました</span></label>':''}
- <button type="submit" class="primary receipt-scan-save" ${scan.items.length&&(!receiptRemoteWritable()||currentReceiptCatalog())&&!receiptSaveBusy&&!receiptStoreBusy?'':'disabled'}>確認した${scan.items.length}明細を${receiptRemoteWritable()?'Google Sheetsに保存':'このSafariに試作保存'}</button>
- <p class="sample-price-notice">${receiptRemoteWritable()?'保存先：認証済みの家庭のGoogle Sheets。'+esc(receiptCatalogStatus)+'。金額・税・数量を原本で確認してください。':'保存先：このSafariのWebサイトデータのみ。Google Sheetsには保存しません。OCR誤読、合計金額、税・割引、数量を必ず確認してください。'}</p></form>`:''}
+ <button type="submit" class="primary receipt-scan-save" ${scan.items.length&&receiptRemoteWritable()&&currentReceiptCatalog()&&!receiptSaveBusy&&!receiptStoreBusy?'':'disabled'}>確認した${scan.items.length}明細をGoogle Sheetsに保存</button>
+ <p class="sample-price-notice">${receiptRemoteWritable()?'保存先：認証済みの家庭のGoogle Sheets。'+esc(receiptCatalogStatus)+'。金額・税・数量を原本で確認してください。':'GoogleログインとGoogle Sheetsの読み取り後に保存できます。'}</p></form>`:''}
  <button type="button" class="secondary" data-act="discardReceiptScan">確認を終了して下書きを破棄</button>
  </section>`;
 }
@@ -1628,8 +1628,7 @@ if(form.id==='receiptScanForm'){
   });
   return;
  }
- if(!savePreviewReceiptScan(receiptScan)){fieldNotice(form,'チェーン・日付・各明細の品名・数量・税込金額を確認してください','scan-chain');return}
- discardReceiptScan();page='list';tab='receipt';render();say('このSafariに試作保存しました。Google Sheetsには保存していません。');return;
+ fieldNotice(form,'Googleログインと家庭データの取得が必要です。未保存です。','scan-chain');return;
 }
 if(form.id==='recordForm'){
  const input={type:newRecordType,chainId:String(d.get('chain')||''),date:String(d.get('date')||''),productId:String(d.get('product')||''),rawName:String(d.get('raw')||''),quantity:String(d.get('quantity')||''),amount:String(d.get('amount')||''),category:String(d.get('category')||'')};
@@ -1750,16 +1749,6 @@ if(action==='confirmProductMove'&&p){
  page='compare';initializeCompare();render();return;
 }
 if(action==='discardChanges'){goBack();return}if(action==='confirmHide'){current().hidden=true;current().version++;persist();page='list';openSwipeId=null}if(action==='resetYes'){discardReceiptScan();receiptChatGptText='';receiptChatGptNotice='';items=makeSeed();catalogue=sampleCatalogue();previewRecords={records:[],record_items:[]};localStorage.removeItem(previewRecordsKey);persist();persistCatalogue();page='list';tab='items'}render();return}const action=el.dataset.act;if(!action)return;
-if(action==='connectStageTrial'){
- if(window.KURASHI_RECEIPT_STAGE_A_TRIAL!==true)return;
- const value=document.getElementById('stage-trial-endpoint')?.value?.trim()||'';
- try{
-  window.KurashiGasApi.configure(value);
-  invalidateReceiptCatalog();clearRemoteReceipts();
-  render();say('試験GASの接続先を設定しました');
- }catch{inlineActionNotice(el,'既存の試験用GASの /exec URLを確認してください')}
- return;
-}
 if(action==='toggleListHelp'){
  listHelpOpen=!listHelpOpen;
  try{localStorage.setItem(helpOpenKey,String(listHelpOpen))}catch{}
