@@ -413,26 +413,47 @@ button:disabled{background:#a1aaba}.secondary{background:#eef2f8;color:#20508c}
   try{
    const data=await window.KurashiGasApi.request('record.list',{});
    if(!sameSession(rev,subject))return;
-   // Never display or persist actual records. Only check the known synthetic
-   // fixture created by runReceiptWriteTrialOnce in the existing trial Sheet.
+   // Verify the original immutable first fixture and optional one-time
+   // second fixture; never accept an arbitrary row from another household.
    if(!data||data.household_id!==fixture.householdId||
       !Array.isArray(data.records)||!Array.isArray(data.record_items)||
-      data.records.length!==1||data.record_items.length!==2)
+      ![1,2].includes(data.records.length)||
+      data.record_items.length!==data.records.length*2)
     throw Error('RECEIPT_TRIAL_ROWS_MISMATCH');
-   const header=data.records[0],lines=data.record_items;
-   const ordered=lines.slice().sort((a,b)=>a.line_order-b.line_order);
-   if(header.record_type!=='receipt'||header.chain_id!==fixture.chainId||
-      header.raw_store_name!=='[KURASHI_RECEIPT_TRIAL_ONLY]'||
-      header.record_date!=='2026-11-01'||
-      new Set(ordered.map(x=>x.record_item_id)).size!==2||
-      ordered.some((x,i)=>x.record_id!==header.record_id||
-       x.line_order!==i+1||x.quantity!==(i===0?1:2)||
-       x.amount_tax_included!==(i===0?198:298)||
-       x.product_id!==(i===0?fixture.productId:null)||
-       x.price_eligible!==false))
+   const primary=data.records.filter(x=>
+    x.raw_store_name==='[KURASHI_RECEIPT_TRIAL_ONLY]');
+   const secondary=data.records.filter(x=>
+    x.raw_store_name==='[KURASHI_RECEIPT_TRIAL_SECOND_ONLY]');
+   if(primary.length!==1||secondary.length!==data.records.length-1||
+      new Set(data.records.map(x=>x.record_id)).size!==data.records.length||
+      new Set(data.record_items.map(x=>x.record_item_id)).size!==data.record_items.length)
     throw Error('RECEIPT_TRIAL_ROWS_MISMATCH');
+   const check=(head,expected)=>{
+    if(head.record_type!=='receipt'||head.chain_id!==fixture.chainId||
+       head.record_date!=='2026-11-01')throw Error('RECEIPT_TRIAL_ROWS_MISMATCH');
+    const lines=data.record_items.filter(x=>x.record_id===head.record_id)
+     .sort((a,b)=>a.line_order-b.line_order);
+    if(lines.length!==2||lines.some((x,i)=>
+       x.line_order!==i+1||x.quantity!==expected[i].quantity||
+       x.amount_tax_included!==expected[i].amount||
+       x.raw_name!==expected[i].rawName||
+       x.product_id!==expected[i].productId||
+       x.price_eligible!==false||
+       x.category_id!==expected[i].category))
+     throw Error('RECEIPT_TRIAL_ROWS_MISMATCH');
+   };
+   check(primary[0],[
+    {quantity:1,amount:198,rawName:'試験用・商品コード',productId:fixture.productId,category:0},
+    {quantity:2,amount:298,rawName:'試験用・卵',productId:null,category:0}
+   ]);
+   if(secondary.length)check(secondary[0],[
+    {quantity:1,amount:128,rawName:'試験用・野菜',productId:null,category:0},
+    {quantity:2,amount:330,rawName:'試験用・日用品',productId:null,category:1}
+   ]);
    receiptVerifiedRevision=rev;receiptVerifiedSubject=subject;
-   receiptReadResult.textContent='成功：試験用家庭の確定レシート1件・明細2件・税込496円を認証付きで読み取り、既知の保存結果と照合できました。計測 '+elapsed(started)+'。書き込み0件。';
+   receiptReadResult.textContent=secondary.length?
+    '成功：試験用家庭の確定レシート2件・明細4件（最初496円・追加458円）を認証付きで読み取り、固定試験の内容と照合しました。計測 '+elapsed(started)+'。書き込み0件。':
+    '成功：試験用家庭の確定レシート1件・明細2件・税込496円を認証付きで読み取り、既知の保存結果と照合できました。計測 '+elapsed(started)+'。書き込み0件。';
   }catch(error){
    if(sameSession(rev,subject)){
     const code=String(error?.message||'');
