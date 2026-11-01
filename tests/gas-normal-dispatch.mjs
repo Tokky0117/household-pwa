@@ -22,7 +22,7 @@ ctx.productAliasCheck_=()=>({status:'missing'});
 ctx.householdStatus_=()=>({household_id:'home-A'});
 ctx.receiptPreflight_=()=>({write_enabled:false});
 ctx.receiptList_=()=>({household_id:'home-A',records:[],record_items:[]});
-for(const name of ['mutateItemSafely_','mutateProductSafely_','mutateProductUpdateSafely_','mutateStoreSafely_','mutateReceiptSafely_']){
+for(const name of ['mutateItemSafely_','mutateProductSafely_','mutateProductUpdateSafely_','mutateStoreSafely_','mutateOrderSafely_','mutateReceiptSafely_']){
  ctx[name]=(...args)=>{
   called.push([name,...args]);
   return {status:'completed',entity:{household_id:'home-A'},sequence_no:1};
@@ -35,6 +35,7 @@ const exec=(action,payload={},operation_id='normal-operation-0001')=>
 for(const [action,fn] of [
  ['item.create','mutateItemSafely_'],['item.update','mutateItemSafely_'],
  ['product.create','mutateProductSafely_'],['product.update','mutateProductUpdateSafely_'],
+ ['item.reorder','mutateOrderSafely_'],['product.reorder','mutateOrderSafely_'],
  ['store.create','mutateStoreSafely_'],['record.create','mutateReceiptSafely_']
 ]){
  const before=called.length;
@@ -53,7 +54,7 @@ for(const action of ['record.trial.replay','record.trial.main.create',
  assert.equal(called.length,before);
 }
 approved=false;
-for(const action of ['item.create','item.update','product.create','product.update','store.create','record.create']){
+for(const action of ['item.create','item.update','product.create','product.update','item.reorder','product.reorder','store.create','record.create']){
  const before=called.length;
  const result=exec(action);
  assert.equal(result.ok,false,action);
@@ -68,4 +69,4 @@ assert.equal(exec('household.status',{}).ok,true);
 assert.equal(exec('product.catalog').ok,true);
 assert.equal(exec('sync').ok,true);
 assert.equal(exec('product.alias.check').ok,true);
-console.log('Ordinary GAS dispatch: six scoped mutations, unsupported trials, pinned-Sheet gate PASS');
+console.log('Ordinary GAS dispatch: eight scoped mutations, unsupported trials, pinned-Sheet gate PASS');
