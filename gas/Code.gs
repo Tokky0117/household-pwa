@@ -1121,17 +1121,15 @@ function receiptPreflight_(user,payload,book){
    fail('RECOVERY_CONFLICT','操作履歴を解釈できません');
  }
  const sum=checked.items.reduce((n,item)=>n+item.amount_tax_included,0);
- const allSubjects=rows('users',b).filter(x=>String(x.obj.household_id)===hid);
- const uniqueSubjects=new Set(allSubjects.map(x=>String(x.obj.auth_subject||'')));
- if(!allSubjects.length||uniqueSubjects.size!==allSubjects.length||
-    [...uniqueSubjects].some(x=>!x))
-  fail('HOUSEHOLD_MEMBERSHIP_INVALID','家庭の登録を確認できません');
+ // Reuse the same strict family membership checks as household.status.
+ // This also detects duplicate user IDs and subjects in another household.
+ const membership=householdStatus_(user,b);
  return {
   household_id:hid,
   version:checked.version,
   item_count:checked.items.length,
   total_tax_included:sum,
-  member_count:allSubjects.length,
+  member_count:membership.member_count,
   blocked_by_pending_operation:pending,
   // A successful preflight is never proof that the sheet is unchanged
   // or that the user reviewed the original receipt.
