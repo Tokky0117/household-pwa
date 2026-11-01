@@ -869,6 +869,49 @@ async function withLiveWriteLock(work){
   liveWriteStatus='保存ロックを取得できません：'+String(err?.message||'UNKNOWN');render();
  }
 }
+// A successful HTTP response alone does not prove the intended mutation.
+// Reject mismatched acknowledgements and retain the durable retry journal.
+function verifyLiveWriteResult(entry,result){
+ const p=entry.payload,e=result?.entity;
+ const invalid=()=>{throw Error('GAS_RESULT_UNVERIFIED')};
+ if(!result||!e||typeof e!=='object'||
+    String(e.household_id)!==entry.householdId||
+    !Number.isSafeInteger(result.sequence_no)||result.sequence_no<1)invalid();
+ if(entry.action==='product.create'){
+  if(result.status!=='completed'||result.action!=='product.create'||
+     !e.product_id||Number(e.version)!==1||
+     String(e.item_group_id??'')!==String(p.item_group_id??'')||
+     String(e.name)!==String(p.name).trim()||
+     String(e.package_quantity??'')!==String(p.package_quantity??'')||
+     String(e.package_unit??'')!==String(p.package_unit??''))invalid();
+ }else if(entry.action==='item.create'||entry.action==='item.update'){
+  if(!e.item_group_id||
+     (entry.action==='item.create'&&(
+      Number(e.version)!==1||String(e.name)!==String(p.name).trim()||
+      String(e.category_id)!==String(p.category_id)||
+      !(e.in_stock===true||String(e.in_stock).toLowerCase()==='true')))||
+     (entry.action==='item.update'&&(
+      String(e.item_group_id)!==String(p.item_group_id)||
+      Number(e.version)!==Number(p.version)+1||
+      ['name','category_id','in_stock','is_hidden'].some(k=>
+       Object.prototype.hasOwnProperty.call(p,k)&&
+       (k==='name'?String(e[k])!==String(p[k]).trim():
+        String(e[k]).toLowerCase()!==String(p[k]).toLowerCase())))))invalid();
+ }else invalid();
+ return e;
+}
+// Render server-confirmed changes immediately, without waiting for bootstrap.
+function applyConfirmedLiveEntity(entry,entity){
+ if(!liveSnapshot||liveSnapshot.household_id!==entry.householdId)return;
+ const key=entry.action==='product.create'?'products':'item_groups';
+ const idKey=key==='products'?'product_id':'item_group_id';
+ const previous=liveSnapshot[key]||[];
+ const index=previous.findIndex(x=>String(x[idKey])===String(entity[idKey]));
+ const next=previous.slice();
+ if(index<0)next.push(entity);
+ else next[index]=entity;
+ liveSnapshot={...liveSnapshot,[key]:next};
+}
 async function sendPendingLive(entry){
  if(!liveWritable()||liveWriteBusy){liveWriteStatus='書き込みは無効です';render();return}
  const pending=livePending();
@@ -879,13 +922,15 @@ async function sendPendingLive(entry){
  const epoch=liveSessionEpoch,subject=entry.subject;
  liveWriteBusy=true;liveWriteStatus='保存操作を確認中';render();
  try{
-  await window.KurashiGasApi.request(entry.action,entry.payload,{operationId:entry.operationId});
-  // Even after logout, a confirmed receipt should clear only this durable ID.
-  // Do not restore any snapshot to a different or signed-out account.
+  const result=await window.KurashiGasApi.request(entry.action,entry.payload,{operationId:entry.operationId});
+  const entity=verifyLiveWriteResult(entry,result);
+  // Only this validated operation may clear its original durable journal.
   window.KurashiLiveJournal.complete(entry.operationId);
   if(!sameLiveSession(subject,epoch)||!liveMode)return;
+  applyConfirmedLiveEntity(entry,entity);
   liveEditor=null;liveProductEditor=null;
-  liveWriteStatus='保存が確定しました。データを更新しています。';
+  liveWriteStatus='保存が確定しました。最新の一覧を確認しています。';
+  render();
   try{
    const data=await window.KurashiGasApi.request('bootstrap');
    if(!sameLiveSession(subject,epoch)||!liveMode)return;
