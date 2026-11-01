@@ -213,6 +213,32 @@ assert.equal(attempts,6,'Aborted requests are never auto-retried');
 assert.equal(timerDelay,15000,'Existing 15-second timeout is kept');
 assert.equal(cleared,true,'Timer is always cleaned up');
 ctx.setTimeout=originalSetTimeout;ctx.clearTimeout=originalClearTimeout;
+// The existing staging preview sends the ordinary API, never a new trial action.
+window.KURASHI_RECEIPT_STAGE_A_TRIAL=true;
+assert.equal(api.receiptWriteEnabled(),true);
+const operationId='receipt-normal-001';
+const normal=await api.request('record.create',candidatePayload,{
+ operationId,fetcher:async(_url,opts)=>{
+  const sent=JSON.parse(opts.body);
+  assert.equal(sent.action,'record.create');
+  assert.equal(sent.operation_id,operationId);
+  assert.equal(sent.payload.items.length,1);
+  return {ok:true,text:async()=>JSON.stringify({ok:true,data:{
+   status:'completed',action:'record.create',
+   entity:{record_id:'normal-1',household_id:'h-a'},
+   item_ids:['normal-line-1'],sequence_no:10
+  }})};
+ }
+});
+assert.equal(normal.entity.record_id,'normal-1');
+await assert.rejects(api.request('record.create',candidatePayload,{
+ fetcher:async()=>{throw Error('MUST_NOT_SEND')}
+}),/OPERATION_ID_REQUIRED/);
+window.KURASHI_RECEIPT_STAGE_A_TRIAL=false;
+assert.equal(api.receiptWriteEnabled(),false);
+await assert.rejects(api.request('record.create',candidatePayload,{
+ operationId:'receipt-normal-002',fetcher:async()=>{throw Error('MUST_NOT_SEND')}
+}),/RECEIPT_WRITES_DISABLED/);
 api.configure('');
 assert.equal(api.status().configured,false);
 console.log('GAS transport adapter offline checks PASS');
