@@ -1,5 +1,5 @@
 name: Read-only audit of existing test GAS source
-# Read-only audit after installing editor-only catalog and alias match test.
+# Read-only independent post-push verification of receipt #2 GAS source; no Sheets writes.
 on:
   push:
     branches: [stage-a-ui-handoff-review]
@@ -137,6 +137,8 @@ jobs:
             'Remote scripts: '+remoteFiles.length,
             'Remote matches last successful push source (run 41275439091): '+remoteMatchesLastVerifiedPush,
             'Remote and branch script source identical: '+(sha(local)===sha(remote)),
+            'Post-sync manifest preserved exactly: '+(
+              sha(remoteManifest)==='0952d47f73508eb256f1cf50f0368fe77434f8c05ea0d6defc7cf9b4e227e935'),
             'Receipt replay source update readiness: '+remoteReadiness,
             'Remote replay route currently present: '+remote.includes("if(action==='record.trial.replay')"),
             'Local production record.create rejection remains enabled: true',
