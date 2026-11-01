@@ -148,6 +148,49 @@ function remoteBudgetView(){
     esc(name)+'</span><strong>'+yen(value)+'</strong></div>').join('')+'</div>':'')+
   '</section>';
 }
+
+let receiptRecoveryNotice='';
+function receiptPendingView(){
+ if(window.KURASHI_RECEIPT_TEST_MODE===true)return '';
+ let hasPending;
+ try{hasPending=window.KurashiReceiptJournal?.read?.()}
+ catch{return '<section class="panel"><h2>レシート保存の操作記録</h2><p class="ui-field-notice">端末内の保存操作記録を確認できません。新しい保存を停止しています。</p></section>'}
+ if(!hasPending)return '';
+ const auth=window.KurashiAuth?.status?.();
+ const subject=auth?.signedIn===true?auth.subject:null;
+ const household=remoteReceiptSubject===subject?remoteReceipts?.household_id:null;
+ const safe=window.KurashiReceiptSaveSession?.pending?.(subject,household);
+ const belongs=safe?.status==='pending';
+ const canRetry=belongs&&window.KurashiReceiptSaveSession?.writeEnabled?.()===true;
+ return '<section class="panel"><h2>未完了のレシート保存操作</h2>'+
+  '<p class="hint">結果不明の操作は自動再送しません。別のレシートとして登録し直さないでください。</p>'+
+  (belongs?'<p class="hint">対象：'+hasPending.payload.items.length+
+   '明細。操作ID・確認済み内容を保持しています。</p>':
+   '<p class="hint">保存したアカウント・家庭を確認できません。該当アカウントでログイン後、確定レシートを読み取ってください。</p>')+
+  (receiptRecoveryNotice?'<p role="status" class="hint">'+esc(receiptRecoveryNotice)+'</p>':'')+
+  '<button type="button" class="secondary" data-act="retryReceiptSave"'+
+  (canRetry?'':' disabled')+'>同じ操作を確認・再送</button>'+
+  (!canRetry?'<p class="hint">現在、正式なレシート書き込みと再送は無効です。</p>':'')+
+  '</section>';
+}
+async function retryReceiptSave(){
+ if(window.KURASHI_RECEIPT_TEST_MODE===true||
+    window.KurashiReceiptSaveSession?.writeEnabled?.()!==true)return;
+ const auth=window.KurashiAuth?.status?.();
+ const hid=remoteReceiptSubject===auth?.subject?remoteReceipts?.household_id:null;
+ if(!auth?.signedIn||!hid)return;
+ const previous=auth.subject;
+ receiptRecoveryNotice='同じ操作IDで保存状況を確認しています';render();
+ try{
+  await window.KurashiReceiptSaveSession.retry({subject:previous,householdId:hid});
+  if(window.KurashiAuth?.status?.()?.subject!==previous)return;
+  receiptRecoveryNotice='同じレシートの保存完了を確認しました';
+  if(tab==='receipt'&&page==='list')await refreshRemoteReceipts();
+ }catch{
+  if(window.KurashiAuth?.status?.()?.subject===previous)
+   receiptRecoveryNotice='保存結果はまだ未確定です。新規保存せず、通信・認証を確認してから同じ操作を再送してください';
+ }finally{if(window.KurashiAuth?.status?.()?.subject===previous)render()}
+}
 function remoteReceiptView(){
  if(window.KURASHI_RECEIPT_TEST_MODE===true)return '';
  const auth=window.KurashiAuth?.status?.();
@@ -893,7 +936,7 @@ function receiptView(){
  <button type="button" class="primary" data-act="importChatGptReceipt">貼り付けた明細を確認</button>
  ${receiptChatGptNotice?'<p class="ui-field-notice" role="status">'+esc(receiptChatGptNotice)+'</p>':''}
  <p class="sample-price-notice">現在はこのSafariの試作記録だけです。Google Sheets・夫婦間同期には未接続。ChatGPT出力に会員・決済情報を含めないでください。</p>
- </section>${receiptScanReview()}${remoteReceiptView()}<div class="record-entry-actions"><button class="secondary" data-act="newReceipt">${miniIcon('plus')}<span>レシート明細</span></button><button class="secondary" data-act="newShelf">${miniIcon('plus')}<span>値札</span></button></div><h2 class="sectiontitle">このSafari内の試作記録（Google Sheetsには未保存）</h2><p class="hint">保存した記録はこのブラウザのWebサイトデータにあります。Google Sheets・Google Drive・ファイルアプリには保存されません。ブラウザデータを消すと記録も失われます。</p>${rows}</main>${nav()}`;
+ </section>${receiptScanReview()}${receiptPendingView()}${remoteReceiptView()}<div class="record-entry-actions"><button class="secondary" data-act="newReceipt">${miniIcon('plus')}<span>レシート明細</span></button><button class="secondary" data-act="newShelf">${miniIcon('plus')}<span>値札</span></button></div><h2 class="sectiontitle">このSafari内の試作記録（Google Sheetsには未保存）</h2><p class="hint">保存した記録はこのブラウザのWebサイトデータにあります。Google Sheets・Google Drive・ファイルアプリには保存されません。ブラウザデータを消すと記録も失われます。</p>${rows}</main>${nav()}`;
 }
 function budgetView(){
  const {total,byCategory}=budgetTotals(allPreviewRecords(),allPreviewItems(),budgetMonth);
@@ -938,6 +981,7 @@ function pageView(){
  }
 }
 function render(){
+ if(!window.KurashiAuth?.status?.()?.signedIn)receiptRecoveryNotice='';
  if(remoteReceiptSubject!==null){
   const a=window.KurashiAuth?.status?.();
   if(a?.signedIn!==true||a.subject!==remoteReceiptSubject)
@@ -1262,6 +1306,7 @@ if(action==='catalogueList'){pickerAll=!pickerAll;const heading=document.querySe
   pending:{recordId}};
  renderDialogOnly();return;
 }
+if(action==='retryReceiptSave'){retryReceiptSave();return;}
 if(action==='refreshRemoteReceipts'){refreshRemoteReceipts();return;}
 if(action==='importChatGptReceipt'){
  const field=document.getElementById('receipt-chatgpt-json');
