@@ -1,6 +1,9 @@
 name: Update existing household GAS source (manual)
 # Updates script SOURCE only. Never creates a deployment, GAS, Sheet or record.
 on:
+  push:
+    branches: [stage-a-ui-handoff-review]
+    paths: ['.github/workflows/gas-push-test.yml']
   workflow_dispatch:
     inputs:
       confirm_existing_target:
@@ -14,7 +17,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   update:
-    if: github.ref == 'refs/heads/stage-a-ui-handoff-review' && inputs.confirm_existing_target == 'UPDATE_EXISTING_GAS'
+    if: github.ref == 'refs/heads/stage-a-ui-handoff-review' && ((github.event_name == 'push' && github.event.head_commit.message == 'Release verified journaled item and product reordering to existing GAS once') || (github.event_name == 'workflow_dispatch' && inputs.confirm_existing_target == 'UPDATE_EXISTING_GAS'))
     runs-on: ubuntu-latest
     timeout-minutes: 12
     steps:
@@ -30,10 +33,12 @@ jobs:
           cp gas/Code.gs "$RUNNER_TEMP/household-gas.js"
           node --check "$RUNNER_TEMP/household-gas.js"
           # Any subsequent GAS source edit requires reviewing this workflow again.
-          test "$(git hash-object gas/Code.gs)" = "da8b77c28536dc68fcd242d3a9291047f7e5bca7"
+          test "$(git hash-object gas/Code.gs)" = "931db46cbda679d80c9c469682c2ea45c41d5240"
           node tests/gas-normal-dispatch.mjs
           node tests/gas-item-initial-stock.mjs
           node tests/gas-product-update-transaction.mjs
+          node tests/gas-reorder-transaction.mjs
+          node tests/live-view.mjs
           node tests/receipt-save-parity.mjs
           node tests/gas-auth-isolation.mjs
       - name: Verify pinned GAS project and prepare temporary credentials
@@ -87,7 +92,7 @@ jobs:
           const fns=text=>new Set([...text.matchAll(/(?:^|\n)function\s+([A-Za-z_$][\w$]*)\s*\(/g)].map(m=>m[1]));
           const existing=fns(original),updated=fns(code);
           const allowedRemoved=new Set([]);
-          const allowedAdded=new Set([]);
+          const allowedAdded=new Set(['mutateOrderSafely_']);
           const removed=[...existing].filter(n=>!updated.has(n));
           const added=[...updated].filter(n=>!existing.has(n));
           if(removed.length!==allowedRemoved.size||
@@ -96,11 +101,11 @@ jobs:
               added.some(n=>!allowedAdded.has(n)))
             throw Error('SOURCE_FUNCTION_DIFF_NOT_REVIEWED');
           for(const fn of ['doPost','authenticate','bootstrap','mutateItemSafely_',
-            'mutateProductSafely_','mutateProductUpdateSafely_','mutateReceiptSafely_','mutateStoreSafely_','receiptList_']){
+            'mutateProductSafely_','mutateProductUpdateSafely_','mutateOrderSafely_','mutateReceiptSafely_','mutateStoreSafely_','receiptList_']){
             if(!updated.has(fn))throw Error('REQUIRED_FUNCTION_MISSING_'+fn);
           }
           for(const action of ['item.create','item.update','product.create',
-            'store.create','record.create','product.update']){
+            'store.create','record.create','product.update','item.reorder','product.reorder']){
             if(!code.includes("'"+action+"'"))throw Error('NORMAL_ROUTE_MISSING');
           }
           if(code.includes("if(action==='record.trial."))throw Error('TRIAL_ROUTE_STILL_PRESENT');
@@ -134,9 +139,47 @@ jobs:
           npx --yes @google/clasp@3 pull
           cmp -s コード.js "$GITHUB_WORKSPACE/gas/Code.gs"
           echo 'GAS_SOURCE_SYNCED: original backup saved; web app version unchanged; no Sheet data touched' >> "$GITHUB_STEP_SUMMARY"
+      - name: Update the same existing webapp after verified source sync
+        if: github.event_name == 'push'
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP/household-gas/stage"
+          npx --yes @google/clasp@3 list-deployments > "$RUNNER_TEMP/existing-deployments-before.txt"
+          cd "$GITHUB_WORKSPACE"
+          node - <<'NODE'
+          const fs=require('node:fs');
+          const html=fs.readFileSync('index.html','utf8');
+          const prefix='KurashiGasApi.configure("https://script.google.com/macros/s/';
+          const id=html.split(prefix)[1]?.split('/exec")')[0];
+          if(!id||!/^AKfy[A-Za-z0-9_-]{20,}$/.test(id))throw Error('PWA_ENDPOINT_NOT_PINNED');
+          const list=fs.readFileSync(process.env.RUNNER_TEMP+'/existing-deployments-before.txt','utf8');
+          const found=[...new Set(list.match(/AKfy[A-Za-z0-9_-]{20,}/g)||[])];
+          if(found.length!==2||found.filter(x=>x===id).length!==1)
+            throw Error('WEBAPP_NOT_FROM_PINNED_SCRIPT');
+          fs.writeFileSync(process.env.RUNNER_TEMP+'/verified-deployment-id',id,{mode:0o600});
+          console.log('EXISTING_WEBAPP_ID_VERIFIED; updating the same deployment only');
+          NODE
+          cd "$RUNNER_TEMP/household-gas/stage"
+          deployment="$(cat "$RUNNER_TEMP/verified-deployment-id")"
+          npx --yes @google/clasp@3 create-deployment --deploymentId "$deployment" --description "kurashi-stock journaled household item and product reorder" > "$RUNNER_TEMP/existing-deployment-result.txt"
+          npx --yes @google/clasp@3 list-deployments > "$RUNNER_TEMP/existing-deployments-after.txt"
+          node - <<'NODE'
+          const fs=require('node:fs');
+          const ids=n=>[...new Set((fs.readFileSync(process.env.RUNNER_TEMP+'/'+n,'utf8')
+            .match(/AKfy[A-Za-z0-9_-]{20,}/g)||[]))].sort();
+          const before=ids('existing-deployments-before.txt');
+          const after=ids('existing-deployments-after.txt');
+          if(before.length!==2||JSON.stringify(before)!==JSON.stringify(after))
+            throw Error('DEPLOYMENT_IDS_CHANGED');
+          console.log('EXISTING_GAS_WEBAPP_UPDATED: same deployment IDs, no new GAS or Sheet');
+          fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY,
+            'EXISTING_GAS_WEBAPP_UPDATED: same PWA webapp, no new deployment or Sheet writes.\n');
+          NODE
       - name: Erase temporary authentication and pulled source
         if: always()
         shell: bash
         run: |
           rm -f "$HOME/.clasprc.json" "$RUNNER_TEMP/household-gas.js"
           rm -rf "$RUNNER_TEMP/household-gas"
+          rm -f "$RUNNER_TEMP/existing-deployments-before.txt" "$RUNNER_TEMP/existing-deployments-after.txt" "$RUNNER_TEMP/verified-deployment-id" "$RUNNER_TEMP/existing-deployment-result.txt"
