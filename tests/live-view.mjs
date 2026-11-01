@@ -64,7 +64,8 @@ assert.doesNotMatch(view,/Google Sheetsから読み取る|Google Sheetsから日
 assert.doesNotMatch(view,/data-act="refreshLive"/,'Normal list has no manual read control');
 assert.match(source,/if\(el\.dataset\.stock\)\{\s*if\(!liveMode\|\|!liveWritable\(\)\)return/);
 assert.match(source,/liveMutate\('item\.update',\{item_group_id:row\.item_group_id/);
-assert.match(source,/if\(liveMode\)return; \/\/ Never persist household reorder into local preview fixtures/);
+assert.match(source,/function householdOrderMutation\(/);
+assert.match(source,/if\(liveMode&&\(!liveWritable\(\)\|\|liveWriteBusy/);
 assert.doesNotMatch(source,/function liveListView\(/,
  'Only the original inventory renderer must remain');
 
