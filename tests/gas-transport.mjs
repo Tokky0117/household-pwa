@@ -59,6 +59,39 @@ assert.equal(check.status,'already_registered');
 assert.equal(check.write_permitted,false);
 assert.equal(calls,3);
 assert.equal(api.receiptWriteEnabled(),false);
+// The general receipt route is still disabled, but an isolated test action
+// may use a caller-confirmed, durable operation ID with a checked payload.
+const candidateId='receipt-trial-main-aaaaaaaaaaaa001';
+const candidatePayload={
+ version:'receipt-create-1',record_type:'receipt',
+ chain_id:'alias-trial-store-0001',record_date:'2026-11-01',
+ branch_name:null,raw_store_name:'架空の確認済み店舗',
+ items:[{line_order:1,raw_name:'架空の商品',product_id:null,quantity:1,
+  amount_tax_included:250,category_id:0,price_eligible:false}]
+};
+await assert.rejects(api.request('record.trial.main.create',candidatePayload,
+ {operationId:candidateId}),/TRIAL_MAIN_NOT_CONFIRMED/);
+await assert.rejects(api.request('record.trial.main.create',candidatePayload,
+ {confirmedTrialMainSave:true,operationId:'invalid-op-01'}),/TRIAL_MAIN_NOT_CONFIRMED/);
+let trialCandidateNetwork=0;
+const candidateResult=await api.request('record.trial.main.create',candidatePayload,{
+ confirmedTrialMainSave:true,operationId:candidateId,
+ fetcher:async(_url,opts)=>{
+  trialCandidateNetwork++;
+  const sent=JSON.parse(opts.body);
+  assert.equal(sent.action,'record.trial.main.create');
+  assert.equal(sent.operation_id,candidateId);
+  assert.equal(sent.id_token,'test-id-token');
+  assert.equal(sent.payload.items[0].amount_tax_included,250);
+  return{ok:true,text:async()=>JSON.stringify({ok:true,data:{
+   status:'completed',action:'record.create',entity:{record_id:'r1',household_id:'h-a'},
+   item_ids:['line-1'],sequence_no:3
+  }})};
+ }
+});
+assert.equal(candidateResult.item_ids.length,1);
+assert.equal(trialCandidateNetwork,1,'Trial mutation is never retried automatically');
+assert.equal(api.receiptWriteEnabled(),false,'Trial never opens record.create');
 // Only a verified trial operator may request a completed fixed-fixture replay.
 await assert.rejects(api.request('record.trial.replay',{}),/TRIAL_REPLAY_NOT_CONFIRMED/);
 await assert.rejects(api.request('record.trial.second.save',{}),
