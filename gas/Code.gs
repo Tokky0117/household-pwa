@@ -287,8 +287,7 @@ function doPost(e){
   if(action==='record.trial.preflight'){
    if(input.operation_id!==undefined)fail('BAD_REQUEST','診断に操作IDは不要です');
    const trial=receiptTrialGuard_(readContext.book);
-   if(!trial.completed||trial.records<1||trial.records>2||
-      trial.items!==trial.records*2)
+   if(!trial.completed||trial.fixedRecords<1||trial.fixedRecords>2)
     fail('TRIAL_RECEIPT_NOT_READY','試験用レシートの確定が必要です');
    if(String(user.householdId)!==trial.householdId||
       String(user.userId)!==trial.userId)
@@ -316,8 +315,7 @@ function doPost(e){
       Object.keys(payload).length||input.operation_id!==undefined)
     fail('BAD_REQUEST','試験レシートの再確認では入力を受け付けません');
    const trial=receiptTrialGuard_(readContext.book);
-   if(!trial.completed||trial.records<1||trial.records>2||
-      trial.items!==trial.records*2)
+   if(!trial.completed||trial.fixedRecords<1||trial.fixedRecords>2)
     fail('TRIAL_RECEIPT_NOT_READY','保存済みの試験レシートを先に確認してください');
    if(String(user.householdId)!==trial.householdId||
       String(user.userId)!==trial.userId)
@@ -340,8 +338,7 @@ function doPost(e){
       Object.keys(payload).length||input.operation_id!==undefined)
     fail('BAD_REQUEST','2件目の試験は固定明細だけを受け付けます');
    const trial=receiptTrialGuard_(readContext.book);
-   if(!trial.completed||trial.records<1||trial.records>2||
-      trial.items<2||trial.items>4)
+   if(!trial.completed||trial.fixedRecords<1||trial.fixedRecords>2)
     fail('TRIAL_RECEIPT_NOT_READY','先に1件目を確定してください');
    if(String(user.householdId)!==trial.householdId||
       String(user.userId)!==trial.userId)
@@ -353,8 +350,7 @@ function doPost(e){
       !Array.isArray(result.item_ids)||result.item_ids.length!==2)
     fail('TRIAL_RESULT_MISMATCH','2件目の保存結果が一致しません');
    const after=receiptTrialGuard_(spreadsheet());
-   if(!after.completed||!after.secondCompleted||
-      after.records!==2||after.items!==4)
+   if(!after.completed||!after.secondCompleted||after.fixedRecords!==2)
     fail('TRIAL_RESULT_MISMATCH','レシートの保存件数が一致しません');
    return jsonReply({ok:true,data:{
     status:'completed',replayed:trial.secondStarted,
@@ -1401,12 +1397,19 @@ function receiptTrialGuard_(book){
        baseLog=logs.filter(r=>String(r.obj.change_id)===fixtures.operation_id);
  if(baseAlias.length!==1||baseLog.length!==1)
   fail('TRIAL_NOT_ISOLATED','既存の商品コード試験が完了していません');
- const allowed=new Set([fixtures.operation_id,trial.operation_id,RECEIPT_TRIAL_SECOND_ID_]);
+ // Allow at most one additional candidate receipt from this known trial home.
+ // No public route can create it until the next acceptance stage.
+ const generalOps=ops.filter(x=>/^receipt-trial-main-[A-Za-z0-9_-]{12,64}$/.test(
+  String(x.obj.operation_id||'')));
+ if(generalOps.length>1)fail('TRIAL_NOT_ISOLATED','追加試験レシートは1件だけです');
+ const generalOperationId=generalOps[0]?String(generalOps[0].obj.operation_id):null;
+ const allowed=new Set([fixtures.operation_id,trial.operation_id,
+  RECEIPT_TRIAL_SECOND_ID_,...(generalOperationId?[generalOperationId]:[])]);
  if(ops.some(x=>!allowed.has(String(x.obj.operation_id))||
       String(x.obj.household_id)!==hid)||
     logs.some(x=>!allowed.has(String(x.obj.change_id))||
       String(x.obj.household_id)!==hid)||
-    ops.length>3||logs.length>3)
+    ops.length>4||logs.length>4)
   fail('TRIAL_NOT_ISOLATED','想定外の操作履歴があります');
  const expectedHeads=[],expectedLines=[],expectedLogs=[];
  const stateFor=(id,payload)=>{
@@ -1448,6 +1451,35 @@ function receiptTrialGuard_(book){
  const secondary=stateFor(RECEIPT_TRIAL_SECOND_ID_,receiptTrialSecondPayload_());
  if(secondary&&primary?.status!=='completed')
   fail('TRIAL_NOT_ISOLATED','先に固定の1件目を確定してください');
+ let general=null;
+ if(generalOperationId){
+  if(secondary?.status!=='completed')
+   fail('TRIAL_NOT_ISOLATED','固定の2件目を先に確定してください');
+  let stored;
+  try{stored=JSON.parse(String(generalOps[0].obj.result))}
+  catch(_){fail('TRIAL_NOT_ISOLATED','追加レシートの履歴が破損しています')}
+  if(!stored||!['prepared','completed'].includes(stored.status)||
+     !stored.entity||!Array.isArray(stored.items))
+   fail('TRIAL_NOT_ISOLATED','追加レシートの形式が不正です');
+  const e=stored.entity;
+  const proposed={
+   version:'receipt-create-1',record_type:'receipt',
+   chain_id:e.chain_id,record_date:e.record_date,
+   branch_name:e.branch_name??null,raw_store_name:e.raw_store_name??null,
+   items:stored.items.map((line,i)=>({
+    line_order:i+1,raw_name:line.raw_name??null,
+    product_id:line.product_id??null,quantity:line.quantity,
+    amount_tax_included:line.amount_tax_included,
+    category_id:line.category_id??null,price_eligible:line.price_eligible
+   }))
+  };
+  const safe=receiptPayload_(proposed);
+  if(String(e.household_id)!==hid||safe.chain_id!==fixtures.store_id||
+     safe.items.reduce((sum,item)=>sum+item.amount_tax_included,0)>1000000)
+   fail('TRIAL_NOT_ISOLATED','追加レシートの保存先・金額が不正です');
+  receiptOwnership_(hid,safe,book);
+  general=stateFor(generalOperationId,safe);
+ }
  if((!primary&&(receipts.length||lines.length))||
     receipts.length>expectedHeads.length||lines.length>expectedLines.length||
     new Set(expectedHeads.map(x=>String(x.record_id))).size!==expectedHeads.length||
@@ -1460,8 +1492,37 @@ function receiptTrialGuard_(book){
   fail('TRIAL_NOT_ISOLATED','想定外の変更履歴があります');
  return {householdId:hid,userId:String(member.user_id),
   records:receipts.length,items:lines.length,completed:primary?.status==='completed',
-  secondStarted:!!secondary,secondCompleted:secondary?.status==='completed'};
-
+  secondStarted:!!secondary,secondCompleted:secondary?.status==='completed',
+  fixedRecords:Number(!!primary)+Number(!!secondary),
+  generalOperationId,generalCompleted:general?.status==='completed'};
+}
+/**
+ * INTERNAL ONLY — next-stage general receipt in existing trial household.
+ * Not reachable from doPost; record.create remains hard-disabled.
+ * One operation ID survives partial failure, with the shared journal.
+ */
+function receiptTrialMainCreate_(user,payload,operationId){
+ if(typeof operationId!=='string'||
+    !/^receipt-trial-main-[A-Za-z0-9_-]{12,64}$/.test(operationId))
+  fail('BAD_REQUEST','試験用保存操作IDを確認してください');
+ const book=spreadsheet(),trial=receiptTrialGuard_(book);
+ if(!trial.completed||!trial.secondCompleted)
+  fail('TRIAL_RECEIPT_NOT_READY','固定の2件を先に確定してください');
+ if(String(user.householdId)!==trial.householdId||
+    String(user.userId)!==trial.userId)
+  fail('TRIAL_NOT_ISOLATED','試験用家庭・ユーザーが一致しません');
+ if(trial.generalOperationId&&trial.generalOperationId!==operationId)
+  fail('TRIAL_LIMIT','追加試験レシートは1件だけです');
+ const checked=receiptPayload_(payload);
+ if(checked.chain_id!==ALIAS_TRIAL_FIXTURE_.store_id||
+    checked.items.reduce((sum,item)=>sum+item.amount_tax_included,0)>1000000)
+  fail('TRIAL_NOT_ISOLATED','既存試験店舗・金額を確認してください');
+ receiptOwnership_(trial.householdId,checked,book);
+ const result=mutateReceiptSafely_(user,checked,operationId,true);
+ const after=receiptTrialGuard_(spreadsheet());
+ if(!after.generalCompleted||after.generalOperationId!==operationId)
+  fail('TRIAL_RESULT_MISMATCH','追加レシートの完了状態が一致しません');
+ return result;
 }
 /** Owner runs one public editor function after deploying updated trial code.
  * The editor-only helper is intentionally not a doPost action.
@@ -1477,8 +1538,7 @@ function runReceiptWriteTrialOnce(){
   fail('TRIAL_RESULT_MISMATCH','同じレシートの再送結果が一致しません');
  const after=receiptTrialGuard_(spreadsheet()),
        visible=receiptList_(user);
- if(!after.completed||![1,2].includes(after.records)||
-    after.items!==after.records*2||
+ if(!after.completed||![1,2,3].includes(after.records)||
     visible.records.length!==after.records||
     visible.record_items.length!==after.items)
   fail('TRIAL_RESULT_MISMATCH','保存行・明細・読取結果が一致しません');
