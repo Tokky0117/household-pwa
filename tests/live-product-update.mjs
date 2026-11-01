@@ -55,7 +55,7 @@ const context=vm.createContext({
 vm.runInContext(journalSrc,context);
 const screen=vm.runInContext(appSrc+'\n({listView,priceCompareView,pickerView,productCreateView,'+
  'refreshLive,updateLiveProductGroup,liveMutate,retryLive,livePending,'+
- 'state:()=>({liveSnapshot,selected,page,editingProductId})})',context);
+ 'state:()=>({liveSnapshot,selected,page,editingProductId,dialog})})',context);
 signedIn=true;await screen.refreshLive();
 vm.runInContext("selected='group-A';page='compare'",context);
 assert.match(screen.priceCompareView(),/元の牛乳/);
@@ -71,7 +71,7 @@ assert.match(app.innerHTML,/id="productCreateForm"/);
 assert.match(app.innerHTML,/元の牛乳/);
 vm.runInContext("page='compare'",context);
 click({premove:'product-A'});
-assert.match(app.innerHTML,/商品の登録解除/);
+assert.equal(screen.state().dialog?.title,'商品の登録解除');
 const unlink=screen.updateLiveProductGroup(data.products[0],null);
 await unlink;
 assert.equal(physical,1);
