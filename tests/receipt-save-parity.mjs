@@ -72,7 +72,8 @@ both({...baseline,items:[{...baseline.items[0],amount_tax_included:0}]});
 bothReject({...baseline,items:[{...baseline.items[0],amount_tax_included:null}]});
 // Browser canonicalization of optional empty strings cannot change the
 // server request; the client must send only cleaned canonical values.
-const normalized=both({...baseline,branch_name:'',raw_store_name:'  コノミヤ  '});
+bothReject({...baseline,branch_name:''});
+const normalized=both({...baseline,branch_name:null,raw_store_name:'  コノミヤ  '});
 assert.equal(normalized.branch_name,null);
 assert.equal(normalized.raw_store_name,'コノミヤ');
 assert.ok(!/SpreadsheetApp|UrlFetchApp|LockService/.test(csrc));
