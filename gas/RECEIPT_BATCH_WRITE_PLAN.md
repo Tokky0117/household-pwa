@@ -14,6 +14,13 @@
 
 **実行手順は3つだけ：** ①開発ブランチの `gas/Code.gs` を既存の試験GASに反映（所有者のみの公開設定を維持） → ②既存Webアプリの新バージョンをデプロイし、現在の `/exec?trial_receipt=1` を開く → ③「試験レシートを保存」→「保存件数を読み取る」で1件・2明細・496円を確認。別の試験環境は作らない。
 
+## 2026-11-01 実試験の次の一手（試験GASへソース反映完了）
+
+- **既存の試験用GASへのソース更新に成功**：[GitHub Actions実行結果](https://github.com/Tokky0117/household-pwa/actions/runs/41268057343)。対象の試験用Script IDを照合し、現在のリモートコードが[既知のGitHub過去版](https://github.com/Tokky0117/household-pwa/commit/8c6b6c14f63515370f2c2b66541795df9df52e95)とSHA-256一致することを確認後、既存マニフェストを保持して `gas/Code.gs` のみ更新。更新後にレシート試験関数の存在を確認済み。使用した一時的なプッシュトリガーは無効に戻した。
+- **実Sheets書込とデプロイはまだ実施していない。** 次はユーザーが既存の試験用Apps Scriptエディタを再読み込みし、`runReceiptWriteTrialOnce`（末尾アンダースコアなし）を選択して**実行1回**。成功時のログ `RECEIPT_TRIAL_OK` と、戻り値 `records=1, items=2, amount=496, replay=true` を確認する。もし失敗したら、シートを手編集せず、エラーコードだけ共有して停止。
+- `runReceiptWriteTrialOnce` は固定の同一操作IDと、既存の架空商品・店舗だけで書き込み、途中失敗時は**同じ関数を再実行**して復旧する。新しいGASプロジェクト・シート・スクリプトプロパティ・Webアプリ再デプロイ・プレビューページ操作はこの最初の保存試験では不要。
+- **一般公開の `record.create` は引き続きクライアント・GASとも拒否**。本番と通常PWAは無変更。実Sheetsで保存が成功するまで、端末間同期・実運用開始とはみなさない。
+
 参照：[データモデル](../DATA_MODEL.md) ／ [日常利用優先計画](../RECEIPT_DAILY_USE_PLAN.md) ／ [通信仕様](./TRANSPORT_DESIGN.md)。
 
 ## 1. 保存要求を先に確定
