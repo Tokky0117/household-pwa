@@ -42,7 +42,7 @@ function setupNewWorkbook() {
     if (createdId) {
       book = SpreadsheetApp.openById(createdId);
     } else {
-      book = SpreadsheetApp.create('くらしストック');
+      book = SpreadsheetApp.create('くらしストック_試作');
       // Record the new file immediately so an interrupted setup can resume it.
       props.setProperty('KURASHI_NEW_WORKBOOK_ID', book.getId());
     }

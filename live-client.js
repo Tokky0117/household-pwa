@@ -4,12 +4,21 @@
  const ENDPOINT='https://script.google.com/macros/s/AKfycbwn-SfXqRBIjJWVUUIKEsJuaUR6DLAEWbMVR-_rEB3iVZy2zi0ZNSA7JjNmyykvKjvdoQ/exec';
  const CLIENT_ID='290567395833-cdemend3itmapsgsounu8pf72hgvm315.apps.googleusercontent.com';
  const STORAGE='kurashi-new-write-v1-';
+ const SNAPSHOT_CACHE='kurashi-new-confirmed-snapshot-v1';
+ let fresh=false,loadPromise=null;
  const listeners=new Set();
  let token=null,subject='temporary-household',expiry=0,snapshot=null,household=null,busy=false,error='',gisReady=false;
  let loginRequired=false; // Set true if GAS reports UNAUTHORIZED.
  let requestSerial=0;
+ try {
+  const saved=localStorage.getItem(SNAPSHOT_CACHE);
+  if(saved){
+   const candidate=verifySnapshot(JSON.parse(saved));
+   snapshot=candidate;household=candidate.household_id;
+  }
+ }catch(_){snapshot=null;household=null}
  const state=()=>({signedIn:!loginRequired||(!!token&&Date.now()<expiry),
-  loginRequired,temporary:!loginRequired,loaded:!!snapshot,
+  loginRequired,temporary:!loginRequired,loaded:fresh,cached:!!snapshot&&!fresh,
   householdId:household,busy,error,pending:pending()});
  const notify=()=>listeners.forEach(cb=>cb(state(),snapshot));
  const pending=()=>{if(!subject)return null;try{const saved=localStorage.getItem(STORAGE+subject);return saved?JSON.parse(saved):null}catch{return {error:'STORAGE_UNAVAILABLE'}}};
@@ -21,7 +30,7 @@
   } catch (_) { return null; }
  }
  function logout(){
-  ++requestSerial;token=null;subject=loginRequired?null:'temporary-household';expiry=0;snapshot=null;household=null;error='';busy=false;
+  ++requestSerial;token=null;subject=loginRequired?null:'temporary-household';expiry=0;snapshot=null;household=null;error='';busy=false;fresh=false;loadPromise=null;
   if(window.google?.accounts?.id)window.google.accounts.id.disableAutoSelect();
   notify();
  }
@@ -35,7 +44,8 @@
      error='Googleログインを確認できません';notify();return;
     }
     ++requestSerial;token=value;subject=String(claims.sub);
-    expiry=Number(claims.exp)*1000;snapshot=null;household=null;error='';
+    expiry=Number(claims.exp)*1000;snapshot=null;household=null;fresh=false;error='';
+    try{localStorage.removeItem(SNAPSHOT_CACHE)}catch(_){}
     notify();load();
    }
   });
@@ -110,22 +120,31 @@
  }
  async function load(){
   if(loginRequired&&(!token||Date.now()>=expiry))return false;
+  if(loadPromise)return loadPromise;
   const serial=++requestSerial,currentSubject=subject;
   busy=true;error='';notify();
-  try{
-   const data=verifySnapshot(await request('bootstrap'));
-   if(serial!==requestSerial||subject!==currentSubject)return false;
-   if(household && household!==data.household_id)throw Error('HOUSEHOLD_CHANGED');
-   household=data.household_id;snapshot=data;error='';
-   return true;
-  }catch(e){
-   if(serial!==requestSerial)return false;
-   if(e.code==='UNAUTHORIZED'&&!loginRequired){
-    loginRequired=true;subject=null;token=null;expiry=0;snapshot=null;household=null;
+  const task=(async()=>{
+   try {
+    const data=verifySnapshot(await request('bootstrap'));
+    if(serial!==requestSerial||subject!==currentSubject)return false;
+    if(household&&household!==data.household_id)throw Error('HOUSEHOLD_CHANGED');
+    household=data.household_id;snapshot=data;fresh=true;error='';
+    try{localStorage.setItem(SNAPSHOT_CACHE,JSON.stringify(data))}catch(_){}
+    return true;
+   }catch(e){
+    if(serial!==requestSerial)return false;
+    if(e.code==='UNAUTHORIZED'&&!loginRequired){
+     loginRequired=true;subject=null;token=null;expiry=0;snapshot=null;household=null;fresh=false;
+     try{localStorage.removeItem(SNAPSHOT_CACHE)}catch(_){}
+    }
+    error=e.code||e.message||'読み込みに失敗しました';
+    return false;
    }
-   error=e.code||e.message||'読み込みに失敗しました';
-   return false;
-  }finally{
+  })();
+  loadPromise=task;
+  try{return await task}
+  finally{
+   if(loadPromise===task)loadPromise=null;
    if(serial===requestSerial){busy=false;notify()}
   }
  }
@@ -140,6 +159,7 @@
    snapshot={...snapshot,
     item_groups:[...snapshot.item_groups.filter(x=>x.item_group_id!==response.entity.item_group_id),response.entity],
     sequence_no:response.sequence_no};
+   try{localStorage.setItem(SNAPSHOT_CACHE,JSON.stringify(snapshot))}catch(_){}
    notify();
   }
   clearPending();
@@ -147,7 +167,12 @@
   return response.entity;
  }
  async function save(action,payload){
-  if(!state().signedIn||!snapshot||busy)throw Error('LOGIN_OR_LOAD_REQUIRED');
+  if(!state().signedIn)throw Error('LOGIN_REQUIRED');
+  if(loadPromise)await loadPromise;
+  if(!fresh||!snapshot){
+   if(!await load())throw Error(error||'読み込みに失敗しました');
+  }
+  if(busy)throw Error('BUSY');
   if(pending())throw Error('RECOVERY_REQUIRED');
   if(!['item.create','item.update'].includes(action))throw Error('UNSUPPORTED');
   const entry={action,payload,operationId:'op-'+crypto.randomUUID(),subject,householdId:household};
@@ -177,7 +202,7 @@
   itemsOf,catalogueOf};
  window.addEventListener('kurashi-gis-ready',initialize);
  document.addEventListener('DOMContentLoaded',()=>{if(!loginRequired)load()});
- window.addEventListener('pageshow',()=>{if(state().signedIn&&!busy&&!pending())load()});
- document.addEventListener('visibilitychange',()=>{if(!document.hidden&&state().signedIn&&!busy&&!pending())load()});
+ window.addEventListener('pageshow',()=>{if(state().signedIn&&!pending())load()});
+ document.addEventListener('visibilitychange',()=>{if(!document.hidden&&state().signedIn&&!pending())load()});
  if(document.readyState==='complete')initialize();
 })();

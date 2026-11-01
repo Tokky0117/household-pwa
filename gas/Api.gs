@@ -186,6 +186,9 @@ function kurashiBootstrap_(user) {
         return state.status==='prepared';
       });
     if (pending) kurashiFail_('RECOVERY_REQUIRED','前回の保存を先に確認してください');
+    // Rename the exact new workbook once, preserving its ID and all rows.
+    if (typeof book.getName==='function' && book.getName()==='くらしストック')
+      book.setName('くらしストック_試作');
     return {
       household_id:hid,
       categories:kurashiRows_('categories',book).map(x=>kurashiPublic_(x.value)),
