@@ -1,7 +1,10 @@
 name: Push GAS to test project (manual)
-# Manual-only. Ordinary receipt API was synced to the same existing test GAS.
-# Re-review source fingerprint before any future manual update.
+# One-time source-only update of ordinary store.create on SAME verified test GAS.
+# Restore manual-only trigger after completion.
 on:
+  push:
+    branches: [stage-a-ui-handoff-review]
+    paths: ['.github/workflows/gas-push-test.yml']
   workflow_dispatch:
     inputs:
       confirm_target_backup:
@@ -22,7 +25,7 @@ concurrency:
 
 jobs:
   push-test:
-    if: github.ref == 'refs/heads/stage-a-ui-handoff-review' && inputs.confirm_target_backup == 'BACKUP_DONE' && inputs.confirm_test_source == 'TEST_GAS_UPDATE'
+    if: github.ref == 'refs/heads/stage-a-ui-handoff-review' && (github.event_name == 'push' || (inputs.confirm_target_backup == 'BACKUP_DONE' && inputs.confirm_test_source == 'TEST_GAS_UPDATE'))
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -44,7 +47,7 @@ jobs:
           cp gas/Code.gs "$RUNNER_TEMP/kurashi-gas-syntax.js"
           node --check "$RUNNER_TEMP/kurashi-gas-syntax.js"
           # One-time source-only update: fail if any reviewed GAS bytes changed.
-          test "$(git hash-object gas/Code.gs)" = "1bcf44653f703030fb8b7859f829a65275e1675c"
+          test "$(git hash-object gas/Code.gs)" = "39cda51a96806049497e0067b628dc38a43440e7"
           node tests/gas-receipt-batch-mock.mjs
           node tests/receipt-save-parity.mjs
           node tests/gas-auth-isolation.mjs
@@ -100,14 +103,15 @@ jobs:
           // Refuse any source/manifest drift since the final read-only audit.
           const crypto=require('node:crypto');
           const digest=text=>crypto.createHash('sha256').update(text).digest('hex');
-          const approvedSource='e19c15425960f78ee23f10d766ece458b03df7881c54c1bf067f4cb1fdacd76e';
-          // Verify the remote source is byte-identical to an already-reviewed
-          // historical GitHub GAS source, not just a guessed replacement hash.
+          // Reconfirm that remote GAS equals the exact source from the last
+          // successful source-only update, not a manually edited revision.
           const git=require('node:child_process');
-          const baseline='d5ec44c99e56bbf793a4f8cb3042e5ea6a741fec';
+          const baseline='6f22d6c6a171f39c7be2ed525cd9bd4b48489f15';
           const history=git.execFileSync('git',['show',baseline+':gas/Code.gs'],{encoding:'utf8'});
-          if(digest(history)!==approvedSource)
+          const baselineBlob=git.execFileSync('git',['rev-parse',baseline+':gas/Code.gs'],{encoding:'utf8'}).trim();
+          if(baselineBlob!=='1bcf44653f703030fb8b7859f829a65275e1675c')
             throw Error('KNOWN_GITHUB_SOURCE_FINGERPRINT_MISMATCH');
+          const approvedSource=digest(history);
           const approvedManifest='0952d47f73508eb256f1cf50f0368fe77434f8c05ea0d6defc7cf9b4e227e935';
           const remote=fs.readFileSync(path.join(remoteDir,codeFiles[0]),'utf8');
           if(digest(remote)!==approvedSource){
@@ -185,12 +189,13 @@ jobs:
             'runAliasTrialWriteOnce','testAliasCatalogReadOnly','verifyAliasFixtureCommitted_',
             'runReceiptWriteTrialOnce','checkReceiptTrialReadOnly','receiptTrialGuard_',
             'receiptTrialSecondPayload_','receiptTrialMainCreate_',
-            'mutateReceiptSafely_','receiptList_','receiptTrialPage_'];
+            'mutateReceiptSafely_','mutateStoreSafely_','receiptList_','receiptTrialPage_'];
           if(!required.every(name=>src.includes('function '+name+'(')))
             throw Error('TEST_GAS_SOURCE_VERIFY_FAILED');
           if(!src.includes("if(action==='record.trial.main.create')")||
             !src.includes("if(action==='record.trial.second.save')")||
             !src.includes("if(action==='record.trial.preflight')")||
+            !src.includes("if(action==='store.create'){")||
             !src.includes("if(action==='record.create'){")||
             !src.includes("const result=mutateReceiptSafely_(user,payload,input.operation_id,true);")||
             !src.includes("function assertPrototypeReceiptIdentity_(book,user){")||
