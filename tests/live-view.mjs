@@ -98,10 +98,10 @@ large.item_groups=Array.from({length:80},(_,i)=>({
 }));
 let associationReads=0;
 large.products=Array.from({length:400},(_,i)=>({
- product_id:'p-'+i,name:'商品'+i,
+ product_id:'p-'+i,household_id:'h-b',name:'商品'+i,
  get item_group_id(){associationReads++;return 'item-'+(i%80)}
 }));
-large.products.push({deleted_at:'2026-01-01',name:'削除済み商品',
+large.products.push({product_id:'deleted-product',household_id:'h-b',deleted_at:'2026-01-01',name:'削除済み商品',
  get item_group_id(){throw Error('Deleted product must not be indexed')}});
 context.window.KurashiGasApi.request=async action=>{assert.equal(action,'bootstrap');return large};
 await testAPI.refreshLive();
@@ -220,3 +220,23 @@ assert.match(testAPI.liveListView(),/CONFIRMED-NEW/);
 assert.doesNotMatch(testAPI.liveListView(),/CONFIRMED-OLD/);
 assert.equal(testAPI.previewState().items[0].name,'ローカル牛乳');
 console.log('Read failures: safe errors, last confirmed snapshot, explicit retry, recovery PASS');
+
+// A bootstrap containing even one product from another household must fail
+// closed before a mixed stock screen or a product name is ever rendered.
+testAPI.leave();testAPI.setSettings();testAPI.render();
+const mixed=snapshot('h-c','同じ家庭の日用品');
+mixed.products=[{product_id:'cross-product',household_id:'other-household',
+ item_group_id:mixed.item_groups[0].item_group_id,name:'別家庭の非公開商品'}];
+context.window.KurashiGasApi.request=async()=>mixed;
+await testAPI.refreshLive();
+assert.equal(testAPI.previewState().liveSnapshot,null);
+assert.equal(testAPI.previewState().liveMode,false);
+assert.doesNotMatch(testAPI.listView(),/別家庭の非公開商品/);
+assert.match(testAPI.settingsView(),/読み取りに失敗/);
+const dangling=snapshot('h-c','同じ家庭の日用品');
+dangling.products=[{product_id:'unknown-group',household_id:'h-c',
+ item_group_id:'nonexistent-group',name:'未確認の紐付け'}];
+context.window.KurashiGasApi.request=async()=>dangling;
+await testAPI.refreshLive();
+assert.equal(testAPI.previewState().liveSnapshot,null,'Dangling product references are not accepted');
+console.log('Sheets bootstrap rejects mixed households and dangling product groups PASS');
