@@ -281,6 +281,27 @@ function doPost(e){
    if(action==='product.alias.check')return jsonReply({ok:true,data:productAliasCheck_(user,payload,readContext.book)});
   if(action==='record.preflight')
    return jsonReply({ok:true,data:receiptPreflight_(user,payload,readContext.book)});
+  // Read-only qualification for the next PWA receipt-write rehearsal. Requires
+  // the SAME pinned pre-existing test Sheet and completed fixed fixture as ⑥/⑦.
+  // No new Sheets or properties and no write is possible through this route.
+  if(action==='record.trial.preflight'){
+   if(input.operation_id!==undefined)fail('BAD_REQUEST','診断に操作IDは不要です');
+   const trial=receiptTrialGuard_(readContext.book);
+   if(!trial.completed||trial.records!==1||trial.items!==2)
+    fail('TRIAL_RECEIPT_NOT_READY','試験用レシートの確定が必要です');
+   if(String(user.householdId)!==trial.householdId||
+      String(user.userId)!==trial.userId)
+    fail('TRIAL_NOT_ISOLATED','試験用家庭・アカウントが一致しません');
+   const checked=receiptPreflight_(user,payload,readContext.book);
+   if(checked.blocked_by_pending_operation)
+    fail('RECOVERY_REQUIRED','未完了の操作を先に確認してください');
+   return jsonReply({ok:true,data:{
+    version:checked.version,
+    item_count:checked.item_count,
+    total_tax_included:checked.total_tax_included,
+    trial_ready:true,write_enabled:false
+   }});
+  }
   if(action==='record.list'){
    if(!payload||typeof payload!=='object'||Array.isArray(payload)||Object.keys(payload).length)
     fail('BAD_REQUEST','一覧の取得条件が不正です');
