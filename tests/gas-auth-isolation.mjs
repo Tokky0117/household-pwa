@@ -71,6 +71,33 @@ assert.deepEqual(Array.from(out.data.stores,x=>x.chain_id),['s-a']);
 assert.equal(out.data.categories.length,5);
 assert.equal(out.data.sequence_no,1);
 assert.equal(readsByTable.product_aliases||0,0,'Ordinary bootstrap must not scan aliases');
+// A family connection check contains no Google subject, email, display name
+// or user IDs. Each spouse authenticates separately against the same family.
+const householdA=request('household.status');
+assert.equal(householdA.ok,true);
+assert.deepEqual(JSON.parse(JSON.stringify(householdA.data)),{
+ household_id:'h-a',member_count:2,two_member_count:true,receipt_write_enabled:false
+});
+assert.ok(!/subject|email|display_name|user_id|auth_subject/.test(JSON.stringify(householdA.data)));
+claims.sub='subject-a2';
+const householdSpouse=request('household.status');
+assert.equal(householdSpouse.ok,true);
+assert.deepEqual(JSON.parse(JSON.stringify(householdSpouse.data)),
+ JSON.parse(JSON.stringify(householdA.data)));
+claims.sub='subject-b';
+const householdB=request('household.status');
+assert.equal(householdB.data.household_id,'h-b');
+assert.equal(householdB.data.member_count,1);
+assert.equal(householdB.data.two_member_count,false);
+claims.sub='subject-a';
+assert.equal(request('household.status',{household_id:'h-b'}).error.code,'BAD_REQUEST');
+books.users.push(['duplicate-subject','h-a','Duplicate','subject-a2']);
+assert.equal(request('household.status').error.code,'HOUSEHOLD_MEMBERSHIP_INVALID');
+books.users.pop();
+books.users.push(['duplicate-id','h-a','Duplicate','subject-a']);
+assert.equal(request('household.status').error.code,'HOUSEHOLD_MEMBERSHIP_INVALID');
+books.users.pop();
+
 const catalogReadStart=spreadsheetOpens;
 let catalog=request('product.catalog',{householdId:'h-b'});
 assert.equal(spreadsheetOpens-catalogReadStart,1);
@@ -269,6 +296,7 @@ books.households.pop();
 claims.sub='outsider';assert.equal(request('bootstrap').error.code,'FORBIDDEN');
 assert.equal(request('product.catalog').error.code,'FORBIDDEN');
 assert.equal(request('product.alias.check',{}).error.code,'FORBIDDEN');
+assert.equal(request('household.status').error.code,'FORBIDDEN');
 claims.sub='subject-a';claims.aud='untrusted-client';
 const beforeBadTokenOpen=spreadsheetOpens;
 assert.equal(request('bootstrap').error.code,'UNAUTHORIZED');
