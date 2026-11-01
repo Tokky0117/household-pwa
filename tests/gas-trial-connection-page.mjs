@@ -29,7 +29,7 @@ assert.match(html,/id="catalog-detail"/);
 assert.match(html,/id="receipt-read"/);
 assert.match(html,/id="receipt-replay"/);
 assert.match(html,/id="receipt-candidate-check"/);
-assert.match(html,/receipt-save-contract\\.js/);
+assert.ok(html.includes('src="./receipt-save-contract.js"'));
 assert.ok(html.includes("KurashiGasApi.request('record.trial.preflight',payload)"));
 assert.ok(html.includes("KurashiGasApi.request('record.trial.replay',{}"));
 assert.match(html,/KurashiGasApi\.request\('record\.list',\{\}\)/);
