@@ -1334,54 +1334,43 @@ function receiptScanReview(){
  </section>`;
 }
 function receiptView(){
- const rows=previewRecords.records.slice().reverse().map(r=>{
- const lines=previewRecords.record_items.filter(x=>x.record_id===r.record_id&&!x.deleted_at)
-  .sort((a,b)=>Number(a.line_order||0)-Number(b.line_order||0));
- const sum=lines.reduce((total,x)=>total+Number(x.amount_tax_included||0),0);
- const details=lines.map(item=>{
-  const p=catalogue.products.find(x=>x.id===item.product_id);
-  return `<li><span>${esc(p?.name||item.raw_name||'商品未照合')} · ${esc(item.quantity)}個</span><strong>${yen(item.amount_tax_included??null)}</strong></li>`;
- }).join('');
- return `<details class="panel preview-record-row"><summary><strong>${esc(r.record_type==='receipt'?'レシート':'値札')} · ${esc(r.record_date)}</strong><span>${esc(chainLabel(r.chain_id))} ／ ${lines.length}明細 ／ ${yen(sum)}</span></summary><ul class="receipt-record-lines">${details}</ul><button type="button" class="secondary danger" data-act="deletePreviewReceipt" data-record-id="${esc(r.record_id)}">この試作記録を削除</button></details>`;
- }).join('')||'<div class="empty">この端末の記録はまだありません</div>';
- return `${head('レシート','くらしストック')}<main class="preview-record-page"><p class="sample-price-notice">${receiptRemoteWritable()?'家庭のGoogle Sheetsに保存します。購入日・店舗・数量・税込明細金額を確認してください。':window.KURASHI_RECEIPT_STAGE_A_TRIAL===true?'試験用Google Sheetsへ保存するには、設定画面で既存の試験GAS URLとGoogleログインを確認してください。':'現在のレシート保存先はこのSafari内の試作記録です。通常の開発プレビューはGoogleログインを使用しません。'}</p><section class="panel receipt-scan-start"><h2>レシート写真を読み込む</h2><p class="hint">OCR実行時のみ無料の認識ライブラリ・日本語データをネットから取得します。写真そのものは送信・保存しません。通信がない場合は手入力できます。</p><div class="record-entry-actions"><button type="button" class="secondary" data-act="scanReceiptCamera">カメラで撮影</button><button type="button" class="secondary" data-act="scanReceiptPhoto">写真を選択</button></div><input id="receipt-camera" type="file" accept="image/jpeg,image/png,image/webp" capture="environment" hidden><input id="receipt-photo" type="file" accept="image/jpeg,image/png,image/webp" hidden></section>
+ const authenticated=connectedReceiptHousehold();
+ return `${head('レシート','くらしストック')}<main class="preview-record-page">
+ ${authenticated?'<p class="hint">確認したレシートは家庭共通のGoogle Sheetsに保存します。</p>':'<p class="ui-field-notice">保存するには設定からGoogleログインしてください。</p>'}
+ <section class="panel receipt-scan-start"><h2>レシート写真を読み込む</h2>
+ <div class="record-entry-actions"><button type="button" class="secondary" data-act="scanReceiptCamera">カメラで撮影</button><button type="button" class="secondary" data-act="scanReceiptPhoto">写真を選択</button></div>
+ <input id="receipt-camera" type="file" accept="image/jpeg,image/png,image/webp" capture="environment" hidden>
+ <input id="receipt-photo" type="file" accept="image/jpeg,image/png,image/webp" hidden></section>
  <section class="panel receipt-chatgpt-import"><h2>ChatGPTの読取結果を貼り付け</h2>
- <p class="hint">普段は夫婦共通のChatGPTプロジェクトに写真だけ送信し、返されたJSONをここへ貼り付けます。画像の送信はご自身で行ってください。指示文のコピーは予備です。</p>
+ <p class="hint">ChatGPTでレシート写真から生成したJSONを貼り付け、原本と照合して保存してください。</p>
  <button type="button" class="secondary" data-act="copyChatGptPrompt">読取指示文をコピー（予備）</button>
  <label for="receipt-chatgpt-json" class="formlabel">ChatGPTからのJSON</label>
- <textarea id="receipt-chatgpt-json" rows="5" maxlength="30000" spellcheck="false" autocomplete="off" placeholder="JSONのみ貼り付け（説明やコードフェンス不要）">${esc(receiptChatGptText)}</textarea>
+ <textarea id="receipt-chatgpt-json" rows="5" maxlength="30000" spellcheck="false" autocomplete="off" placeholder="JSONのみ貼り付け">${esc(receiptChatGptText)}</textarea>
  <button type="button" class="primary" data-act="importChatGptReceipt">貼り付けた明細を確認</button>
- ${receiptChatGptNotice?'<p class="ui-field-notice" role="status">'+esc(receiptChatGptNotice)+'</p>':''}
- <p class="sample-price-notice">${receiptRemoteWritable()?'確認したレシートを家庭のGoogle Sheetsに保存できます。':'現在はこのSafariの試作記録だけです。Google Sheetsには未保存です。'}ChatGPT出力に会員・決済情報を含めないでください。</p>
- </section>${receiptScanReview()}${receiptStorePendingView()}${receiptPendingView()}${remoteReceiptView()}${connectedReceiptHousehold()?'':`<div class="record-entry-actions"><button class="secondary" data-act="newReceipt">${miniIcon('plus')}<span>レシート明細</span></button><button class="secondary" data-act="newShelf">${miniIcon('plus')}<span>値札</span></button></div><h2 class="sectiontitle">このSafari内の試作記録（Google Sheetsには未保存）</h2><p class="hint">保存した記録はこのブラウザのWebサイトデータにあります。Google Sheets・Google Drive・ファイルアプリには保存されません。ブラウザデータを消すと記録も失われます。</p>${rows}`}</main>${nav()}`;
+ ${receiptChatGptNotice?'<p class="ui-field-notice">'+esc(receiptChatGptNotice)+'</p>':''}</section>
+ ${receiptScanReview()}${receiptStorePendingView()}${receiptPendingView()}${remoteReceiptView()}
+ </main>${nav()}`;
 }
 function budgetView(){
- if(connectedReceiptHousehold()){
-  const month=budgetMonth.split('-');
-  return `${head('家計簿','くらしストック')}<main class="preview-budget-page">
-  <div class="budget-month"><button type="button" class="iconbtn" data-act="prevMonth" aria-label="前月">${chevron('left')}</button><strong>${esc(month[0])}年${esc(month[1])}月</strong><button type="button" class="iconbtn" data-act="nextMonth" aria-label="翌月">${chevron('right')}</button></div>
-  ${remoteBudgetView()}</main>${nav()}`;
- }
- const {total,byCategory}=budgetTotals(allPreviewRecords(),allPreviewItems(),budgetMonth);
- const categoryRows=[...CATS.map((name,i)=>[name,byCategory.get(i)||0]),['未分類',byCategory.get('uncategorized')||0]];
- return `${head('家計簿','くらしストック')}<main class="preview-budget-page">${remoteBudgetView()}<p class="sample-price-notice">以下はサンプルと端末内の試作記録だけです。Google Sheetsの確定金額とは合算しません。値札は集計対象外です。</p><div class="budget-month"><button type="button" class="iconbtn" data-act="prevMonth" aria-label="前月">${chevron('left')}</button><strong>${esc(budgetMonth.replace('-', '年'))}月</strong><button type="button" class="iconbtn" data-act="nextMonth" aria-label="翌月">${chevron('right')}</button></div><div class="budget-total"><span>税込合計</span><strong>${yen(total)}</strong></div><div class="budget-category-list">${categoryRows.map(([name,value])=>`<div class="budget-category-row"><span>${esc(name)}</span><strong>${yen(value)}</strong></div>`).join('')}</div></main>${nav()}`;
+ if(!connectedReceiptHousehold())
+  return `${head('家計簿','くらしストック')}<main><section class="panel"><p>設定からGoogleログインすると、家庭の確定済みレシートを集計できます。</p></section></main>${nav()}`;
+ const [year,month]=budgetMonth.split('-');
+ return `${head('家計簿','くらしストック')}<main class="preview-budget-page">
+ <div class="budget-month"><button type="button" class="iconbtn" data-act="prevMonth" aria-label="前月">${chevron('left')}</button><strong>${esc(year)}年${esc(month)}月</strong><button type="button" class="iconbtn" data-act="nextMonth" aria-label="翌月">${chevron('right')}</button></div>
+ ${remoteBudgetView()}</main>${nav()}`;
 }
 function stub(title,icon,desc){return `${head(title,'くらしストック')}<main><div class="panel placeholder"><div class="bubble">${icon}</div><h2>${title}画面</h2><p>${desc}</p></div><div class="alert">この画面は共通UIの確認用です。データ処理や同期はまだ行いません。</div></main>${nav()}`}
 function settingsView(){
- if(window.KURASHI_RECEIPT_TEST_MODE===true)
-  return `${head('設定','くらしストック')}<main>
-   <section class="panel"><h2>Googleログインは一時停止中</h2><p class="hint">レシート機能の確認期間中、この開発プレビューではGoogleログインとGoogle Sheetsへの通信を開始しません。本番の認証設定は変更していません。</p></section>
-   <section class="panel"><h2>試作データの保存先</h2><p class="hint">このSafariのWebサイト内データのみです。Google Sheets・Driveには保存しません。</p></section>
-   <section class="panel"><h2>試作版の操作</h2><button type="button" class="secondary danger" data-act="reset">仮データを初期状態に戻す</button></section>
-   </main>${nav()}`;
- const stageConnect=window.KURASHI_RECEIPT_STAGE_A_TRIAL===true?
-  '<section class="panel"><h2>既存の試験用GASへ接続（開発用）</h2>'+
-  '<p class="hint">既に確認した試験GASの「デプロイを管理」に表示される /exec URLだけを入力してください。トークンを送る宛先なので、他のURLは使用しないでください。URLはこの画面を閉じると保持しません。</p>'+
-  '<label class="formfield" for="stage-trial-endpoint">既存の試験GAS /exec URL<input id="stage-trial-endpoint" type="url" inputmode="url" autocomplete="off" spellcheck="false" placeholder="https://script.google.com/macros/s/.../exec"></label>'+
-  '<button type="button" class="secondary" data-act="connectStageTrial">試験GASに接続</button>'+
-  '<p class="hint" role="status">接続：'+(window.KurashiGasApi?.status?.()?.configured?'設定済み。認証後に試験家庭のマスタを確認します。':'未設定。通常のGASには自動接続しません。')+'</p>'+
-  '<p class="hint">既存の試験家庭の登録ユーザーだけが通常のレシート保存APIを利用できます。実家庭の購入情報はまだ登録しないでください。</p></section>':'';
- const auth=window.KurashiAuth?.status?.()||{configured:false,signedIn:false};const loginPanel=`<div class="panel"><h2>Googleログイン（接続準備）</h2><p class="hint">${auth.signedIn?('この端末でログイン済みです。'+(liveWritable()?'既存の試験用Google Sheetsを利用できます。':'通常環境の書き込みは無効です。')):auth.configured?'初回のみGoogleアカウントでログインします。期限切れ時は再ログインが必要です。':'Googleログインの接続設定を準備中です。現時点では試作データだけを利用できます。'}</p>${auth.signedIn?'<button type="button" class="secondary" data-act="googleSignOut">ログアウト</button>':auth.configured?'<div id="google-login-button"></div>':''}</div>`;return `${head('設定','くらしストック')}<main>${stageConnect}${loginPanel}<div class="panel"><h2>Google Sheets読み取り</h2><p class="hint" role="${liveStatus.startsWith('取得失敗：')?'alert':'status'}">状態：${esc(liveStatus)}。ログイン後、日用品・商品・店舗を読み取れます。${liveWritable()?'日用品の登録と在庫更新はGoogle Sheetsに保存します。':'この環境では保存できません。'}${liveStatus.startsWith('取得失敗：')?'自動再試行はしません。必要ならもう一度読み取ってください。':''}</p><button class="secondary" data-act="refreshLive" style="width:100%" ${auth.signedIn&&!liveBusy?'':'disabled'}>${liveBusy?'読み取り中…':liveStatus.startsWith('取得失敗：')?'もう一度読み取る':'Google Sheetsから読み取る'}</button>${liveMode?'<button class="secondary" data-act="leaveLive" style="width:100%">試作データに戻る</button>':''}</div>${householdCheckView(auth)}<div class="panel"><h2>試作版の操作</h2><p class="hint">変更内容はこの端末の localStorage のみに保存され、夫婦間では共有されません。</p><button class="secondary danger" data-act="reset">仮データを初期状態に戻す</button></div><div class="panel"><h2>連携機能</h2><p class="hint">Google Sheetsへ接続できる場合、日用品・在庫・商品の登録とレシート履歴・家計簿の読み取りが利用できます。商品編集や価格比較の全面連携は今後実装します。</p></div></main>${nav()}`}
+ const auth=window.KurashiAuth?.status?.()||{configured:false,signedIn:false};
+ const loginPanel=`<section class="panel"><h2>Googleログイン</h2>
+ <p class="hint">${auth.signedIn?'家庭共通のGoogle Sheetsに接続できます。':'Googleアカウントでログインしてください。'}</p>
+ ${auth.signedIn?'<button type="button" class="secondary" data-act="googleSignOut">ログアウト</button>':auth.configured?'<div id="google-login-button"></div>':'<p>ログインを設定できませんでした。</p>'}</section>`;
+ return `${head('設定','くらしストック')}<main>${loginPanel}
+ <section class="panel"><h2>Google Sheets</h2><p class="hint" role="status">状態：${esc(liveStatus)}</p>
+ <button class="secondary" data-act="refreshLive" style="width:100%" ${auth.signedIn&&!liveBusy?'':'disabled'}>${liveBusy?'読み取り中…':'日用品・商品・店舗を読み取る'}</button>
+ <p class="hint">保存は既存の家庭用Google Sheetsに行います。通信が不明な場合は同じ操作IDで確認・再送します。</p></section>
+ ${householdCheckView(auth)}</main>${nav()}`;
+}
 // All confirmation dialogs share one DOM and CSS. A Japanese full stop ends a paragraph line.
 function dialogView(){
  if(!dialog)return '';
