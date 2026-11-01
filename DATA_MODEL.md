@@ -1,5 +1,7 @@
 # くらしストック｜データモデル v1.8（実装用契約・接続前）
 
+> **2026-11-01 現行接続状態の補足：** [既存UIとSheetsの実装方針・差分](./CURRENT_IMPLEMENTATION_POLICY.md)、[現行GAS状態](./gas/README.md)。12シートの定義、価格・数量の計算と家庭のデータ隔離はそのまま正本。本文の「未実装」「試作データのみ」は記載当時の実装状態で、現在は既存試験GASに通常の `item.create/update`・`product.create`・`store.create`・`record.create` を実装・公開済み。ただしiPhoneでの通常登録と2アカウント共有は未受入。
+
 更新：2026-10-18 ／ 対象：`stage-a-ui-handoff-review`
 
 > **状態：本番Google Sheets・GAS API・家庭認証は未実装。** 現行UIのレシート／値札は端末内の試作記録と明示したサンプル。実家庭データには使わない。本書のうち未確定部分は勝手に自動確定しない。
