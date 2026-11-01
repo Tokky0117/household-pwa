@@ -45,7 +45,7 @@ const ctx=vm.createContext({
 const app=vm.runInContext(appSrc+
  '\n({refreshLive,liveListView,liveWritable,listView})',ctx);
 assert.equal(app.liveWritable(),false);
-assert.match(app.listView(),/Googleアカウントでログイン/);
+assert.match(app.listView(),/設定からGoogleログイン/);
 assert.doesNotMatch(app.listView(),/demo-|サンプル|試作保存/);
 state.signedIn=true;state.subject='1234567890';state.token='mock-token';
 assert.equal(app.liveWritable(),true);
