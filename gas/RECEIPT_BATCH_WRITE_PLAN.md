@@ -36,3 +36,13 @@
 - `gas-api.js` は `record.create` をネットワーク送信前に `RECEIPT_WRITES_DISABLED` として拒否。
 - `gas/Code.gs` も `record.create` を明示的に拒否。**`ENABLE_EXPERIMENTAL_WRITES=true` にしてもレシート書込は有効にならない**。
 - `main`、試験シート、実行中GAS、デプロイを変更していない。
+
+## 2026-11-01：GAS実装進捗（外部書込は無効）
+
+- `gas/Code.gs` に内部専用 `receiptPayload_`、`receiptOwnership_`、`mutateReceiptSafely_`、`receiptPreparedMatches_`、`receiptCompletedReplay_` を実装。保存要求を全列検証し、Google subjectから取得した家庭の店舗・商品をロック下で再検査。要求ハッシュ／家庭／操作IDを照合する。
+- `processed_operations` へサーバー決定済みの親子ID・金額・同期番号を先に `prepared` 保存して再読込した後、`records` 親1行→`record_items` N行→`change_log` 1行→完了ジャーナルの順に書く処理をコード化。再送時は一致済み行を追記せず、足りない行だけ復元。作成完了後は全明細のスナップショットを完了ジャーナルにも保持し、不一致なら返さない。
+- **外部からの保存は依然不可**。公開 `doPost` は `record.create` を無条件拒否し、`gas-api.js` も通信前に拒否。内部専用書込処理も `RECEIPT_WRITES_ENABLED=true` と従来の隔離試験専用ガードがなければ処理を始めない。今回これらのプロパティ変更・デプロイ・実書込はしていない。
+- 認証済み `record.list` を読み取り専用で追加。最新の家庭所属から `records` と `record_items` を絞り、**完了ジャーナル・変更履歴・親子スナップショットの整合が確認できたレシートだけ**返す。未完了 `prepared`、改変行、他家庭の行を返さない。大きすぎる履歴は黙って一部返さずエラーにする（ページングは今後）。
+- 開発版PWAのレシートタブにも、Google認証済みの場合のみ明示操作で取得する読取専用一覧を追加。レシート写真・ChatGPT下書き・Safari内の試作記録とは混ぜない。ログアウト・アカウント切替・画面離脱時は取得結果を破棄し、遅れて戻る応答は無視。
+- `tests/gas-receipt-batch-mock.mjs` の**12故障注入ケース**、完了後再送、別家庭、夫婦で同じ家庭を読むケース、改ざん防止を含む模擬テストを追加。`tests/gas-auth-isolation.mjs` の実POST経路モックと `tests/receipt-remote-read.mjs` の端末UIテストにも認証・家庭境界の試験を追加。
+- **未完了：** 実Google Sheetsの親子書込・障害注入、GAS公開版への反映、実iPhone・二人のアカウントでの読込確認、購入記録の編集／削除、レシート書込用クライアントジャーナル、2人の通常家庭を許可する本番用の保存ゲート、安全な段階的な書込有効化。今回の試験用隔離ガードは1ユーザー前提なので、夫婦の実書込を可能にしたものではない。
