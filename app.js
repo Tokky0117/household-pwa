@@ -410,7 +410,7 @@ function remoteReceiptView(){
    '</strong><span>'+children.length+'明細 · '+yen(total)+
    '</span></summary><ul class="receipt-record-lines">'+children.map(x=>
     '<li><span>'+esc(x.raw_name||'商品未照合')+' · '+esc(x.quantity)+
-    '点</span><strong>'+yen(x.amount_tax_included)+'</strong></li>').join('')+
+    '点</span><strong>明細合計 '+yen(x.amount_tax_included)+'</strong></li>').join('')+
    '</ul></details>';
  }).join('');
  return '<section class="receipt-remote-read"><h2 class="sectiontitle">Google Sheetsの確定レシート（読み取り専用）</h2>'+
@@ -1096,7 +1096,7 @@ function receiptScanReview(){
  ${UI.formField({id:'scan-name-'+i,name:'name-'+i,label:'商品名（修正できます）',value:item.rawName,required:true,maxlength:120})}
  <div class="receipt-review-numbers">
  ${UI.formField({id:'scan-quantity-'+i,name:'quantity-'+i,label:'数量',type:'number',value:item.quantity,required:true,extra:'min="1" max="99" step="1" inputmode="numeric"'})}
- ${UI.formField({id:'scan-amount-'+i,name:'amount-'+i,label:'税込明細合計（円）',type:'number',value:item.amount,required:true,extra:'min="0" max="1000000" step="1" inputmode="numeric"'})}
+ ${UI.formField({id:'scan-amount-'+i,name:'amount-'+i,label:'税込明細合計（円・数量分）',type:'number',value:item.amount,required:true,extra:'min="0" max="1000000" step="1" inputmode="numeric"'})}
  </div>
  ${UI.formField({id:'scan-product-'+i,name:'product-'+i,label:'登録済み商品との対応（任意）',control:'select',value:item.productId,options:products})}
  ${UI.formField({id:'scan-category-'+i,name:'category-'+i,label:'家計簿カテゴリ',control:'select',value:item.category,options:categories})}
@@ -1108,6 +1108,7 @@ function receiptScanReview(){
  <p class="hint" id="receipt-scan-progress" role="status">${esc(scan.status)}</p>
  ${receiptRemoteWritable()&&!currentReceiptCatalog()&&!receiptCatalogBusy?
  '<p class="hint">家庭の登録済み店舗・商品を確認できません。確認後に保存してください。</p><button type="button" class="secondary" data-act="refreshReceiptCatalog">店舗・商品を再取得</button>':''}
+ <p class="hint">数量が2点以上の場合も、金額欄にはその明細の税込合計額を入力します。単価ではありません。</p>
  <p class="hint">${chat?
   'ChatGPTの候補は自動確定しません。商品名・数量・金額・チェーン・日付をレシート原本と確認してください。':
   'OCRの候補は自動確定しません。レシート原本と照合して、不要な候補を除外してください。'}チェーンが一覧になければ保存しないでください。</p>
