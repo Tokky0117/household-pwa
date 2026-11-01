@@ -18,7 +18,7 @@ button:disabled{background:#a1aaba}.secondary{background:#eef2f8;color:#20508c}
 .warning{border-left:4px solid #ac762a;padding-left:11px}a{color:#22538e}
 </style></head><body>
 <h1>試験用GAS｜読み取り接続確認</h1>
-<p>既存の<strong>試験用GAS</strong>へGoogleログインして、試験用シートの件数と架空の商品コードの照合結果を確認します。この画面から書き込み処理は呼び出しません。</p>
+<p>既存の<strong>試験用GAS</strong>へGoogleログインして、試験用シートの件数と架空の商品コードの照合結果を確認します。この画面では通常の登録・保存は行いません。⑦では既に保存済みの固定試験レシートだけを同じIDで再確認します。</p>
 <section class="panel">
 <h2>① 試験用WebアプリのURL</h2>
 <label for="trial-url">試験用GASのWebアプリURL（/exec）</label>
@@ -84,6 +84,12 @@ button:disabled{background:#a1aaba}.secondary{background:#eef2f8;color:#20508c}
 <button type="button" id="receipt-read" disabled>保存済み試験レシートを読み取る</button>
 <p id="receipt-read-result" role="status" aria-live="polite">③の読み取り接続確認後に実行できます。</p>
 </section>
+<section class="panel" id="receipt-trial-replay">
+<h2>⑦ 保存済み試験レシートの再送接続確認</h2>
+<p class="muted">⑥で確認した架空レシートを、同じ操作IDでGASの保存処理に再送し、<strong>新しいレシートを作らずに</strong>完了結果が戻るか確認します。実レシートは送信できず、通常の保存機能は停止したままです。</p>
+<button type="button" id="receipt-replay" disabled>保存済み試験レシートを同じIDで再確認</button>
+<p id="receipt-replay-result" role="status" aria-live="polite">⑥の読み取り成功後に利用できます。</p>
+</section>
 <section class="panel">
 <h2>失敗した場合</h2>
 <p class="muted">GETが成功してもPOST成功の証明にはなりません。また、GoogleログインHTMLが返る場合はGAS本体の応答とは限りません。ネットワーク失敗はCORS・アクセス権・通信など複数原因が考えられます。試験GASの公開範囲を広げたり、トークンをURLに載せたりしないでください。</p>
@@ -102,8 +108,10 @@ button:disabled{background:#a1aaba}.secondary{background:#eef2f8;color:#20508c}
  const probeGet=document.getElementById('probe-get'),probeResult=document.getElementById('probe-result');
  const catalogCheck=document.getElementById('catalog-check'),catalogResult=document.getElementById('catalog-result'),catalogDetail=document.getElementById('catalog-detail');
  const receiptRead=document.getElementById('receipt-read'),receiptReadResult=document.getElementById('receipt-read-result');
+ const receiptReplay=document.getElementById('receipt-replay'),receiptReplayResult=document.getElementById('receipt-replay-result');
  let probing=false,catalogBusy=false,receiptBusy=false,verifiedRevision=-1,verifiedSubject='';
  let catalogVerifiedRevision=-1,catalogVerifiedSubject='',verifiedFixture=null;
+ let receiptVerifiedRevision=-1,receiptVerifiedSubject='';
  const gateListeners=new Set(),notifyGate=()=>gateListeners.forEach(fn=>fn());
  let loading=false,attempt=0,scriptState='未開始',revision=0;
  function elapsed(started){return ((Date.now()-started)/1000).toFixed(2)+'秒'}
@@ -168,6 +176,8 @@ button:disabled{background:#a1aaba}.secondary{background:#eef2f8;color:#20508c}
   revision++;verifiedRevision=-1;verifiedSubject='';
   catalogVerifiedRevision=-1;catalogVerifiedSubject='';verifiedFixture=null;
   receiptReadResult.textContent='③の読み取り接続確認後に実行できます。';
+  receiptVerifiedRevision=-1;receiptVerifiedSubject='';
+  receiptReplayResult.textContent='⑥の読み取り成功後に利用できます。';
   catalogResult.textContent='③の読み取り接続確認後に実行できます。';
   catalogDetail.textContent='';
   notifyGate();
@@ -212,6 +222,8 @@ button:disabled{background:#a1aaba}.secondary{background:#eef2f8;color:#20508c}
   probeGet.disabled=!!endpointError||loading||probing||catalogBusy||receiptBusy;
   receiptRead.disabled=!active||!!endpointError||loading||probing||catalogBusy||receiptBusy||
     verifiedRevision!==revision||verifiedSubject!==window.KurashiAuth.status().subject||!verifiedFixture;
+  receiptReplay.disabled=receiptRead.disabled||
+    receiptVerifiedRevision!==revision||receiptVerifiedSubject!==window.KurashiAuth.status().subject;
   catalogCheck.disabled=!active||!!endpointError||loading||probing||catalogBusy||receiptBusy||
     verifiedRevision!==revision||verifiedSubject!==window.KurashiAuth.status().subject;
   if(active){diagnostics.textContent='Googleログイン成功';return}
@@ -274,7 +286,9 @@ button:disabled{background:#a1aaba}.secondary{background:#eef2f8;color:#20508c}
   if(!window.KurashiAuth.status().signedIn){result.textContent='ログインが必要です';update();return}
   const rev=revision,started=Date.now(),subject=window.KurashiAuth.status().subject;
   if(typeof subject!=='string'||!subject){result.textContent='ログイン状態を確認できません。';return}
-  loading=true;verifiedRevision=-1;verifiedSubject='';catalogVerifiedRevision=-1;catalogVerifiedSubject='';verifiedFixture=null;receiptReadResult.textContent='③の読み取り接続確認後に実行できます。';notifyGate();
+  loading=true;verifiedRevision=-1;verifiedSubject='';catalogVerifiedRevision=-1;catalogVerifiedSubject='';verifiedFixture=null;receiptReadResult.textContent='③の読み取り接続確認後に実行できます。';
+  receiptVerifiedRevision=-1;receiptVerifiedSubject='';
+  receiptReplayResult.textContent='⑥の読み取り成功後に利用できます。';notifyGate();
   counts.textContent='';result.textContent='読み取り中です…';catalogDetail.textContent='';update();
   try{
    // Only authenticated read action; write gate remains disabled.
@@ -351,7 +365,8 @@ button:disabled{background:#a1aaba}.secondary{background:#eef2f8;color:#20508c}
    update();return;
   }
   const rev=revision,subject=user.subject,started=Date.now();
-  receiptBusy=true;receiptReadResult.textContent='架空の保存済みレシートを照合中…';update();
+  receiptBusy=true;receiptVerifiedRevision=-1;receiptVerifiedSubject='';
+  receiptReadResult.textContent='架空の保存済みレシートを照合中…';update();
   try{
    const data=await window.KurashiGasApi.request('record.list',{});
    if(!sameSession(rev,subject))return;
@@ -373,6 +388,7 @@ button:disabled{background:#a1aaba}.secondary{background:#eef2f8;color:#20508c}
        x.product_id!==(i===0?fixture.productId:null)||
        x.price_eligible!==false))
     throw Error('RECEIPT_TRIAL_ROWS_MISMATCH');
+   receiptVerifiedRevision=rev;receiptVerifiedSubject=subject;
    receiptReadResult.textContent='成功：試験用家庭の確定レシート1件・明細2件・税込496円を認証付きで読み取り、既知の保存結果と照合できました。計測 '+elapsed(started)+'。書き込み0件。';
   }catch(error){
    if(sameSession(rev,subject)){
@@ -380,6 +396,38 @@ button:disabled{background:#a1aaba}.secondary{background:#eef2f8;color:#20508c}
     receiptReadResult.textContent=code==='RECEIPT_TRIAL_ROWS_MISMATCH'?
      '読み取ったデータが架空の試験レシート（1件・2明細・496円）と一致しません。試験GAS・公開版・シートを確認してください。書き込みなし。':
      readFailure(error)+' 計測 '+elapsed(started)+'。';
+   }
+  }finally{receiptBusy=false;update()}
+ });
+ receiptReplay.addEventListener('click',async()=>{
+  if(receiptBusy||loading||probing||catalogBusy)return;
+  const invalid=validateTrialUrl(url.value),user=window.KurashiAuth.status();
+  if(invalid||!user.signedIn||!verifiedFixture||
+     verifiedRevision!==revision||verifiedSubject!==user.subject||
+     receiptVerifiedRevision!==revision||receiptVerifiedSubject!==user.subject){
+   receiptReplayResult.textContent='⑥の認証付き読み取り成功後に利用してください。';
+   update();return;
+  }
+  const rev=revision,subject=user.subject,started=Date.now();
+  receiptBusy=true;receiptReplayResult.textContent='保存済みの試験レシートを同じ操作IDで照合中…';update();
+  try{
+   // Server ignores client fixture, chooses the fixed completed journal ID,
+   // and refuses every Sheet except the previously verified isolated one.
+   const data=await window.KurashiGasApi.request('record.trial.replay',{},
+    {confirmedTrialReplay:true});
+   if(!sameSession(rev,subject))return;
+   if(!data||Object.keys(data).sort().join(',')!==
+      'amount,items,records,replayed,status'||
+      data.status!=='completed'||data.replayed!==true||
+      data.records!==1||data.items!==2||data.amount!==496)
+    throw Error('RECEIPT_TRIAL_REPLAY_MISMATCH');
+   receiptReplayResult.textContent='成功：GASの保存処理から同じ操作IDの完了結果を受信しました。試験レシート1件・2明細・496円、新規レシートなし。計測 '+elapsed(started)+'。';
+  }catch(error){
+   if(sameSession(rev,subject)){
+    receiptVerifiedRevision=-1;receiptVerifiedSubject='';
+    receiptReplayResult.textContent='再送結果を確認できませんでした。⑥で保存済みの試験レシートを再確認してください。'+
+     (error?.message==='RECEIPT_TRIAL_REPLAY_MISMATCH'?' 応答形式が一致しません。':
+      ' '+readFailure(error));
    }
   }finally{receiptBusy=false;update()}
  });
