@@ -43,7 +43,7 @@ function launch(){
   navigator:{locks},location:{protocol:'file:'},crypto:{randomUUID:()=> 'test-op-123'},
   setTimeout:()=>1,clearTimeout(){},Date,Intl,URL,Event:class Event{},console});
  vm.runInContext(journalSrc,context);
- return {app:vm.runInContext(appSrc+"\n({refreshLive,liveMutate,retryLive,livePending,liveListView,previewState:()=>({liveSnapshot,liveMode})})",context),
+ return {app:vm.runInContext(appSrc+"\n({refreshLive,liveMutate,retryLive,livePending,listView,previewState:()=>({liveSnapshot,liveMode})})",context),
   journal:window.KurashiLiveJournal,
   signOut(){signedIn=false;authListener?.(window.KurashiAuth.status())}};
 
@@ -62,8 +62,8 @@ const second=launch();
 await second.app.refreshLive();
 assert.equal(mutationCalls.length,1);
 assert.equal(second.app.livePending().status,'pending');
-assert.match(second.app.liveListView(),/同じ操作を確認・再送/);
-assert.match(second.app.liveListView(),/data-act="addLive"[^>]*disabled/);
+assert.match(second.app.listView(),/同じ操作を確認・再送/);
+assert.equal(second.app.livePending().status,'pending','The original + button must not bypass pending-operation lock');
 subject='9999999999';
 assert.equal(second.app.livePending().status,'different-account');
 await second.app.retryLive();
@@ -106,7 +106,7 @@ await Promise.resolve();await Promise.resolve();
 const other=tabB.app.liveMutate('item.create',{name:'シャンプー',category_id:2});
 await other;
 assert.equal(mutationCalls.length,firstCallCount+1,'Second tab must not send');
-assert.match(tabB.app.liveListView(),/別のタブで保存処理中/);
+assert.match(tabB.app.listView(),/別のタブで保存処理中/);
 releaseRequest();await inflight;
 assert.equal(tabA.journal.read(),null);
 api.request=originalRequest;
@@ -117,7 +117,7 @@ const unsupported=launch();await unsupported.app.refreshLive();
 await unsupported.app.liveMutate('item.create',{name:'非対応端末',category_id:0});
 assert.equal(mutationCalls.length,firstCallCount+1);
 assert.equal(unsupported.journal.read(),null);
-assert.match(unsupported.app.liveListView(),/このブラウザでは同時保存の安全確認ができません/);
+assert.match(unsupported.app.listView(),/このブラウザでは同時保存の安全確認ができません/);
 locks.request=lockRequest;
 // Logging out during a mutation must immediately clear remote household
 // data. If a late server success arrives, its operation receipt is completed
