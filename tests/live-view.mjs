@@ -62,6 +62,12 @@ assert.match(view,/data-open="group-home-A"/);
 assert.doesNotMatch(view,/ローカル牛乳/);
 assert.doesNotMatch(view,/Google Sheetsから読み取る|Google Sheetsから日用品を読み取る/);
 assert.doesNotMatch(view,/data-act="refreshLive"/,'Normal list has no manual read control');
+assert.match(source,/if\(el\.dataset\.stock\)\{\s*if\(!liveMode\|\|!liveWritable\(\)\)return/);
+assert.match(source,/liveMutate\('item\.update',\{item_group_id:row\.item_group_id/);
+assert.match(source,/if\(liveMode\)return; \/\/ Never persist household reorder into local preview fixtures/);
+assert.doesNotMatch(source,/function liveListView\(/,
+ 'Only the original inventory renderer must remain');
+
 const detail=vm.runInContext("selected='group-home-A';page='compare';priceCompareView()",ctx);
 assert.match(detail,/価格情報/);
 assert.match(detail,/家庭商品home-A/);
