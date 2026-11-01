@@ -102,6 +102,6 @@ const noData={...receipt,items:[{rawName:'',productId:'',quantity:'1',amount:'29
 errors(noData,catalog,approval,'RECEIPT_LINE_UNIDENTIFIED');
 const gate=fs.readFileSync(new URL('../gas-api.js',import.meta.url),'utf8');
 const gas=fs.readFileSync(new URL('../gas/Code.gs',import.meta.url),'utf8');
-assert.match(gate,/LIVE_WRITE_ENABLED=false/);
+assert.match(gate,/const LIVE_WRITE_ENABLED=\(\)=>RECEIPT_BATCH_WRITE_ENABLED\(\)/);
 assert.match(gas,/record\.create/);
 console.log('Receipt save contract: 2-line proposal, checked tax, scope, total, no spoofed IDs or writes PASS');
