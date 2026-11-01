@@ -622,4 +622,37 @@ const laterPayload=i=>({
  assert.equal(post('record.create','receipt-normal-003',mainCandidate).error.code,
   'TRIAL_NOT_ISOLATED','Other household is rejected');
 }
+// The SAME authenticated household can have two independently registered
+// Google users. Neither account requires a second GAS/Sheet or a test-only API.
+{
+ const t=fullTrial();
+ t.data.users.push(['u-A2','house-A','Spouse','1234567891']);
+ t.mock.ContentService={MimeType:{JSON:'application/json'},
+  createTextOutput(content){return{setMimeType(){return this},getContent(){return content}}}};
+ let actor=t.spouse;
+ t.mock.authenticate=()=>actor;
+ const post=(id,p)=>JSON.parse(t.mock.doPost({postData:{contents:JSON.stringify({
+  id_token:'test-token',action:'record.create',operation_id:id,payload:p
+ })}}).getContent());
+ const spouseSave=post('receipt-spouse-001',mainCandidate);
+ assert.equal(spouseSave.ok,true,'Second registered spouse may save');
+ assert.equal(t.read(t.homeA).records.length,3);
+ assert.equal(t.read(t.spouse).records.length,3);
+ actor=t.homeA;
+ const ownerSave=post('receipt-owner-001',
+  {...mainCandidate,record_date:'2026-11-02'});
+ assert.equal(ownerSave.ok,true,'First spouse may continue saving');
+ assert.equal(t.read(t.homeA).records.length,4);
+ assert.equal(t.read(t.spouse).record_items.length,8);
+ assert.equal(t.read(t.other).records.length,0);
+ const writes=t.writes;
+ actor=t.other;
+ assert.equal(post('receipt-foreign-001',mainCandidate).error.code,
+  'TRIAL_NOT_ISOLATED','Foreign household is excluded');
+ actor=t.spouse;
+ t.data.users.push(['u-C','house-A','Duplicate','1234567891']);
+ assert.equal(post('receipt-collision-001',mainCandidate).error.code,
+  'HOUSEHOLD_MEMBERSHIP_INVALID','Duplicate login subjects abort mutations');
+ assert.equal(t.writes,writes,'Denied attempts do not touch Sheets');
+}
 console.log('GAS receipt batch: normal record.create, same-ID recovery, legacy fixtures PASS');
