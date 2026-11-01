@@ -101,7 +101,9 @@ for(const phase of faults)for(const when of ['before','after']){
  assert.throws(()=>h.execute(),new RegExp('INJECTED_'+phase+'_'+when));
  assert.equal(h.locked,false,'Failed mutations must release GAS script lock');
  // No incomplete records may be exposed to the other spouse.
- assert.equal(h.read(h.spouse).records.length,0);
+ assert.equal(h.read(h.spouse).records.length,
+  phase==='journal.complete'&&when==='after'?1:0,
+  'Only a fully completed journal can make the receipt visible');
  assert.equal(h.read(h.other).records.length,0);
  const first=h.execute(),writes=h.writes;
  assert.equal(first.status,'completed');
