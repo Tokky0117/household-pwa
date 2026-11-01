@@ -50,6 +50,11 @@ const resolved={...receipt,taxBasis:'excluded'};
 assert.deepEqual(JSON.parse(JSON.stringify(api.propose(resolved,catalog,{...approval,taxResolved:true}))),
  JSON.parse(JSON.stringify(payload)));
 errors({...receipt,receiptTotal:299},catalog,approval,'RECEIPT_TOTAL_MISMATCH');
+assert.equal(api.propose({...receipt,receiptTotal:299},catalog,
+ {...approval,allowTotalDifference:true}).items.length,2,
+ 'Reviewed receipt-level coupons can explain a difference without rewriting item prices');
+errors({...receipt,receiptTotal:299},catalog,
+ {...approval,totalsReviewed:false,allowTotalDifference:true},'RECEIPT_REVIEW_REQUIRED');
 errors({...receipt,date:'2026-02-30'},catalog,approval,'RECEIPT_DATE_INVALID');
 errors({...receipt,chainId:'c-other'},catalog,approval,'RECEIPT_CHAIN_UNVERIFIED');
 errors(receipt,{...catalog,household_id:'family-B'},approval,'RECEIPT_CHAIN_UNVERIFIED');
