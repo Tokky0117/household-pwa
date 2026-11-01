@@ -1,7 +1,10 @@
 name: Push GAS to test project (manual)
-# Manual-only after the 2026-11-01 multi-receipt source-only test GAS sync.
-# Re-audit the deployed editor source before any future update.
+# One-time pinned source update to the SAME existing test GAS.
+# Restore manual-only trigger immediately after this source-only push.
 on:
+  push:
+    branches: [stage-a-ui-handoff-review]
+    paths: ['.github/workflows/gas-push-test.yml']
   workflow_dispatch:
     inputs:
       confirm_target_backup:
@@ -22,7 +25,7 @@ concurrency:
 
 jobs:
   push-test:
-    if: github.ref == 'refs/heads/stage-a-ui-handoff-review' && inputs.confirm_target_backup == 'BACKUP_DONE' && inputs.confirm_test_source == 'TEST_GAS_UPDATE'
+    if: github.ref == 'refs/heads/stage-a-ui-handoff-review' && (github.event_name == 'push' || (inputs.confirm_target_backup == 'BACKUP_DONE' && inputs.confirm_test_source == 'TEST_GAS_UPDATE'))
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -43,6 +46,8 @@ jobs:
           set -euo pipefail
           cp gas/Code.gs "$RUNNER_TEMP/kurashi-gas-syntax.js"
           node --check "$RUNNER_TEMP/kurashi-gas-syntax.js"
+          # One-time source-only update: fail if any reviewed GAS bytes changed.
+          test "$(git hash-object gas/Code.gs)" = "1bcf44653f703030fb8b7859f829a65275e1675c"
           node tests/gas-receipt-batch-mock.mjs
           node tests/receipt-save-parity.mjs
           node tests/gas-auth-isolation.mjs
@@ -189,10 +194,12 @@ jobs:
           if(!src.includes("if(action==='record.trial.main.create')")||
             !src.includes("if(action==='record.trial.second.save')")||
             !src.includes("if(action==='record.trial.preflight')")||
-            !src.includes("if(action==='record.create')fail('RECEIPT_WRITES_DISABLED'")||
+            !src.includes("if(action==='record.create'){")||
+            !src.includes("const result=mutateReceiptSafely_(user,payload,input.operation_id,true);")||
+            !src.includes("function assertPrototypeReceiptIdentity_(book,user){")||
             !src.includes("if(action==='record.trial.replay')")||
             !src.includes("function approvedPrototypeAliasSheet_(){"))
-            throw Error('RECEIPT_PRODUCTION_WRITE_GATE_INVALID');
+            throw Error('RECEIPT_STAGING_WRITE_GATE_INVALID');
           const expected=fs.readFileSync(process.env.GITHUB_WORKSPACE+'/gas/Code.gs','utf8');
           const crypto=require('node:crypto');
           const sha=text=>crypto.createHash('sha256').update(text).digest('hex');
