@@ -237,7 +237,8 @@ const aliasCalls=postPayloads.filter(x=>x.action==='product.alias.check');
 assert.equal(aliasCalls[0].payload.product_code,'00012345');
 assert.equal(aliasCalls[1].payload.product_code,'00099999');
 assert.equal(aliasCalls[0].payload.operation_id,undefined);
-assert.equal(postCalls.filter(x=>x==='product.catalog').length,1);
+assert.equal(postCalls.filter(x=>x==='product.catalog').length,2,
+ 'Each newly confirmed URL performs its own fixture check');
 assert.ok(postCalls.every(a=>['bootstrap','product.catalog','product.alias.check','record.list'].includes(a)),
  'The diagnostic must never call a mutation');
 
