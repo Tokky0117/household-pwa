@@ -1393,6 +1393,7 @@ if(form.id==='receiptScanForm'){
   saveConfirmedReceiptToSheets({
    receiptReviewed:true,
    totalsReviewed:d.get('totalsChecked')==='yes',
+   allowTotalDifference:d.get('totalsChecked')==='yes',
    taxResolved:d.get('taxResolved')==='yes'
   });
   return;
