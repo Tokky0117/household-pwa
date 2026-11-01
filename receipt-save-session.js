@@ -7,6 +7,13 @@
  const LOCK='kurashi-live-items-write-v1'; // same lock as item mutations
  const receiptGate=()=>root.KurashiGasApi?.receiptWriteEnabled?.()===true&&
   root.KURASHI_RECEIPT_TEST_MODE!==true;
+ // Explicit, separately opt-in TEST-only path. Default remains disabled.
+ // Never let this switch authorize general record.create.
+ const trialId=id=>typeof id==='string'&&
+  /^receipt-trial-main-[A-Za-z0-9_-]{12,64}$/.test(id);
+ const trialGate=()=>root.KURASHI_RECEIPT_STAGE_A_TRIAL===true&&
+  root.KURASHI_RECEIPT_TEST_MODE!==true&&
+  root.KurashiGasApi?.status?.()?.configured===true;
  const journal=()=>root.KurashiReceiptJournal;
  const contract=()=>root.KurashiReceiptSaveContract;
  function verifiedScope(subject,householdId){
@@ -27,7 +34,9 @@
   catch{return {status:'invalid',entry:null}}
  }
  async function transmit(entry){
-  if(!receiptGate())throw Error('RECEIPT_WRITES_DISABLED');
+  const isolated=trialId(entry.operationId);
+  if(!(isolated?trialGate():receiptGate()))
+   throw Error('RECEIPT_WRITES_DISABLED');
   verifiedScope(entry.subject,entry.householdId);
   const pending=accountPending(entry.subject,entry.householdId);
   if(pending.status!=='pending'||pending.entry.operationId!==entry.operationId||
@@ -35,8 +44,9 @@
    throw Error('RECEIPT_JOURNAL_MISMATCH');
   if(root.KurashiLiveJournal?.read?.())throw Error('OTHER_OPERATION_PENDING');
   try{
-   const result=await root.KurashiGasApi.request('record.create',entry.payload,
-    {operationId:entry.operationId});
+   const result=await root.KurashiGasApi.request(
+    isolated?'record.trial.main.create':'record.create',entry.payload,
+    {operationId:entry.operationId,...(isolated?{confirmedTrialMainSave:true}:{})});
    // An explicit server acknowledgment must match the action and household.
    // Never clear on a response with unknown schema/identity.
    if(!result||result.status!=='completed'||result.action!=='record.create'||
@@ -69,8 +79,20 @@
    return transmit(entry);
   });
  }
+ async function trialCreate({subject,householdId,payload,operationId}){
+  if(!trialGate())throw Error('RECEIPT_WRITES_DISABLED');
+  if(!trialId(operationId))throw Error('TRIAL_OPERATION_ID_INVALID');
+  return withLock(async()=>{
+   verifiedScope(subject,householdId);
+   if(!contract()?.validatePayload)throw Error('RECEIPT_CONTRACT_MISSING');
+   const safe=contract().validatePayload(payload);
+   const entry=journal().prepare({subject,householdId,
+    operationId,payload:safe});
+   return transmit(entry);
+  });
+ }
  async function retry({subject,householdId}){
-  if(!receiptGate())throw Error('RECEIPT_WRITES_DISABLED');
+  if(!receiptGate()&&!trialGate())throw Error('RECEIPT_WRITES_DISABLED');
   return withLock(async()=>{
    verifiedScope(subject,householdId);
    const pending=accountPending(subject,householdId);
@@ -79,6 +101,7 @@
   });
  }
  root.KurashiReceiptSaveSession={
-  create,retry,pending:accountPending,writeEnabled:receiptGate
+  create,trialCreate,retry,pending:accountPending,
+  writeEnabled:receiptGate,trialWriteEnabled:trialGate
  };
 })(typeof window==='undefined'?globalThis:window);
