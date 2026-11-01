@@ -1,6 +1,9 @@
 name: Update existing household GAS source (manual)
 # Updates script SOURCE only. Never creates a deployment, GAS, Sheet or record.
 on:
+  push:
+    branches: [stage-a-ui-handoff-review]
+    paths: ['.github/workflows/gas-push-test.yml']
   workflow_dispatch:
     inputs:
       confirm_existing_target:
@@ -14,7 +17,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   update:
-    if: github.ref == 'refs/heads/stage-a-ui-handoff-review' && inputs.confirm_existing_target == 'UPDATE_EXISTING_GAS'
+    if: github.ref == 'refs/heads/stage-a-ui-handoff-review' && ((github.event_name == 'push' && github.event.head_commit.message == 'Trigger one-time verified update of existing GAS source') || (github.event_name == 'workflow_dispatch' && inputs.confirm_existing_target == 'UPDATE_EXISTING_GAS'))
     runs-on: ubuntu-latest
     timeout-minutes: 12
     steps:
