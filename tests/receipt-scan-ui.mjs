@@ -24,8 +24,8 @@ const ui=vm.runInContext(source+`
 ({receiptView,scanReceiptPhoto,receiptScanReview,savePreviewReceiptScan,savePreviewRecord,deletePreviewRecord,discardReceiptScan,
   state:()=>({receiptScan,receiptScanBusy,previewRecords}),setReceiptTab(){tab='receipt';page='list'}})
 `,ctx);
-assert.match(html,/receipt-ocr\.js\?v=61/);
-assert.match(sw,/receipt-ocr\.js\?v=61/);
+assert.match(html,/receipt-ocr\.js\?v=62/);
+assert.match(sw,/receipt-ocr\.js\?v=62/);
 assert.match(ui.receiptView(),/カメラで撮影/);
 assert.match(ui.receiptView(),/写真を選択/);
 assert.match(ui.receiptView(),/Google Sheetsには未保存/);
