@@ -25,6 +25,8 @@ assert.match(html,/id="probe-result"/);
 assert.match(html,/id="catalog-check"/);
 assert.match(html,/id="catalog-result"/);
 assert.match(html,/id="catalog-detail"/);
+assert.match(html,/id="receipt-read"/);
+assert.match(html,/KurashiGasApi\.request\('record\.list',\{\}\)/);
 assert.match(html,/id="ocr-review"/);
 assert.match(html,/id="ocr-review-text"/);
 assert.match(html,/id="ocr-multi-sample"/);
@@ -58,7 +60,8 @@ const node=id=>{
  });
  return elements.get(id);
 };
-let getCalls=[],postCalls=[],postPayloads=[],catalogMode='valid',slowCatalog=null,getFetcher=async()=>({
+let getCalls=[],postCalls=[],postPayloads=[],catalogMode='valid',slowCatalog=null,
+ receiptMode='valid',slowReceipt=null,getFetcher=async()=>({
  status:200,headers:{get:()=> 'application/json'},
  text:async()=>JSON.stringify({ok:false,error:{code:'POST_REQUIRED'}})
 });
@@ -76,6 +79,19 @@ const apiMock={
    household_id:'trial',categories:['飲食','キッチン','洗面・風呂','洗濯・掃除','その他'].map(name=>({name})),
    item_groups:[{}],products:[],stores:[]
   };
+  if(action==='record.list'){
+   if(receiptMode==='pending')return new Promise(resolve=>{slowReceipt=resolve});
+   const records=[{record_id:'r1',record_type:'receipt',
+    chain_id:'c-test',raw_store_name:'[KURASHI_RECEIPT_TRIAL_ONLY]',
+    record_date:'2026-11-01'}];
+   const record_items=[
+    {record_item_id:'line1',record_id:'r1',line_order:1,quantity:1,
+     amount_tax_included:receiptMode==='bad-price'?999:198,product_id:'p-test',price_eligible:false},
+    {record_item_id:'line2',record_id:'r1',line_order:2,quantity:2,
+     amount_tax_included:298,product_id:null,price_eligible:false}
+   ];
+   return {household_id:receiptMode==='foreign'?'other-family':'trial',records,record_items};
+  }
   if(action==='product.catalog'){
    if(catalogMode==='unsupported')throw Error('UNSUPPORTED');
    if(catalogMode==='pending')return new Promise(resolve=>{slowCatalog=resolve});
@@ -187,12 +203,42 @@ assert.equal(ctx.window.KurashiTrialCatalogGate.ready(),true,
  'The authenticated OCR catalog bridge is unlocked by the verified fixture check');
 assert.equal(node('catalog-detail').textContent.includes('p-test'),false);
 assert.deepEqual(postCalls.slice(-3),['product.catalog','product.alias.check','product.alias.check']);
+assert.equal(node('receipt-read').disabled,false);
+const countBeforeReceipt=postCalls.length;
+await node('receipt-read').listeners.click();
+assert.deepEqual(postCalls.slice(countBeforeReceipt),['record.list']);
+assert.match(node('receipt-read-result').textContent,/確定レシート1件・明細2件・税込496円/);
+assert.doesNotMatch(node('receipt-read-result').textContent,/p-test|c-test|r1|line1|auth_subject/);
+assert.deepEqual(postPayloads.at(-1).payload,{});
+receiptMode='foreign';
+await node('receipt-read').listeners.click();
+assert.match(node('receipt-read-result').textContent,/一致しません/);
+receiptMode='bad-price';
+await node('receipt-read').listeners.click();
+assert.match(node('receipt-read-result').textContent,/一致しません/);
+receiptMode='pending';
+const pendingReceipt=node('receipt-read').listeners.click();
+await Promise.resolve();
+assert.equal(typeof slowReceipt,'function');
+node('trial-url').value='https://script.google.com/macros/s/SWITCH_WHILE_RECEIPT/exec';
+node('trial-url').listeners.input();
+slowReceipt({household_id:'trial',records:[],record_items:[]});
+await pendingReceipt;
+assert.equal(node('receipt-read').disabled,true);
+assert.match(node('receipt-read-result').textContent,/③と④の接続確認後/);
+receiptMode='valid';
+node('confirm-trial-target').checked=true;
+node('confirm-trial-target').listeners.change();
+await node('check').listeners.click();
+await node('catalog-check').listeners.click();
+assert.equal(node('receipt-read').disabled,false);
+
 const aliasCalls=postPayloads.filter(x=>x.action==='product.alias.check');
 assert.equal(aliasCalls[0].payload.product_code,'00012345');
 assert.equal(aliasCalls[1].payload.product_code,'00099999');
 assert.equal(aliasCalls[0].payload.operation_id,undefined);
 assert.equal(postCalls.filter(x=>x==='product.catalog').length,1);
-assert.ok(postCalls.every(a=>['bootstrap','product.catalog','product.alias.check'].includes(a)),
+assert.ok(postCalls.every(a=>['bootstrap','product.catalog','product.alias.check','record.list'].includes(a)),
  'The diagnostic must never call a mutation');
 
 // A malformed or foreign catalog must stop before the alias-check request.
