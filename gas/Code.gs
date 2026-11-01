@@ -1308,7 +1308,7 @@ function receiptList_(user,book){
  }
  completed.sort((a,b)=>String(b.record.record_date).localeCompare(String(a.record.record_date))||
   String(a.record.record_id).localeCompare(String(b.record.record_id)));
- return {records:completed.map(x=>x.record),record_items:completed.flatMap(x=>x.items)};
+ return {household_id:hid,records:completed.map(x=>x.record),record_items:completed.flatMap(x=>x.items)};
 }
 
 function mutate_(user,action,payload,operationId){
