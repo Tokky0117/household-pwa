@@ -77,6 +77,118 @@ let previewRecords=loadPreviewRecords();
 let receiptScan=null,receiptScanBusy=false,receiptScanEpoch=0,receiptPhotoUrl=null;
 let receiptChatGptText='',receiptChatGptNotice='';
 
+// The same review form can target the authenticated family only when BOTH
+// client and GAS write releases are approved. Preview stays browser-local.
+let receiptRemoteCatalog=null,receiptCatalogSubject=null,
+ receiptCatalogBusy=false,receiptCatalogStatus='未取得',receiptCatalogEpoch=0,
+ receiptSaveBusy=false;
+function receiptRemoteWritable(){
+ return window.KURASHI_RECEIPT_TEST_MODE!==true&&
+  window.KurashiReceiptSaveSession?.writeEnabled?.()===true&&
+  window.KurashiAuth?.status?.()?.signedIn===true;
+}
+function currentReceiptCatalog(){
+ const auth=window.KurashiAuth?.status?.();
+ return receiptRemoteWritable()&&auth?.subject===receiptCatalogSubject?
+  receiptRemoteCatalog:null;
+}
+function invalidateReceiptCatalog(){
+ ++receiptCatalogEpoch;receiptRemoteCatalog=null;receiptCatalogSubject=null;
+ receiptCatalogBusy=false;receiptCatalogStatus='未取得';
+}
+function receiptStoreChoices(){
+ const remote=currentReceiptCatalog();
+ return remote?remote.stores.map(c=>({id:String(c.chain_id),name:String(c.canonical_name)})):
+  catalogue.chains;
+}
+function receiptProductChoices(){
+ const remote=currentReceiptCatalog();
+ return remote?remote.products.filter(p=>!p.deleted_at).map(p=>({
+   id:String(p.product_id),name:String(p.name)})):catalogue.products.map(p=>({
+   id:p.id,name:productTitle(p)}));
+}
+async function loadReceiptCatalog(){
+ if(!receiptRemoteWritable()||receiptCatalogBusy||currentReceiptCatalog())return;
+ const subject=window.KurashiAuth.status().subject,epoch=++receiptCatalogEpoch;
+ receiptCatalogSubject=subject;receiptCatalogBusy=true;
+ receiptCatalogStatus='家庭の店舗・商品を取得中';render();
+ try{
+  const data=await window.KurashiGasApi.request('bootstrap',{});
+  if(epoch!==receiptCatalogEpoch||tab!=='receipt'||page!=='list'||
+     window.KurashiAuth?.status?.()?.subject!==subject)return;
+  if(!validateLiveSnapshot(data)||!data.household_id||
+     data.stores.some(x=>x.household_id!==data.household_id)||
+     data.products.some(x=>x.household_id!==data.household_id)||
+     new Set(data.stores.map(x=>x.chain_id)).size!==data.stores.length||
+     new Set(data.products.map(x=>x.product_id)).size!==data.products.length)
+   throw Error('RECEIPT_CATALOG_INVALID');
+  receiptRemoteCatalog=data;receiptCatalogStatus='家庭の店舗・商品を取得済み';
+  if(receiptScan){
+   const stores=receiptStoreChoices(),products=receiptProductChoices();
+   if(!stores.some(x=>x.id===receiptScan.chainId)){
+    const matched=stores.filter(x=>norm(x.name)===norm(receiptScan.store||''));
+    receiptScan.chainId=matched.length===1?matched[0].id:'';
+   }
+   for(const item of receiptScan.items)
+    if(!products.some(x=>x.id===item.productId))item.productId='';
+  }
+ }catch{
+  if(epoch===receiptCatalogEpoch){
+   receiptRemoteCatalog=null;receiptCatalogStatus='店舗・商品を確認できません。保存を停止しました';
+  }
+ }finally{
+  if(epoch===receiptCatalogEpoch){receiptCatalogBusy=false;render()}
+ }
+}
+async function saveConfirmedReceiptToSheets(approvals){
+ if(!receiptRemoteWritable()||receiptSaveBusy)return;
+ const auth=window.KurashiAuth?.status?.(),catalog=currentReceiptCatalog();
+ if(!catalog){
+  receiptScan.status='家庭の店舗・商品を読み取れていません。再読み込み後に確認してください。';
+  render();return;
+ }
+ const subject=auth.subject,epoch=receiptCatalogEpoch;
+ let payload;
+ try{
+  payload=window.KurashiReceiptSaveContract.propose(receiptScan,catalog,approvals);
+ }catch(error){
+  const code=String(error?.message||'');
+  receiptScan.status=code==='RECEIPT_TOTAL_MISMATCH'?
+   '税込明細合計と支払合計が一致しません。税・値引き・明細を原本で確認してください。':
+   '保存対象の店舗・商品・数量・税込明細額を確認してください。';
+  render();return;
+ }
+ receiptSaveBusy=true;receiptScan.status='確認した明細を保存しています…';render();
+ try{
+  const preflight=await window.KurashiGasApi.request('record.preflight',payload);
+  if(!receiptRemoteWritable()||window.KurashiAuth?.status?.()?.subject!==subject||
+     epoch!==receiptCatalogEpoch)throw Error('RECEIPT_SESSION_CHANGED');
+  const sum=payload.items.reduce((n,item)=>n+item.amount_tax_included,0);
+  if(!preflight||preflight.household_id!==catalog.household_id||
+     preflight.version!==payload.version||preflight.item_count!==payload.items.length||
+     preflight.total_tax_included!==sum||preflight.blocked_by_pending_operation!==false||
+     preflight.write_enabled!==false)
+   throw Error('RECEIPT_PREFLIGHT_FAILED');
+  await window.KurashiReceiptSaveSession.create({
+   subject,householdId:catalog.household_id,payload,operationId:id()
+  });
+  if(window.KurashiAuth?.status?.()?.subject!==subject)return;
+  discardReceiptScan();receiptRecoveryNotice='';
+  clearRemoteReceipts('保存済み・読み込み待ち');
+  say('Google Sheetsに保存しました');
+  if(tab==='receipt'&&page==='list')refreshRemoteReceipts();
+ }catch(error){
+  if(window.KurashiAuth?.status?.()?.subject===subject&&receiptScan){
+   const mayPending=window.KurashiReceiptSaveSession?.pending?.(
+    subject,catalog.household_id)?.status==='pending';
+   receiptScan.status=mayPending?
+    '保存結果が未確定です。新規登録せず、下の「同じ操作を確認・再送」を利用してください。':
+    'Google Sheetsへの保存を確認できませんでした。店舗・金額または通信を確認してください。';
+  }
+ }finally{receiptSaveBusy=false;render()}
+}
+
+
 let householdCheck=null,householdCheckSubject=null,householdCheckStatus='未確認',
  householdCheckBusy=false,householdCheckEpoch=0;
 function clearHouseholdCheck(message='未確認'){
