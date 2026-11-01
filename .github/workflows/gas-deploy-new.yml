@@ -148,6 +148,27 @@ jobs:
           npx --yes @google/clasp@3 list-deployments "$GAS_SCRIPT_ID_NEW" > "$RUNNER_TEMP/deployments-after.txt"
           grep -Fq "$TARGET_DEPLOYMENT_ID" "$RUNNER_TEMP/deployments-after.txt"
           echo "New GAS /exec updated. Old GAS and Sheets were not touched." >> "$GITHUB_STEP_SUMMARY"
+      - name: Verify new GAS anonymously returns only the household schema (read-only)
+        shell: bash
+        run: |
+          set -euo pipefail
+          endpoint="https://script.google.com/macros/s/$TARGET_DEPLOYMENT_ID/exec"
+          curl --fail --silent --show-error --location --max-time 35 \
+            -H 'Content-Type: text/plain;charset=utf-8' \
+            --data '{"action":"bootstrap","payload":{}}' \
+            "$endpoint" --output "$RUNNER_TEMP/kurashi-new-bootstrap.json"
+          node - <<'NODE'
+          const fs=require('node:fs');
+          const filename=process.env.RUNNER_TEMP+'/kurashi-new-bootstrap.json';
+          let response;
+          try{response=JSON.parse(fs.readFileSync(filename,'utf8'))}
+          catch(_){throw Error('NEW_GAS_BOOTSTRAP_INVALID_JSON')}
+          if(response?.ok!==true||!response?.data?.household_id||
+             response.data.categories?.length!==5||
+             !Array.isArray(response.data.item_groups))
+            throw Error('NEW_GAS_BOOTSTRAP_INVALID_SCHEMA');
+          console.log('New GAS /exec anonymous household bootstrap: OK (contents not logged)');
+          NODE
       - name: Remove local credentials
         if: always()
         shell: bash
