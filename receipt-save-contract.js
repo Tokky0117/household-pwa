@@ -119,8 +119,13 @@
   const checked=validatePayload(payload);
   validateOwner(checked,catalog);
   if(draft.receiptTotal!==null&&draft.receiptTotal!==undefined){
-   if(!Number.isSafeInteger(draft.receiptTotal)||draft.receiptTotal<0||
-      checked.items.reduce((sum,i)=>sum+i.amount_tax_included,0)!==draft.receiptTotal)
+   if(!Number.isSafeInteger(draft.receiptTotal)||draft.receiptTotal<0)
+    fail('RECEIPT_TOTAL_MISMATCH');
+   // Differences from receipt-level coupons or taxes must not invent line
+   // allocations. Save only the confirmed individual inclusive amounts,
+   // after the user expressly acknowledged the total difference.
+   if(checked.items.reduce((sum,i)=>sum+i.amount_tax_included,0)!==draft.receiptTotal&&
+      approval.allowTotalDifference!==true)
     fail('RECEIPT_TOTAL_MISMATCH');
   }
   return checked;
