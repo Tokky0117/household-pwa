@@ -80,6 +80,7 @@ jobs:
           if(scripts.length!==2||!entries.includes('appsscript.json')||entries.length!==3)
             throw Error('Unexpected new-GAS source layout. No write permitted.');
           const normalize=s=>s.replace(/^\uFEFF/,'').replace(/\r\n/g,'\n').trimEnd();
+          const comparable=s=>normalize(s).replace(/(?:^|\n)function myFunction\(\)\s*\{\s*\}\s*$/,'').trimEnd();
           const known=[['gas/Setup.gs','setupNewWorkbook'],['gas/Api.gs','kurashiSaveItem_']];
           const used=new Set();
           for(const [source,marker] of known){
@@ -89,10 +90,21 @@ jobs:
             const original=normalize(fs.readFileSync(path.join(remote,file),'utf8'));
             const commits=cp.execFileSync('git',['log','--format=%H','--',source],{encoding:'utf8'}).trim().split('\n');
             const recognized=commits.some(sha=>{
-              try{return original===normalize(cp.execFileSync('git',['show',sha+':'+source],{encoding:'utf8'}))}
+              try{return comparable(original)===comparable(cp.execFileSync('git',['show',sha+':'+source],{encoding:'utf8'}))}
               catch(_){return false}
             });
-            if(!recognized)throw Error('Remote source has unreviewed changes: '+file);
+            if(!recognized){
+              const local=normalize(fs.readFileSync(path.join(process.env.GITHUB_WORKSPACE,source),'utf8'));
+              const fns=text=>[...text.matchAll(/function\s+([a-zA-Z_$][\w$]*)\s*\(/g)].map(x=>x[1]);
+              console.log('SOURCE_DIAGNOSTIC',JSON.stringify({
+                file,remoteLength:original.length,localLength:local.length,
+                remoteFunctions:fns(original),localFunctions:fns(local),
+                localIsSubstring:original.includes(local),
+                remoteIsSubstring:local.includes(original),
+                comparableEqual:comparable(original)===comparable(local)
+              }));
+              throw Error('Remote source has unreviewed changes: '+file);
+            }
             fs.copyFileSync(path.join(process.env.GITHUB_WORKSPACE,source),path.join(stage,file));
           }
           const manifest=JSON.parse(fs.readFileSync(path.join(remote,'appsscript.json'),'utf8'));
