@@ -27,13 +27,8 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Set up Node for isolated OCR preview
-        uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-
       # Regression checks run independently in offline-tests.yml.
-      # A test failure must not block publishing read-only diagnostic pages.
+      # Pages publishes only the ordinary PWA shell, never test UI or GAS source.
 
       - name: Build isolated static previews
         shell: bash
@@ -41,7 +36,7 @@ jobs:
           set -euo pipefail
           git fetch --prune origin '+refs/heads/*:refs/remotes/origin/*'
           mkdir -p _site/previews
-          files=(index.html app.js auth.js gas-api.js live-operation-journal.js receipt-save-contract.js receipt-operation-journal.js receipt-save-session.js receipt-ocr.js receipt-chatgpt-import.js styles.css manifest.webmanifest icon.svg sw.js gas-setup.html gas-trial-setup.html gas-trial-connection.html receipt-catalog-integration.js receipt-structure.js receipt-product-matching.js receipt-alias-preflight.js gas-connection-test.html gas/Code.gs)
+          files=(index.html app.js auth.js gas-api.js live-operation-journal.js receipt-save-contract.js receipt-operation-journal.js receipt-save-session.js receipt-ocr.js receipt-chatgpt-import.js styles.css manifest.webmanifest icon.svg sw.js)
 
           copy_site() {
             local ref="$1"
@@ -67,39 +62,12 @@ jobs:
             [[ -n "$slug" ]] || continue
             dest="_site/previews/$slug"
             if copy_site "refs/remotes/$remote_ref" "$dest"; then
-              # The daily-use staging PWA must not ship the former trial,
-              # connection-diagnostic or GAS-source URLs.
-              if [[ "$branch" == "stage-a-ui-handoff-review" ]]; then
-                rm -f "$dest/gas-setup.html" "$dest/gas-trial-setup.html" \
-                  "$dest/gas-trial-connection.html" "$dest/gas-connection-test.html" \
-                  "$dest/gas/Code.gs"
-              fi
-
               # Scope the Service Worker cache per preview to avoid cross-branch conflicts.
               if [[ -f "$dest/sw.js" ]]; then
                 # Keep the branch's own cache version, but namespace its preview.
                 version="$(sed -nE "s/^const CACHE='household-ui-v([0-9]+)';/\\1/p" "$dest/sw.js" | head -n 1)"
                 [[ "$version" =~ ^[0-9]+$ ]] || { echo "Invalid SW cache version: $branch"; exit 1; }
                 sed -i "s/const CACHE=\x27[^\x27]*\x27/const CACHE=\x27household-preview-$slug-v$version\x27/" "$dest/sw.js"
-              fi
-              # Only the authorized development preview receives the OCR laboratory.
-              # Main and all other branches are copied exactly as before.
-              if [[ "$branch" == "stage-a-ui-handoff-review" ]] && git cat-file -e "refs/remotes/$remote_ref:ocr-lab/package-lock.json" 2>/dev/null; then
-                build_root="$(mktemp -d)"
-                git archive "refs/remotes/$remote_ref" ocr-lab receipt-chatgpt-import.js receipt-layout.js receipt-paddle.js receipt-structure.js receipt-product-matching.js receipt-alias-preflight.js | tar -x -C "$build_root"
-                (
-                  cd "$build_root/ocr-lab"
-                  npm ci --ignore-scripts --no-audit --no-fund
-                  OCR_LAB_OUT="$GITHUB_WORKSPACE/$dest/ocr-lab" npm run build
-                )
-                rm -rf "$build_root"
-                # The authenticated diagnostic reuses these small, pure
-                # confirmation modules. Copy after the Vite build so its
-                # output cleanup cannot remove them. They do not enable GAS
-                # calls in the standalone OCR lab itself.
-                for source in confirmation-preview.js catalog-search.js authenticated-catalog.js preview-auth-bridge.js product-test-report.js; do
-                  git show "refs/remotes/$remote_ref:ocr-lab/$source" > "$dest/ocr-lab/$source"
-                done
               fi
               echo "Preview: /previews/$slug/"
             else
