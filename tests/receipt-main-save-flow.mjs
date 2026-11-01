@@ -5,9 +5,9 @@ import vm from 'node:vm';
 const source=readFileSync(new URL('../app.js',import.meta.url),'utf8');
 const contract=readFileSync(new URL('../receipt-save-contract.js',import.meta.url),'utf8');
 const calls=[],events={},store=new Map();
-let subject='1234567890',enabled=true,trialEnabled=false,
- preflightBlocked=false,preflightWrongHome=false,trialInvalid=false;
-let saved=0,trialSaved=0,seq=0;const trialOperationIds=[];
+let subject='1234567890',enabled=true,
+ preflightBlocked=false,preflightWrongHome=false;
+let saved=0,seq=0;const normalOperationIds=[];
 const household='home-A';
 const categories=['飲食','キッチン','洗面・風呂','洗濯・掃除','その他']
  .map((name,i)=>({name,category_id:i}));
@@ -23,11 +23,6 @@ const win={
   async request(action,payload){
    calls.push([action,payload]);
    if(action==='bootstrap')return structuredClone(catalog);
-   if(action==='record.trial.preflight')return {
-    version:payload.version,item_count:payload.items.length,
-    total_tax_included:payload.items.reduce((n,x)=>n+x.amount_tax_included,0),
-    trial_ready:!trialInvalid,write_enabled:false
-   };
    if(action==='record.preflight')return {
     household_id:preflightWrongHome?'home-B':household,
     version:payload.version,item_count:payload.items.length,
@@ -40,18 +35,10 @@ const win={
  },
  KurashiReceiptJournal:{read:()=>null},
  KurashiReceiptSaveSession:{
-  writeEnabled:()=>enabled,trialWriteEnabled:()=>trialEnabled,
+  writeEnabled:()=>enabled,
   pending:()=>({status:'none',entry:null}),
-  async trialCreate(args){
-   trialSaved++;trialOperationIds.push(args.operationId);
-   assert.equal(args.subject,subject);
+  async create(args){saved++;normalOperationIds.push(args.operationId);
    assert.equal(args.householdId,household);
-   assert.match(args.operationId,/^receipt-trial-main-[A-Za-z0-9_-]{12,64}$/);
-   assert.equal(args.payload.items.length,2);
-   assert.equal(args.payload.items[0].amount_tax_included,200);
-   return{status:'completed',recordId:'trial-main-receipt'};
-  },
-  async create(args){saved++;assert.equal(args.householdId,household);
    assert.equal(args.subject,subject);
    assert.equal(args.payload.items.length,2);
    assert.equal(args.payload.items[0].product_id,'product-A');
@@ -127,34 +114,32 @@ html=api.receiptScanReview();
 assert.match(html,/このSafariに試作保存/);
 assert.equal(api.receiptRemoteWritable(),false);
 assert.equal(api.currentReceiptCatalog(),null);
-// The SAME main receipt form and acknowledgement flow can target the
-// isolated trial route without any extra user confirmation screen.
-trialEnabled=true;
+// A second and third confirmation use the SAME normal record.create path.
+// No trial-specific action, operation ID namespace or 20-receipt cap.
+enabled=true;
 api.setScan(makeScan());
 await api.loadReceiptCatalog();
 assert.equal(api.receiptRemoteWritable(),true);
 assert.match(api.receiptScanReview(),/確認した2明細をGoogle Sheetsに保存/);
-trialInvalid=true;
+preflightBlocked=true;
 await api.saveConfirmedReceiptToSheets(approval);
-assert.equal(trialSaved,0,'Rejected trial preflight never submits a mutation');
-assert.ok(api.state().receiptScan,'Draft remains for retry');
-trialInvalid=false;
+assert.equal(saved,1,'Blocked normal preflight never submits a mutation');
+assert.ok(api.state().receiptScan,'Draft remains for correction');
+preflightBlocked=false;
 await api.saveConfirmedReceiptToSheets(approval);
-assert.equal(trialSaved,1);
-assert.equal(saved,1,'General record.create is still not called for trial save');
+assert.equal(saved,2);
 assert.equal(api.state().receiptScan,null);
-assert.deepEqual(calls.slice(-3).map(x=>x[0]),[
- 'record.trial.preflight','record.trial.preflight','record.list']);
-// A second confirmed scan can be submitted with its own operation ID.
-// It uses the existing screen; the test-only action does not enable record.create.
+assert.deepEqual(calls.slice(-3).map(x=>x[0]),
+ ['record.preflight','record.preflight','record.list']);
 api.setScan({...makeScan(),date:'2026-10-15'});
 await api.saveConfirmedReceiptToSheets(approval);
-assert.equal(trialSaved,2,'Two distinct confirmed scans can be saved');
-assert.equal(saved,1,'Normal record.create stays disabled for the trial');
-assert.equal(new Set(trialOperationIds).size,2,'Each new receipt gets a unique intent');
+assert.equal(saved,3,'Distinct confirmed scans use normal save path');
+assert.equal(new Set(normalOperationIds).size,3,
+ 'Every new receipt uses a fresh durable operation intent');
+assert.ok(normalOperationIds.every(x=>!x.startsWith('receipt-trial-main-')));
 assert.equal(api.state().receiptScan,null);
-assert.deepEqual(calls.slice(-2).map(x=>x[0]),
- ['record.trial.preflight','record.list']);
-trialEnabled=false;
+assert.deepEqual(calls.slice(-2).map(x=>x[0]),['record.preflight','record.list']);
+assert.equal(calls.some(x=>x[0].startsWith('record.trial.')),false);
+enabled=false;
 assert.equal(api.receiptRemoteWritable(),false,'No approval means local preview only');
-console.log('Main PWA receipt: sequential confirmed trial saves, unique intents and unchanged review UI PASS');
+console.log('Main PWA receipt: sequential standard saves, unique intents, unchanged review UI PASS');
