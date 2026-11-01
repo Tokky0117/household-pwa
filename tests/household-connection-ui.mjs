@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import vm from 'node:vm';
 const source=readFileSync(new URL('../app.js',import.meta.url),'utf8');
-let subject='1234567890',signedIn=true,requests=[],resolver=null,authListener=null;
+let subject='1234567890',signedIn=false,requests=[],resolver=null,authListener=null;
 let reply=async()=>({household_id:'family-A',member_count:2,
  two_member_count:true,receipt_write_enabled:false});
 const screen={innerHTML:'',addEventListener(){},insertAdjacentHTML(){}};
@@ -13,6 +13,7 @@ const win={
  KurashiAuth:{status:()=>({signedIn,subject,configured:true}),signIn(){return false},
   subscribe(fn){authListener=fn}},
  KurashiGasApi:{status:()=>({configured:true}),async request(action,payload){
+  if(action==='bootstrap')return {household_id:'family-A',categories:['飲食','キッチン','洗面・風呂','洗濯・掃除','その他'].map(name=>({name})),item_groups:[],products:[],stores:[]};
   requests.push({action,payload});return reply();
  }}
 };
@@ -28,6 +29,7 @@ const extra='\n({checkHouseholdConnection,householdCheckView,validateHouseholdCh
  "toSettings(){tab='settings';page='list'},"+
  "away(){tab='receipt';page='list';clearHouseholdCheck()}})";
 const api=vm.runInContext(source+extra,ctx);
+signedIn=true;
 api.toSettings();
 assert.match(api.settingsView(),/家庭の接続確認/);
 assert.match(api.settingsView(),/自分の家庭への接続を確認/);
