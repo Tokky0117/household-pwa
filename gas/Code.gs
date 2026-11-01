@@ -1106,11 +1106,19 @@ function receiptPreflight_(user,payload,book){
   let state;
   try{state=JSON.parse(String(op.obj.result))}
   catch(_){fail('RECOVERY_CONFLICT','操作履歴が破損しています')}
-  if(!state||typeof state!=='object'||Array.isArray(state)||
-     (state.status!=='prepared'&&state.status!=='completed'&&
-      state.status!=='committed'&&state.status!=='applied'))
+  if(!state||typeof state!=='object'||Array.isArray(state))
    fail('RECOVERY_CONFLICT','操作履歴を解釈できません');
+  // Existing item/product-alias writes store completed results WITHOUT a
+  // status field. Preserve that legitimate journal contract.
+  const completedLegacy=state.status===undefined&&
+   state.entity&&typeof state.entity==='object'&&
+   Number.isSafeInteger(state.sequence_no)&&state.sequence_no>=1;
+  const completedReceipt=state.status==='completed'&&
+   state.action==='record.create'&&state.entity&&
+   Array.isArray(state.item_ids);
   if(state.status==='prepared')pending=true;
+  else if(!completedLegacy&&!completedReceipt)
+   fail('RECOVERY_CONFLICT','操作履歴を解釈できません');
  }
  const sum=checked.items.reduce((n,item)=>n+item.amount_tax_included,0);
  const allSubjects=rows('users',b).filter(x=>String(x.obj.household_id)===hid);
