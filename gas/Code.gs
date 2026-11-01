@@ -370,6 +370,9 @@ function doPost(e){
   }
   // Ordinary receipt API is available only on the already pinned prototype
   // spreadsheet; no experimental write switch or new test endpoint is needed.
+  if(action==='store.create'){
+   return jsonReply({ok:true,data:mutateStoreSafely_(user,payload,input.operation_id)});
+  }
   if(action==='record.create'){
    if(!approvedPrototypeAliasSheet_())
     fail('RECEIPT_WRITES_DISABLED','対象の保存環境を確認してください');
@@ -1219,8 +1222,11 @@ function receiptPreflight_(user,payload,book){
   const completedReceipt=state.status==='completed'&&
    state.action==='record.create'&&state.entity&&
    Array.isArray(state.item_ids);
+  const completedStore=state.status==='completed'&&
+   state.action==='store.create'&&state.entity&&
+   Number.isSafeInteger(state.sequence_no);
   if(state.status==='prepared')pending=true;
-  else if(!completedLegacy&&!completedReceipt)
+  else if(!completedLegacy&&!completedReceipt&&!completedStore)
    fail('RECOVERY_CONFLICT','操作履歴を解釈できません');
  }
  const sum=checked.items.reduce((n,item)=>n+item.amount_tax_included,0);
@@ -1535,6 +1541,139 @@ function receiptTrialGuard_(book){
  * Never create users or derive household permission from a caller-supplied ID.
  * The authenticated Google subject is resolved to userId in authenticate().
  */
+/** New stores use the ordinary authenticated API in the existing pinned
+ * prototype only. A durable journal precedes the store and change-log rows.
+ * A retry reconciles the SAME immutable operation without creating duplicates.
+ */
+function mutateStoreSafely_(user,payload,operationId){
+ if(typeof operationId!=='string'||!/^[A-Za-z0-9_-]{8,128}$/.test(operationId))
+  fail('BAD_REQUEST','操作IDが不正です');
+ if(!payload||typeof payload!=='object'||Array.isArray(payload)||
+    Object.keys(payload).sort().join(',')!=='name'||typeof payload.name!=='string')
+  fail('BAD_REQUEST','店舗名を確認してください');
+ const name=payload.name.normalize('NFKC').trim(),normal=normalized(name);
+ if(!name||name.length>80||/[\x00-\x1f\x7f<>]/.test(name)||
+    /^[=+@\-]/.test(name)||/\d{4}[- ]?\d{4}[- ]?\d{4}[- ]?\d{4}/.test(name))
+  fail('BAD_REQUEST','店舗名を確認してください');
+ const digest=Utilities.base64EncodeWebSafe(Utilities.computeDigest(
+  Utilities.DigestAlgorithm.SHA_256,JSON.stringify({
+   action:'store.create',payload:{name}})));
+ const lock=LockService.getScriptLock();
+ if(!lock.tryLock(20000))fail('BUSY','保存が混み合っています');
+ try{
+  const book=spreadsheet(),hid=String(user.householdId);
+  assertPrototypeReceiptIdentity_(book,user);
+  const allOps=rows('processed_operations',book);
+  const homeOps=allOps.filter(x=>String(x.obj.household_id)===hid);
+  const matches=allOps.filter(x=>String(x.obj.operation_id)===operationId);
+  if(matches.length>1||matches.some(x=>String(x.obj.household_id)!==hid)||
+     new Set(homeOps.map(x=>String(x.obj.operation_id))).size!==homeOps.length)
+   fail('RECOVERY_CONFLICT','操作IDが重複しています');
+  const existing=matches[0]||null;
+  if(existing&&String(existing.obj.request_hash)!==digest)
+   fail('OPERATION_REUSED','操作IDが別の内容で使われています');
+  for(const op of homeOps){
+   let state;
+   try{state=JSON.parse(String(op.obj.result))}
+   catch(_){fail('RECOVERY_CONFLICT','操作履歴が破損しています')}
+   if(state?.status==='prepared'&&String(op.obj.operation_id)!==operationId)
+    fail('RECOVERY_REQUIRED','未完了の操作を先に復旧してください');
+  }
+  let plan,opRow=existing?.row;
+  if(existing){
+   try{plan=JSON.parse(String(existing.obj.result))}
+   catch(_){fail('RECOVERY_CONFLICT','店舗操作履歴が破損しています')}
+   if(!plan||!['prepared','completed'].includes(plan.status)||
+      plan.action!=='store.create'||!plan.entity||
+      String(plan.entity.household_id)!==hid||
+      String(plan.entity.canonical_name)!==name||
+      String(plan.entity.normalized_name)!==normal||
+      (plan.status==='prepared'&&
+       (!plan.log||String(plan.log.change_id)!==operationId||
+        String(plan.log.household_id)!==hid||
+        String(plan.log.entity_id)!==String(plan.entity.chain_id)||
+        String(plan.log.action)!=='store.create'||
+        String(plan.log.entity_type)!=='stores'))||
+      (plan.status==='completed'&&
+       (!Number.isSafeInteger(plan.sequence_no)||plan.sequence_no<1)))
+    fail('RECOVERY_CONFLICT','保存履歴と店舗名が一致しません');
+  }else{
+   const now=new Date().toISOString(),chainId=Utilities.getUuid();
+   const stores=rows('stores',book);
+   if(stores.some(x=>String(x.obj.chain_id)===chainId))
+    fail('RECOVERY_CONFLICT','店舗IDが重複しています');
+   if(stores.some(x=>String(x.obj.household_id)===hid&&
+      normalized(x.obj.canonical_name)===normal))
+    fail('DUPLICATE','登録済みの店舗です');
+   const seq=currentSequence(hid,book)+1;
+   const entity={chain_id:chainId,household_id:hid,canonical_name:name,
+    normalized_name:normal,aliases:'',version:1,updated_at:now};
+   const log={change_id:operationId,sequence_no:seq,household_id:hid,
+    entity_type:'stores',entity_id:chainId,action:'store.create',occurred_at:now};
+   plan={status:'prepared',action:'store.create',entity,log};
+   opRow=append_('processed_operations',{household_id:hid,
+    operation_id:operationId,request_hash:digest,
+    result:JSON.stringify(plan),processed_at:now},book);
+   const prepared=rows('processed_operations',book).filter(x=>
+    String(x.obj.operation_id)===operationId);
+   if(prepared.length!==1||prepared[0].row!==opRow||
+      String(prepared[0].obj.result)!==JSON.stringify(plan))
+    fail('RECOVERY_CONFLICT','操作記録の保存を確認できません');
+  }
+  const entity=plan.entity;
+  if(!entity.chain_id)fail('RECOVERY_CONFLICT','店舗IDがありません');
+  const allStores=rows('stores',book),same=allStores.filter(x=>
+   String(x.obj.chain_id)===String(entity.chain_id));
+  if(same.length>1||allStores.some(x=>
+     String(x.obj.household_id)===hid&&
+     normalized(x.obj.canonical_name)===normal&&
+     String(x.obj.chain_id)!==String(entity.chain_id)))
+   fail('CATALOG_CONFLICT','店舗名またはIDが競合しています');
+  if(same.length){
+   if(!receiptSameRow_(same[0].obj,entity,'stores'))
+    fail('RECOVERY_CONFLICT','店舗データが変更されています');
+  }else{
+   if(plan.status==='completed')
+    fail('RECOVERY_CONFLICT','確定済みの店舗が見つかりません');
+   append_('stores',entity,book);
+  }
+  const logs=rows('change_log',book),found=logs.filter(x=>
+   String(x.obj.change_id)===operationId);
+  if(found.length>1)fail('RECOVERY_CONFLICT','変更履歴が重複しています');
+  if(plan.status==='completed'){
+   if(found.length!==1||String(found[0].obj.household_id)!==hid||
+      String(found[0].obj.action)!=='store.create'||
+      String(found[0].obj.entity_id)!==String(entity.chain_id)||
+      Number(found[0].obj.sequence_no)!==plan.sequence_no)
+    fail('RECOVERY_CONFLICT','確定済み変更履歴が一致しません');
+   return plan;
+  }
+  if(found.length){
+   if(!receiptSameRow_(found[0].obj,plan.log,'change_log'))
+    fail('RECOVERY_CONFLICT','変更履歴が一致しません');
+  }else{
+   if(logs.some(x=>String(x.obj.household_id)===hid&&
+      Number(x.obj.sequence_no)>=plan.log.sequence_no))
+    fail('RECOVERY_CONFLICT','変更履歴の連番が競合しています');
+   append_('change_log',plan.log,book);
+  }
+  const rowsSaved=rows('stores',book).filter(x=>
+   String(x.obj.chain_id)===String(entity.chain_id));
+  const logSaved=rows('change_log',book).filter(x=>
+   String(x.obj.change_id)===operationId);
+  if(rowsSaved.length!==1||!receiptSameRow_(rowsSaved[0].obj,entity,'stores')||
+     logSaved.length!==1||!receiptSameRow_(logSaved[0].obj,plan.log,'change_log'))
+   fail('RECOVERY_CONFLICT','店舗の保存結果を確認できません');
+  const result={status:'completed',action:'store.create',
+   entity:publicRow(entity),sequence_no:plan.log.sequence_no};
+  write_('processed_operations',opRow,{household_id:hid,
+   operation_id:operationId,request_hash:digest,
+   result:JSON.stringify(result),processed_at:entity.updated_at},
+   tab('processed_operations',book));
+  return result;
+ }finally{lock.releaseLock()}
+}
+
 function assertPrototypeReceiptIdentity_(book,user){
  if(!approvedPrototypeAliasSheet_())
   fail('RECEIPT_WRITES_DISABLED','許可されていない保存先です');
