@@ -729,4 +729,77 @@ for(const phase of ['journal.prepare','stores','change','journal.complete']){
  assert.throws(()=>t.mock.mutateStoreSafely_(t.homeA,data,id),
   e=>e.code==='RECOVERY_CONFLICT');
 }
+
+// Ordinary day-to-day stock uses the SAME pinned Sheet and item transaction.
+// Registration, spouse toggle, cross-household access, duplicate replay and
+// stock update must not require any fixed receipt test button or extra Sheet.
+{
+ const t=fullTrial();
+ t.mock.ContentService={MimeType:{JSON:'application/json'},
+  createTextOutput(content){return {setMimeType(){return this},
+   getContent(){return content}}}};
+ let signed=t.homeA;
+ t.mock.authenticate=()=>signed;
+ const post=(action,id,p)=>JSON.parse(t.mock.doPost({postData:{contents:
+  JSON.stringify({id_token:'mock-token',action,operation_id:id,payload:p})
+ }}).getContent());
+ const created=post('item.create','item-stock-normal-01',
+  {name:'ティッシュ',category_id:4});
+ assert.equal(created.ok,true,'Item registration is an ordinary Sheets mutation');
+ const item=created.data.entity;
+ assert.equal(item.household_id,'house-A');
+ assert.equal(item.in_stock,true);
+ assert.equal(item.category_id,4);
+ const count=t.writes;
+ const retry=post('item.create','item-stock-normal-01',
+  {name:'ティッシュ',category_id:4});
+ assert.equal(retry.ok,true);
+ assert.equal(retry.data.entity.item_group_id,item.item_group_id);
+ assert.equal(t.writes,count,'Replaying the same item intent adds no rows');
+ assert.equal(post('item.create','item-stock-normal-02',
+  {name:'ティッシュ',category_id:4}).error.code,'DUPLICATE');
+ signed=t.spouse;
+ const stock=post('item.update','item-stock-normal-03',{
+  item_group_id:item.item_group_id,version:1,in_stock:false
+ });
+ assert.equal(stock.ok,true,'Spouse changes the shared stock row');
+ assert.equal(stock.data.entity.version,2);
+ assert.equal(stock.data.entity.in_stock,false);
+ const latest=t.mock.bootstrap(t.homeA,t.mock.spreadsheet());
+ assert.equal(latest.item_groups.filter(x=>x.item_group_id===item.item_group_id)
+  .length,1);
+ assert.equal(latest.item_groups.find(x=>x.item_group_id===item.item_group_id)
+  .in_stock,false);
+ assert.equal(post('item.update','item-stock-normal-04',{
+  item_group_id:item.item_group_id,version:1,in_stock:true
+ }).error.code,'VERSION_CONFLICT');
+ signed=t.other;
+ const writes=t.writes;
+ assert.equal(post('item.create','item-stock-foreign-01',
+  {name:'第三者の在庫',category_id:0}).error.code,'TRIAL_NOT_ISOLATED');
+ assert.equal(t.writes,writes,'Foreign account never writes');
+}
+// An interrupted stock save resumes only its original journal intent.
+for(const phase of ['journal.prepare','item_groups','change','journal.complete']){
+ for(const when of ['before','after']){
+  const t=fullTrial(),id='item-stock-fault-0001',
+   data={name:'障害復旧用ティッシュ',category_id:4};
+  t.stop(phase,when);
+  assert.throws(()=>t.mock.mutateItemSafely_(t.homeA,'item.create',data,id,
+   'prototype'),new RegExp('INJECTED_'+phase+'_'+when));
+  assert.equal(t.locked,false);
+  const pending=t.rowObjects('processed_operations').find(x=>x.operation_id===id);
+  if(pending&&JSON.parse(pending.result).status==='prepared')
+   assert.throws(()=>t.mock.mutateReceiptSafely_(t.homeA,
+    mainCandidate,'receipt-during-stock-fault',true),
+    e=>e.code==='RECOVERY_REQUIRED');
+  const restored=t.mock.mutateItemSafely_(t.homeA,'item.create',data,id,'prototype');
+  assert.equal(restored.entity.household_id,'house-A');
+  const writes=t.writes;
+  assert.equal(t.mock.mutateItemSafely_(t.homeA,'item.create',data,id,'prototype')
+   .entity.item_group_id,restored.entity.item_group_id);
+  assert.equal(t.writes,writes);
+  assert.equal(t.rowObjects('item_groups').length,1);
+ }
+}
 console.log('GAS receipt batch: normal record.create, same-ID recovery, legacy fixtures PASS');
