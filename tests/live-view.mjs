@@ -66,7 +66,7 @@ assert.equal(storage.get('household_pwa_ui_v3').includes('ローカル牛乳'),t
  'Existing local data remain untouched but inaccessible in daily view');
 // Original + button dispatches to a half-sheet with the ordinary write action.
 const plus={dataset:{act:'addLive'},hasAttribute:()=>false};
-const clickTarget={classList:{contains(){return false}},closest(){return plus}};
+const clickTarget={classList:{contains(){return false}},closest(selector){return selector.includes('[data-act]')?plus:null}};
 assert.ok(listeners.click?.length);
 listeners.click[0]({target:clickTarget,preventDefault(){},stopPropagation(){}});
 assert.equal(api.state().liveEditor.item_group_id,null);
