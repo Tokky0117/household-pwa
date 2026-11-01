@@ -14,7 +14,7 @@ api.configure('https://script.google.com/macros/s/TEST123/exec');
 assert.equal(api.status().configured,true);
 await assert.rejects(api.request('item.create'),/WRITES_DISABLED/);
 assert.equal(api.writeEnabled(),false);
-await assert.rejects(api.request('product.create'),/UNSUPPORTED/);
+await assert.rejects(api.request('product.create'),/WRITES_DISABLED/);
 await assert.rejects(api.request('product.alias.create',{product_id:'p1',chain_id:'s1',product_code:'00012345',confirmed:true},{operationId:'would-write-0001'}),/UNSUPPORTED/);
 await assert.rejects(api.request('bootstrap',{}, {token:''}),/LOGIN_REQUIRED/);
 let calls=0;
@@ -231,6 +231,23 @@ const normal=await api.request('record.create',candidatePayload,{
  }
 });
 assert.equal(normal.entity.record_id,'normal-1');
+const productPayload={item_group_id:'item-A',name:'おいしい牛乳',
+ package_quantity:900,package_unit:'mL'};
+const productOp='product-normal-0001';
+const product=await api.request('product.create',productPayload,{
+ operationId:productOp,fetcher:async(_url,opts)=>{
+  const sent=JSON.parse(opts.body);
+  assert.equal(sent.action,'product.create');
+  assert.equal(sent.operation_id,productOp);
+  assert.equal(sent.payload.item_group_id,'item-A');
+  return {ok:true,text:async()=>JSON.stringify({ok:true,data:{
+   status:'completed',action:'product.create',
+   entity:{product_id:'product-A',household_id:'h-a'},sequence_no:11
+  }})};
+ }
+});
+assert.equal(product.entity.product_id,'product-A');
+
 await assert.rejects(api.request('record.create',candidatePayload,{
  fetcher:async()=>{throw Error('MUST_NOT_SEND')}
 }),/OPERATION_ID_REQUIRED/);
