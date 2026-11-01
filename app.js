@@ -77,6 +77,63 @@ let previewRecords=loadPreviewRecords();
 let receiptScan=null,receiptScanBusy=false,receiptScanEpoch=0,receiptPhotoUrl=null;
 let receiptChatGptText='',receiptChatGptNotice='';
 
+let householdCheck=null,householdCheckSubject=null,householdCheckStatus='未確認',
+ householdCheckBusy=false,householdCheckEpoch=0;
+function clearHouseholdCheck(message='未確認'){
+ householdCheckEpoch++;householdCheck=null;householdCheckSubject=null;
+ householdCheckBusy=false;householdCheckStatus=message;
+}
+function validateHouseholdCheck(data){
+ if(!data||typeof data!=='object'||Array.isArray(data)||
+    Object.keys(data).sort().join(',')!==
+      'household_id,member_count,receipt_write_enabled,two_member_count'||
+    typeof data.household_id!=='string'||!/^[A-Za-z0-9_-]{1,128}$/.test(data.household_id)||
+    !Number.isSafeInteger(data.member_count)||data.member_count<1||data.member_count>20||
+    data.two_member_count!==(data.member_count===2)||
+    data.receipt_write_enabled!==false)return false;
+ return true;
+}
+async function checkHouseholdConnection(){
+ if(window.KURASHI_RECEIPT_TEST_MODE===true||householdCheckBusy||
+    tab!=='settings'||page!=='list')return;
+ const auth=window.KurashiAuth?.status?.();
+ if(auth?.signedIn!==true||!auth.subject){
+  clearHouseholdCheck('Googleログインが必要です');render();return;
+ }
+ const subject=auth.subject,epoch=++householdCheckEpoch;
+ householdCheckSubject=subject;householdCheckBusy=true;
+ householdCheck=null;householdCheckStatus='照合中';render();
+ try{
+  const data=await window.KurashiGasApi.request('household.status',{});
+  const current=window.KurashiAuth?.status?.();
+  if(epoch!==householdCheckEpoch||tab!=='settings'||page!=='list'||
+     current?.signedIn!==true||current.subject!==subject)return;
+  if(!validateHouseholdCheck(data))throw Error('HOUSEHOLD_RESPONSE_INVALID');
+  householdCheck=data;
+  householdCheckStatus='接続確認済み（読み取り専用）';
+ }catch{
+  if(epoch===householdCheckEpoch&&window.KurashiAuth?.status?.()?.subject===subject){
+   householdCheck=null;
+   householdCheckStatus='確認失敗。ログイン・家庭登録・GAS公開版を確認してください';
+  }
+ }finally{if(epoch===householdCheckEpoch){householdCheckBusy=false;render()}}
+}
+function householdCheckView(auth){
+ const valid=auth?.signedIn===true&&householdCheck&&
+  householdCheckSubject===auth.subject?householdCheck:null;
+ const details=valid?
+  '<p class="hint">家庭識別子：<code>'+esc(valid.household_id)+'</code></p>'+
+  '<p class="hint">この家庭への登録人数：'+valid.member_count+'人'+
+  (valid.two_member_count?'（2人登録）':'（2人での利用登録は未確認）')+'</p>'+
+  '<p class="hint">夫婦それぞれのアカウントから確認し、家庭識別子が一致するか比較してください。2人登録という人数だけでは相手の本人確認になりません。</p>':'';
+ return '<section class="panel"><h2>家庭の接続確認（読み取り専用）</h2>'+
+  '<p class="hint">各自のGoogleログインから、所属家庭を確認します。アカウント名・メールアドレスは表示・送信しません。登録を変更しません。</p>'+
+  '<button type="button" class="secondary" data-act="checkHouseholdConnection"'+
+  (!auth?.signedIn||householdCheckBusy?' disabled':'')+'>自分の家庭への接続を確認</button>'+
+  '<p class="hint" role="status">状態：'+esc(auth?.signedIn?householdCheckStatus:'Googleログインが必要です')+'</p>'+
+  details+'</section>';
+}
+
 let remoteReceipts=null,remoteReceiptStatus='未取得',remoteReceiptBusy=false,
  remoteReceiptSubject=null,remoteReceiptEpoch=0;
 function clearRemoteReceipts(note='未取得'){
@@ -953,7 +1010,7 @@ function settingsView(){
    <section class="panel"><h2>試作データの保存先</h2><p class="hint">このSafariのWebサイト内データのみです。Google Sheets・Driveには保存しません。</p></section>
    <section class="panel"><h2>試作版の操作</h2><button type="button" class="secondary danger" data-act="reset">仮データを初期状態に戻す</button></section>
    </main>${nav()}`;
- const auth=window.KurashiAuth?.status?.()||{configured:false,signedIn:false};const loginPanel=`<div class="panel"><h2>Googleログイン（接続準備）</h2><p class="hint">${auth.signedIn?'この端末でログイン済みです。実データの同期はまだ無効です。':auth.configured?'初回のみGoogleアカウントでログインします。期限切れ時は再ログインが必要です。':'Googleログインの接続設定を準備中です。現時点では試作データだけを利用できます。'}</p>${auth.signedIn?'<button type="button" class="secondary" data-act="googleSignOut">ログアウト</button>':auth.configured?'<div id="google-login-button"></div>':''}</div>`;return `${head('設定','くらしストック')}<main>${loginPanel}<div class="panel"><h2>Google Sheets読み取り</h2><p class="hint" role="${liveStatus.startsWith('取得失敗：')?'alert':'status'}">状態：${esc(liveStatus)}。ログイン後、日用品・商品・店舗を読み取れます。保存や同期はまだ行いません。${liveStatus.startsWith('取得失敗：')?'自動再試行はしません。必要ならもう一度読み取ってください。':''}</p><button class="secondary" data-act="refreshLive" style="width:100%" ${auth.signedIn&&!liveBusy?'':'disabled'}>${liveBusy?'読み取り中…':liveStatus.startsWith('取得失敗：')?'もう一度読み取る':'Google Sheetsから読み取る'}</button>${liveMode?'<button class="secondary" data-act="leaveLive" style="width:100%">試作データに戻る</button>':''}</div><div class="panel"><h2>試作版の操作</h2><p class="hint">変更内容はこの端末の localStorage のみに保存され、夫婦間では共有されません。</p><button class="secondary danger" data-act="reset">仮データを初期状態に戻す</button></div><div class="panel"><h2>今後の実装</h2><p class="hint">レシート／値札のチェーン照合、Google Apps Script 接続、認証、オフライン差分同期を追加予定です。</p></div></main>${nav()}`}
+ const auth=window.KurashiAuth?.status?.()||{configured:false,signedIn:false};const loginPanel=`<div class="panel"><h2>Googleログイン（接続準備）</h2><p class="hint">${auth.signedIn?'この端末でログイン済みです。実データの同期はまだ無効です。':auth.configured?'初回のみGoogleアカウントでログインします。期限切れ時は再ログインが必要です。':'Googleログインの接続設定を準備中です。現時点では試作データだけを利用できます。'}</p>${auth.signedIn?'<button type="button" class="secondary" data-act="googleSignOut">ログアウト</button>':auth.configured?'<div id="google-login-button"></div>':''}</div>`;return `${head('設定','くらしストック')}<main>${loginPanel}<div class="panel"><h2>Google Sheets読み取り</h2><p class="hint" role="${liveStatus.startsWith('取得失敗：')?'alert':'status'}">状態：${esc(liveStatus)}。ログイン後、日用品・商品・店舗を読み取れます。保存や同期はまだ行いません。${liveStatus.startsWith('取得失敗：')?'自動再試行はしません。必要ならもう一度読み取ってください。':''}</p><button class="secondary" data-act="refreshLive" style="width:100%" ${auth.signedIn&&!liveBusy?'':'disabled'}>${liveBusy?'読み取り中…':liveStatus.startsWith('取得失敗：')?'もう一度読み取る':'Google Sheetsから読み取る'}</button>${liveMode?'<button class="secondary" data-act="leaveLive" style="width:100%">試作データに戻る</button>':''}</div>${householdCheckView(auth)}<div class="panel"><h2>試作版の操作</h2><p class="hint">変更内容はこの端末の localStorage のみに保存され、夫婦間では共有されません。</p><button class="secondary danger" data-act="reset">仮データを初期状態に戻す</button></div><div class="panel"><h2>今後の実装</h2><p class="hint">レシート／値札のチェーン照合、Google Apps Script 接続、認証、オフライン差分同期を追加予定です。</p></div></main>${nav()}`}
 // All confirmation dialogs share one DOM and CSS. A Japanese full stop ends a paragraph line.
 function dialogView(){
  if(!dialog)return '';
@@ -983,7 +1040,11 @@ function pageView(){
  }
 }
 function render(){
- if(!window.KurashiAuth?.status?.()?.signedIn)receiptRecoveryNotice='';
+ const authForCheck=window.KurashiAuth?.status?.();
+ if(householdCheckSubject!==null&&
+    (authForCheck?.signedIn!==true||authForCheck.subject!==householdCheckSubject))
+  clearHouseholdCheck('Googleログインが必要です');
+ if(!authForCheck?.signedIn)receiptRecoveryNotice='';
  if(remoteReceiptSubject!==null){
   const a=window.KurashiAuth?.status?.();
   if(a?.signedIn!==true||a.subject!==remoteReceiptSubject)
@@ -1243,7 +1304,9 @@ if(liveMode&&tab==='items'&&page==='list'&&!el.dataset.tab){return}
 if(el.dataset.tab){if(el.dataset.tab!==tab||page!=='list')abandonLiveReadOnNavigation();if(el.dataset.tab!=='receipt'&&tab==='receipt'){
  discardReceiptScan();receiptChatGptText='';receiptChatGptNotice='';
  clearRemoteReceipts();
-}tab=el.dataset.tab;page='list';openSwipeId=null;menu=false;render();return}if(el.dataset.cat!==undefined){if(onlyOut)return;const c=Number(el.dataset.cat);collapsed.has(c)?collapsed.delete(c):collapsed.add(c);render();return}if(el.dataset.stock){const i=items.find(x=>x.id===el.dataset.stock);i.inStock=!i.inStock;i.version++;persist();render();return}if(el.dataset.open){if(openSwipeId){setOpenSwipe(null);return}listScrollPosition=window.scrollY;selected=el.dataset.open;page='compare';period='1y';priceScope='product';initializeCompare();periodMenu=false;menu=false;openSwipeId=null;render();return}if(el.dataset.pedit){openSwipeId=null;const p=catalogue.products.find(x=>x.id===el.dataset.pedit);if(p&&p.itemGroupId===selected){editingProductId=p.id;page='productEdit';render()}return}
+}
+if(el.dataset.tab!=='settings'&&tab==='settings')clearHouseholdCheck();
+tab=el.dataset.tab;page='list';openSwipeId=null;menu=false;render();return}if(el.dataset.cat!==undefined){if(onlyOut)return;const c=Number(el.dataset.cat);collapsed.has(c)?collapsed.delete(c):collapsed.add(c);render();return}if(el.dataset.stock){const i=items.find(x=>x.id===el.dataset.stock);i.inStock=!i.inStock;i.version++;persist();render();return}if(el.dataset.open){if(openSwipeId){setOpenSwipe(null);return}listScrollPosition=window.scrollY;selected=el.dataset.open;page='compare';period='1y';priceScope='product';initializeCompare();periodMenu=false;menu=false;openSwipeId=null;render();return}if(el.dataset.pedit){openSwipeId=null;const p=catalogue.products.find(x=>x.id===el.dataset.pedit);if(p&&p.itemGroupId===selected){editingProductId=p.id;page='productEdit';render()}return}
 if(el.dataset.premove){openSwipeId=null;
  const p=catalogue.products.find(x=>x.id===el.dataset.premove);
  if(p&&p.itemGroupId===selected){dialog={title:'商品の登録解除',message:`「${productTitle(p)}」の登録を解除します。過去の最安値集計対象からも外れます。`,buttons:[{id:'cancel',label:'キャンセル'},{id:'confirmProductUnlink',label:'解除する',critical:true}],pending:{productId:p.id}};renderDialogOnly()}return;
@@ -1309,6 +1372,7 @@ if(action==='catalogueList'){pickerAll=!pickerAll;const heading=document.querySe
  renderDialogOnly();return;
 }
 if(action==='retryReceiptSave'){retryReceiptSave();return;}
+if(action==='checkHouseholdConnection'){checkHouseholdConnection();return;}
 if(action==='refreshRemoteReceipts'){refreshRemoteReceipts();return;}
 if(action==='importChatGptReceipt'){
  const field=document.getElementById('receipt-chatgpt-json');
