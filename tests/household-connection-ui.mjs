@@ -10,7 +10,7 @@ const screen={innerHTML:'',addEventListener(){},insertAdjacentHTML(){}};
 const memory=new Map();let stored=0;
 const win={
  scrollTo(){},scrollY:0,KURASHI_RECEIPT_TEST_MODE:false,
- KurashiAuth:{status:()=>({signedIn,subject,configured:true})},
+ KurashiAuth:{status:()=>({signedIn,subject,configured:true}),signIn(){return false}},
  KurashiGasApi:{status:()=>({configured:true}),async request(action,payload){
   requests.push({action,payload});return reply();
  }}
