@@ -90,6 +90,26 @@ button:disabled{background:#a1aaba}.secondary{background:#eef2f8;color:#20508c}
 <button type="button" id="receipt-replay" disabled>保存済み試験レシートを同じIDで再確認</button>
 <p id="receipt-replay-result" role="status" aria-live="polite">⑥の読み取り成功後に利用できます。</p>
 </section>
+<section class="panel" id="receipt-candidate-preflight">
+<h2>⑧ 別のレシート明細を保存前検査（保存なし）</h2>
+<p class="muted">既存の試験家庭と店舗だけを使い、2明細の書式・数量・税込金額を検査します。実際の購入内容や個人情報は入力せず、架空の品名を利用してください。Google Sheetsへの追加・変更はありません。日常利用の操作には追加しません。</p>
+<label for="candidate-date">試験用の購入日</label>
+<input type="date" id="candidate-date" value="2026-11-01">
+<label for="candidate-name-a">架空の明細1・品名</label>
+<input id="candidate-name-a" value="試験用・野菜" maxlength="120">
+<label for="candidate-quantity-a">明細1・数量</label>
+<input id="candidate-quantity-a" type="number" min="1" max="999" step="1" value="1">
+<label for="candidate-amount-a">明細1・税込金額（円）</label>
+<input id="candidate-amount-a" type="number" min="0" max="1000000" step="1" value="128">
+<label for="candidate-name-b">架空の明細2・品名</label>
+<input id="candidate-name-b" value="試験用・日用品" maxlength="120">
+<label for="candidate-quantity-b">明細2・数量</label>
+<input id="candidate-quantity-b" type="number" min="1" max="999" step="1" value="2">
+<label for="candidate-amount-b">明細2・税込金額（円）</label>
+<input id="candidate-amount-b" type="number" min="0" max="1000000" step="1" value="330">
+<button id="receipt-candidate-check" type="button" disabled>確認した架空明細を保存前検査（保存しない）</button>
+<p id="receipt-candidate-result" role="status" aria-live="polite">⑥の認証付き読み取り成功後に使用できます。</p>
+</section>
 <section class="panel">
 <h2>失敗した場合</h2>
 <p class="muted">GETが成功してもPOST成功の証明にはなりません。また、GoogleログインHTMLが返る場合はGAS本体の応答とは限りません。ネットワーク失敗はCORS・アクセス権・通信など複数原因が考えられます。試験GASの公開範囲を広げたり、トークンをURLに載せたりしないでください。</p>
@@ -109,6 +129,8 @@ button:disabled{background:#a1aaba}.secondary{background:#eef2f8;color:#20508c}
  const catalogCheck=document.getElementById('catalog-check'),catalogResult=document.getElementById('catalog-result'),catalogDetail=document.getElementById('catalog-detail');
  const receiptRead=document.getElementById('receipt-read'),receiptReadResult=document.getElementById('receipt-read-result');
  const receiptReplay=document.getElementById('receipt-replay'),receiptReplayResult=document.getElementById('receipt-replay-result');
+ const receiptCandidate=document.getElementById('receipt-candidate-check'),
+  receiptCandidateResult=document.getElementById('receipt-candidate-result');
  let probing=false,catalogBusy=false,receiptBusy=false,verifiedRevision=-1,verifiedSubject='';
  let catalogVerifiedRevision=-1,catalogVerifiedSubject='',verifiedFixture=null;
  let receiptVerifiedRevision=-1,receiptVerifiedSubject='';
@@ -178,6 +200,7 @@ button:disabled{background:#a1aaba}.secondary{background:#eef2f8;color:#20508c}
   receiptReadResult.textContent='③の読み取り接続確認後に実行できます。';
   receiptVerifiedRevision=-1;receiptVerifiedSubject='';
   receiptReplayResult.textContent='⑥の読み取り成功後に利用できます。';
+  receiptCandidateResult.textContent='⑥の認証付き読み取り成功後に使用できます。';
   catalogResult.textContent='③の読み取り接続確認後に実行できます。';
   catalogDetail.textContent='';
   notifyGate();
@@ -224,6 +247,7 @@ button:disabled{background:#a1aaba}.secondary{background:#eef2f8;color:#20508c}
     verifiedRevision!==revision||verifiedSubject!==window.KurashiAuth.status().subject||!verifiedFixture;
   receiptReplay.disabled=receiptRead.disabled||
     receiptVerifiedRevision!==revision||receiptVerifiedSubject!==window.KurashiAuth.status().subject;
+  receiptCandidate.disabled=receiptReplay.disabled;
   catalogCheck.disabled=!active||!!endpointError||loading||probing||catalogBusy||receiptBusy||
     verifiedRevision!==revision||verifiedSubject!==window.KurashiAuth.status().subject;
   if(active){diagnostics.textContent='Googleログイン成功';return}
@@ -288,7 +312,8 @@ button:disabled{background:#a1aaba}.secondary{background:#eef2f8;color:#20508c}
   if(typeof subject!=='string'||!subject){result.textContent='ログイン状態を確認できません。';return}
   loading=true;verifiedRevision=-1;verifiedSubject='';catalogVerifiedRevision=-1;catalogVerifiedSubject='';verifiedFixture=null;receiptReadResult.textContent='③の読み取り接続確認後に実行できます。';
   receiptVerifiedRevision=-1;receiptVerifiedSubject='';
-  receiptReplayResult.textContent='⑥の読み取り成功後に利用できます。';notifyGate();
+  receiptReplayResult.textContent='⑥の読み取り成功後に利用できます。';
+  receiptCandidateResult.textContent='⑥の認証付き読み取り成功後に使用できます。';notifyGate();
   counts.textContent='';result.textContent='読み取り中です…';catalogDetail.textContent='';update();
   try{
    // Only authenticated read action; write gate remains disabled.
@@ -431,10 +456,69 @@ button:disabled{background:#a1aaba}.secondary{background:#eef2f8;color:#20508c}
    }
   }finally{receiptBusy=false;update()}
  });
+ receiptCandidate.addEventListener('click',async()=>{
+  if(receiptBusy||loading||probing||catalogBusy)return;
+  const invalid=validateTrialUrl(url.value),user=window.KurashiAuth.status();
+  if(invalid||!user.signedIn||!verifiedFixture||
+     verifiedRevision!==revision||verifiedSubject!==user.subject||
+     receiptVerifiedRevision!==revision||receiptVerifiedSubject!==user.subject){
+   receiptCandidateResult.textContent='⑥の認証付き読み取り成功後に使用してください。';
+   update();return;
+  }
+  const fixture=verifiedFixture,rev=revision,subject=user.subject,started=Date.now();
+  // The actual receipt-save contract is shared with the main PWA.
+  // Never submit client chosen store IDs, household IDs or operation IDs.
+  let payload;
+  try{
+   const get=id=>document.getElementById(id).value;
+   const line=(i,name,q,amount,category)=>({
+    line_order:i,raw_name:get(name),product_id:null,
+    quantity:Number(get(q)),amount_tax_included:Number(get(amount)),
+    category_id:category,price_eligible:false
+   });
+   payload=window.KurashiReceiptSaveContract.validatePayload({
+    version:'receipt-create-1',record_type:'receipt',
+    chain_id:fixture.chainId,record_date:get('candidate-date'),
+    branch_name:null,raw_store_name:'試験用・任意明細',
+    items:[
+     line(1,'candidate-name-a','candidate-quantity-a','candidate-amount-a',0),
+     line(2,'candidate-name-b','candidate-quantity-b','candidate-amount-b',1)
+    ]
+   });
+   // Empty numeric input must not silently become zero.
+   for(const id of ['candidate-quantity-a','candidate-quantity-b',
+      'candidate-amount-a','candidate-amount-b'])
+    if(document.getElementById(id).value.trim()==='')throw Error('MISSING_VALUE');
+  }catch{
+   receiptCandidateResult.textContent='試験用の品名・日付・数量・税込明細金額を確認してください。送信していません。';
+   return;
+  }
+  receiptBusy=true;receiptCandidateResult.textContent='試験家庭で保存前検査中（書き込みなし）…';update();
+  try{
+   const data=await window.KurashiGasApi.request('record.trial.preflight',payload);
+   if(!sameSession(rev,subject))return;
+   const expectedTotal=payload.items.reduce((n,item)=>n+item.amount_tax_included,0);
+   if(!data||Object.keys(data).sort().join(',')!==
+      'item_count,total_tax_included,trial_ready,version,write_enabled'||
+      data.version!=='receipt-create-1'||data.trial_ready!==true||
+      data.write_enabled!==false||data.item_count!==payload.items.length||
+      data.total_tax_included!==expectedTotal)
+    throw Error('TRIAL_PREFLIGHT_INVALID');
+   receiptCandidateResult.textContent='成功：試験家庭で'+data.item_count+
+     '明細・税込合計'+data.total_tax_included+
+     '円の保存前検査に合格。新しい購入履歴は保存していません。計測 '+elapsed(started)+'。';
+  }catch(error){
+   if(sameSession(rev,subject))
+    receiptCandidateResult.textContent='保存前検査を完了できませんでした。'+
+      (error?.message==='TRIAL_PREFLIGHT_INVALID'?' 応答内容が一致しません。':
+      ' '+readFailure(error));
+  }finally{receiptBusy=false;update()}
+ });
  window.addEventListener('load',loadGoogle);
  update();
 })();
 </script>
+<script src="./receipt-save-contract.js"></script>
 <script src="./receipt-structure.js"></script>
 <script src="./receipt-product-matching.js"></script>
 <script src="./receipt-alias-preflight.js"></script>
