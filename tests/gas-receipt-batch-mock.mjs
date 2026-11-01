@@ -306,9 +306,9 @@ for(const phase of faults)for(const when of ['before','after']){
  assert.ok(after>before);
  assert.equal(trial.mock.checkReceiptTrialReadOnly().completed,true);
  trial.data.record_items[1][trial.columns.record_items.indexOf('amount_tax_included')]=999;
- assert.equal(trialPost('record.trial.replay').error.code,'TRIAL_NOT_ISOLATED');
+ assert.equal(trialPost('record.trial.replay').error.code,'RECOVERY_CONFLICT');
  assert.throws(()=>trial.mock.runReceiptWriteTrialOnce(),
-  e=>e.code==='TRIAL_NOT_ISOLATED',
+  e=>e.code==='RECOVERY_CONFLICT',
   'Different receipt data must never be accepted as a test fixture');
 }
 console.log('GAS receipt batch 12 fault cases, editor trial, replay and scope PASS');
