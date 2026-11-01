@@ -493,6 +493,14 @@ function remoteReceiptView(){
  const allowed=auth?.signedIn===true&&window.KurashiGasApi?.status?.()?.configured;
  const collection=remoteReceipts&&remoteReceiptSubject===auth?.subject?remoteReceipts:null;
  const groups=collection?.records||[],lines=collection?.record_items||[];
+ // Link only products from a separately authenticated catalog for the SAME
+ // household; keep original receipt names and stored amounts immutable.
+ const catalog=currentReceiptCatalog();
+ const trustedCatalog=catalog?.household_id===collection?.household_id?catalog:null;
+ const productsById=new Map((trustedCatalog?.products||[]).filter(p=>!p.deleted_at)
+  .map(p=>[String(p.product_id),p]));
+ const stockById=new Map((trustedCatalog?.item_groups||[]).filter(i=>!i.deleted_at)
+  .map(i=>[String(i.item_group_id),i]));
  const list=groups.map(r=>{
   const children=lines.filter(x=>x.record_id===r.record_id).sort(
    (a,b)=>Number(a.line_order)-Number(b.line_order));
@@ -500,9 +508,16 @@ function remoteReceiptView(){
   return '<details class="panel preview-record-row"><summary><strong>'+
    esc(r.record_date)+' · '+esc(r.raw_store_name||r.chain_id||'店舗名不明')+
    '</strong><span>'+children.length+'明細 · '+yen(total)+
-   '</span></summary><ul class="receipt-record-lines">'+children.map(x=>
-    '<li><span>'+esc(x.raw_name||'商品未照合')+' · '+esc(x.quantity)+
-    '点</span><strong>明細合計 '+yen(x.amount_tax_included)+'</strong></li>').join('')+
+   '</span></summary><ul class="receipt-record-lines">'+children.map(x=>{
+    const product=x.product_id?productsById.get(String(x.product_id)):null;
+    const group=product?.item_group_id?stockById.get(String(product.item_group_id)):null;
+    const stock=group?' ／ 在庫'+
+     (group.in_stock===true||String(group.in_stock).toLowerCase()==='true'?'あり':'なし'):'';
+    const linked=product?'（登録商品：'+esc(product.name)+
+     (group?' ／ 日用品：'+esc(group.name):'')+stock+'）':'';
+    return '<li><span>'+esc(x.raw_name||'商品未照合')+' · '+esc(x.quantity)+
+     '点'+linked+'</span><strong>明細合計 '+yen(x.amount_tax_included)+'</strong></li>';
+   }).join('')+
    '</ul></details>';
  }).join('');
  return '<section class="receipt-remote-read"><h2 class="sectiontitle">Google Sheetsの確定レシート（読み取り専用）</h2>'+
