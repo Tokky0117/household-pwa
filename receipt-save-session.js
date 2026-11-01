@@ -7,8 +7,8 @@
  const LOCK='kurashi-live-items-write-v1'; // same lock as item mutations
  const receiptGate=()=>root.KurashiGasApi?.receiptWriteEnabled?.()===true&&
   root.KURASHI_RECEIPT_TEST_MODE!==true;
- // Explicit, separately opt-in TEST-only path. Default remains disabled.
- // Never let this switch authorize general record.create.
+ // Previous trial operation IDs are recognized ONLY to recover an already
+ // journaled, uncertain write. New saves always use ordinary record.create.
  const trialId=id=>typeof id==='string'&&
   /^receipt-trial-main-[A-Za-z0-9_-]{12,64}$/.test(id);
  const trialGate=()=>root.KURASHI_RECEIPT_STAGE_A_TRIAL===true&&
@@ -80,18 +80,6 @@
    return transmit(entry);
   });
  }
- async function trialCreate({subject,householdId,payload,operationId}){
-  if(!trialGate())throw Error('RECEIPT_WRITES_DISABLED');
-  if(!trialId(operationId))throw Error('TRIAL_OPERATION_ID_INVALID');
-  return withLock(async()=>{
-   verifiedScope(subject,householdId);
-   if(!contract()?.validatePayload)throw Error('RECEIPT_CONTRACT_MISSING');
-   const safe=contract().validatePayload(payload);
-   const entry=journal().prepare({subject,householdId,
-    operationId,payload:safe});
-   return transmit(entry);
-  });
- }
  async function retry({subject,householdId}){
   if(!receiptGate()&&!trialGate())throw Error('RECEIPT_WRITES_DISABLED');
   return withLock(async()=>{
@@ -102,7 +90,6 @@
   });
  }
  root.KurashiReceiptSaveSession={
-  create,trialCreate,retry,pending:accountPending,
-  writeEnabled:receiptGate,trialWriteEnabled:()=>false
+  create,retry,pending:accountPending,writeEnabled:receiptGate
  };
 })(typeof window==='undefined'?globalThis:window);
