@@ -26,6 +26,8 @@ assert.match(html,/id="catalog-check"/);
 assert.match(html,/id="catalog-result"/);
 assert.match(html,/id="catalog-detail"/);
 assert.match(html,/id="receipt-read"/);
+assert.match(html,/id="receipt-replay"/);
+assert.match(html,/KurashiGasApi\\.request\\('record\\.trial\\.replay',\\{\\}/);
 assert.match(html,/KurashiGasApi\.request\('record\.list',\{\}\)/);
 assert.match(html,/id="ocr-review"/);
 assert.match(html,/id="ocr-review-text"/);
@@ -46,9 +48,9 @@ assert.doesNotMatch(getHandler[1],/getToken|id_token|Authorization|localStorage|
 assert.match(getHandler[1],/原因未確定/);
 
 assert.match(api,/const LIVE_WRITE_ENABLED=false/);
-assert.match(html,/この画面から書き込み処理は呼び出しません/);
+assert.match(html,/通常の登録・保存は行いません/);
 // Execute the actual inline browser script against a minimal in-memory DOM.
-// These are diagnostic GET and authenticated READ mocks; no real GAS/Sheets.
+// These are diagnostic GET, authenticated READ and fixed replay mocks; no real GAS/Sheets.
 const inline=html.split('<script>')[1]?.split('</script>')[0];
 assert.ok(inline,'Embedded trial diagnostics must have a script');
 assert.doesNotThrow(()=>new Function(inline));
@@ -73,7 +75,7 @@ const catalog={
 };
 const apiMock={
  configure(endpoint){if(!endpoint)return;assert.match(endpoint,/^https:\/\/script\.google\.com\/macros\/s\/[A-Za-z0-9_-]+\/exec$/)},
- async request(action,payload={}){
+ async request(action,payload={},options={}){
   postCalls.push(action);postPayloads.push({action,payload});
   if(action==='bootstrap')return {
    household_id:'trial',categories:['飲食','キッチン','洗面・風呂','洗濯・掃除','その他'].map(name=>({name})),
@@ -81,6 +83,11 @@ const apiMock={
    products:[{product_id:'p-test',household_id:'trial',name:'試験用・商品コード'}],
    stores:[{chain_id:'c-test',household_id:'trial',canonical_name:'[KURASHI_ALIAS_TRIAL_ONLY]'}]
   };
+  if(action==='record.trial.replay'){
+   assert.equal(options.confirmedTrialReplay,true);
+   assert.equal(Object.keys(payload).length,0);
+   return {status:'completed',replayed:true,records:1,items:2,amount:496};
+  }
   if(action==='record.list'){
    if(receiptMode==='pending')return new Promise(resolve=>{slowReceipt=resolve});
    const records=[{record_id:'r1',record_type:'receipt',
@@ -181,6 +188,10 @@ assert.equal(node('receipt-read').disabled,false,
  'Authenticated bootstrap with one known trial store/product is enough for receipt reads');
 await node('receipt-read').listeners.click();
 assert.match(node('receipt-read-result').textContent,/確定レシート1件・明細2件・税込496円/);
+assert.equal(node('receipt-replay').disabled,false);
+await node('receipt-replay').listeners.click();
+assert.match(node('receipt-replay-result').textContent,/新規レシートなし/);
+assert.deepEqual(postCalls.slice(-2),['record.list','record.trial.replay']);
 
 assert.equal(ctx.window.KurashiTrialCatalogGate.ready(),false,
  'The OCR review may not fetch catalog until the explicit alias check also succeeds');
@@ -199,6 +210,7 @@ assert.equal(node('result').textContent,'試験用URLを確認してください
 assert.equal(node('counts').textContent,'');
 // Re-verify bootstrap after URL changes before catalog actions are allowed.
 assert.equal(node('catalog-check').disabled,true);
+assert.equal(node('receipt-replay').disabled,true);
 node('confirm-trial-target').checked=true;
 node('confirm-trial-target').listeners.change();
 await node('check').listeners.click();
@@ -223,6 +235,7 @@ assert.match(node('receipt-read-result').textContent,/一致しません/);
 receiptMode='bad-price';
 await node('receipt-read').listeners.click();
 assert.match(node('receipt-read-result').textContent,/一致しません/);
+assert.equal(node('receipt-replay').disabled,true,'Bad receipt prevents replay');
 receiptMode='pending';
 const pendingReceipt=node('receipt-read').listeners.click();
 await Promise.resolve();
@@ -246,7 +259,7 @@ assert.equal(aliasCalls[1].payload.product_code,'00099999');
 assert.equal(aliasCalls[0].payload.operation_id,undefined);
 assert.equal(postCalls.filter(x=>x==='product.catalog').length,2,
  'Each newly confirmed URL performs its own fixture check');
-assert.ok(postCalls.every(a=>['bootstrap','product.catalog','product.alias.check','record.list'].includes(a)),
+assert.ok(postCalls.every(a=>['bootstrap','product.catalog','product.alias.check','record.list','record.trial.replay'].includes(a)),
  'The diagnostic must never call a mutation');
 
 // A malformed or foreign catalog must stop before the alias-check request.
