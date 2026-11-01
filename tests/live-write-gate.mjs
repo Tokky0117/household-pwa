@@ -43,16 +43,16 @@ const ctx=vm.createContext({
  location:{protocol:'file:'},crypto:{randomUUID:()=> 'safe-operation-001'},
  setTimeout,clearTimeout,Date,Intl,URL,console});
 const app=vm.runInContext(appSrc+
- '\n({refreshLive,liveListView,liveWritable,listView})',ctx);
+ '\n({refreshLive,listView,liveWritable,listView})',ctx);
 assert.equal(app.liveWritable(),false);
 assert.match(app.listView(),/設定からGoogleログイン/);
 assert.doesNotMatch(app.listView(),/demo-|サンプル|試作保存/);
 state.signedIn=true;state.subject='1234567890';state.token='mock-token';
 assert.equal(app.liveWritable(),true);
 await app.refreshLive();
-assert.match(app.liveListView(),/data-act="addLive"/);
-assert.match(app.liveListView(),/aria-label="日用品を追加"/);
-assert.match(app.liveListView(),/class="ui-search"/);
+assert.match(app.listView(),/data-act="addLive"/);
+assert.match(app.listView(),/aria-label="日用品を追加"/);
+assert.match(app.listView(),/class="ui-search"/);
 assert.doesNotMatch(app.listView(),/ローカル牛乳|スーパー青空/);
 state.signedIn=false;state.token=null;
 assert.equal(app.liveWritable(),false);
