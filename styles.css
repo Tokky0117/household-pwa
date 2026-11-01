@@ -2278,3 +2278,16 @@ details.preview-record-row { display: block; }
   line-height:1.55;
   user-select:text;
 }
+
+/* ChatGPT JSON paste in the main receipt tab: bounded, accessible and local. */
+.receipt-chatgpt-import{margin-top:14px}
+.receipt-chatgpt-import .formlabel{display:block;font-size:14px;font-weight:600;margin:14px 0 7px}
+.receipt-chatgpt-import textarea{
+ display:block;width:100%;box-sizing:border-box;min-height:118px;
+ padding:12px;border:1px solid var(--line);border-radius:10px;
+ color:var(--ink);background:var(--card);font:inherit;font-size:16px;
+ resize:vertical;overflow-wrap:anywhere
+}
+.receipt-chatgpt-import textarea:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.receipt-chatgpt-import [data-act="copyChatGptPrompt"]{margin-bottom:2px}
+.receipt-chatgpt-import [data-act="importChatGptReceipt"]{width:100%;margin-top:12px;min-height:44px}
