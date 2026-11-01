@@ -111,7 +111,8 @@ assert.ok([...store.keys()].every(k=>!k.includes('receipt_pending')));
 enabled=false;
 api.setScan(makeScan());
 html=api.receiptScanReview();
-assert.match(html,/このSafariに試作保存/);
+assert.match(html,/Google Sheetsに保存/);
+assert.match(html,/disabled/,'Without login/write availability the save button is disabled');
 assert.equal(api.receiptRemoteWritable(),false);
 assert.equal(api.currentReceiptCatalog(),null);
 // A second and third confirmation use the SAME normal record.create path.
@@ -141,5 +142,5 @@ assert.equal(api.state().receiptScan,null);
 assert.deepEqual(calls.slice(-2).map(x=>x[0]),['record.preflight','record.list']);
 assert.equal(calls.some(x=>x[0].startsWith('record.trial.')),false);
 enabled=false;
-assert.equal(api.receiptRemoteWritable(),false,'No approval means local preview only');
+assert.equal(api.receiptRemoteWritable(),false,'No write permission means no remote mutation');
 console.log('Main PWA receipt: sequential standard saves, unique intents, unchanged review UI PASS');
