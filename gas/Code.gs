@@ -357,8 +357,17 @@ function doPost(e){
     records:2,items:4,amount:458
    }});
   }
-  // Deliberate hard gate: receipt parent+child writes have no recovery journal yet.
-  // Even enabling ENABLE_EXPERIMENTAL_WRITES must never enable this endpoint.
+  // The next acceptance path: ONE reviewed candidate receipt only in the
+  // pinned existing test household. It shares the normal receipt transaction
+  // and same-ID recovery engine but NEVER opens general record.create.
+  if(action==='record.trial.main.create'){
+   if(typeof input.operation_id!=='string')
+    fail('BAD_REQUEST','保存操作IDが必要です');
+   const result=receiptTrialMainCreate_(user,payload,input.operation_id);
+   return jsonReply({ok:true,data:result});
+  }
+  // Production/general receipt writes remain blocked independently of all
+  // test-only actions and existing experimental-write property settings.
   if(action==='record.create')fail('RECEIPT_WRITES_DISABLED','レシート一括保存は安全検証中です');
   if(!['item.create','item.update','product.create','product.update','product.move','product.alias.create'].includes(action))fail('UNSUPPORTED','未対応の操作です');
   return jsonReply({ok:true,data:mutate_(user,action,payload,input.operation_id)});
