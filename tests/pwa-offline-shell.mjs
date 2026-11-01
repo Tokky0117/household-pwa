@@ -7,7 +7,7 @@ const index=readFileSync(new URL('../index.html',import.meta.url),'utf8');
 const workflow=readFileSync(new URL('../.github/workflows/pages-previews.yml',import.meta.url),'utf8');
 const entry='https://tokky0117.github.io/household-pwa/previews/stage-a-ui-handoff-review/';
 const preview='stage-a-ui-handoff-review';
-const activeSource=source.replace("const CACHE='household-ui-v67';",
+const activeSource=source.replace("const CACHE='household-ui-v68';",
  "const CACHE='household-preview-"+preview+"-v60';");
 assert.notEqual(activeSource,source,'Preview build must have a scoped cache name');
 const calls={},listeners={},saved=new Map();
