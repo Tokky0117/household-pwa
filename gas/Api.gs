@@ -4,6 +4,10 @@
  * 対応: bootstrap / item.create / item.update
  * 未実装の商品の保存・レシート保存は成功扱いにしない。
  */
+// Temporary shared household mode. To restore sign-in, change to 'google'.
+// This temporarily allows anyone with the endpoint URL to read/write.
+const KURASHI_AUTH_MODE = 'temporary-household';
+
 function doGet() {
   return kurashiReply_({ok:false,error:{code:'POST_ONLY',message:'POSTのみ利用できます'}});
 }
@@ -14,7 +18,11 @@ function doPost(e) {
     if (!input || typeof input !== 'object' || Array.isArray(input))
       kurashiFail_('BAD_REQUEST','入力形式が不正です');
     const token = String(input.id_token || '');
-    const user = kurashiAuthenticate_(token);
+    const user = KURASHI_AUTH_MODE === 'temporary-household'
+      ? kurashiTemporaryHousehold_()
+      : KURASHI_AUTH_MODE === 'google'
+        ? kurashiAuthenticate_(token)
+        : kurashiFail_('CONFIG_REQUIRED','認証設定が不正です');
     const action = String(input.action || '');
     const payload = input.payload === undefined ? {} : input.payload;
     if (!payload || typeof payload !== 'object' || Array.isArray(payload))
@@ -39,6 +47,15 @@ function kurashiFail_(code,message) {
   const error = new Error(message);
   error.kurashiCode = code;
   throw error;
+}
+
+function kurashiTemporaryHousehold_() {
+  const book = kurashiBook_();
+  const homes = kurashiRows_('households',book);
+  if (homes.length !== 1 || !homes[0].value.household_id)
+    kurashiFail_('CONFIG_REQUIRED','家庭の初期設定を確認してください');
+  return {book:book,householdId:String(homes[0].value.household_id),
+    userId:'temporary-household'};
 }
 
 function kurashiAuthenticate_(idToken) {

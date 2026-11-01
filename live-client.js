@@ -5,9 +5,12 @@
  const CLIENT_ID='290567395833-cdemend3itmapsgsounu8pf72hgvm315.apps.googleusercontent.com';
  const STORAGE='kurashi-new-write-v1-';
  const listeners=new Set();
- let token=null,subject=null,expiry=0,snapshot=null,household=null,busy=false,error='',gisReady=false;
+ let token=null,subject='temporary-household',expiry=0,snapshot=null,household=null,busy=false,error='',gisReady=false;
+ let loginRequired=false; // Set true if GAS reports UNAUTHORIZED.
  let requestSerial=0;
- const state=()=>({signedIn:!!token&&Date.now()<expiry,loaded:!!snapshot,householdId:household,busy,error,pending:pending()});
+ const state=()=>({signedIn:!loginRequired||(!!token&&Date.now()<expiry),
+  loginRequired,temporary:!loginRequired,loaded:!!snapshot,
+  householdId:household,busy,error,pending:pending()});
  const notify=()=>listeners.forEach(cb=>cb(state(),snapshot));
  const pending=()=>{if(!subject)return null;try{const saved=localStorage.getItem(STORAGE+subject);return saved?JSON.parse(saved):null}catch{return {error:'STORAGE_UNAVAILABLE'}}};
  const clearPending=()=>{if(subject)localStorage.removeItem(STORAGE+subject)};
@@ -18,12 +21,12 @@
   } catch (_) { return null; }
  }
  function logout(){
-  ++requestSerial;token=null;subject=null;expiry=0;snapshot=null;household=null;error='';busy=false;
+  ++requestSerial;token=null;subject=loginRequired?null:'temporary-household';expiry=0;snapshot=null;household=null;error='';busy=false;
   if(window.google?.accounts?.id)window.google.accounts.id.disableAutoSelect();
   notify();
  }
  function initialize(){
-  if(gisReady||!window.google?.accounts?.id)return false;
+  if(!loginRequired||gisReady||!window.google?.accounts?.id)return false;
   window.google.accounts.id.initialize({
    client_id:CLIENT_ID,auto_select:false,use_fedcm_for_button:true,
    callback:response=>{
@@ -40,7 +43,7 @@
   return true;
  }
  function renderLogin(node){
-  if(!node)return;
+  if(!loginRequired||!node)return;
   if(!initialize()){node.textContent='Googleログインを準備中…';return}
   if(!node.querySelector('[role="button"]')){
    node.replaceChildren();
@@ -48,13 +51,13 @@
   }
  }
  async function request(action,payload={},operationId=null){
-  if(!token||Date.now()>=expiry)throw Error('LOGIN_REQUIRED');
+  if(loginRequired&&(!token||Date.now()>=expiry))throw Error('LOGIN_REQUIRED');
   const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),20000);
   try {
    const response=await fetch(ENDPOINT,{
     method:'POST',mode:'cors',redirect:'follow',credentials:'omit',
     headers:{'Content-Type':'text/plain;charset=utf-8'},
-    body:JSON.stringify({id_token:token,action,payload,...(operationId?{operation_id:operationId}:{})}),
+    body:JSON.stringify({id_token:loginRequired?token:'',action,payload,...(operationId?{operation_id:operationId}:{})}),
     signal:controller.signal
    });
    if(!response.ok)throw Error('HTTP_'+response.status);
@@ -106,7 +109,7 @@
   };
  }
  async function load(){
-  if(!token||Date.now()>=expiry)return false;
+  if(loginRequired&&(!token||Date.now()>=expiry))return false;
   const serial=++requestSerial,currentSubject=subject;
   busy=true;error='';notify();
   try{
@@ -117,6 +120,9 @@
    return true;
   }catch(e){
    if(serial!==requestSerial)return false;
+   if(e.code==='UNAUTHORIZED'&&!loginRequired){
+    loginRequired=true;subject=null;token=null;expiry=0;snapshot=null;household=null;
+   }
    error=e.code||e.message||'読み込みに失敗しました';
    return false;
   }finally{
@@ -170,6 +176,7 @@
   subscribe:cb=>{listeners.add(cb);return ()=>listeners.delete(cb)},
   itemsOf,catalogueOf};
  window.addEventListener('kurashi-gis-ready',initialize);
+ document.addEventListener('DOMContentLoaded',()=>{if(!loginRequired)load()});
  window.addEventListener('pageshow',()=>{if(state().signedIn&&!busy&&!pending())load()});
  document.addEventListener('visibilitychange',()=>{if(!document.hidden&&state().signedIn&&!busy&&!pending())load()});
  if(document.readyState==='complete')initialize();

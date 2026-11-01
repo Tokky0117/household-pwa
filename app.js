@@ -388,7 +388,10 @@ function stub(title,icon,desc){return `${head(title,'くらしストック')}<ma
 function settingsView(){
  if(liveMode){
   const s=window.KurashiLive.state();
-  return `${head('設定','くらしストック')}<main><div class="panel"><h2>データと同期</h2><div class="info-row row"><div><strong>同期状態</strong><div class="hint">${esc(s.error||(!s.signedIn?'Googleログインが必要です':s.loaded?'Google Sheets 接続済み':'読み込み中…'))}</div></div><span class="tag">${s.loaded?'接続済み':'未接続'}</span></div>${s.signedIn?'<button type="button" class="secondary" data-act="liveLogout">ログアウト</button>':'<div id="google-login-button"></div>'}${s.pending?'<p class="hint" role="alert">前回の保存結果を確認できていません。</p><button type="button" class="secondary" data-act="retryLive">同じ操作を確認・再送</button>':''}</div></main>${nav()}`;
+   const syncStatus=s.error||(s.temporary
+     ? (s.loaded?'Google Sheets 接続済み（ログイン一時停止中）':'Google Sheets 自動読み込み中…')
+     : (!s.signedIn?'Googleログインが必要です':s.loaded?'Google Sheets 接続済み':'読み込み中…'));
+  return `${head('設定','くらしストック')}<main><div class="panel"><h2>データと同期</h2><div class="info-row row"><div><strong>同期状態</strong><div class="hint">${esc(syncStatus)}</div></div><span class="tag">${s.loaded?'接続済み':'未接続'}</span></div>${s.loginRequired?(s.signedIn?'<button type="button" class="secondary" data-act="liveLogout">ログアウト</button>':'<div id="google-login-button"></div>') : ''}${s.pending?'<p class="hint" role="alert">前回の保存結果を確認できていません。</p><button type="button" class="secondary" data-act="retryLive">同じ操作を確認・再送</button>':''}</div></main>${nav()}`;
  }
  return `${head('設定','くらしストック')}<main><div class="panel"><h2>データと同期</h2><div class="info-row row"><div><strong>同期状態</strong><div class="hint">Google Sheets 接続前</div></div><span class="tag">未設定</span></div><button class="secondary" data-act="sync" style="width:100%">手動同期</button></div><div class="panel"><h2>試作版の操作</h2><p class="hint">変更内容はこの端末の localStorage のみに保存され、夫婦間では共有されません。</p><button class="secondary danger" data-act="reset">仮データを初期状態に戻す</button></div><div class="panel"><h2>今後の実装</h2><p class="hint">レシート／値札のチェーン照合、Google Apps Script 接続、認証、オフライン差分同期を追加予定です。</p></div></main>${nav()}`
 }
