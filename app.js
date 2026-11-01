@@ -1733,6 +1733,9 @@ if(['stockLive','hideLive'].includes(el.dataset.act)){
  else return;
  liveMutate('item.update',payload);return
 }
+if(el.dataset.act==='back'&&(liveEditor||liveProductEditor)){
+ liveEditor=null;liveProductEditor=null;render();return;
+}
 if(el.dataset.act==='refreshLive'){refreshLive();return}
 if(el.dataset.act==='leaveLive'){leaveRemoteView('試作データ表示');tab='items';page='list';render();return}
 if(liveMode&&tab==='items'&&page==='list'&&!el.dataset.tab){return}
