@@ -1,5 +1,5 @@
 name: Read-only audit of existing test GAS source
-# Read-only independent post-push verification of receipt #2 GAS source; no Sheets writes.
+# Read-only comparison before next test-only GAS source update; no Sheets writes.
 on:
   push:
     branches: [stage-a-ui-handoff-review]
@@ -119,7 +119,7 @@ jobs:
           const remoteMatchesBefore=sha(remote)===sha(approvedBeforeReplay);
           // Source last confirmed pushed to the existing isolated test GAS (run 41275439091).
           const lastVerifiedPush=child.execFileSync('git',['show',
-            'f28cc4cedb0005f371b5cc4b707c87b2061a01c0:gas/Code.gs'],
+            '6637a04e1ed3e7639dcd05fbcc4d7b1703f84acd:gas/Code.gs'],
             {encoding:'utf8'});
           const remoteMatchesLastVerifiedPush=sha(remote)===sha(lastVerifiedPush);
           const remoteMatchesCurrent=sha(remote)===sha(local);
@@ -135,7 +135,7 @@ jobs:
           const report=[
             'READ_ONLY_GAS_AUDIT: Test GAS source retrieved without modifying project or Sheets.',
             'Remote scripts: '+remoteFiles.length,
-            'Remote matches last successful push source (run 41275439091): '+remoteMatchesLastVerifiedPush,
+            'Remote matches accepted receipt #2 deployed source (verified by 41277891744): '+remoteMatchesLastVerifiedPush,
             'Remote and branch script source identical: '+(sha(local)===sha(remote)),
             'Post-sync manifest preserved exactly: '+(
               sha(remoteManifest)==='0952d47f73508eb256f1cf50f0368fe77434f8c05ea0d6defc7cf9b4e227e935'),
