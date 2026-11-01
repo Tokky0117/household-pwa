@@ -109,7 +109,12 @@ jobs:
           const approvedSource='3d70888002c8651b3498041b81f5226599bd17955944139334b89818a8afc605';
           const approvedManifest='0952d47f73508eb256f1cf50f0368fe77434f8c05ea0d6defc7cf9b4e227e935';
           const remote=fs.readFileSync(path.join(remoteDir,codeFiles[0]),'utf8');
-          if(digest(remote)!==approvedSource)throw Error('REMOTE_SOURCE_DRIFT_REVIEW_REQUIRED');
+          if(digest(remote)!==approvedSource){
+            const info='REMOTE_SOURCE_DRIFT_REVIEW_REQUIRED: source_sha256='+digest(remote)+
+              ' source_bytes='+Buffer.byteLength(remote);
+            console.log(info);
+            throw Error('REMOTE_SOURCE_DRIFT_REVIEW_REQUIRED');
+          }
           const local=fs.readFileSync('gas/Code.gs','utf8');
           const getNames=src=>new Set(
             [...src.matchAll(/(?:^|\n)function\s+([A-Za-z_$][\w$]*)\s*\(/g)].map(x=>x[1]));
