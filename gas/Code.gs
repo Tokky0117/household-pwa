@@ -1055,9 +1055,11 @@ function mutateProductUpdateSafely_(user,p,opId){
   if(found.length){
    try{plan=JSON.parse(String(found[0].obj.result))}catch(_){fail('RECOVERY_CONFLICT','操作履歴が壊れています')}
    if(!plan||!['prepared','completed'].includes(plan.status)||
-      plan.action!=='product.update'||!plan.base||!plan.entity||
+      plan.action!=='product.update'||!plan.entity||
+      (plan.status==='prepared'&&!plan.base)||
       String(plan.entity.product_id)!==pid||String(plan.entity.household_id)!==hid||
-      Number(plan.base.version)!==p.version||Number(plan.entity.version)!==p.version+1||
+      (plan.status==='prepared'&&Number(plan.base.version)!==p.version)||
+      Number(plan.entity.version)!==p.version+1||
       String(plan.entity.item_group_id??'')!==String(group??'')||
       String(plan.entity.name)!==shape.name||
       String(plan.entity.package_quantity??'')!==String(shape.package_quantity??'')||
