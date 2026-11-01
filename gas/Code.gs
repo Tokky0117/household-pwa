@@ -318,6 +318,14 @@ function write_(name,row,obj,existingSheet){
    fail('BAD_REQUEST','商品コードの文字列形式が不正です');
   sh.getRange(row,h.indexOf('normalized_alias')+1,1,1).setNumberFormat('@');
  }
+ if(name==='records'){
+  // Google Sheets may parse YYYY-MM-DD as a Date in locale-specific cells.
+  // Keep ISO days as text so journal reconciliation and household reads match.
+  const day=obj.record_date;
+  if(typeof day!=='string'||!/^20\d{2}-\d{2}-\d{2}$/.test(day))
+   fail('BAD_REQUEST','購入日の保存形式が不正です');
+  sh.getRange(row,h.indexOf('record_date')+1,1,1).setNumberFormat('@');
+ }
  sh.getRange(row,1,1,h.length).setValues([h.map(k=>obj[k]===null||obj[k]===undefined?'':obj[k])]);
 }
 function append_(name,obj,book){
