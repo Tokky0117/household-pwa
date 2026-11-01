@@ -730,6 +730,82 @@ for(const phase of ['journal.prepare','stores','change','journal.complete']){
   e=>e.code==='RECOVERY_CONFLICT');
 }
 
+// Normal product.create persists a family product usable in receipt.review.
+// Neither account may create products for an unrelated household's group.
+{
+ const t=fullTrial();
+ t.data.users.push(['u-A2','house-A','Spouse','1234567891']);
+ t.mock.ContentService={MimeType:{JSON:'application/json'},
+  createTextOutput(content){return{setMimeType(){return this},getContent(){return content}}}};
+ let account=t.homeA;
+ t.mock.authenticate=()=>account;
+ const post=(action,id,p)=>JSON.parse(t.mock.doPost({postData:{contents:
+  JSON.stringify({id_token:'mock',action,operation_id:id,payload:p})
+ }}).getContent());
+ const createItem=post('item.create','item-for-product-001',
+  {name:'牛乳',category_id:0});
+ assert.equal(createItem.ok,true);
+ const groupId=createItem.data.entity.item_group_id;
+ const data={item_group_id:groupId,name:'架空の新しい牛乳',
+  package_quantity:900,package_unit:'mL'};
+ const first=post('product.create','product-normal-001',data);
+ assert.equal(first.ok,true,'Ordinary master product registration succeeds');
+ assert.equal(first.data.action,'product.create');
+ const productId=first.data.entity.product_id;
+ assert.equal(first.data.entity.item_group_id,groupId);
+ assert.equal(first.data.entity.package_quantity,900);
+ const before=t.writes;
+ account=t.spouse;
+ const replay=post('product.create','product-normal-001',data);
+ assert.equal(replay.ok,true,'Spouse sees same completed product intent');
+ assert.equal(replay.data.entity.product_id,productId);
+ assert.equal(t.writes,before,'Product same-ID retry never duplicates rows');
+ assert.equal(post('product.create','product-normal-002',data).error.code,
+  'DUPLICATE');
+ assert.equal(post('product.create','product-normal-003',
+  {...data,name:'=IMPORTXML(1)'}).error.code,'BAD_REQUEST');
+ assert.equal(post('product.create','product-normal-001',
+  {...data,name:'別名商品'}).error.code,'OPERATION_REUSED');
+ const preflight=t.mock.receiptPreflight_(t.spouse,{
+  ...mainCandidate,items:mainCandidate.items.map((item,i)=>
+   i===1?{...item,product_id:productId}:item)
+ },t.mock.spreadsheet());
+ assert.equal(preflight.blocked_by_pending_operation,false);
+ const ownerCatalog=t.mock.bootstrap(t.homeA,t.mock.spreadsheet());
+ assert.equal(ownerCatalog.products.filter(x=>x.product_id===productId).length,1);
+ assert.equal(ownerCatalog.products.find(x=>x.product_id===productId).item_group_id,groupId);
+ account=t.other;
+ const unchanged=t.writes;
+ assert.equal(post('product.create','product-foreign-001',{
+  item_group_id:groupId,name:'第三者の商品',package_quantity:null,package_unit:null
+ }).error.code,'TRIAL_NOT_ISOLATED');
+ assert.equal(t.writes,unchanged,'Other household cannot mutate products');
+}
+for(const phase of ['journal.prepare','products','change','journal.complete']){
+ for(const when of ['before','after']){
+  const t=fullTrial(),id='product-fault-0001';
+  const data={item_group_id:null,name:'通信復旧用商品',
+   package_quantity:null,package_unit:null};
+  t.stop(phase,when);
+  assert.throws(()=>t.mock.mutateProductSafely_(t.homeA,data,id),
+   new RegExp('INJECTED_'+phase+'_'+when));
+  assert.equal(t.locked,false);
+  const journal=t.rowObjects('processed_operations').find(x=>x.operation_id===id);
+  if(journal&&JSON.parse(journal.result).status==='prepared')
+   assert.throws(()=>t.mock.mutateReceiptSafely_(t.homeA,mainCandidate,
+    'receipt-after-product-fault',true),
+    e=>e.code==='RECOVERY_REQUIRED');
+  const result=t.mock.mutateProductSafely_(t.homeA,data,id);
+  assert.equal(result.status,'completed');
+  const after=t.writes;
+  assert.equal(t.mock.mutateProductSafely_(t.homeA,data,id).entity.product_id,
+   result.entity.product_id);
+  assert.equal(t.writes,after,'Product same-ID retry is idempotent');
+  assert.equal(t.rowObjects('products').length,2);
+  assert.equal(t.rowObjects('change_log').length,4);
+  assert.equal(t.rowObjects('processed_operations').length,4);
+ }
+}
 // Ordinary day-to-day stock uses the SAME pinned Sheet and item transaction.
 // Registration, spouse toggle, cross-household access, duplicate replay and
 // stock update must not require any fixed receipt test button or extra Sheet.
