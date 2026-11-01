@@ -39,8 +39,8 @@ function harness(editorTrial=false){
   ['p-B','house-B','','別商品','別商品','','',1,1,'','','']);
  if(editorTrial){
   // Model the already known prototype fixture; no real Sheet is accessed.
-  data.households.splice(1,data.households.length-1);
-  data.users.splice(1,data.users.length-1);
+  data.households.splice(2);
+  data.users.splice(2);
   data.stores.splice(1,data.stores.length-1,
    ['alias-trial-store-0001','house-A','[KURASHI_ALIAS_TRIAL_ONLY]','','',1,'']);
   data.products.splice(1,data.products.length-1,
@@ -99,6 +99,8 @@ function harness(editorTrial=false){
  if(editorTrial){
   // Substitute only the known mock Sheet's digest. Production continues to
   // require the pinned hash in approvedPrototypeAliasSheet_().
+  // The literal hash is pinned in source; only the mock Spreadsheet ID is
+  // overridden via a separate test-runner wrapper, not the actual GAS file.
   vm.runInContext('approvedPrototypeAliasSheet_=function(){return true}',mock);
  }
  const homeA={householdId:'house-A',userId:'u-A'},spouse={householdId:'house-A',userId:'u-A2'};
