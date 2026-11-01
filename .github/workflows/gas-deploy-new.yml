@@ -1,0 +1,143 @@
+name: Deploy only the NEW Kurashi GAS
+
+on:
+  push:
+    branches: [preview-v46-clean-base]
+    paths: ['gas/Api.gs', 'gas/Setup.gs', '.github/workflows/gas-deploy-new.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: kurashi-new-gas
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: github.ref == 'refs/heads/preview-v46-clean-base' && vars.GAS_SCRIPT_ID_NEW != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      GAS_SCRIPT_ID_NEW: \${{ vars.GAS_SCRIPT_ID_NEW }}
+      TARGET_DEPLOYMENT_ID: AKfycbwn-SfXqRBIjJWVUUIKEsJuaUR6DLAEWbMVR-_rEB3iVZy2zi0ZNSA7JjNmyykvKjvdoQ
+    steps:
+      - uses: actions/checkout@v4
+        with: {fetch-depth: 0}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Validate new GAS JavaScript
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp gas/Api.gs "$RUNNER_TEMP/Api.js"
+          cp gas/Setup.gs "$RUNNER_TEMP/Setup.js"
+          node --check "$RUNNER_TEMP/Api.js"
+          node --check "$RUNNER_TEMP/Setup.js"
+      - name: Prepare temporary credentials and target
+        env:
+          CLASPRC_JSON: \${{ secrets.CLASPRC_JSON }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          node - <<'NODE'
+          const fs=require('node:fs'),path=require('node:path');
+          const c=process.env.CLASPRC_JSON,id=process.env.GAS_SCRIPT_ID_NEW;
+          if(!c)throw Error('CLASPRC_JSON is missing');
+          if(!/^[A-Za-z0-9_-]{25,120}$/.test(id))throw Error('Invalid new GAS script ID');
+          const a=JSON.parse(c);
+          if(!a||typeof a!=='object'||Array.isArray(a))throw Error('Invalid auth');
+          fs.writeFileSync(path.join(process.env.HOME,'.clasprc.json'),c,{mode:0o600});
+          for(const dir of ['remote','stage']){
+            const folder=path.join(process.env.RUNNER_TEMP,'new-gas',dir);
+            fs.mkdirSync(folder,{recursive:true});
+            fs.writeFileSync(path.join(folder,'.clasp.json'),JSON.stringify({scriptId:id,rootDir:'.'}));
+          }
+          NODE
+      - name: Verify NEW script matches its exact existing deployment
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP/new-gas/remote"
+          npx --yes @google/clasp@3 pull
+          npx --yes @google/clasp@3 list-deployments "$GAS_SCRIPT_ID_NEW" > "$RUNNER_TEMP/deployments-before.txt"
+          node - <<'NODE'
+          const fs=require('node:fs');
+          const t=fs.readFileSync(process.env.RUNNER_TEMP+'/deployments-before.txt','utf8');
+          if(!t.includes(process.env.TARGET_DEPLOYMENT_ID))
+            throw Error('Target does not own the new /exec deployment. No write permitted.');
+          NODE
+      - name: Confirm old remote code is a known version; stage two files
+        shell: bash
+        run: |
+          set -euo pipefail
+          node - <<'NODE'
+          const fs=require('node:fs'),path=require('node:path'),cp=require('node:child_process');
+          const base=path.join(process.env.RUNNER_TEMP,'new-gas');
+          const remote=path.join(base,'remote'),stage=path.join(base,'stage');
+          const entries=fs.readdirSync(remote).filter(x=>!x.startsWith('.'));
+          const scripts=entries.filter(x=>/\.(js|gs)$/.test(x));
+          if(scripts.length!==2||!entries.includes('appsscript.json')||entries.length!==3)
+            throw Error('Unexpected new-GAS source layout. No write permitted.');
+          const normalize=s=>s.replace(/^\uFEFF/,'').replace(/\r\n/g,'\n').trimEnd();
+          const known=[['gas/Setup.gs','setupNewWorkbook'],['gas/Api.gs','kurashiSaveItem_']];
+          const used=new Set();
+          for(const [source,marker] of known){
+            const found=scripts.filter(file=>fs.readFileSync(path.join(remote,file),'utf8').includes(marker));
+            if(found.length!==1||used.has(found[0]))throw Error('Missing or ambiguous remote source '+marker);
+            const file=found[0];used.add(file);
+            const original=normalize(fs.readFileSync(path.join(remote,file),'utf8'));
+            const commits=cp.execFileSync('git',['log','--format=%H','--',source],{encoding:'utf8'}).trim().split('\n');
+            const recognized=commits.some(sha=>{
+              try{return original===normalize(cp.execFileSync('git',['show',sha+':'+source],{encoding:'utf8'}))}
+              catch(_){return false}
+            });
+            if(!recognized)throw Error('Remote source has unreviewed changes: '+file);
+            fs.copyFileSync(path.join(process.env.GITHUB_WORKSPACE,source),path.join(stage,file));
+          }
+          const manifest=JSON.parse(fs.readFileSync(path.join(remote,'appsscript.json'),'utf8'));
+          if(manifest.runtimeVersion&&manifest.runtimeVersion!=='V8')
+            throw Error('Unexpected GAS runtime');
+          fs.copyFileSync(path.join(remote,'appsscript.json'),path.join(stage,'appsscript.json'));
+          NODE
+      - name: Back up existing NEW script before updating
+        uses: actions/upload-artifact@v4
+        with:
+          name: kurashi-new-gas-before-\${{ github.run_id }}
+          path: \${{ runner.temp }}/new-gas/remote/
+          if-no-files-found: error
+          retention-days: 30
+      - name: Push and verify only NEW script code
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP/new-gas/stage"
+          npx --yes @google/clasp@3 push --force
+          npx --yes @google/clasp@3 pull
+          node - <<'NODE'
+          const fs=require('node:fs'),path=require('node:path');
+          const p=path.join(process.env.RUNNER_TEMP,'new-gas','stage');
+          const norm=s=>s.replace(/\r\n/g,'\n').trimEnd();
+          for(const file of fs.readdirSync(p).filter(x=>/\.(js|gs)$/.test(x))){
+            const actual=norm(fs.readFileSync(path.join(p,file),'utf8'));
+            const name=actual.includes('setupNewWorkbook')?'gas/Setup.gs':
+              actual.includes('kurashiSaveItem_')?'gas/Api.gs':null;
+            if(!name||actual!==norm(fs.readFileSync(path.join(process.env.GITHUB_WORKSPACE,name),'utf8')))
+              throw Error('GAS push verification failed');
+          }
+          NODE
+      - name: Update existing NEW web app deployment, never create a second
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP/new-gas/stage"
+          npx --yes @google/clasp@3 update-deployment "$TARGET_DEPLOYMENT_ID"
+          npx --yes @google/clasp@3 list-deployments "$GAS_SCRIPT_ID_NEW" > "$RUNNER_TEMP/deployments-after.txt"
+          grep -Fq "$TARGET_DEPLOYMENT_ID" "$RUNNER_TEMP/deployments-after.txt"
+          echo "New GAS /exec updated. Old GAS and Sheets were not touched." >> "$GITHUB_STEP_SUMMARY"
+      - name: Remove local credentials
+        if: always()
+        shell: bash
+        run: |
+          rm -f "$HOME/.clasprc.json" "$RUNNER_TEMP/Api.js" "$RUNNER_TEMP/Setup.js"
+          rm -rf "$RUNNER_TEMP/new-gas"
