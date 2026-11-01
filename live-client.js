@@ -395,6 +395,13 @@
      await acknowledge(op,plan,result);
      error='';failureCount=0;retryMs=3000;
     }catch(e){
+     if(e.message==='QUEUE_CHANGED'){
+      // Another open PWA instance completed this durable command first.
+      // Reload the atomic IndexedDB state and continue from its latest head.
+      // This is NOT a terminal save failure.
+      await modify(ws=>ws);
+      continue;
+     }
      if(e.code==='VERSION_CONFLICT'&&!op.migrated){
       try{await rebaseRejected(op);continue}
       catch(rebaseError){e=rebaseError}
@@ -405,7 +412,7 @@
      }
      const permanent=new Set(['BAD_REQUEST','DUPLICATE','NOT_FOUND','FORBIDDEN',
       'OPERATION_REUSED','RECOVERY_CONFLICT','VERSION_CONFLICT_RETRY_LIMIT',
-      'HOUSEHOLD_CHANGED','QUEUE_CHANGED','UNSUPPORTED']);
+      'HOUSEHOLD_CHANGED','UNSUPPORTED']);
      if(permanent.has(e.code||e.message)){
       if(['BAD_REQUEST','DUPLICATE','NOT_FOUND','FORBIDDEN',
           'OPERATION_REUSED','UNSUPPORTED'].includes(e.code)){
