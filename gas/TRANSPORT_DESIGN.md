@@ -6,6 +6,12 @@
 
 
 
+## 2026-11-01：ブラウザからの固定試験レシート再送API（デプロイ前）
+
+- `record.trial.replay` は、本人認証済みで既存の隔離試験シートに紐づく完成済み1件・2明細・496円だけを**同じ操作IDで照合し直す試験アクション**。入力payloadは空のオブジェクトのみ、operation_idの指定は禁止。GAS側が固定IDと内容を選ぶため任意の書込・家庭変更・新規レシート保存には利用できない。
+- ブラウザ用 `gas-api.js` は `confirmedTrialReplay:true` が明示されない限りこのアクションを送信しない。`record.create` はPWA・GASとも引き続き無条件拒否。`ENABLE_EXPERIMENTAL_WRITES` や `RECEIPT_WRITES_ENABLED` を有効にしない。
+- 既存の接続確認ページは⑥の成功後に限り⑦を表示可能状態とし、URL／アカウント変更では解除する。これで検証できるのはブラウザ→GASの**完了済み操作の再送**であり、通常PWAの任意レシート保存・新規書込が成功したことではない。試験用GASへのデプロイ・実機確認は別途必要。
+
 ## 2026-11-01：レシート読取・内部保存処理の追加（外部書込閉鎖）
 
 - 本流PWAと `gas-api.js` に明示要求 `record.list` を追加。GASは認証済み家庭の `records/record_items` を、完了した `processed_operations` と `change_log` で照合して読み取り専用で返す。既存の `bootstrap/sync` の返却形式は変更しない。
