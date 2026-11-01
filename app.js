@@ -106,16 +106,16 @@ function validateRemoteReceipts(data){
  return true;
 }
 async function refreshRemoteReceipts(){
- if(remoteReceiptBusy||tab!=='receipt'||page!=='list')return;
+ if(remoteReceiptBusy||!['receipt','budget'].includes(tab)||page!=='list')return;
  const auth=window.KurashiAuth?.status?.();
  if(!auth?.signedIn||!auth.subject){
   clearRemoteReceipts('Googleログインが必要です');render();return;
  }
- const epoch=++remoteReceiptEpoch,subject=auth.subject;
+ const epoch=++remoteReceiptEpoch,subject=auth.subject,requestTab=tab;
  remoteReceiptBusy=true;remoteReceiptSubject=subject;remoteReceiptStatus='読み取り中';render();
  try{
   const data=await window.KurashiGasApi.request('record.list',{});
-  if(epoch!==remoteReceiptEpoch||tab!=='receipt'||page!=='list'||
+  if(epoch!==remoteReceiptEpoch||tab!==requestTab||page!=='list'||
      window.KurashiAuth?.status?.()?.signedIn!==true||
      window.KurashiAuth?.status?.()?.subject!==subject)return;
   if(!validateRemoteReceipts(data))throw Error('RECEIPT_RESPONSE_INVALID');
@@ -128,6 +128,25 @@ async function refreshRemoteReceipts(){
  }finally{
   if(epoch===remoteReceiptEpoch){remoteReceiptBusy=false;render();}
  }
+}
+function remoteBudgetView(){
+ if(window.KURASHI_RECEIPT_TEST_MODE===true)return '';
+ const auth=window.KurashiAuth?.status?.();
+ const allowed=auth?.signedIn===true&&window.KurashiGasApi?.status?.()?.configured;
+ const collection=remoteReceipts&&remoteReceiptSubject===auth?.subject?remoteReceipts:null;
+ const budget=collection?budgetTotals(collection.records,collection.record_items,budgetMonth):null;
+ const items=budget?[...CATS.map((name,i)=>[name,budget.byCategory.get(i)||0]),
+  ['未分類',budget.byCategory.get('uncategorized')||0]]:[];
+ return '<section class="receipt-remote-budget"><h2 class="sectiontitle">Google Sheetsの確定レシート（家計簿・読み取り専用）</h2>'+
+  '<p class="hint">この家庭の確定済み明細だけを集計。以下のSafari試作金額・サンプルには合算しません。価格比較へも自動登録しません。</p>'+
+  '<button type="button" class="secondary" data-act="refreshRemoteReceipts"'+
+  (!allowed||remoteReceiptBusy?' disabled':'')+'>確定レシートを読み取る</button>'+
+  '<p role="status" class="hint">状態：'+esc(allowed?remoteReceiptStatus:'Googleログインと接続設定が必要です')+'</p>'+
+  (budget?'<div class="budget-total"><span>'+esc(budgetMonth)+'の確定購入額</span><strong>'+
+   yen(budget.total)+'</strong></div><div class="budget-category-list">'+
+   items.map(([name,value])=>'<div class="budget-category-row"><span>'+
+    esc(name)+'</span><strong>'+yen(value)+'</strong></div>').join('')+'</div>':'')+
+  '</section>';
 }
 function remoteReceiptView(){
  if(window.KURASHI_RECEIPT_TEST_MODE===true)return '';
@@ -879,7 +898,7 @@ function receiptView(){
 function budgetView(){
  const {total,byCategory}=budgetTotals(allPreviewRecords(),allPreviewItems(),budgetMonth);
  const categoryRows=[...CATS.map((name,i)=>[name,byCategory.get(i)||0]),['未分類',byCategory.get('uncategorized')||0]];
- return `${head('家計簿','くらしストック')}<main class="preview-budget-page"><p class="sample-price-notice">※ サンプルと端末内の試作記録。値札は集計対象外です。</p><div class="budget-month"><button type="button" class="iconbtn" data-act="prevMonth" aria-label="前月">${chevron('left')}</button><strong>${esc(budgetMonth.replace('-', '年'))}月</strong><button type="button" class="iconbtn" data-act="nextMonth" aria-label="翌月">${chevron('right')}</button></div><div class="budget-total"><span>税込合計</span><strong>${yen(total)}</strong></div><div class="budget-category-list">${categoryRows.map(([name,value])=>`<div class="budget-category-row"><span>${esc(name)}</span><strong>${yen(value)}</strong></div>`).join('')}</div></main>${nav()}`;
+ return `${head('家計簿','くらしストック')}<main class="preview-budget-page">${remoteBudgetView()}<p class="sample-price-notice">以下はサンプルと端末内の試作記録だけです。Google Sheetsの確定金額とは合算しません。値札は集計対象外です。</p><div class="budget-month"><button type="button" class="iconbtn" data-act="prevMonth" aria-label="前月">${chevron('left')}</button><strong>${esc(budgetMonth.replace('-', '年'))}月</strong><button type="button" class="iconbtn" data-act="nextMonth" aria-label="翌月">${chevron('right')}</button></div><div class="budget-total"><span>税込合計</span><strong>${yen(total)}</strong></div><div class="budget-category-list">${categoryRows.map(([name,value])=>`<div class="budget-category-row"><span>${esc(name)}</span><strong>${yen(value)}</strong></div>`).join('')}</div></main>${nav()}`;
 }
 function stub(title,icon,desc){return `${head(title,'くらしストック')}<main><div class="panel placeholder"><div class="bubble">${icon}</div><h2>${title}画面</h2><p>${desc}</p></div><div class="alert">この画面は共通UIの確認用です。データ処理や同期はまだ行いません。</div></main>${nav()}`}
 function settingsView(){
