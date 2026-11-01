@@ -1,10 +1,7 @@
 name: Push GAS to test project (manual)
-# Explicit one-time 2026-11-01 receipt #2 source-only trial update.
-# A single exact commit message permits the push-based execution; remove after success.
+# Manual-only. A single limited source-sync trigger was used for receipt #2.
+# Retain its pinned source checks; no future automatic GAS updates.
 on:
-  push:
-    branches: [stage-a-ui-handoff-review]
-    paths: ['.github/workflows/gas-push-test.yml']
   workflow_dispatch:
     inputs:
       confirm_target_backup:
@@ -25,7 +22,7 @@ concurrency:
 
 jobs:
   push-test:
-    if: github.ref == 'refs/heads/stage-a-ui-handoff-review' && ((github.event_name == 'workflow_dispatch' && inputs.confirm_target_backup == 'BACKUP_DONE' && inputs.confirm_test_source == 'TEST_GAS_UPDATE') || (github.event_name == 'push' && github.event.head_commit.message == 'IMPLEMENT9_TEST_GAS_SOURCE_SYNC_ONCE_20261101'))
+    if: github.ref == 'refs/heads/stage-a-ui-handoff-review' && inputs.confirm_target_backup == 'BACKUP_DONE' && inputs.confirm_test_source == 'TEST_GAS_UPDATE'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -191,7 +188,7 @@ jobs:
             throw Error('TEST_GAS_SOURCE_VERIFY_FAILED');
           if(!src.includes("if(action==='record.trial.second.save')")||
             !src.includes("if(action==='record.trial.preflight')")||
-            if(!src.includes("if(action==='record.create')fail('RECEIPT_WRITES_DISABLED'")||
+            !src.includes("if(action==='record.create')fail('RECEIPT_WRITES_DISABLED'")||
             !src.includes("if(action==='record.trial.replay')")||
             !src.includes("function approvedPrototypeAliasSheet_(){"))
             throw Error('RECEIPT_PRODUCTION_WRITE_GATE_INVALID');
