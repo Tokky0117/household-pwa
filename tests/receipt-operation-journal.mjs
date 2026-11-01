@@ -21,14 +21,13 @@ const store={
  removeItem:k=>storage.delete(k)
 };
 function boot(){
- const win={KURASHI_RECEIPT_TEST_MODE:false,
-  KurashiAuth:{status:()=>({signedIn,subject})},
+ const win={KurashiAuth:{status:()=>({signedIn,subject})},
   KurashiGasApi:{
    status:()=>({configured:true}),
    receiptWriteEnabled:()=>enabled,
    async request(action,body,options){
     calls.push({action,body,operationId:options.operationId,
-     confirmedTrialMainSave:options.confirmedTrialMainSave===true});
+     actionContract:'standard'});
     if(networkError)throw Error('SIMULATED_TIMEOUT');
     return {status:badAck?'broken':'completed',action:'record.create',
      entity:{household_id:'h1',record_id:'receipt-1'},
@@ -129,44 +128,27 @@ signedIn=false;
 await assert.rejects(b.KurashiReceiptSaveSession.create({...args,operationId:'receipt-op-007'}),
  /RECEIPT_LOGIN_OR_HOUSEHOLD_REQUIRED/);
 assert.equal(calls.length,3);
-// Even simulated enabled API must be ignored in the explicitly isolated preview.
-signedIn=true;b.KURASHI_RECEIPT_TEST_MODE=true;
-await assert.rejects(b.KurashiReceiptSaveSession.create({...args,operationId:'receipt-op-008'}),
- /RECEIPT_WRITES_DISABLED/);
-assert.equal(calls.length,3);
-// Old uncertain trial journal entries can still be RECOVERED but no longer
-// permit new trialCreate calls. Only ordinary create is publicly available.
-b.KURASHI_RECEIPT_TEST_MODE=false;
-enabled=false;
-const oldTrialId='receipt-trial-main-cccccccccccc001';
-const oldTrialArgs={...args,operationId:oldTrialId};
-assert.equal(typeof b.KurashiReceiptSaveSession.trialCreate,'undefined');
-await assert.rejects(b.KurashiReceiptSaveSession.create(oldTrialArgs),
- /RECEIPT_WRITES_DISABLED/);
-assert.equal(b.KurashiReceiptJournal.read(),null);
-b.KURASHI_RECEIPT_STAGE_A_TRIAL=true;
-assert.equal(b.KurashiReceiptSaveSession.writeEnabled(),false);
-b.KurashiReceiptJournal.prepare(oldTrialArgs);
+// An old journal with a historical trial-shaped operation ID must still
+// recover by the ordinary record.create endpoint (not a second trial API).
+signedIn=true;enabled=true;
+const historicalId='receipt-trial-main-cccccccccccc001';
+const historical={...args,operationId:historicalId};
+b.KurashiReceiptJournal.prepare(historical);
 networkError=true;
 await assert.rejects(b.KurashiReceiptSaveSession.retry({subject,householdId:'h1'}),
  /SIMULATED_TIMEOUT/);
-assert.equal(calls.length,4);
-assert.equal(calls.at(-1).action,'record.trial.main.create');
-assert.equal(calls.at(-1).confirmedTrialMainSave,true);
+assert.equal(calls.at(-1).action,'record.create');
+assert.equal(calls.at(-1).operationId,historicalId);
 const c=boot();
-c.KURASHI_RECEIPT_STAGE_A_TRIAL=true;
-assert.equal(c.KurashiReceiptJournal.read().operationId,oldTrialId);
-assert.equal(calls.length,4,'Reload does not retry the old journal automatically');
+assert.equal(c.KurashiReceiptJournal.read().operationId,historicalId);
 subject='9999999999';
 await assert.rejects(c.KurashiReceiptSaveSession.retry({subject,householdId:'h1'}),
  /RECEIPT_NO_MATCHING_PENDING/);
-subject=args.subject;
-networkError=false;
-const completedTrial=await c.KurashiReceiptSaveSession.retry({subject,householdId:'h1'});
-assert.equal(completedTrial.status,'completed');
-assert.equal(calls.length,5);
-assert.equal(calls.at(-1).operationId,oldTrialId);
-assert.equal(calls.at(-1).confirmedTrialMainSave,true);
+subject=args.subject;networkError=false;
+const restored=await c.KurashiReceiptSaveSession.retry({subject,householdId:'h1'});
+assert.equal(restored.status,'completed');
+assert.equal(calls.at(-1).operationId,historicalId);
+assert.equal(calls.at(-1).action,'record.create');
 assert.equal(c.KurashiReceiptJournal.read(),null);
 assert.equal(storage.size,0);
-console.log('Receipt journal PASS: normal save and historical same-ID recovery, locks, no auto sends');
+console.log('Receipt journal PASS: same-ID recovery, account/lock isolation, no background retry');
