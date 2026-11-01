@@ -818,7 +818,7 @@ function onLiveAuthChange(auth){
   (auth?.signedIn!==true||auth.subject!==householdCheckSubject);
  const receiptMismatch=remoteReceiptSubject!==null&&
   (auth?.signedIn!==true||auth.subject!==remoteReceiptSubject);
- const wasShowingRemote=!!liveSnapshot||liveMode||!!liveEditor||!!liveProductEditor;
+ const wasShowingRemote=!!liveSnapshot||liveMode||!!liveRecoveryHouseholdId||!!liveEditor||!!liveProductEditor;
  if(receiptCatalogSubject!==null&&
     (auth?.signedIn!==true||auth.subject!==receiptCatalogSubject))
   invalidateReceiptCatalog();
