@@ -25,6 +25,10 @@
   if(!validScope(subject,householdId)||!ACTIONS.has(action)||!isId(operationId)||
     !payload||typeof payload!=='object'||Array.isArray(payload))throw Error('OPERATION_INVALID');
   if(read())throw Error('PENDING_OPERATION_EXISTS');
+  // Do not begin item mutation while a receipt mutation is pending.
+  try{if(window.KurashiReceiptJournal?.read?.())throw Error('OTHER_OPERATION_PENDING')}
+  catch(err){if(err.message==='OTHER_OPERATION_PENDING')throw err;
+   throw Error('OTHER_OPERATION_UNVERIFIED')}
   const entry={schema:1,subject,householdId,action,
     payload:JSON.parse(JSON.stringify(payload)),operationId,
     state:'prepared',createdAt:new Date().toISOString()};
