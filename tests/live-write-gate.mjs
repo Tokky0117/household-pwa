@@ -1,46 +1,49 @@
+// Current Sheets UI write contract, no Google account or network calls.
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import vm from 'node:vm';
-const api=readFileSync(new URL('../gas-api.js',import.meta.url),'utf8');
+const apiSrc=readFileSync(new URL('../gas-api.js',import.meta.url),'utf8');
 const appSrc=readFileSync(new URL('../app.js',import.meta.url),'utf8');
-const gasServer=readFileSync(new URL('../gas/Code.gs',import.meta.url),'utf8');
-assert.match(gasServer,/if\(action==='record\.create'\)\{/);
-assert.match(gasServer,/if\(!approvedPrototypeAliasSheet_\(\)\)/);
-const base={household_id:'test',categories:['飲食','キッチン','洗面・風呂','洗濯・掃除','その他'].map(name=>({name})),item_groups:[],products:[],stores:[]};
-let sent=0,usedAction='';
-const win={
- scrollTo(){},scrollY:0,addEventListener(){},
- KurashiAuth:{status:()=>({signedIn:true,configured:true,subject:'subject-A'}),subscribe(){},getToken:()=> 'not-a-real-token'},
- fetch:async()=>{sent++;throw Error('Request unexpectedly sent')}
-};
-const context={window:win,URL,AbortController,setTimeout,clearTimeout,console};
-vm.createContext(context);vm.runInContext(api,context);
-win.KurashiGasApi.configure('https://script.google.com/macros/s/TESTONLY123/exec');
-assert.equal(win.KurashiGasApi.writeEnabled(),false);
-await assert.rejects(win.KurashiGasApi.request('item.create',{name:'テスト',category_id:0},{operationId:'idempotency-123'}),/WRITES_DISABLED/);
-await assert.rejects(win.KurashiGasApi.request('item.update',{item_group_id:'i',version:1,in_stock:false},{operationId:'idempotency-123'}),/WRITES_DISABLED/);
-await assert.rejects(win.KurashiGasApi.request('record.create',{
- version:'receipt-create-1',record_type:'receipt',items:[]
-},{operationId:'receipt-intent-123'}),/RECEIPT_WRITES_DISABLED/);
-assert.equal(sent,0,'Receipt write gate must reject before any network call');
-const el={innerHTML:'',addEventListener(){},insertAdjacentHTML(){}};
+const gasSrc=readFileSync(new URL('../gas/Code.gs',import.meta.url),'utf8');
+for(const action of ['item.create','item.update','product.create','record.create','store.create'])
+ assert.match(gasSrc,new RegExp("action==='"+action.replace('.','\\.')+"'"));
+assert.match(gasSrc,/approvedPrototypeAliasSheet_\(\)/);
+assert.match(gasSrc,/assertPrototypeReceiptIdentity_\(book,user\)/);
+assert.doesNotMatch(gasSrc,/record\.trial\.main\.create|record\.trial\.second\.save/);
+const win={KurashiAuth:{getToken:()=>null}};
+vm.runInNewContext(apiSrc,{window:win,URL,AbortController,setTimeout,clearTimeout});
+const gas=win.KurashiGasApi;
+assert.equal(gas.writeEnabled(),false);
+gas.configure('https://script.google.com/macros/s/TESTONLY123/exec');
+assert.equal(gas.writeEnabled(),true);
+await assert.rejects(gas.request('item.create',{},{}),/OPERATION_ID_REQUIRED/);
+await assert.rejects(gas.request('item.create',{}, {operationId:'safe-operation-0001'}),/LOGIN_REQUIRED/);
+const household={household_id:'home-A',
+ categories:['飲食','キッチン','洗面・風呂','洗濯・掃除','その他'].map(name=>({name})),
+ item_groups:[],products:[],stores:[]};
+let signedIn=true,sent=[];
+const screen={innerHTML:'',addEventListener(){},insertAdjacentHTML(){}};
 const store=new Map();
-const appCtx={
- window:{...win,KurashiGasApi:{...win.KurashiGasApi,request:async(action)=>{usedAction=action;return base}}},
- document:{getElementById:id=>id==='app'?el:null,querySelector(){return null},querySelectorAll(){return []},createElement(){return {style:{},setAttribute(){}}},body:{append(){}}},
- localStorage:{getItem:k=>store.get(k)||null,setItem:(k,v)=>store.set(k,v),removeItem:k=>store.delete(k)},
- // This test verifies the write-disabled gate, not Web Locks support.
- navigator:{locks:{request:async(_name,_options,callback)=>callback({name:'test-lock'})}},location:{protocol:'file:'},crypto:{randomUUID:()=> 'random-uuid'},setTimeout,clearTimeout,Date,Intl,URL,Event:class Event{},console
+const w={
+ scrollTo(){},scrollY:0,addEventListener(){},
+ KurashiAuth:{status:()=>({signedIn,configured:true,subject:'subject-A'}),subscribe(){}},
+ KurashiGasApi:{writeEnabled:()=>true,status:()=>({configured:true}),
+  async request(action){sent.push(action);if(action==='bootstrap')return structuredClone(household);
+   throw Error('No write without an explicit confirmed action');}}
 };
-const ctx=vm.createContext(appCtx);
-const app=vm.runInContext(appSrc+"\n({refreshLive,liveListView,openLiveEditor,liveMutate,liveWritable})",ctx);
+const ctx=vm.createContext({window:w,document:{getElementById:id=>id==='app'?screen:null,
+ querySelector(){return null},querySelectorAll(){return []},
+ createElement(){return {style:{},setAttribute(){}}},body:{append(){}}},
+ localStorage:{getItem:k=>store.get(k)??null,setItem:(k,v)=>store.set(k,v),
+ removeItem:k=>store.delete(k)},
+ navigator:{},location:{protocol:'file:'},Date,Intl,URL,console,setTimeout,clearTimeout});
+const app=vm.runInContext(appSrc+'\n({refreshLive,listView,liveListView,liveWritable})',ctx);
+assert.equal(app.liveWritable(),true);
 await app.refreshLive();
-assert.equal(usedAction,'bootstrap');
-assert.match(app.liveListView(),/<button[^>]*data-act="addLive"[^>]*disabled[^>]*>日用品を登録<\/button>/);
-assert.match(app.liveListView(),/登録・編集・在庫変更・削除は実装準備中です/);
-assert.equal(app.liveWritable(),false,'Write gate is disabled even with Web Locks available');
-await app.liveMutate('item.create',{name:'テスト',category_id:0});
-assert.equal(usedAction,'bootstrap','No item mutation may be sent');
-assert.match(app.liveListView(),/保存機能はまだ無効です/);
-assert.equal(store.size,0);
-console.log('Live item write safety gate and empty Sheet UX PASS');
+assert.equal(sent.length,1);
+assert.equal(sent[0],'bootstrap');
+assert.match(app.listView(),/日用品を登録/);
+assert.doesNotMatch(app.listView(),/ローカル|サンプル|仮データ/);
+signedIn=false;
+assert.equal(app.liveWritable(),false);
+console.log('Normal Sheets inventory write gate and no implicit write PASS');
