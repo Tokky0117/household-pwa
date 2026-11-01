@@ -1150,7 +1150,7 @@ function receiptView(){
  <textarea id="receipt-chatgpt-json" rows="5" maxlength="30000" spellcheck="false" autocomplete="off" placeholder="JSONのみ貼り付け（説明やコードフェンス不要）">${esc(receiptChatGptText)}</textarea>
  <button type="button" class="primary" data-act="importChatGptReceipt">貼り付けた明細を確認</button>
  ${receiptChatGptNotice?'<p class="ui-field-notice" role="status">'+esc(receiptChatGptNotice)+'</p>':''}
- <p class="sample-price-notice">現在はこのSafariの試作記録だけです。Google Sheets・夫婦間同期には未接続。ChatGPT出力に会員・決済情報を含めないでください。</p>
+ <p class="sample-price-notice">${receiptTrialWritable()?'現在は隔離試験GASへ一般レシート1件だけ保存できます。夫婦間同期は未接続。':receiptRemoteWritable()?'認証済み家庭のGoogle Sheetsへの保存を準備中です。':'現在はこのSafariの試作記録だけです。Google Sheets・夫婦間同期には未接続。'}ChatGPT出力に会員・決済情報を含めないでください。</p>
  </section>${receiptScanReview()}${receiptPendingView()}${remoteReceiptView()}<div class="record-entry-actions"><button class="secondary" data-act="newReceipt">${miniIcon('plus')}<span>レシート明細</span></button><button class="secondary" data-act="newShelf">${miniIcon('plus')}<span>値札</span></button></div><h2 class="sectiontitle">このSafari内の試作記録（Google Sheetsには未保存）</h2><p class="hint">保存した記録はこのブラウザのWebサイトデータにあります。Google Sheets・Google Drive・ファイルアプリには保存されません。ブラウザデータを消すと記録も失われます。</p>${rows}</main>${nav()}`;
 }
 function budgetView(){
@@ -1166,7 +1166,14 @@ function settingsView(){
    <section class="panel"><h2>試作データの保存先</h2><p class="hint">このSafariのWebサイト内データのみです。Google Sheets・Driveには保存しません。</p></section>
    <section class="panel"><h2>試作版の操作</h2><button type="button" class="secondary danger" data-act="reset">仮データを初期状態に戻す</button></section>
    </main>${nav()}`;
- const auth=window.KurashiAuth?.status?.()||{configured:false,signedIn:false};const loginPanel=`<div class="panel"><h2>Googleログイン（接続準備）</h2><p class="hint">${auth.signedIn?'この端末でログイン済みです。実データの同期はまだ無効です。':auth.configured?'初回のみGoogleアカウントでログインします。期限切れ時は再ログインが必要です。':'Googleログインの接続設定を準備中です。現時点では試作データだけを利用できます。'}</p>${auth.signedIn?'<button type="button" class="secondary" data-act="googleSignOut">ログアウト</button>':auth.configured?'<div id="google-login-button"></div>':''}</div>`;return `${head('設定','くらしストック')}<main>${loginPanel}<div class="panel"><h2>Google Sheets読み取り</h2><p class="hint" role="${liveStatus.startsWith('取得失敗：')?'alert':'status'}">状態：${esc(liveStatus)}。ログイン後、日用品・商品・店舗を読み取れます。保存や同期はまだ行いません。${liveStatus.startsWith('取得失敗：')?'自動再試行はしません。必要ならもう一度読み取ってください。':''}</p><button class="secondary" data-act="refreshLive" style="width:100%" ${auth.signedIn&&!liveBusy?'':'disabled'}>${liveBusy?'読み取り中…':liveStatus.startsWith('取得失敗：')?'もう一度読み取る':'Google Sheetsから読み取る'}</button>${liveMode?'<button class="secondary" data-act="leaveLive" style="width:100%">試作データに戻る</button>':''}</div>${householdCheckView(auth)}<div class="panel"><h2>試作版の操作</h2><p class="hint">変更内容はこの端末の localStorage のみに保存され、夫婦間では共有されません。</p><button class="secondary danger" data-act="reset">仮データを初期状態に戻す</button></div><div class="panel"><h2>今後の実装</h2><p class="hint">レシート／値札のチェーン照合、Google Apps Script 接続、認証、オフライン差分同期を追加予定です。</p></div></main>${nav()}`}
+ const stageConnect=window.KURASHI_RECEIPT_STAGE_A_TRIAL===true?
+  '<section class="panel"><h2>既存の試験用GASへ接続（開発用）</h2>'+
+  '<p class="hint">既に確認した試験GASの「デプロイを管理」に表示される /exec URLだけを入力してください。トークンを送る宛先なので、他のURLは使用しないでください。URLはこの画面を閉じると保持しません。</p>'+
+  '<label class="formfield" for="stage-trial-endpoint">既存の試験GAS /exec URL<input id="stage-trial-endpoint" type="url" inputmode="url" autocomplete="off" spellcheck="false" placeholder="https://script.google.com/macros/s/.../exec"></label>'+
+  '<button type="button" class="secondary" data-act="connectStageTrial">試験GASに接続</button>'+
+  '<p class="hint" role="status">接続：'+(window.KurashiGasApi?.status?.()?.configured?'設定済み。認証後に試験家庭のマスタを確認します。':'未設定。通常のGASには自動接続しません。')+'</p>'+
+  '<p class="hint">この試験接続で保存できる一般レシートは、既存の試験家庭へ1件だけです。実家庭のデータは使用しないでください。</p></section>':'';
+ const auth=window.KurashiAuth?.status?.()||{configured:false,signedIn:false};const loginPanel=`<div class="panel"><h2>Googleログイン（接続準備）</h2><p class="hint">${auth.signedIn?'この端末でログイン済みです。実データの同期はまだ無効です。':auth.configured?'初回のみGoogleアカウントでログインします。期限切れ時は再ログインが必要です。':'Googleログインの接続設定を準備中です。現時点では試作データだけを利用できます。'}</p>${auth.signedIn?'<button type="button" class="secondary" data-act="googleSignOut">ログアウト</button>':auth.configured?'<div id="google-login-button"></div>':''}</div>`;return `${head('設定','くらしストック')}<main>${stageConnect}${loginPanel}<div class="panel"><h2>Google Sheets読み取り</h2><p class="hint" role="${liveStatus.startsWith('取得失敗：')?'alert':'status'}">状態：${esc(liveStatus)}。ログイン後、日用品・商品・店舗を読み取れます。保存や同期はまだ行いません。${liveStatus.startsWith('取得失敗：')?'自動再試行はしません。必要ならもう一度読み取ってください。':''}</p><button class="secondary" data-act="refreshLive" style="width:100%" ${auth.signedIn&&!liveBusy?'':'disabled'}>${liveBusy?'読み取り中…':liveStatus.startsWith('取得失敗：')?'もう一度読み取る':'Google Sheetsから読み取る'}</button>${liveMode?'<button class="secondary" data-act="leaveLive" style="width:100%">試作データに戻る</button>':''}</div>${householdCheckView(auth)}<div class="panel"><h2>試作版の操作</h2><p class="hint">変更内容はこの端末の localStorage のみに保存され、夫婦間では共有されません。</p><button class="secondary danger" data-act="reset">仮データを初期状態に戻す</button></div><div class="panel"><h2>今後の実装</h2><p class="hint">レシート／値札のチェーン照合、Google Apps Script 接続、認証、オフライン差分同期を追加予定です。</p></div></main>${nav()}`}
 // All confirmation dialogs share one DOM and CSS. A Japanese full stop ends a paragraph line.
 function dialogView(){
  if(!dialog)return '';
@@ -1511,7 +1518,18 @@ if(action==='confirmProductMove'&&p){
  if(product&&product.itemGroupId===p.fromId)setProductGroup(product,selected);
  page='compare';initializeCompare();render();return;
 }
-if(action==='discardChanges'){goBack();return}if(action==='confirmHide'){current().hidden=true;current().version++;persist();page='list';openSwipeId=null}if(action==='resetYes'){discardReceiptScan();receiptChatGptText='';receiptChatGptNotice='';items=makeSeed();catalogue=sampleCatalogue();previewRecords={records:[],record_items:[]};localStorage.removeItem(previewRecordsKey);persist();persistCatalogue();page='list';tab='items'}render();return}const action=el.dataset.act;if(!action)return;if(action==='toggleListHelp'){
+if(action==='discardChanges'){goBack();return}if(action==='confirmHide'){current().hidden=true;current().version++;persist();page='list';openSwipeId=null}if(action==='resetYes'){discardReceiptScan();receiptChatGptText='';receiptChatGptNotice='';items=makeSeed();catalogue=sampleCatalogue();previewRecords={records:[],record_items:[]};localStorage.removeItem(previewRecordsKey);persist();persistCatalogue();page='list';tab='items'}render();return}const action=el.dataset.act;if(!action)return;
+if(action==='connectStageTrial'){
+ if(window.KURASHI_RECEIPT_STAGE_A_TRIAL!==true)return;
+ const value=document.getElementById('stage-trial-endpoint')?.value?.trim()||'';
+ try{
+  window.KurashiGasApi.configure(value);
+  invalidateReceiptCatalog();clearRemoteReceipts();
+  render();say('試験GASの接続先を設定しました');
+ }catch{inlineActionNotice(el,'既存の試験用GASの /exec URLを確認してください')}
+ return;
+}
+if(action==='toggleListHelp'){
  listHelpOpen=!listHelpOpen;
  try{localStorage.setItem(helpOpenKey,String(listHelpOpen))}catch{}
  const control=document.querySelector('.list-help-toggle');
