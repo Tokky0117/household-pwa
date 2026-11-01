@@ -1,4 +1,4 @@
-const APP_VERSION='0.51.0';
+const APP_VERSION='0.52.0';
 const CATS=['飲食','キッチン','洗面・風呂','洗濯・掃除','その他'];
 const liveMode=!!window.KurashiLive; // Data source only; original Preview v46 UI components remain.
 const SEED=[['牛乳',0,true],['麦茶',0,false],['コーヒー',0,true],['卵',0,false],['キッチンペーパー',1,false],['ラップ',1,true],['食器用洗剤',1,true],['シャンプー',2,false],['歯磨き粉',2,true],['ハンドソープ',2,false],['洗濯洗剤',3,false],['柔軟剤',3,true],['トイレットペーパー',3,false],['乾電池',4,true],['ティッシュ',4,true]];
@@ -275,12 +275,11 @@ function listHelpView(){
 }
 function listView(){
  const s=liveMode?window.KurashiLive.state():null;
- const notice=s?(s.pending?'前回の保存が未確認です。設定から同じ操作を確認してください。':
-  !s.signedIn?'設定からGoogleログインしてください。':
-  s.cached?'前回取得した内容を表示中。Google Sheetsと再接続しています。':
-   s.busy&&s.loaded&&!s.mutating?'最新の在庫を確認中…':
-   s.busy&&!s.loaded?'家庭の日用品を読み込み中…':
-  s.error?'Google Sheets: '+s.error:''):'';
+ const notice=s?(!s.signedIn?'設定からGoogleログインしてください。':
+   s.error?'Google Sheets: '+s.error:
+   s.queued?'未反映の操作 '+s.queued+'件（自動で保存します）':
+   s.cached?'前回取得した内容を表示中。Google Sheetsと再接続しています。':
+   s.busy&&!s.loaded?'家庭の日用品を読み込み中…':''):'';
  const copy='<button class="iconbtn" type="button" data-act="copyList" aria-label="在庫なしをコピー" title="在庫なしをコピー">'+miniIcon('copy')+'</button>';
  const add='<button class="iconbtn" type="button" data-act="add" aria-label="日用品を追加" title="日用品を追加">'+miniIcon('plus')+'</button>';
  return `${head('日用品','くらしストック_試作',false,add,copy)}<main>${UI.searchField({id:'search',label:'日用品を検索',placeholder:'日用品を検索',value:query,extra:'autocomplete="off"'})}<div class="filterrow"><label class="switchlabel"><input type="checkbox" id="onlyOut" ${onlyOut?'checked':''}>在庫なしのみ表示</label></div><div id="item-results">${listResults()}</div>${notice?'<p class="hint" role="status">'+esc(notice)+'</p>':''}${listHelpView()}</main>${nav()}`;
@@ -391,10 +390,13 @@ function stub(title,icon,desc){return `${head(title,'くらしストック_試�
 function settingsView(){
  if(liveMode){
   const s=window.KurashiLive.state();
-   const syncStatus=s.error||(s.cached?'前回の取得データを表示中（再接続待ち）':s.temporary
-     ? (s.loaded?'Google Sheets 接続済み（ログイン一時停止中）':'Google Sheets 自動読み込み中…')
-     : (!s.signedIn?'Googleログインが必要です':s.loaded?'Google Sheets 接続済み':'読み込み中…'));
-  return `${head('設定','くらしストック_試作')}<main><div class="panel"><h2>データと同期</h2><div class="info-row row"><div><strong>同期状態</strong><div class="hint">${esc(syncStatus)}</div></div><span class="tag">${s.loaded?'接続済み':s.cached?'再接続中':'未接続'}</span></div>${s.loginRequired?(s.signedIn?'<button type="button" class="secondary" data-act="liveLogout">ログアウト</button>':'<div id="google-login-button"></div>') : ''}${s.pending?'<p class="hint" role="alert">前回の保存結果を確認できていません。</p><button type="button" class="secondary" data-act="retryLive">同じ操作を確認・再送</button>':''}</div><div class="panel"><div class="info-row row"><div><strong>アプリバージョン</strong><div class="hint">試作 v${esc(APP_VERSION)}</div></div></div></div></main>${nav()}`;
+   const syncStatus=s.error||
+    (s.queued?'未反映の操作 '+s.queued+'件（自動で保存・再試行）':
+     s.cached?'前回取得データを表示中（再接続待ち）':
+     s.temporary?(s.loaded?'Google Sheets 接続済み（ログイン一時停止中）':'Google Sheets 自動読み込み中…'):
+     !s.signedIn?'Googleログインが必要です':
+     s.loaded?'Google Sheets 接続済み':'読み込み中…');
+  return `${head('設定','くらしストック_試作')}<main><div class="panel"><h2>データと同期</h2><div class="info-row row"><div><strong>同期状態</strong><div class="hint">${esc(syncStatus)}</div></div><span class="tag">${s.loaded?'接続済み':s.cached?'再接続中':'未接続'}</span></div>${s.loginRequired?(s.signedIn?'<button type="button" class="secondary" data-act="liveLogout">ログアウト</button>':'<div id="google-login-button"></div>') : ''}${s.error&&s.queued?'<p class="hint" role="alert">通信が回復すると自動で再送します。未反映の操作は端末に残っています。</p>':''}</div><div class="panel"><div class="info-row row"><div><strong>アプリバージョン</strong><div class="hint">試作 v${esc(APP_VERSION)}</div></div></div></div></main>${nav()}`;
  }
  return `${head('設定','くらしストック_試作')}<main><div class="panel"><h2>データと同期</h2><div class="info-row row"><div><strong>同期状態</strong><div class="hint">Google Sheets 接続前</div></div><span class="tag">未設定</span></div><button class="secondary" data-act="sync" style="width:100%">手動同期</button></div><div class="panel"><h2>試作版の操作</h2><p class="hint">変更内容はこの端末の localStorage のみに保存され、夫婦間では共有されません。</p><button class="secondary danger" data-act="reset">仮データを初期状態に戻す</button></div><div class="panel"><h2>今後の実装</h2><p class="hint">レシート／値札のチェーン照合、Google Apps Script 接続、認証、オフライン差分同期を追加予定です。</p></div></main>${nav()}`
 }
@@ -747,10 +749,35 @@ function dismissMenusOutside(target){
 app.addEventListener('click',e=>dismissMenusOutside(e.target));
 render();
 if(liveMode)window.KurashiLive.subscribe((state,data)=>{
- if(data)items=window.KurashiLive.itemsOf(data);
- if(data)catalogue=window.KurashiLive.catalogueOf(data);
- if(!['add','edit','recordAdd','productEdit','productPick','productCreate'].includes(page))render();
+ const nextItems=data?window.KurashiLive.itemsOf(data):null;
+ if(!nextItems){if(tab==='settings'||page==='list'&&!items.length)render();return}
+ const structureSame=items.length===nextItems.length&&items.every((old,i)=>{
+  const next=nextItems[i];
+  return next&&old.id===next.id&&old.name===next.name&&
+    old.category===next.category&&old.hidden===next.hidden&&old.order===next.order;
+ });
+ items=nextItems;
+ catalogue=window.KurashiLive.catalogueOf(data);
+ if(['add','edit','recordAdd','productEdit','productPick','productCreate'].includes(page))return;
+ // Preserve existing DOM buttons during writes. Recreating the entire DOM while
+ // iOS completes a tap can eat the user's next click.
+ if(page==='list'&&tab==='items'&&structureSame&&!query&&!onlyOut){
+  const buttons=document.querySelectorAll('[data-stock]');
+  let patched=0;
+  buttons.forEach(button=>{
+   const next=nextItems.find(i=>i.id===button.dataset.stock);
+   if(!next)return;
+   button.classList.toggle('off',!next.inStock);
+   button.setAttribute('aria-pressed',String(next.inStock));
+   const pill=button.querySelector('.stock-pill');
+   if(pill)pill.textContent=next.inStock?'あり':'なし';
+   patched++;
+  });
+  if(patched===nextItems.filter(x=>!x.hidden).length)return;
+ }
+ render();
 });
+// Android/Safari/PWA gesture and existing v46 interaction code continues unchanged.
 // Pull down at top of inventory to refresh, including standalone iOS home-screen apps.
 let pullToRefresh=null;
 app.addEventListener('touchstart',e=>{
