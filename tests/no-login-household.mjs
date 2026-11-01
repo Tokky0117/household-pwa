@@ -90,7 +90,7 @@ assert.ok(app.includes('Google Sheets 接続済み（ログイン一時停止中
 assert.ok(!app.includes('Googleシートから読み込み'),'no manual reload button');
 
 // Real client and GAS API work together in a simulated browser and spreadsheet.
-const events={};const storage=new Map(),requests=[];
+const events={};const storage=new Map(),requests=[];let operationCounter=0;
 const page={readyState:'loading',hidden:false,addEventListener:(type,fn)=>{events[type]=fn}};
 const window={addEventListener:(type,fn)=>{events[type]=fn}};
 const frontend=vm.createContext({
@@ -99,7 +99,7 @@ const frontend=vm.createContext({
     setItem:(k,v)=>storage.set(k,v),
     removeItem:k=>storage.delete(k)
   },
-  crypto:{randomUUID:()=> '42f2b60c-42f2-42f2-42f2-42f242f242f2'},
+  crypto:{randomUUID:()=> '42f2b60c-42f2-42f2-42f2-'+String(++operationCounter).padStart(12,'0')},
   fetch:async(url,options)=>{
     assert.match(url,/^https:\/\/script\.google\.com\/macros\/s\//);
     const request=JSON.parse(options.body);
