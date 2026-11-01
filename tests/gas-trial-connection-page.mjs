@@ -77,7 +77,9 @@ const apiMock={
   postCalls.push(action);postPayloads.push({action,payload});
   if(action==='bootstrap')return {
    household_id:'trial',categories:['飲食','キッチン','洗面・風呂','洗濯・掃除','その他'].map(name=>({name})),
-   item_groups:[{}],products:[],stores:[]
+   item_groups:[{}],
+   products:[{product_id:'p-test',household_id:'trial',name:'試験用・商品コード'}],
+   stores:[{chain_id:'c-test',household_id:'trial',canonical_name:'[KURASHI_ALIAS_TRIAL_ONLY]'}]
   };
   if(action==='record.list'){
    if(receiptMode==='pending')return new Promise(resolve=>{slowReceipt=resolve});
@@ -175,6 +177,11 @@ await node('check').listeners.click();
 assert.deepEqual(postCalls,['bootstrap']);
 assert.match(node('result').textContent,/認証付き読み取り成功/);
 assert.match(node('counts').textContent,/日用品 1 件/);
+assert.equal(node('receipt-read').disabled,false,
+ 'Authenticated bootstrap with one known trial store/product is enough for receipt reads');
+await node('receipt-read').listeners.click();
+assert.match(node('receipt-read-result').textContent,/確定レシート1件・明細2件・税込496円/);
+
 assert.equal(ctx.window.KurashiTrialCatalogGate.ready(),false,
  'The OCR review may not fetch catalog until the explicit alias check also succeeds');
 // A stale authenticated POST response is also ignored after URL changes.
