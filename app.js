@@ -84,8 +84,7 @@ let receiptRemoteCatalog=null,receiptCatalogSubject=null,
  receiptCatalogBusy=false,receiptCatalogStatus='未取得',receiptCatalogEpoch=0,
  receiptSaveBusy=false;
 function receiptRemoteWritable(){
- return 
-  window.KurashiReceiptSaveSession?.writeEnabled?.()===true&&
+ return   window.KurashiReceiptSaveSession?.writeEnabled?.()===true&&
   window.KurashiAuth?.status?.()?.signedIn===true;
 }
 function currentReceiptCatalog(){
@@ -417,8 +416,7 @@ async function refreshRemoteReceipts(){
  }
 }
 function connectedReceiptHousehold(){
- return 
-  window.KurashiAuth?.status?.()?.signedIn===true&&
+ return   window.KurashiAuth?.status?.()?.signedIn===true&&
   window.KurashiGasApi?.status?.()?.configured===true;
 }
 function remoteBudgetView(){
