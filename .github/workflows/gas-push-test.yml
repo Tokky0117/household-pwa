@@ -1,30 +1,22 @@
-name: Push GAS to test project (manual)
-# Manual-only. Item, product, stock, receipt and store API source was
-# synced to the pinned existing test GAS; automatic source updates are OFF.
+name: Update existing household GAS source (manual)
+# Updates script SOURCE only. Never creates a deployment, GAS, Sheet or record.
 on:
   workflow_dispatch:
     inputs:
-      confirm_target_backup:
-        description: 'PCに現行GASのコード.jsとappsscript.jsonのバックアップ済みなら BACKUP_DONE'
+      confirm_existing_target:
+        description: '既存のGASへソース反映を許可する場合 UPDATE_EXISTING_GAS'
         required: true
         type: string
-      confirm_test_source:
-        description: '試験用GASだけを更新することに同意する場合 TEST_GAS_UPDATE'
-        required: true
-        type: string
-
 permissions:
   contents: read
-
 concurrency:
-  group: test-gas-source-update
+  group: household-gas-source-update
   cancel-in-progress: false
-
 jobs:
-  push-test:
-    if: github.ref == 'refs/heads/stage-a-ui-handoff-review' && inputs.confirm_target_backup == 'BACKUP_DONE' && inputs.confirm_test_source == 'TEST_GAS_UPDATE'
+  update:
+    if: github.ref == 'refs/heads/stage-a-ui-handoff-review' && inputs.confirm_existing_target == 'UPDATE_EXISTING_GAS'
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 12
     steps:
       - uses: actions/checkout@v4
         with:
@@ -32,189 +24,133 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-
-      - name: Prepare temporary work path
-        shell: bash
-        run: echo "GAS_WORK=$RUNNER_TEMP/kurashi-test-gas" >> "$GITHUB_ENV"
-
-      - name: Check development source syntax
-        shell: bash
+      - name: Validate reviewed regular-save source
         run: |
           set -euo pipefail
-          cp gas/Code.gs "$RUNNER_TEMP/kurashi-gas-syntax.js"
-          node --check "$RUNNER_TEMP/kurashi-gas-syntax.js"
-          # One-time source-only update: fail if any reviewed GAS bytes changed.
-          test "$(git hash-object gas/Code.gs)" = "88384b352bb3da9f6f35fd165849bfc0057eced4"
-          node tests/gas-receipt-batch-mock.mjs
+          cp gas/Code.gs "$RUNNER_TEMP/household-gas.js"
+          node --check "$RUNNER_TEMP/household-gas.js"
+          # Any subsequent GAS source edit requires reviewing this workflow again.
+          test "$(git hash-object gas/Code.gs)" = "bff3899654d6a7fff055de11baa0fcb3ca484407"
+          node tests/gas-normal-dispatch.mjs
           node tests/receipt-save-parity.mjs
           node tests/gas-auth-isolation.mjs
-          rm "$RUNNER_TEMP/kurashi-gas-syntax.js"
-
-      - name: Check test GAS identity and prepare temporary credentials
-        shell: bash
+      - name: Verify pinned GAS project and prepare temporary credentials
         env:
           CLASPRC_JSON: ${{ secrets.CLASPRC_JSON }}
           GAS_SCRIPT_ID_TEST: ${{ secrets.GAS_SCRIPT_ID_TEST }}
+        shell: bash
         run: |
           set -euo pipefail
-          mkdir -p "$GAS_WORK/remote" "$GAS_WORK/stage"
+          mkdir -p "$RUNNER_TEMP/household-gas/remote" "$RUNNER_TEMP/household-gas/stage"
           node - <<'NODE'
           const fs=require('node:fs'),crypto=require('node:crypto'),path=require('node:path');
-          const credentials=process.env.CLASPRC_JSON,id=process.env.GAS_SCRIPT_ID_TEST;
-          if(!credentials||!id)throw Error('GAS_CREDENTIALS_MISSING');
-          const expected='9c4113806442904861bb84dede2d9c542449a5c9ed5b494abe451cda0c1f4739';
-          const hash=crypto.createHash('sha256').update(id).digest('hex');
-          if(hash!==expected)throw Error('TEST_GAS_TARGET_MISMATCH');
+          const credentials=process.env.CLASPRC_JSON,scriptId=process.env.GAS_SCRIPT_ID_TEST;
+          if(!credentials||!scriptId)throw Error('GAS_CREDENTIALS_MISSING');
+          if(crypto.createHash('sha256').update(scriptId).digest('hex')!==
+             '9c4113806442904861bb84dede2d9c542449a5c9ed5b494abe451cda0c1f4739')
+            throw Error('EXISTING_GAS_TARGET_MISMATCH');
           const auth=JSON.parse(credentials);
           if(!auth||typeof auth!=='object'||Array.isArray(auth))throw Error('CLASP_AUTH_INVALID');
           fs.writeFileSync(path.join(process.env.HOME,'.clasprc.json'),
             JSON.stringify(auth),{mode:0o600});
           for(const dir of ['remote','stage']){
-            fs.writeFileSync(path.join(process.env.GAS_WORK,dir,'.clasp.json'),
-              JSON.stringify({scriptId:id,rootDir:'.'})+'\n',{mode:0o600});
+            fs.writeFileSync(path.join(process.env.RUNNER_TEMP,'household-gas',dir,'.clasp.json'),
+              JSON.stringify({scriptId,rootDir:'.'})+'\n',{mode:0o600});
           }
-          console.log('TEST_GAS_ID_VERIFIED: matching designated isolated test script');
           NODE
-
-      - name: Read current source from test GAS before replacing anything
+      - name: Pull current GAS source before any modification
         shell: bash
         run: |
           set -euo pipefail
-          cd "$GAS_WORK/remote"
+          cd "$RUNNER_TEMP/household-gas/remote"
           npx --yes @google/clasp@3 pull
-
-      - name: Check remote-only functions, file layout, and preserve existing manifest
+      - name: Reject unknown source or manifest changes; stage only reviewed file
         shell: bash
         run: |
           set -euo pipefail
           node - <<'NODE'
-          const fs=require('node:fs'),path=require('node:path');
-          const base=process.env.GAS_WORK,remoteDir=path.join(base,'remote'),
-            stageDir=path.join(base,'stage');
-          const names=fs.readdirSync(remoteDir).filter(n=>!n.startsWith('.'));
-          const codeFiles=names.filter(n=>/\.(gs|js)$/.test(n));
-          // Never delete a custom/extra project file without a separate review.
-          if(codeFiles.length!==1||codeFiles[0]!=='コード.js'||
-             names.length!==2||!names.includes('appsscript.json'))
-            throw Error('REMOTE_FILE_LAYOUT_CHANGED_REVIEW_REQUIRED');
-          // Refuse any source/manifest drift since the final read-only audit.
-          const crypto=require('node:crypto');
-          const digest=text=>crypto.createHash('sha256').update(text).digest('hex');
-          // Reconfirm that remote GAS equals the exact source from the last
-          // successful source-only update, not a manually edited revision.
-          const git=require('node:child_process');
-          const baseline='f719da65aeac1ec766918a3f16391847624590c0';
-          const history=git.execFileSync('git',['show',baseline+':gas/Code.gs'],{encoding:'utf8'});
-          const baselineBlob=git.execFileSync('git',['rev-parse',baseline+':gas/Code.gs'],{encoding:'utf8'}).trim();
-          if(baselineBlob!=='39cda51a96806049497e0067b628dc38a43440e7')
-            throw Error('KNOWN_GITHUB_SOURCE_FINGERPRINT_MISMATCH');
-          const approvedSource=digest(history);
-          const approvedManifest='0952d47f73508eb256f1cf50f0368fe77434f8c05ea0d6defc7cf9b4e227e935';
-          const remote=fs.readFileSync(path.join(remoteDir,codeFiles[0]),'utf8');
-          if(digest(remote)!==approvedSource){
-            const info='REMOTE_SOURCE_DRIFT_REVIEW_REQUIRED: source_sha256='+digest(remote)+
-              ' source_bytes='+Buffer.byteLength(remote);
-            console.log(info);
-            throw Error('REMOTE_SOURCE_DRIFT_REVIEW_REQUIRED');
+          const fs=require('node:fs'),path=require('node:path'),crypto=require('node:crypto'),cp=require('node:child_process');
+          const base=path.join(process.env.RUNNER_TEMP,'household-gas');
+          const remoteDir=path.join(base,'remote'),stageDir=path.join(base,'stage');
+          const filenames=fs.readdirSync(remoteDir).filter(n=>!n.startsWith('.')).sort();
+          if(JSON.stringify(filenames)!==JSON.stringify(['appsscript.json','コード.js']))
+            throw Error('REMOTE_SOURCE_LAYOUT_CHANGED');
+          const sha=s=>crypto.createHash('sha256').update(s).digest('hex');
+          const original=fs.readFileSync(path.join(remoteDir,'コード.js'),'utf8');
+          const baseline=cp.execFileSync('git',
+            ['show','f719da65aeac1ec766918a3f16391847624590c0:gas/Code.gs'],
+            {encoding:'utf8'});
+          if(sha(original)!==sha(baseline))throw Error('REMOTE_SOURCE_DRIFT_REVIEW_REQUIRED');
+          const code=fs.readFileSync('gas/Code.gs','utf8');
+          const fns=text=>new Set([...text.matchAll(/(?:^|\n)function\s+([A-Za-z_$][\w$]*)\s*\(/g)].map(m=>m[1]));
+          const existing=fns(original),updated=fns(code);
+          const allowedRemoved=new Set([
+            'assertAliasEditorTrialIdentity_','assertIsolatedTrialConfigReadOnly',
+            'assertIsolatedTrialIdentity','checkReceiptTrialReadOnly',
+            'createFreshIsolatedWriteTrialSpreadsheet_','initializeEmptySchema_',
+            'isolatedAliasTrialGuard_','isolatedTrialReadPage_','mutateAliasSafely_','mutate_',
+            'receiptTrialGuard_','receiptTrialMainCreate_','receiptTrialPage_',
+            'receiptTrialPayload_','receiptTrialSecondPayload_','requireIsolatedWriteTrial',
+            'runAliasTrialWriteOnce','runIsolatedAliasWriteTrialOnce_',
+            'runIsolatedItemWriteTrialOnce_','runReceiptWriteTrialOnce',
+            'testAliasCatalogReadOnly','testAliasTrialPreflightReadOnly','testAllSheetsReadOnly',
+            'testCategoriesReadOnly','testCurrentGoogleSubject',
+            'testIsolatedAliasWriteTrialPreflightReadOnly_',
+            'testIsolatedAliasWriteTrialResultReadOnly_',
+            'testIsolatedTrialResultReadOnly','testIsolatedWriteTrialPreflightReadOnly',
+            'testTrialSheetInventoryReadOnly','trialGuard_','trialPage_',
+            'trialReadOnlyCounts','trialReadOnlyItemList','trialStockRead',
+            'trialStockTimingReadOnly','trialStockUpdate','trialSubsetProfileOnly_',
+            'verifyAliasFixtureCommitted_'
+          ]);
+          const removed=[...existing].filter(n=>!updated.has(n));
+          const added=[...updated].filter(n=>!existing.has(n));
+          if(removed.length!==allowedRemoved.size||
+             removed.some(n=>!allowedRemoved.has(n))||
+             JSON.stringify(added.sort())!==JSON.stringify(['mutateProductSafely_']))
+            throw Error('SOURCE_FUNCTION_DIFF_NOT_REVIEWED');
+          for(const fn of ['doPost','authenticate','bootstrap','mutateItemSafely_',
+            'mutateProductSafely_','mutateReceiptSafely_','mutateStoreSafely_','receiptList_']){
+            if(!updated.has(fn))throw Error('REQUIRED_FUNCTION_MISSING_'+fn);
           }
-          const local=fs.readFileSync('gas/Code.gs','utf8');
-          const getNames=src=>new Set(
-            [...src.matchAll(/(?:^|\n)function\s+([A-Za-z_$][\w$]*)\s*\(/g)].map(x=>x[1]));
-          const remoteFns=getNames(remote),localFns=getNames(local);
-          const oldOnly=[...remoteFns].filter(n=>!localFns.has(n)).sort();
-          const expectedOld=[];
-          if(JSON.stringify(oldOnly)!==JSON.stringify(expectedOld)||
-             !['doGet','doPost','authenticate','bootstrap','testAllSheetsReadOnly']
-              .every(n=>remoteFns.has(n))||
-             !['productCatalog_','productAliasCheck_','mutateAliasSafely_',
-               'runIsolatedAliasWriteTrialOnce_','testAliasTrialPreflightReadOnly',
-               'testTrialSheetInventoryReadOnly','approvedPrototypeAliasSheet_',
-               'assertAliasEditorTrialIdentity_','runAliasTrialWriteOnce',
-               'testAliasCatalogReadOnly','verifyAliasFixtureCommitted_'].every(n=>localFns.has(n)))
-            throw Error('REMOTE_FUNCTIONS_CHANGED_REVIEW_REQUIRED');
+          for(const action of ['item.create','item.update','product.create',
+            'store.create','record.create']){
+            if(!code.includes("'"+action+"'"))throw Error('NORMAL_ROUTE_MISSING');
+          }
+          if(code.includes("if(action==='record.trial."))throw Error('TRIAL_ROUTE_STILL_PRESENT');
           const manifest=fs.readFileSync(path.join(remoteDir,'appsscript.json'),'utf8');
-          if(digest(manifest)!==approvedManifest)throw Error('REMOTE_MANIFEST_DRIFT_REVIEW_REQUIRED');
-          const remoteConfig=JSON.parse(manifest),localConfig=JSON.parse(
-            fs.readFileSync('gas/appsscript.json','utf8'));
-          const currentScopes=new Set(remoteConfig.oauthScopes||[]);
-          if(remoteConfig.runtimeVersion!=='V8'||
-             !Array.isArray(remoteConfig.oauthScopes)||
-             !localConfig.oauthScopes.every(scope=>currentScopes.has(scope)))
-            throw Error('REMOTE_MANIFEST_SCOPE_REVIEW_REQUIRED');
-          // Preserve live project's manifest, including webapp and dependencies.
-          // Never broaden OAuth scopes or alter deployment configuration.
+          if(sha(manifest)!=='0952d47f73508eb256f1cf50f0368fe77434f8c05ea0d6defc7cf9b4e227e935')
+            throw Error('EXISTING_MANIFEST_DRIFT');
+          const conf=JSON.parse(manifest),expected=JSON.parse(fs.readFileSync('gas/appsscript.json','utf8'));
+          if(conf.runtimeVersion!=='V8'||!Array.isArray(conf.oauthScopes)||
+             !expected.oauthScopes.every(s=>conf.oauthScopes.includes(s)))
+            throw Error('MANIFEST_SCOPE_MISMATCH');
           fs.copyFileSync(path.join(remoteDir,'appsscript.json'),
             path.join(stageDir,'appsscript.json'));
           fs.copyFileSync('gas/Code.gs',path.join(stageDir,'コード.js'));
-          console.log('TEST_GAS_REPLACE_PREFLIGHT_OK: 1 known Japanese script; existing manifest preserved');
-          console.log('Legacy functions being superseded (reviewed names): '+oldOnly.join(', '));
-          console.log('No Sheets read/write operations performed');
+          console.log('BACKUP_READY: pinned existing script, reviewed change only; no Sheet accessed');
           NODE
-
-      - name: Back up verified remote source and manifest before replacement
+      - name: Save original GAS source and manifest as recovery artifact
         uses: actions/upload-artifact@v4
         with:
-          name: test-gas-pre-multi-receipts-${{ github.run_id }}
+          name: household-gas-before-trial-removal-${{ github.run_id }}
           path: |
-            ${{ runner.temp }}/kurashi-test-gas/remote/コード.js
-            ${{ runner.temp }}/kurashi-test-gas/remote/appsscript.json
+            ${{ runner.temp }}/household-gas/remote/コード.js
+            ${{ runner.temp }}/household-gas/remote/appsscript.json
           if-no-files-found: error
           retention-days: 30
-
-      - name: Replace multi-receipt source in verified test GAS only
+      - name: Push source to same GAS (no web app deployment or Sheet writes)
         shell: bash
         run: |
           set -euo pipefail
-          cd "$GAS_WORK/stage"
+          cd "$RUNNER_TEMP/household-gas/stage"
           npx --yes @google/clasp@3 push --force
-
-      - name: Verify required trial functions after the source-only update
-        shell: bash
-        run: |
-          set -euo pipefail
-          cd "$GAS_WORK/stage"
           npx --yes @google/clasp@3 pull
-          node - <<'NODE'
-          const fs=require('node:fs');
-          const src=fs.readFileSync('コード.js','utf8');
-          const required=['doPost','authenticate','bootstrap','productCatalog_',
-            'productAliasCheck_','mutateAliasSafely_',
-            'testIsolatedAliasWriteTrialPreflightReadOnly_',
-            'runIsolatedAliasWriteTrialOnce_','testIsolatedAliasWriteTrialResultReadOnly_',
-            'testAliasTrialPreflightReadOnly','testTrialSheetInventoryReadOnly',
-            'approvedPrototypeAliasSheet_','assertAliasEditorTrialIdentity_',
-            'runAliasTrialWriteOnce','testAliasCatalogReadOnly','verifyAliasFixtureCommitted_',
-            'runReceiptWriteTrialOnce','checkReceiptTrialReadOnly','receiptTrialGuard_',
-            'receiptTrialSecondPayload_','receiptTrialMainCreate_',
-            'mutateReceiptSafely_','mutateStoreSafely_','mutateItemSafely_',
-            'mutateProductSafely_','receiptList_','receiptTrialPage_'];
-          if(!required.every(name=>src.includes('function '+name+'(')))
-            throw Error('TEST_GAS_SOURCE_VERIFY_FAILED');
-          if(!src.includes("if(action==='record.trial.main.create')")||
-            !src.includes("if(action==='record.trial.second.save')")||
-            !src.includes("if(action==='record.trial.preflight')")||
-            !src.includes("if(action==='store.create'){")||
-            !src.includes("if(action==='item.create'||action==='item.update'){")||
-            !src.includes("if(action==='product.create'){")||
-            !src.includes("if(action==='record.create'){")||
-            !src.includes("const result=mutateReceiptSafely_(user,payload,input.operation_id,true);")||
-            !src.includes("function assertPrototypeReceiptIdentity_(book,user){")||
-            !src.includes("if(action==='record.trial.replay')")||
-            !src.includes("function approvedPrototypeAliasSheet_(){"))
-            throw Error('RECEIPT_STAGING_WRITE_GATE_INVALID');
-          const expected=fs.readFileSync(process.env.GITHUB_WORKSPACE+'/gas/Code.gs','utf8');
-          const crypto=require('node:crypto');
-          const sha=text=>crypto.createHash('sha256').update(text).digest('hex');
-          if(sha(src)!==sha(expected))
-            throw Error('TEST_GAS_UPDATED_SOURCE_MISMATCH');
-          fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY,
-            'TEST_GAS_SOURCE_UPDATE_OK: test GAS source only; no deployment, no Sheets writes.\n');
-          console.log('TEST_GAS_SOURCE_UPDATE_OK: no web app deployment, no spreadsheet writes');
-          NODE
-
-      - name: Remove temporary authentication and code
+          cmp -s コード.js "$GITHUB_WORKSPACE/gas/Code.gs"
+          echo 'GAS_SOURCE_SYNCED: original backup saved; web app version unchanged; no Sheet data touched' >> "$GITHUB_STEP_SUMMARY"
+      - name: Erase temporary authentication and pulled source
         if: always()
         shell: bash
         run: |
-          rm -f "$HOME/.clasprc.json" "$RUNNER_TEMP/kurashi-gas-syntax.js"
-          rm -rf "$GAS_WORK"
+          rm -f "$HOME/.clasprc.json" "$RUNNER_TEMP/household-gas.js"
+          rm -rf "$RUNNER_TEMP/household-gas"
