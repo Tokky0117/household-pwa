@@ -270,6 +270,30 @@ for(const phase of faults)for(const when of ['before','after']){
  assert.equal(trialPost('record.create').error.code,'RECEIPT_WRITES_DISABLED');
  assert.equal(trialPost('record.trial.replay',{items:[]}).error.code,'BAD_REQUEST');
  assert.equal(trialPost('record.trial.replay',{},'new-op-123456').error.code,'BAD_REQUEST');
+ assert.equal(trialPost('record.trial.second.save',{items:[]}).error.code,'BAD_REQUEST');
+ assert.equal(trialPost('record.trial.second.save',{},'overwrite-0001').error.code,'BAD_REQUEST');
+ assert.equal(trialPost('record.trial.second.save').ok,true,'Second fixed synthetic receipt only');
+ assert.equal(trial.rowObjects('records').length,2);
+ assert.equal(trial.rowObjects('record_items').length,4);
+ assert.equal(trial.rowObjects('processed_operations').length,3);
+ assert.equal(trial.rowObjects('change_log').length,3);
+ const afterSecond=trial.writes;
+ const again=trialPost('record.trial.second.save');
+ assert.equal(again.ok,true);
+ assert.equal(again.data.replayed,true);
+ assert.equal(again.data.amount,458);
+ assert.equal(trial.writes,afterSecond,'Same second operation never duplicates lines');
+ assert.equal(trialPost('record.trial.replay').ok,true,
+  'Previous fixed first replay must still work after second save');
+ assert.equal(trialPost('record.trial.preflight',proposed).ok,true,
+  'Preflight must remain read-only after second save');
+ assert.equal(trial.mock.checkReceiptTrialReadOnly().records,2);
+ assert.equal(trial.mock.checkReceiptTrialReadOnly().items,4);
+ assert.equal(trial.mock.runReceiptWriteTrialOnce().ok,true,
+  'Editor first receipt replay must still work after second save');
+ assert.equal(trial.writes,afterSecond,'Previous trial operations remain immutable');
+ trial.mock.authenticate=()=>trial.other;
+ assert.equal(trialPost('record.trial.second.save').error.code,'TRIAL_NOT_ISOLATED');
  trial.mock.authenticate=()=>trial.other;
  assert.equal(trialPost('record.trial.replay').error.code,'TRIAL_NOT_ISOLATED');
  assert.equal(trialPost('record.trial.preflight',proposed).error.code,
