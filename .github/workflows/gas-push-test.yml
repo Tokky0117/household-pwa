@@ -30,8 +30,10 @@ jobs:
           cp gas/Code.gs "$RUNNER_TEMP/household-gas.js"
           node --check "$RUNNER_TEMP/household-gas.js"
           # Any subsequent GAS source edit requires reviewing this workflow again.
-          test "$(git hash-object gas/Code.gs)" = "bff3899654d6a7fff055de11baa0fcb3ca484407"
+          test "$(git hash-object gas/Code.gs)" = "da8b77c28536dc68fcd242d3a9291047f7e5bca7"
           node tests/gas-normal-dispatch.mjs
+          node tests/gas-item-initial-stock.mjs
+          node tests/gas-product-update-transaction.mjs
           node tests/receipt-save-parity.mjs
           node tests/gas-auth-isolation.mjs
       - name: Verify pinned GAS project and prepare temporary credentials
@@ -78,43 +80,27 @@ jobs:
           const sha=s=>crypto.createHash('sha256').update(s).digest('hex');
           const original=fs.readFileSync(path.join(remoteDir,'コード.js'),'utf8');
           const baseline=cp.execFileSync('git',
-            ['show','a768edba8d61e45f444813cf5a9c2f76de3733d9:gas/Code.gs'],
+            ['show','33234dc0dc10c07010a40a4cf78aba698d27ea56:gas/Code.gs'],
             {encoding:'utf8'});
           if(sha(original)!==sha(baseline))throw Error('REMOTE_SOURCE_DRIFT_REVIEW_REQUIRED');
           const code=fs.readFileSync('gas/Code.gs','utf8');
           const fns=text=>new Set([...text.matchAll(/(?:^|\n)function\s+([A-Za-z_$][\w$]*)\s*\(/g)].map(m=>m[1]));
           const existing=fns(original),updated=fns(code);
-          const allowedRemoved=new Set([
-            'assertAliasEditorTrialIdentity_','assertIsolatedTrialConfigReadOnly',
-            'assertIsolatedTrialIdentity','checkReceiptTrialReadOnly',
-            'createFreshIsolatedWriteTrialSpreadsheet_','initializeEmptySchema_',
-            'isolatedAliasTrialGuard_','isolatedTrialReadPage_','mutateAliasSafely_','mutate_',
-            'receiptTrialGuard_','receiptTrialMainCreate_','receiptTrialPage_',
-            'receiptTrialPayload_','receiptTrialSecondPayload_','requireIsolatedWriteTrial',
-            'runAliasTrialWriteOnce','runIsolatedAliasWriteTrialOnce_',
-            'runIsolatedItemWriteTrialOnce_','runReceiptWriteTrialOnce',
-            'testAliasCatalogReadOnly','testAliasTrialPreflightReadOnly','testAllSheetsReadOnly',
-            'testCategoriesReadOnly','testCurrentGoogleSubject',
-            'testIsolatedAliasWriteTrialPreflightReadOnly_',
-            'testIsolatedAliasWriteTrialResultReadOnly_',
-            'testIsolatedTrialResultReadOnly','testIsolatedWriteTrialPreflightReadOnly',
-            'testTrialSheetInventoryReadOnly','trialGuard_','trialPage_',
-            'trialReadOnlyCounts','trialReadOnlyItemList','trialStockRead',
-            'trialStockTimingReadOnly','trialStockUpdate','trialSubsetProfileOnly_',
-            'verifyAliasFixtureCommitted_'
-          ]);
+          const allowedRemoved=new Set([]);
+          const allowedAdded=new Set(['mutateProductUpdateSafely_']);
           const removed=[...existing].filter(n=>!updated.has(n));
           const added=[...updated].filter(n=>!existing.has(n));
           if(removed.length!==allowedRemoved.size||
              removed.some(n=>!allowedRemoved.has(n))||
-             added.length!==0)
+             added.length!==allowedAdded.size||
+              added.some(n=>!allowedAdded.has(n)))
             throw Error('SOURCE_FUNCTION_DIFF_NOT_REVIEWED');
           for(const fn of ['doPost','authenticate','bootstrap','mutateItemSafely_',
-            'mutateProductSafely_','mutateReceiptSafely_','mutateStoreSafely_','receiptList_']){
+            'mutateProductSafely_','mutateProductUpdateSafely_','mutateReceiptSafely_','mutateStoreSafely_','receiptList_']){
             if(!updated.has(fn))throw Error('REQUIRED_FUNCTION_MISSING_'+fn);
           }
           for(const action of ['item.create','item.update','product.create',
-            'store.create','record.create']){
+            'store.create','record.create','product.update']){
             if(!code.includes("'"+action+"'"))throw Error('NORMAL_ROUTE_MISSING');
           }
           if(code.includes("if(action==='record.trial."))throw Error('TRIAL_ROUTE_STILL_PRESENT');
@@ -133,7 +119,7 @@ jobs:
       - name: Save original GAS source and manifest as recovery artifact
         uses: actions/upload-artifact@v4
         with:
-          name: household-gas-before-trial-removal-${{ github.run_id }}
+          name: household-gas-before-product-update-${{ github.run_id }}
           path: |
             ${{ runner.temp }}/household-gas/remote/コード.js
             ${{ runner.temp }}/household-gas/remote/appsscript.json
