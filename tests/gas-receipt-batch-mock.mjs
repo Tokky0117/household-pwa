@@ -374,4 +374,113 @@ for(const phase of ['journal.prepare','parent','child-3','child-4','change','jou
   e=>e.code==='RECOVERY_CONFLICT','Mutated second receipt stops earlier trial too');
  assert.equal(t.rowObjects('records').length,2);
 }
-console.log('GAS receipt batch: first fixture, second fixture and 24 interruption cases PASS');
+// Future main-PWA receipt candidate: internal GAS path only; record.create
+// remains blocked at both the browser and doPost. Reuse the same trial home
+// after BOTH fixed receipts, with one arbitrary but server-validated receipt.
+const mainCandidateId='receipt-trial-main-aaaaaaaaaaaa001';
+const mainCandidate={
+ version:'receipt-create-1',record_type:'receipt',
+ chain_id:'alias-trial-store-0001',record_date:'2026-11-01',
+ branch_name:null,raw_store_name:'試験用・本人確認済み店舗',
+ items:[
+  {line_order:1,raw_name:'架空の一般商品A',product_id:null,
+   quantity:3,amount_tax_included:240,category_id:0,price_eligible:false},
+  {line_order:2,raw_name:'架空の一般商品B',product_id:'alias-trial-product-0001',
+   quantity:1,amount_tax_included:180,category_id:1,price_eligible:false}
+ ]
+};
+const fullTrial=()=>{
+ const t=harness(true);
+ t.mock.runReceiptWriteTrialOnce();
+ t.mock.mutateReceiptSafely_(t.homeA,t.mock.receiptTrialSecondPayload_(),
+  'receipt-trial-create-00000002',true);
+ assert.equal(t.mock.receiptTrialGuard_(t.mock.spreadsheet()).fixedRecords,2);
+ return t;
+};
+{
+ const t=harness(true),before=t.writes;
+ assert.throws(()=>t.mock.receiptTrialMainCreate_(t.homeA,mainCandidate,mainCandidateId),
+  e=>e.code==='TRIAL_RECEIPT_NOT_READY');
+ assert.equal(t.writes,before);
+}
+{
+ const t=fullTrial(),before=t.writes;
+ // This helper must remain inaccessible over normal authenticated HTTP.
+ t.mock.ContentService={MimeType:{JSON:'application/json'},
+  createTextOutput(content){return{setMimeType(){return this},getContent(){return content}}}};
+ t.mock.authenticate=()=>t.homeA;
+ for(const action of ['record.create','record.trial.main.create']){
+  const answer=JSON.parse(t.mock.doPost({postData:{contents:JSON.stringify({
+   id_token:'test-token',action,operation_id:mainCandidateId,payload:mainCandidate
+  })}}).getContent());
+  assert.equal(answer.ok,false);
+  assert.equal(answer.error.code,action==='record.create'?
+   'RECEIPT_WRITES_DISABLED':'UNSUPPORTED');
+ }
+ assert.equal(t.writes,before,'No main candidate can be written over doPost');
+ assert.throws(()=>t.mock.receiptTrialMainCreate_(t.other,mainCandidate,mainCandidateId),
+  e=>e.code==='TRIAL_NOT_ISOLATED');
+ assert.throws(()=>t.mock.receiptTrialMainCreate_(t.spouse,mainCandidate,mainCandidateId),
+  e=>e.code==='TRIAL_NOT_ISOLATED','Only the registered trial user may write');
+ assert.throws(()=>t.mock.receiptTrialMainCreate_(t.homeA,mainCandidate,'other-op-0001'),
+  e=>e.code==='BAD_REQUEST');
+ assert.throws(()=>t.mock.receiptTrialMainCreate_(t.homeA,
+  {...mainCandidate,chain_id:'store-B'},mainCandidateId),
+  e=>e.code==='TRIAL_NOT_ISOLATED');
+ assert.throws(()=>t.mock.receiptTrialMainCreate_(t.homeA,{
+  ...mainCandidate,items:[{...mainCandidate.items[0],amount_tax_included:1000001}]
+ },mainCandidateId),e=>e.code==='BAD_REQUEST');
+ assert.equal(t.writes,before,'Rejected candidates never write');
+ const created=t.mock.receiptTrialMainCreate_(t.homeA,mainCandidate,mainCandidateId);
+ assert.equal(created.status,'completed');
+ assert.equal(created.items.length,2);
+ assert.equal(t.rowObjects('records').length,3);
+ assert.equal(t.rowObjects('record_items').length,6);
+ assert.equal(t.mock.receiptTrialGuard_(t.mock.spreadsheet()).generalCompleted,true);
+ const replayCount=t.writes;
+ assert.equal(t.mock.receiptTrialMainCreate_(t.homeA,mainCandidate,mainCandidateId)
+  .entity.record_id,created.entity.record_id);
+ assert.equal(t.writes,replayCount,'Generic receipt replay must be write-free');
+ assert.throws(()=>t.mock.receiptTrialMainCreate_(t.homeA,
+  {...mainCandidate,record_date:'2026-11-02'},mainCandidateId),
+  e=>e.code==='OPERATION_REUSED');
+ assert.throws(()=>t.mock.receiptTrialMainCreate_(t.homeA,mainCandidate,
+  'receipt-trial-main-bbbbbbbbbbbb002'),e=>e.code==='TRIAL_LIMIT');
+ assert.equal(t.read(t.spouse).records.length,3);
+ assert.equal(t.read(t.spouse).record_items.length,6);
+ assert.equal(t.read(t.other).records.length,0);
+ assert.equal(t.mock.runReceiptWriteTrialOnce().ok,true);
+ assert.equal(t.writes,replayCount,'Old fixed receipt replay remains intact');
+ assert.equal(t.writes,replayCount);
+ const ix=t.columns.record_items.indexOf('amount_tax_included');
+ t.data.record_items[5][ix]=999;
+ assert.throws(()=>t.mock.receiptTrialMainCreate_(t.homeA,mainCandidate,mainCandidateId),
+  e=>['RECOVERY_CONFLICT','TRIAL_NOT_ISOLATED'].includes(e.code));
+ assert.throws(()=>t.mock.runReceiptWriteTrialOnce(),
+  e=>['RECOVERY_CONFLICT','TRIAL_NOT_ISOLATED'].includes(e.code));
+}
+for(const phase of ['journal.prepare','parent','child-5','child-6','change','journal.complete']){
+ for(const when of ['before','after']){
+  const t=fullTrial(),before=t.writes;
+  t.stop(phase,when);
+  assert.throws(()=>t.mock.receiptTrialMainCreate_(t.homeA,mainCandidate,mainCandidateId),
+   new RegExp('INJECTED_'+phase+'_'+when));
+  assert.equal(t.locked,false);
+  assert.equal(t.read(t.spouse).records.length,
+   phase==='journal.complete'&&when==='after'?3:2,
+   'Only complete general trial receipt can be read');
+  const done=t.mock.receiptTrialMainCreate_(t.homeA,mainCandidate,mainCandidateId);
+  assert.equal(done.status,'completed');
+  const after=t.writes;
+  assert.equal(t.mock.receiptTrialMainCreate_(t.homeA,mainCandidate,mainCandidateId)
+   .entity.record_id,done.entity.record_id);
+  assert.equal(t.writes,after,'Same ID must never add a second receipt');
+  assert.equal(t.rowObjects('records').length,3);
+  assert.equal(t.rowObjects('record_items').length,6);
+  assert.equal(t.read(t.spouse).records.length,3);
+  assert.equal(t.read(t.other).records.length,0);
+  assert.equal(t.mock.receiptTrialGuard_(t.mock.spreadsheet()).fixedRecords,2);
+  assert.ok(after>=before);
+ }
+}
+console.log('GAS receipt batch: fixed receipts, internal candidate, 36 failure boundaries PASS');
