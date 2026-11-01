@@ -1531,21 +1531,28 @@ function receiptTrialGuard_(book){
   generalCompleted:generalStates.length>0&&
    generalStates.every(x=>x?.status==='completed')};
 }
-/**
- * Test-only receipt mutation behind the pinned authenticated doPost route.
- * Normal record.create remains hard-disabled; each confirmation uses a new
- * immutable operation ID and the shared recovery journal.
+/** The pinned prototype may contain both registered spouses.
+ * Never create users or derive household permission from a caller-supplied ID.
+ * The authenticated Google subject is resolved to userId in authenticate().
  */
-/** Existing trial spreadsheet only; never infers approval from a UI flag. */
 function assertPrototypeReceiptIdentity_(book,user){
  if(!approvedPrototypeAliasSheet_())
   fail('RECEIPT_WRITES_DISABLED','許可されていない保存先です');
- const homes=rows('households',book),users=rows('users',book);
- if(homes.length!==1||users.length!==1||
-    String(homes[0].obj.household_id)!==String(user.householdId)||
-    String(users[0].obj.household_id)!==String(user.householdId)||
-    String(users[0].obj.user_id)!==String(user.userId))
+ const homes=rows('households',book),members=rows('users',book);
+ const hid=String(user.householdId),uid=String(user.userId);
+ // The original test workbook is a SINGLE household, not a general write
+ // deployment. Multiple distinct, registered Google users may share it.
+ if(homes.length!==1||String(homes[0].obj.household_id)!==hid||
+    members.length<1||members.length>20||members.some(m=>
+     String(m.obj.household_id)!==hid||
+     !/^[0-9]+$/.test(String(m.obj.auth_subject||'')))||
+    members.filter(m=>String(m.obj.user_id)===uid).length!==1)
   fail('TRIAL_NOT_ISOLATED','既存試験家庭との対応が一致しません');
+ // Catch duplicate subjects or IDs even if the caller was authenticated
+ // before another row was introduced. This validation is read-only.
+ const verified=householdStatus_(user,book);
+ if(verified.household_id!==hid||verified.member_count!==members.length)
+  fail('TRIAL_NOT_ISOLATED','試験家庭の利用者登録が一致しません');
 }
 function receiptTrialMainCreate_(user,payload,operationId){
  if(typeof operationId!=='string'||
