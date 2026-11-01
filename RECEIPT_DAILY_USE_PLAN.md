@@ -2,6 +2,13 @@
 
 > **位置づけ：基本設計 v1.8 のレシート機能に関する実装優先順位・入出力方針の追補。** [基本設計](./household_pwa_requirements_basic_design%281%29.md)、[データモデル](./DATA_MODEL.md)、[画面別UI仕様](./SCREEN_UI_SPEC.md)、[共通UIガイドライン](./UI_GUIDELINES.md)と併用する。本文中の将来構想を実装済みとみなさない。設計・実装・検証を分けて記録する。
 
+## 2026-11-01 実装9：一般レシート1件用の試験GASソース反映成功／受入待ち
+
+- GitHub Actions [既存試験GASのソース更新](https://github.com/Tokky0117/household-pwa/actions/runs/41280515227)が**成功**。既存ソースのSHA-256が前回成功済みの`gas/Code.gs`と一致、既存スクリプトID・マニフェスト・GAS独自関数も照合。更新前のソースとマニフェストを[復旧用artifact](https://github.com/Tokky0117/household-pwa/actions/runs/41280515227/artifacts/13072673292)に保存した後、`clasp push --force`で**新しい `record.trial.main.create` を含むGASソースだけ**更新。更新後の完全一致確認・[独立再取得監査](https://github.com/Tokky0117/household-pwa/actions/runs/41280583758)も成功。一時的な自動push起動は無効化済み。
+- **利用者が行う次の操作**は以前と同じ試験用GASの「デプロイを管理 → 既存デプロイを編集 → 新しいバージョン → デプロイ」。新規GAS・Sheet・デプロイ作成、スクリプトプロパティの変更は不要。実ユーザー・アクセス権の設定も変更しない。
+- 新バージョン公開後に限り、本流PWAの開発プレビュー `/previews/stage-a-ui-handoff-review/?receipt_trial=1` の既存「設定」に、本人確認済みの試験GAS /exec URLを一時入力してGoogleログイン。既存のレシート画面で**架空の一般明細1件のみ**を確認保存し、実Sheetの3件目と認証付き読取を検証する。実レシート・夫婦の実家計データは使わない。
+- **現時点でまだ実施していないこと**：試験GAS Webアプリの新版デプロイ、本流PWAからの一般レシート保存、3件目の実Sheet書込と再読取。既存の固定2件／4明細成功はそのまま保持し、無用な再試験はしない。`main`と本番環境、通常の`record.create`禁止、`RECEIPT_BATCH_WRITE_ENABLED=false`、`ENABLE_EXPERIMENTAL_WRITES=false`を維持。
+
 ## 2026-11-01 実装9継続：本流PWAの試験家庭1件保存をコード接続（実機未実施）
 
 - 既存試験シートの固定2件（496円＋458円）を維持したまま、**一般的な確認済みレシート明細を追加で1件だけ**扱える内部GAS関数 `receiptTrialMainCreate_` と認証付きの試験専用アクション `record.trial.main.create` を開発ブランチに実装。正本 `record.create` はGAS・クライアントとも拒否し続ける。許可先は従来からIDハッシュで固定された試験GAS／Sheetの既知の1家庭・1ユーザー、既存店舗・商品マスタだけ。追加操作IDは `receipt-trial-main-` の専用名前空間で1件のみ、同一IDを再送しても親子・操作履歴・変更履歴を重複作成しない。
