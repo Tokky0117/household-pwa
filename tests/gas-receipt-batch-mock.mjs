@@ -216,6 +216,8 @@ for(const phase of faults)for(const when of ['before','after']){
   'TRIAL_RECEIPT_NOT_READY','Never create a receipt via the replay route');
  assert.equal(trialPost('record.trial.preflight',payload).error.code,
   'TRIAL_RECEIPT_NOT_READY','Candidate preflight cannot skip completed fixture');
+ assert.equal(trialPost('record.trial.second.save').error.code,
+  'TRIAL_RECEIPT_NOT_READY','A second receipt cannot be saved before first completion');
  const before=trial.writes;
  const page=trial.mock.doGet({parameter:{trial_receipt:'1'}});
  assert.match(page.getContent(),/試験レシートを保存・同じ操作を確認/);
@@ -359,5 +361,17 @@ for(const phase of ['journal.prepare','parent','child-3','child-4','change','jou
   'A corrupted second prepared plan must block every retry');
  assert.equal(t.rowObjects('records').length,2);
  assert.equal(t.rowObjects('record_items').length,2);
+}
+{
+ const t=harness(true);t.mock.runReceiptWriteTrialOnce();
+ const second=t.mock.receiptTrialSecondPayload_(),id='receipt-trial-create-00000002';
+ assert.equal(t.mock.mutateReceiptSafely_(t.homeA,second,id,true).status,'completed');
+ const ix=t.columns.record_items.indexOf('amount_tax_included');
+ t.data.record_items[3][ix]=999;
+ assert.throws(()=>t.mock.mutateReceiptSafely_(t.homeA,second,id,true),
+  e=>e.code==='RECOVERY_CONFLICT','Mutated second receipt must stop same-ID replay');
+ assert.throws(()=>t.mock.runReceiptWriteTrialOnce(),
+  e=>e.code==='RECOVERY_CONFLICT','Mutated second receipt stops earlier trial too');
+ assert.equal(t.rowObjects('records').length,2);
 }
 console.log('GAS receipt batch: first fixture, second fixture and 24 interruption cases PASS');
