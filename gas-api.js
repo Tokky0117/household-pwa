@@ -6,7 +6,7 @@
  let endpoint='';
  // Explicit release gate: requires separate reviewed deployment to enable writes.
  const LIVE_WRITE_ENABLED=()=>RECEIPT_BATCH_WRITE_ENABLED();
- const MUTATIONS=new Set(['item.create','item.update','record.create','store.create']);
+ const MUTATIONS=new Set(['item.create','item.update','product.create','record.create','store.create']);
  // Receipt batch writes need separate server journal and user approval.
  const RECEIPT_BATCH_WRITE_ENABLED=()=>window.KURASHI_RECEIPT_STAGE_A_TRIAL===true&&
    window.KURASHI_RECEIPT_TEST_MODE!==true&&!!endpoint;
