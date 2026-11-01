@@ -1,19 +1,11 @@
 /* Explicit receipt write orchestration, separate from UI and Google API.
- * Production write gate remains FALSE. NEVER sends/retries automatically.
+ * NEVER sends/retries automatically.
  * Same operation survives timeout, reload, tab change and account switch.
  */
 (function(root){
  'use strict';
  const LOCK='kurashi-live-items-write-v1'; // same lock as item mutations
- const receiptGate=()=>root.KurashiGasApi?.receiptWriteEnabled?.()===true&&
-  root.KURASHI_RECEIPT_TEST_MODE!==true;
- // Previous trial operation IDs are recognized ONLY to recover an already
- // journaled, uncertain write. New saves always use ordinary record.create.
- const trialId=id=>typeof id==='string'&&
-  /^receipt-trial-main-[A-Za-z0-9_-]{12,64}$/.test(id);
- const trialGate=()=>root.KURASHI_RECEIPT_STAGE_A_TRIAL===true&&
-  root.KURASHI_RECEIPT_TEST_MODE!==true&&
-  root.KurashiGasApi?.status?.()?.configured===true;
+ const receiptGate=()=>root.KurashiGasApi?.receiptWriteEnabled?.()===true;
  const journal=()=>root.KurashiReceiptJournal;
  const contract=()=>root.KurashiReceiptSaveContract;
  function verifiedScope(subject,householdId){
@@ -34,8 +26,7 @@
   catch{return {status:'invalid',entry:null}}
  }
  async function transmit(entry){
-  const isolated=trialId(entry.operationId);
-  if(!(isolated?trialGate():receiptGate()))
+  if(!receiptGate())
    throw Error('RECEIPT_WRITES_DISABLED');
   verifiedScope(entry.subject,entry.householdId);
   const pending=accountPending(entry.subject,entry.householdId);
@@ -45,8 +36,7 @@
   if(root.KurashiLiveJournal?.read?.())throw Error('OTHER_OPERATION_PENDING');
   try{
    const result=await root.KurashiGasApi.request(
-    isolated?'record.trial.main.create':'record.create',entry.payload,
-    {operationId:entry.operationId,...(isolated?{confirmedTrialMainSave:true}:{})});
+    'record.create',entry.payload,{operationId:entry.operationId});
    // An explicit server acknowledgment must match the action and household.
    // Never clear on a response with unknown schema/identity.
    if(!result||result.status!=='completed'||result.action!=='record.create'||
@@ -68,7 +58,6 @@
  }
  async function create({subject,householdId,payload,operationId}){
   if(!receiptGate())throw Error('RECEIPT_WRITES_DISABLED');
-  if(trialId(operationId))throw Error('TRIAL_OPERATION_ID_RESERVED');
   return withLock(async()=>{
    verifiedScope(subject,householdId);
    if(!contract()?.validatePayload)throw Error('RECEIPT_CONTRACT_MISSING');
@@ -81,7 +70,7 @@
   });
  }
  async function retry({subject,householdId}){
-  if(!receiptGate()&&!trialGate())throw Error('RECEIPT_WRITES_DISABLED');
+  if(!receiptGate())throw Error('RECEIPT_WRITES_DISABLED');
   return withLock(async()=>{
    verifiedScope(subject,householdId);
    const pending=accountPending(subject,householdId);
