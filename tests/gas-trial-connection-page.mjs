@@ -29,6 +29,8 @@ assert.match(html,/id="catalog-detail"/);
 assert.match(html,/id="receipt-read"/);
 assert.match(html,/id="receipt-replay"/);
 assert.match(html,/id="receipt-candidate-check"/);
+assert.match(html,/id="receipt-second-save"/);
+assert.ok(html.includes("KurashiGasApi.request('record.trial.second.save',{}"));
 assert.ok(html.includes('src="./receipt-save-contract.js"'));
 assert.ok(html.includes("KurashiGasApi.request('record.trial.preflight',payload)"));
 assert.ok(html.includes("KurashiGasApi.request('record.trial.replay',{}"));
@@ -67,7 +69,7 @@ const node=id=>{
  return elements.get(id);
 };
 let getCalls=[],postCalls=[],postPayloads=[],catalogMode='valid',slowCatalog=null,
- receiptMode='valid',slowReceipt=null,getFetcher=async()=>({
+ receiptMode='valid',slowReceipt=null,secondSaved=false,getFetcher=async()=>({
  status:200,headers:{get:()=> 'application/json'},
  text:async()=>JSON.stringify({ok:false,error:{code:'POST_REQUIRED'}})
 });
@@ -95,6 +97,12 @@ const apiMock={
     total_tax_included:payload.items.reduce((n,item)=>n+item.amount_tax_included,0),
     trial_ready:true,write_enabled:false};
   }
+  if(action==='record.trial.second.save'){
+   assert.equal(options.confirmedTrialSecondSave,true);
+   assert.equal(Object.keys(payload).length,0);
+   const replayed=secondSaved;secondSaved=true;
+   return {status:'completed',replayed,records:2,items:4,amount:458};
+  }
   if(action==='record.trial.replay'){
    assert.equal(options.confirmedTrialReplay,true);
    assert.equal(Object.keys(payload).length,0);
@@ -105,12 +113,24 @@ const apiMock={
    const records=[{record_id:'r1',record_type:'receipt',
     chain_id:'c-test',raw_store_name:'[KURASHI_RECEIPT_TRIAL_ONLY]',
     record_date:'2026-11-01'}];
+   if(secondSaved)records.push({record_id:'r2',record_type:'receipt',
+    chain_id:'c-test',raw_store_name:'[KURASHI_RECEIPT_TRIAL_SECOND_ONLY]',
+    record_date:'2026-11-01'});
    const record_items=[
     {record_item_id:'line1',record_id:'r1',line_order:1,quantity:1,
-     amount_tax_included:receiptMode==='bad-price'?999:198,product_id:'p-test',price_eligible:false},
+     amount_tax_included:receiptMode==='bad-price'?999:198,product_id:'p-test',
+     raw_name:'試験用・商品コード',category_id:0,price_eligible:false},
     {record_item_id:'line2',record_id:'r1',line_order:2,quantity:2,
-     amount_tax_included:298,product_id:null,price_eligible:false}
+     amount_tax_included:298,product_id:null,raw_name:'試験用・卵',
+     category_id:0,price_eligible:false}
    ];
+   if(secondSaved)record_items.push(
+    {record_item_id:'line3',record_id:'r2',line_order:1,quantity:1,
+     amount_tax_included:128,product_id:null,raw_name:'試験用・野菜',
+     category_id:0,price_eligible:false},
+    {record_item_id:'line4',record_id:'r2',line_order:2,quantity:2,
+     amount_tax_included:330,product_id:null,raw_name:'試験用・日用品',
+     category_id:1,price_eligible:false});
    return {household_id:receiptMode==='foreign'?'other-family':'trial',records,record_items};
   }
   if(action==='product.catalog'){
@@ -226,6 +246,22 @@ await node('receipt-candidate-check').listeners.click();
 assert.match(node('receipt-candidate-result').textContent,/送信していません/);
 assert.equal(postCalls.length,beforeMalformed);
 node('candidate-name-a').value='試験用・野菜';
+// One explicit fixed second receipt, same operation on replay, then read two
+// exact fixtures; no PWA general-purpose record.create ever invoked.
+assert.equal(node('receipt-second-save').disabled,false);
+await node('receipt-second-save').listeners.click();
+assert.match(node('receipt-second-result').textContent,/固定の試験レシート2件/);
+assert.equal(postCalls.at(-1),'record.trial.second.save');
+assert.equal(node('receipt-replay').disabled,true,'Second save requires fresh ⑥ receipt read');
+await node('receipt-read').listeners.click();
+assert.match(node('receipt-read-result').textContent,/確定レシート2件・明細4件/);
+assert.equal(node('receipt-replay').disabled,false);
+await node('receipt-second-save').listeners.click();
+assert.match(node('receipt-second-result').textContent,/同じ操作IDで再確認/);
+await node('receipt-read').listeners.click();
+assert.match(node('receipt-read-result').textContent,/確定レシート2件・明細4件/);
+await node('receipt-replay').listeners.click();
+assert.match(node('receipt-replay-result').textContent,/新規レシートなし/);
 
 assert.equal(ctx.window.KurashiTrialCatalogGate.ready(),false,
  'The OCR review may not fetch catalog until the explicit alias check also succeeds');
@@ -246,6 +282,7 @@ assert.equal(node('counts').textContent,'');
 assert.equal(node('catalog-check').disabled,true);
 assert.equal(node('receipt-replay').disabled,true);
 assert.equal(node('receipt-candidate-check').disabled,true);
+assert.equal(node('receipt-second-save').disabled,true);
 node('confirm-trial-target').checked=true;
 node('confirm-trial-target').listeners.change();
 await node('check').listeners.click();
@@ -294,7 +331,7 @@ assert.equal(aliasCalls[1].payload.product_code,'00099999');
 assert.equal(aliasCalls[0].payload.operation_id,undefined);
 assert.equal(postCalls.filter(x=>x==='product.catalog').length,2,
  'Each newly confirmed URL performs its own fixture check');
-assert.ok(postCalls.every(a=>['bootstrap','product.catalog','product.alias.check','record.list','record.trial.replay','record.trial.preflight'].includes(a)),
+assert.ok(postCalls.every(a=>['bootstrap','product.catalog','product.alias.check','record.list','record.trial.replay','record.trial.preflight','record.trial.second.save'].includes(a)),
  'The diagnostic must never call a mutation');
 
 // A malformed or foreign catalog must stop before the alias-check request.
