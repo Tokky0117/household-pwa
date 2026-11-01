@@ -5,6 +5,12 @@
 > **現行仕様はこの冒頭を優先**。後半の「接続前設計」「v50〜v56」等は当時の検討履歴で、実際に接続成功した範囲・書き込み方式・未実装状況が現在とは異なる。実装は `gas/Code.gs`、`gas-api.js`、`live-operation-journal.js`、安全境界と測定結果は `TRANSPORT_DECISION.md` を確認する。
 
 
+
+## 2026-11-01：レシート読取・内部保存処理の追加（外部書込閉鎖）
+
+- 本流PWAと `gas-api.js` に明示要求 `record.list` を追加。GASは認証済み家庭の `records/record_items` を、完了した `processed_operations` と `change_log` で照合して読み取り専用で返す。既存の `bootstrap/sync` の返却形式は変更しない。
+- `mutateReceiptSafely_` はロック・事前ジャーナル・親子明細・変更履歴・同じ操作IDの部分失敗復旧を処理する**GAS内部専用の未公開コード**として追加。API `record.create` の無条件拒否、および `RECEIPT_WRITES_ENABLED`・隔離試験専用ガードを維持する。既存 `ENABLE_EXPERIMENTAL_WRITES` の設定だけで有効化されない。
+- 実Google Sheets／デプロイでの確認なし。処理済み操作の改ざんチェック、故障注入12箇所・認証隔離・端末での遅延応答無視を模擬試験。同期読み込み・正式な家計簿表示への接続は引き続き受入対象。
 ## 2026-11-01：レシート一括保存の事前契約（書込ゲート閉鎖）
 
 - [専用設計書](./RECEIPT_BATCH_WRITE_PLAN.md) と `receipt-save-contract.js`、`receipt-write-recovery-plan.js` に、最大30明細の保存要求、家庭別の所有照合、操作IDの不変性、事前ジャーナル、親・子・変更履歴の部分失敗復旧計画を定義。**処理は現在純粋関数と模擬テストのみで、実GASのレシート保存は未実装**。
