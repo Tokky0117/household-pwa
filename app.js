@@ -159,7 +159,9 @@ function receiptPendingView(){
  const auth=window.KurashiAuth?.status?.();
  const subject=auth?.signedIn===true?auth.subject:null;
  const household=remoteReceiptSubject===subject?remoteReceipts?.household_id:null;
- const safe=window.KurashiReceiptSaveSession?.pending?.(subject,household);
+ let safe;
+ try{safe=window.KurashiReceiptSaveSession?.pending?.(subject,household)}
+ catch{safe={status:'invalid'}}
  const belongs=safe?.status==='pending';
  const canRetry=belongs&&window.KurashiReceiptSaveSession?.writeEnabled?.()===true;
  return '<section class="panel"><h2>未完了のレシート保存操作</h2>'+
