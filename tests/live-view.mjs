@@ -72,8 +72,9 @@ assert.ok(listeners.click?.length);
 listeners.click[0]({target:clickTarget,preventDefault(){},stopPropagation(){}});
 assert.equal(api.state().liveEditor.item_group_id,null);
 assert.match(app.innerHTML,/class="half-sheet item-editor-sheet"/);
-assert.match(app.innerHTML,/id="live-name"/);
-assert.match(app.innerHTML,/data-act="saveLive"/);
+assert.match(app.innerHTML,/id="name"/);
+assert.match(app.innerHTML,/id="category"/);
+assert.match(app.innerHTML,/id="itemForm"/);
 // A pending background read must not move the user out of Settings.
 const homeB=snapshot('home-B','別家庭の牛乳',false);
 let finishB;
