@@ -203,6 +203,17 @@ for(const phase of faults)for(const when of ['before','after']){
  const trial=harness(true);
  assert.equal(trial.mock.PropertiesService.getScriptProperties()
   .getProperty('RECEIPT_WRITES_ENABLED'),'false');
+ // Authenticated test-only POST responses are simulated entirely in memory.
+ trial.mock.ContentService={MimeType:{JSON:'application/json'},
+  createTextOutput(content){return{setMimeType(){return this},getContent(){return content}}}};
+ trial.mock.authenticate=()=>trial.homeA;
+ const trialPost=(action,payload={},operation_id)=>
+  JSON.parse(trial.mock.doPost({postData:{contents:JSON.stringify({
+   id_token:'test-token',action,payload,
+   ...(operation_id===undefined?{}:{operation_id})
+  })}}).getContent());
+ assert.equal(trialPost('record.trial.replay').error.code,
+  'TRIAL_RECEIPT_NOT_READY','Never create a receipt via the replay route');
  const before=trial.writes;
  const page=trial.mock.doGet({parameter:{trial_receipt:'1'}});
  assert.match(page.getContent(),/試験レシートを保存・同じ操作を確認/);
@@ -225,12 +236,25 @@ for(const phase of faults)for(const when of ['before','after']){
  const replay=trial.mock.runReceiptWriteTrialOnce();
  assert.equal(replay.replay,true);
  assert.equal(trial.writes,after,'Editor trial must be idempotent');
+ const confirmed=trialPost('record.trial.replay');
+ assert.equal(confirmed.ok,true);
+ assert.equal(confirmed.data.replayed,true);
+ assert.equal(confirmed.data.amount,496);
+ assert.equal(trial.writes,after,'Completed replay must not write any row');
+ assert.equal(trialPost('record.create').error.code,'RECEIPT_WRITES_DISABLED');
+ assert.equal(trialPost('record.trial.replay',{items:[]}).error.code,'BAD_REQUEST');
+ assert.equal(trialPost('record.trial.replay',{},'new-op-123456').error.code,'BAD_REQUEST');
+ trial.mock.authenticate=()=>trial.other;
+ assert.equal(trialPost('record.trial.replay').error.code,'TRIAL_NOT_ISOLATED');
+ trial.mock.authenticate=()=>trial.homeA;
+ assert.equal(trial.writes,after,'Denied actions must not write');
  assert.equal(trial.mock.doGet({parameter:{trial_receipt:'1'}})
   .getContent().includes('税込合計496円'),true);
  assert.equal(trial.writes,after,'Trial page GET remains read-only after save');
  assert.ok(after>before);
  assert.equal(trial.mock.checkReceiptTrialReadOnly().completed,true);
  trial.data.record_items[1][trial.columns.record_items.indexOf('amount_tax_included')]=999;
+ assert.equal(trialPost('record.trial.replay').error.code,'TRIAL_NOT_ISOLATED');
  assert.throws(()=>trial.mock.runReceiptWriteTrialOnce(),
   e=>e.code==='TRIAL_NOT_ISOLATED',
   'Different receipt data must never be accepted as a test fixture');
