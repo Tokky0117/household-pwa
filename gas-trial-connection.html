@@ -361,7 +361,7 @@ button:disabled{background:#a1aaba}.secondary{background:#eef2f8;color:#20508c}
   if(invalid||!user.signedIn||!fixture||
      verifiedRevision!==revision||verifiedSubject!==user.subject||
      !fixture){
-   receiptReadResult.textContent='③と④の試験接続確認が必要です。';
+   receiptReadResult.textContent='③の認証付き読み取り接続を先に確認してください。';
    update();return;
   }
   const rev=revision,subject=user.subject,started=Date.now();
