@@ -497,4 +497,93 @@ for(const phase of ['journal.prepare','parent','child-5','child-6','change','jou
   assert.ok(after>=before);
  }
 }
-console.log('GAS receipt batch: fixed receipts, internal candidate, 36 failure boundaries PASS');
+// Two and more confirmed receipts in the SAME old isolated trial household.
+// None of these tests accesses a deployed GAS, real Sheet or production branch.
+const laterId=i=>'receipt-trial-main-'+String(i).padStart(12,'0');
+const laterPayload=i=>({
+ ...mainCandidate,record_date:'2026-11-02',
+ raw_store_name:'確認済み架空レシート '+i,
+ items:[
+  {...mainCandidate.items[0],raw_name:'架空の食品'+i,quantity:1,
+   amount_tax_included:180+i},
+  {...mainCandidate.items[1],raw_name:'架空の日用品'+i,quantity:2,
+   amount_tax_included:340}
+ ]
+});
+{
+ const t=fullTrial();
+ const first=t.mock.receiptTrialMainCreate_(t.homeA,mainCandidate,mainCandidateId);
+ const againId=laterId(2),second=t.mock.receiptTrialMainCreate_(t.homeA,laterPayload(2),againId);
+ assert.notEqual(second.entity.record_id,first.entity.record_id,
+  'Separate confirmed receipts get distinct record IDs');
+ assert.equal(t.rowObjects('records').length,4);
+ assert.equal(t.rowObjects('record_items').length,8);
+ assert.equal(t.rowObjects('processed_operations').length,5);
+ assert.equal(t.rowObjects('change_log').length,5);
+ const state=t.mock.receiptTrialGuard_(t.mock.spreadsheet());
+ assert.equal(state.fixedRecords,2);
+ assert.equal(state.generalCount,2);
+ assert.equal(state.generalCompleted,true);
+ assert.equal(state.generalOperationIds.length,2);
+ assert.equal(t.read(t.spouse).records.length,4);
+ assert.equal(t.read(t.spouse).record_items.length,8);
+ assert.equal(t.read(t.other).records.length,0);
+ const writes=t.writes;
+ assert.equal(t.mock.receiptTrialMainCreate_(t.homeA,mainCandidate,mainCandidateId)
+  .entity.record_id,first.entity.record_id,'Old candidate can still be replayed');
+ assert.equal(t.mock.receiptTrialMainCreate_(t.homeA,laterPayload(2),againId)
+  .entity.record_id,second.entity.record_id,'New candidate can still be replayed');
+ assert.equal(t.writes,writes,'Replaying either receipt is a no-op');
+ assert.throws(()=>t.mock.receiptTrialMainCreate_(t.homeA,
+  {...laterPayload(2),record_date:'2026-11-03'},againId),
+  e=>e.code==='OPERATION_REUSED');
+ assert.equal(t.writes,writes);
+ const wrong=t.columns.record_items.indexOf('amount_tax_included');
+ // Even an older, completed receipt is checked before accepting a new one.
+ t.data.record_items[6][wrong]=999;
+ assert.throws(()=>t.mock.receiptTrialMainCreate_(t.homeA,laterPayload(3),laterId(3)),
+  e=>['TRIAL_NOT_ISOLATED','RECOVERY_CONFLICT'].includes(e.code));
+ assert.equal(t.writes,writes,'Tampered historical rows prevent further writes');
+}
+{
+ const t=fullTrial(),first=t.mock.receiptTrialMainCreate_(t.homeA,mainCandidate,mainCandidateId);
+ const secondId=laterId(2),payload2=laterPayload(2);
+ t.stop('parent','after');
+ assert.throws(()=>t.mock.receiptTrialMainCreate_(t.homeA,payload2,secondId),
+  /INJECTED_parent_after/);
+ assert.equal(t.locked,false);
+ assert.equal(t.read(t.spouse).records.length,3,'Interrupted 4th receipt is hidden');
+ assert.throws(()=>t.mock.receiptTrialMainCreate_(t.homeA,laterPayload(3),laterId(3)),
+  e=>e.code==='RECOVERY_REQUIRED');
+ assert.equal(t.mock.receiptTrialGuard_(t.mock.spreadsheet()).generalCount,2);
+ const recovered=t.mock.receiptTrialMainCreate_(t.homeA,payload2,secondId);
+ assert.equal(recovered.status,'completed');
+ assert.equal(t.read(t.spouse).records.length,4);
+ assert.equal(t.mock.receiptTrialMainCreate_(t.homeA,mainCandidate,mainCandidateId)
+  .entity.record_id,first.entity.record_id);
+ assert.equal(t.mock.receiptTrialMainCreate_(t.homeA,payload2,secondId)
+  .entity.record_id,recovered.entity.record_id);
+}
+{
+ const t=fullTrial();
+ for(let i=1;i<=20;i++){
+  const id=laterId(i),p=laterPayload(i);
+  const saved=t.mock.receiptTrialMainCreate_(t.homeA,p,id);
+  assert.equal(saved.status,'completed');
+ }
+ assert.equal(t.rowObjects('records').length,22);
+ assert.equal(t.rowObjects('record_items').length,44);
+ assert.equal(t.mock.receiptTrialGuard_(t.mock.spreadsheet()).generalCount,20);
+ assert.equal(t.read(t.spouse).records.length,22);
+ assert.equal(t.read(t.other).records.length,0);
+ const count=t.writes;
+ assert.throws(()=>t.mock.receiptTrialMainCreate_(t.homeA,laterPayload(21),
+  laterId(21)),e=>e.code==='TRIAL_LIMIT');
+ assert.equal(t.writes,count,'Limit does not add partial rows');
+ assert.equal(t.mock.receiptTrialMainCreate_(t.homeA,laterPayload(1),
+  laterId(1)).status,'completed','At limit, old IDs remain replayable');
+ assert.equal(t.writes,count,'Full-capacity replay does not write');
+ assert.equal(t.mock.runReceiptWriteTrialOnce().ok,true,'Original fixed fixture still replays');
+ assert.equal(t.writes,count);
+}
+console.log('GAS receipt batch: fixed receipts and 20 candidate receipts, same-ID recovery, limits PASS');
