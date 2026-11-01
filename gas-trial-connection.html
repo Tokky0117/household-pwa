@@ -1,6 +1,6 @@
 <!doctype html>
 <html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>試験用GASの読み取り接続｜くらしストック</title>
+<title>試験用GASの接続・固定レシート試験｜くらしストック</title>
 <style>
 :root{font-family:-apple-system,BlinkMacSystemFont,"Hiragino Kaku Gothic ProN",sans-serif;color:#273649;background:#f6f7fa}body{max-width:660px;margin:auto;padding:20px 16px 50px;line-height:1.7}
 h1{font-size:1.3rem}h2{font-size:1.06rem}.panel{background:#fff;border:1px solid #dce3ef;border-radius:14px;padding:17px;margin:16px 0}
@@ -20,8 +20,8 @@ button:disabled{background:#a1aaba}.secondary{background:#eef2f8;color:#20508c}
  padding:11px 12px;border:1px solid #bdc9d8;border-radius:9px;min-height:44px}
 #receipt-candidate-preflight label{margin-top:13px}
 </style></head><body>
-<h1>試験用GAS｜読み取り接続確認</h1>
-<p>既存の<strong>試験用GAS</strong>へGoogleログインして、試験用シートの件数と架空の商品コードの照合結果を確認します。この画面では通常の登録・保存は行いません。⑦では既に保存済みの固定試験レシートだけを同じIDで再確認します。</p>
+<h1>試験用GAS｜接続・固定レシート試験</h1>
+<p>既存の<strong>試験用GAS</strong>へGoogleログインして、試験用シートの件数と架空の商品コードの照合結果を確認します。通常のレシート登録は行いません。⑦は既存の固定レシートの再送確認、⑧は保存前検査（書き込みなし）、⑨だけが試験用シートへ架空の固定2件目を1件追加します。</p>
 <section class="panel">
 <h2>① 試験用WebアプリのURL</h2>
 <label for="trial-url">試験用GASのWebアプリURL（/exec）</label>
@@ -46,7 +46,7 @@ button:disabled{background:#a1aaba}.secondary{background:#eef2f8;color:#20508c}
 <button id="check" type="button" disabled>試験用シートの件数を読み取る</button>
 <p id="result" role="status" aria-live="polite">URLとログインを確認してください。</p>
 <p id="counts" class="muted"></p>
-<p class="warning"><strong>重要：</strong>この画面で保存・登録・削除はできません。読み取りが成功しても `ENABLE_EXPERIMENTAL_WRITES` を有効にしないでください。</p>
+<p class="warning"><strong>重要：</strong>通常レシートの登録・変更・削除はできません。⑨だけが既存の試験シートへ架空の固定2件目を保存します。`ENABLE_EXPERIMENTAL_WRITES` は有効にしないでください。</p>
 </section>
 <section class="panel">
 <h2>④ 登録済み商品コードの読み取り照合</h2>
@@ -83,7 +83,7 @@ button:disabled{background:#a1aaba}.secondary{background:#eef2f8;color:#20508c}
 </section>
 <section class="panel" id="receipt-trial-read">
 <h2>⑥ 保存済みレシートの認証付き読み取り</h2>
-<p class="muted">前回GASエディタで保存できた<strong>架空のレシート1件・明細2件・合計496円</strong>を、本人のGoogleログインで読み取ります。③の読み取り成功後に使えます。保存・変更・削除は行いません。</p>
+<p class="muted">既に保存済みの<strong>架空レシート1件・2明細・496円</strong>を読み取ります。⑨を実行した後は<strong>2件・4明細（追加458円）</strong>を照合します。③の読み取り成功後に使え、⑥自体は保存・変更・削除しません。</p>
 <button type="button" id="receipt-read" disabled>保存済み試験レシートを読み取る</button>
 <p id="receipt-read-result" role="status" aria-live="polite">③の読み取り接続確認後に実行できます。</p>
 </section>
