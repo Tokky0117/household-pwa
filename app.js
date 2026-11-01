@@ -1029,40 +1029,59 @@ function liveReadErrorMessage(err){
  if(/^GAS_HTTP_[0-9]{3}$/.test(code))return '接続先がHTTP '+code.slice(9)+'を返しました';
  return '読み取りに失敗しました。接続先・認証・通信状況を確認してください';
 }
-function liveListView(){
- const groups=liveSnapshot?.item_groups||[],products=liveSnapshot?.products||[],stores=liveSnapshot?.stores||[];
- // Build the product-to-item lookup once per render. Previously every item
- // filtered every product, making large lists O(items * products).
+// Use the original daily inventory components for authenticated Sheet rows.
+function liveListResults(){
+ const groups=liveSnapshot?.item_groups||[],products=liveSnapshot?.products||[];
  const productsByItem=new Map();
- for(const product of products){
-  if(product.deleted_at)continue;
-  const id=String(product.item_group_id);
-  if(!productsByItem.has(id))productsByItem.set(id,[]);
-  productsByItem.get(id).push(product);
+ for(const p of products){
+  if(p.deleted_at)continue;
+  const k=String(p.item_group_id??'');
+  if(!productsByItem.has(k))productsByItem.set(k,[]);
+  productsByItem.get(k).push(p);
  }
+ const q=norm(query);
+ const active=i=>i.in_stock===true||String(i.in_stock).toLowerCase()==='true';
+ const matches=i=>(!q||norm(i.name).includes(q))&&(!onlyOut||!active(i));
  const canEdit=liveWritable()&&!liveWriteBusy&&livePending().status==='none';
- const allEmpty=groups.length===0&&products.length===0&&stores.length===0;
- const readFailed=liveStatus.startsWith('取得失敗：');
- const readCancelled=liveStatus==='画面切替により読み取りを中断しました';
- const label=liveBusy?'再取得中：前回取得したデータを表示しています':
-  readFailed?'再取得できませんでした：前回取得したデータを表示しています':
-  readCancelled?'再取得を中断しました：前回取得したデータを表示しています':
-  allEmpty?'取得成功：Google Sheetsに登録データはまだありません':'取得成功：Google Sheetsからデータを読み取りました';
- const readNotice=liveBusy?'再取得しています。前回のデータは引き続き確認できます。':
-  readFailed?liveStatus+'。自動再試行はしません。必要なら再読み込みしてください。':
-  readCancelled?'画面を切り替えたため前の読み取り結果は反映しません。必要なら再読み込みしてください。':'';
- const rows=CATS.map((cat,category)=>{
-  const matching=groups.filter(i=>!i.is_hidden&&Number(i.category_id)===category).sort((a,b)=>Number(a.sort_order||0)-Number(b.sort_order||0));
-  return `<section class="category"><div class="cathead"><strong>${esc(cat)}</strong><span class="count">${matching.length}点</span></div>${matching.map(i=>{
-   const linked=productsByItem.get(String(i.item_group_id))||[];
-   return `<div class="item"><div class="swipe-front"><div class="itemname" style="text-align:left"><span class="item-title">${esc(i.name)}</span><span class="list-prices">${linked.length?esc(linked.map(p=>p.name).join('、')):'登録商品なし'}</span></div><div class="item-stock-area">${i.in_stock===true||String(i.in_stock).toLowerCase()==='true'?'在庫あり':'在庫なし'}</div></div>
- <div class="row" style="gap:8px;padding:8px">
- <button type="button" class="secondary" data-act="editLive" data-live-id="${esc(i.item_group_id)}" ${canEdit?'':'disabled'}>編集</button><button type="button" class="secondary" data-act="addLiveProduct" data-live-id="${esc(i.item_group_id)}" ${canEdit?'':'disabled'}>商品を登録</button>
- <button type="button" class="secondary" data-act="stockLive" data-live-id="${esc(i.item_group_id)}" ${canEdit?'':'disabled'}>在庫切替</button>
- <button type="button" class="secondary" data-act="hideLive" data-live-id="${esc(i.item_group_id)}" ${canEdit?'':'disabled'}>非表示</button></div></div>`;
-  }).join('')||'<p class="hint">登録なし</p>'}</section>`;
- }).join('');
- return `${head('日用品','Google Sheets')}<main><div class="panel"><strong>${label}</strong>${readNotice?'<p class="hint" role="'+(readFailed?'alert':'status')+'">'+esc(readNotice)+'</p>':''}<p class="hint">カテゴリ ${liveSnapshot?.categories?.length||0} 件の読み取りを確認しました。日用品・商品・店舗はシートの登録件数を表示しています。</p>${allEmpty?'<p class="hint">この家庭の日用品・商品はまだ登録されていません。</p>':''}<p class="hint">${liveWritable()?'登録・編集・在庫変更はGoogle Sheetsに保存され、同じ家庭のアカウントで共有されます。':'読み取り専用です。Google Sheetsへの保存はまだ有効ではありません。'}</p><p class="hint">日用品 ${groups.length} 件 ／ 商品 ${products.length} 件 ／ 店舗 ${stores.length} 件</p><button class="secondary" data-act="refreshLive" ${liveBusy?'disabled':''}>${liveBusy?'再取得中…':'再読み込み'}</button><p class="hint" role="status">${esc(liveWriteStatus)}</p><button type="button" class="secondary" data-act="addLive" ${canEdit?'':'disabled'}>日用品を登録</button><button type="button" class="secondary" data-act="addLiveProduct" ${canEdit?'':'disabled'}>未分類の商品を登録</button><p class="hint">${liveWritable()?'登録・編集・在庫変更が利用できます。':'登録・編集・在庫変更・削除は実装準備中です。安全確認が終わるまで無効です。'}</p></div>${liveRecoveryView()}${liveEditForm()}${liveProductForm()}${rows}<div class="panel"><h2>店舗（読み取り専用）</h2><p class="hint">${stores.length?esc(stores.map(x=>x.canonical_name).join('、')):'登録なし'}</p></div></main>${nav()}`;
+ return CATS.map((cat,idx)=>{
+  const filtered=groups.filter(i=>!i.deleted_at&&!i.is_hidden&&Number(i.category_id)===idx)
+   .sort((a,b)=>Number(a.sort_order||0)-Number(b.sort_order||0)).filter(matches);
+  if((q||onlyOut)&&!filtered.length)return '';
+  const closed=!q&&!onlyOut&&collapsed.has(idx);
+  return `<section class="category">
+   <button class="cathead" data-cat="${idx}" aria-expanded="${!closed}" ${onlyOut?'disabled aria-disabled="true"':''}><strong>${esc(cat)}</strong><span class="count">${filtered.length}点</span><span class="cat-arrow-slot" aria-hidden="true">${onlyOut?'':chevron(closed?'down':'up')}</span></button>
+   ${closed?'':filtered.length?filtered.map(i=>{
+    const key=String(i.item_group_id),stock=active(i),linked=productsByItem.get(key)||[];
+    return `<div class="item swipe-item ${openSwipeId===key?'swipe-open':''}" data-item-id="${esc(key)}" data-category-id="${idx}">
+     <div class="swipe-actions">
+      <button type="button" class="swipe-edit" data-act="editLive" data-live-id="${esc(key)}" tabindex="${openSwipeId===key?0:-1}" ${canEdit?'':'disabled'} aria-label="${esc(i.name)}を編集">${miniIcon('pencil')}<span>編集</span></button>
+      <button type="button" class="swipe-delete" data-act="hideLive" data-live-id="${esc(key)}" tabindex="${openSwipeId===key?0:-1}" ${canEdit?'':'disabled'} aria-label="${esc(i.name)}を削除">${miniIcon('trash')}<span>削除</span></button>
+     </div>
+     <div class="swipe-front">
+      <button type="button" class="itemname" data-act="addLiveProduct" data-live-id="${esc(key)}" ${canEdit?'':'disabled'} aria-label="${esc(i.name)}の商品を登録"><span class="item-title">${esc(i.name)}</span><span class="list-prices">${linked.length?esc(linked.map(p=>p.name).join('、')):'登録商品なし'}</span></button>
+      <div class="item-stock-area"><button class="stock ${stock?'':'off'}" type="button" data-act="stockLive" data-live-id="${esc(key)}" ${canEdit?'':'disabled'} aria-label="${esc(i.name)}の在庫を切り替える" aria-pressed="${stock}"><span class="stock-pill" aria-hidden="true">${stock?'あり':'なし'}</span></button></div>
+      <span class="swipe-peek" aria-hidden="true"></span>
+     </div>
+    </div>`;
+   }).join(''):'<div class="empty">該当する日用品はありません</div>'}</section>`;
+ }).join('')||'<div class="empty">一致する日用品はありません</div>';
+}
+function liveListView(){
+ const canEdit=liveWritable()&&!liveWriteBusy&&livePending().status==='none';
+ const copy='<button type="button" class="iconbtn" data-act="copyLiveList" aria-label="在庫なしをコピー" title="在庫なしをコピー">'+miniIcon('copy')+'</button>';
+ const add='<button type="button" class="iconbtn" data-act="addLive" aria-label="日用品を追加" title="日用品を追加" '+(canEdit?'':'disabled')+'>'+miniIcon('plus')+'</button>';
+ const failed=liveStatus.startsWith('取得失敗：');
+ const status=[...(failed?[liveStatus]:[]),...(liveBusy?['再読み込み中…']:[]),...(liveWriteStatus?[liveWriteStatus]:[])];
+ const uncategorized=(liveSnapshot?.products||[]).filter(p=>!p.deleted_at&&!p.item_group_id);
+ return `${head('日用品','くらしストック',false,add,copy)}<main>
+  ${UI.searchField({id:'search',label:'日用品を検索',placeholder:'日用品を検索',value:query,extra:'autocomplete="off"'})}
+  <div class="filterrow"><label class="switchlabel"><input type="checkbox" id="onlyOut" ${onlyOut?'checked':''}>在庫なしのみ表示</label></div>
+  ${status.length?'<p class="hint" role="status">'+esc(status.join('。'))+'</p>':''}
+  ${liveRecoveryView()}${liveEditForm()}${liveProductForm()}
+  <div id="item-results">${liveListResults()}</div>${listHelpView()}
+  ${uncategorized.length?'<p class="hint">未分類の商品：'+esc(uncategorized.map(p=>p.name).join('、'))+'</p>':''}
+  <div class="record-entry-actions"><button type="button" class="secondary" data-act="refreshLive" ${liveBusy?'disabled':''}>再読み込み</button><button type="button" class="secondary" data-act="addLiveProduct" ${canEdit?'':'disabled'}>商品を登録</button></div>
+  </main>${nav()}`;
 }
 async function refreshLive(){
  if(liveBusy||liveWriteBusy)return;
@@ -1580,7 +1599,7 @@ function commitItem(name,category){
 }
 // 入力欄自体は再作成しない。日本語IMEの変換中もフォーカスと入力状態を維持する。
 let composing=false;
-function updateSearchResults(){const target=document.getElementById('item-results');if(target)target.innerHTML=listResults()}
+function updateSearchResults(){const target=document.getElementById('item-results');if(target)target.innerHTML=liveMode?liveListResults():listResults()}
 const searchBindings={search:{set:v=>{query=v},update:updateSearchResults},'catalogue-search':{set:v=>{pickQuery=v},update:()=>{const target=document.getElementById('catalogue-results');if(target)target.innerHTML=pickerResults()}}};
 function syncSearch(input,refresh=true){const binding=searchBindings[input.id];if(!binding)return;binding.set(input.value);input.closest('.ui-search')?.querySelector('.clear-search')?.toggleAttribute('hidden',!input.value);if(refresh)binding.update()}
 app.addEventListener('compositionstart',e=>{if(searchBindings[e.target.id])composing=true});
@@ -1655,6 +1674,18 @@ if(el.dataset.uiChoice!==undefined){
 if(el.dataset.listEdit){duplicateItemId=null;selected=el.dataset.listEdit;editReturnPage='list';openSwipeId=null;page='edit';render();return}if(el.dataset.listHide){selected=el.dataset.listHide;setOpenSwipe(null);dialog={title:'日用品を削除',message:'日用品リストから削除します。',buttons:[{id:'cancel',label:'キャンセル'},{id:'confirmHide',label:'削除',critical:true}]};render();return}
 if(el.dataset.act==='retryLive'){retryLive();return}
 if(el.dataset.act==='addLive'){openLiveEditor(null);return}
+ if(el.dataset.act==='copyLiveList'){
+  const contents=CATS.map((cat,i)=>{
+   const rows=(liveSnapshot?.item_groups||[]).filter(x=>
+    Number(x.category_id)===i&&!x.deleted_at&&!x.is_hidden&&
+    !(x.in_stock===true||String(x.in_stock).toLowerCase()==='true'));
+   return rows.length?cat+'\\n'+rows.map(x=>'- '+x.name).join('\\n'):'';
+  }).filter(Boolean).join('\\n\\n');
+  if(!contents){say('在庫なしの日用品はありません');return}
+  if(!navigator.clipboard?.writeText){say('コピーできませんでした');return}
+  navigator.clipboard.writeText(contents).then(()=>say('在庫なしをコピーしました')).catch(()=>say('コピーできませんでした'));
+  return;
+ }
 if(el.dataset.act==='addLiveProduct'){openLiveProductEditor(el.dataset.liveId||null);return}
 if(el.dataset.act==='cancelLiveProduct'){liveProductEditor=null;render();return}
 if(el.dataset.act==='saveLiveProduct'){
