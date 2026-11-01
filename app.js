@@ -142,7 +142,12 @@ async function loadReceiptCatalog(){
 }
 async function saveConfirmedReceiptToSheets(approvals){
  if(!receiptRemoteWritable()||receiptSaveBusy)return;
- const existing=window.KurashiReceiptJournal?.read?.();
+ let existing;
+ try{existing=window.KurashiReceiptJournal?.read?.()}
+ catch{
+  receiptScan.status='端末の保存操作記録を確認できません。新規保存を停止します。';
+  render();return;
+ }
  if(existing){
   receiptScan.status='結果不明の保存操作があります。同じ操作を再送して確認してください。';
   render();return;
@@ -370,6 +375,7 @@ async function retryReceiptSave(){
   await window.KurashiReceiptSaveSession.retry({subject:previous,householdId:hid});
   if(window.KurashiAuth?.status?.()?.subject!==previous)return;
   receiptRecoveryNotice='同じレシートの保存完了を確認しました';
+  discardReceiptScan();
   if(tab==='receipt'&&page==='list')await refreshRemoteReceipts();
  }catch{
   if(window.KurashiAuth?.status?.()?.subject===previous)
@@ -1089,7 +1095,7 @@ function receiptScanReview(){
  <p class="hint" id="receipt-scan-progress" role="status">${esc(scan.status)}</p>
  <p class="hint">${chat?
   'ChatGPTの候補は自動確定しません。商品名・数量・金額・チェーン・日付をレシート原本と確認してください。':
-  'OCRの候補は自動確定しません。レシート原本と照合して、不要な候補を除外してください。'}チェーンが一覧になければ試作保存しないでください。</p>
+  'OCRの候補は自動確定しません。レシート原本と照合して、不要な候補を除外してください。'}チェーンが一覧になければ保存しないでください。</p>
  ${chat&&scan.taxBasis!=='included'?'<p class="sample-price-notice">重要：税別・税区分不明のため、各商品の税込明細合計は空欄です。原本と税計算を確認して入力してください。税別金額をそのまま税込として保存しないでください。</p>':''}
  ${scan.store?'<p class="hint">店舗名候補：'+esc(scan.store)+'（チェーンは必ず選択してください）</p>':''}
  ${receiptPhotoUrl?'<img class="receipt-scan-photo" alt="選択したレシート写真（端末内のみ）" src="'+esc(receiptPhotoUrl)+'">':''}
