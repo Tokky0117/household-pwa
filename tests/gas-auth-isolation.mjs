@@ -116,49 +116,6 @@ assert.equal(catalog.data.products[0].name,'A product');
 assert.equal(catalog.data.product_aliases.some(a=>a.normalized_alias==='wrong chain'),false);
 assert.ok((readsByTable.product_aliases||0)>=1,'Aliases fetched only on explicit catalog request');
 
-// Completed-only record listing through the actual authenticated POST route.
-// Parent rows without a completed operation journal must remain invisible.
-books.records=[['record_id','household_id','record_type','chain_id','branch_name',
- 'raw_store_name','record_date','created_at','updated_at','version','deleted_at'],
- ['receipt-a','h-a','receipt','s-a','','A chain','2026-10-14','','',1,''],
- ['receipt-b','h-b','receipt','s-b','','B chain','2026-10-15','','',1,''],
- ['incomplete-a','h-a','receipt','s-a','','A chain','2026-10-16','','',1,'']];
-books.record_items=[['record_item_id','record_id','line_order','raw_name','product_id',
- 'quantity','amount_tax_included','category_id','price_eligible','created_at',
- 'updated_at','version','deleted_at'],
- ['line-a','receipt-a',1,'牛乳','p-a',1,198,0,false,'','',1,''],
- ['line-b','receipt-b',1,'卵','p-b',1,300,0,false,'','',1,''],
- ['incomplete-line','incomplete-a',1,'未完了','p-a',1,999,0,false,'','',1,'']];
-const done=(id,recordId,sub,idLine,seq)=>[
- sub,id,'fakehash',JSON.stringify({status:'completed',action:'record.create',
- entity:{record_id:recordId,household_id:sub,record_type:'receipt',
- chain_id:sub==='h-a'?'s-a':'s-b',branch_name:null,
- raw_store_name:sub==='h-a'?'A chain':'B chain',
- record_date:sub==='h-a'?'2026-10-14':'2026-10-15',
- created_at:null,updated_at:null,version:1,deleted_at:null},
- item_ids:[idLine],sequence_no:seq}),''];
-books.processed_operations=[
- ['household_id','operation_id','request_hash','result','processed_at'],
- done('record-op-A','receipt-a','h-a','line-a',2),
- done('record-op-B','receipt-b','h-b','line-b',5),
- ['h-a','record-op-pending','fakehash',JSON.stringify({status:'prepared'}),'']];
-books.change_log.push(
- ['record-op-A',2,'h-a','records','receipt-a','record.create',''],
- ['record-op-B',5,'h-b','records','receipt-b','record.create','']);
-out=request('record.list');assert.equal(out.ok,true);
-assert.deepEqual(Array.from(out.data.records,r=>r.record_id),['receipt-a']);
-assert.deepEqual(Array.from(out.data.record_items,r=>r.record_item_id),['line-a']);
-assert.equal(request('record.list',{household_id:'h-b'}).error.code,'BAD_REQUEST');
-assert.equal(request('record.create',{}).error.code,'RECEIPT_WRITES_DISABLED');
-claims.sub='subject-b';
-out=request('record.list');assert.equal(out.ok,true);
-assert.deepEqual(Array.from(out.data.records,r=>r.record_id),['receipt-b']);
-assert.deepEqual(Array.from(out.data.record_items,r=>r.record_item_id),['line-b']);
-claims.sub='subject-a';
-const beforeRecordWrites=writeCalls;
-assert.equal(request('record.list').data.record_items.length,1);
-assert.equal(writeCalls,beforeRecordWrites);
-
 const beforeSyncReads=readsByTable.change_log||0;
 const beforeFirstSyncOpen=spreadsheetOpens;
 out=request('sync',{after_sequence:0});assert.equal(out.ok,true);
@@ -243,6 +200,49 @@ assert.equal(out.data.sequence_no,8);
 shape=readShapes.slice(start).filter(x=>x.name==='change_log');
 assert.equal(shape.some(x=>x.type==='full'),false,'Large bootstrap should not read full change history');
 assert.ok(shape.some(x=>x.type==='range'&&x.width===3&&x.height>1));
+// Completed-only record listing through the actual authenticated POST route.
+// Parent rows without a completed operation journal must remain invisible.
+books.records=[['record_id','household_id','record_type','chain_id','branch_name',
+ 'raw_store_name','record_date','created_at','updated_at','version','deleted_at'],
+ ['receipt-a','h-a','receipt','s-a','','A chain','2026-10-14','','',1,''],
+ ['receipt-b','h-b','receipt','s-b','','B chain','2026-10-15','','',1,''],
+ ['incomplete-a','h-a','receipt','s-a','','A chain','2026-10-16','','',1,'']];
+books.record_items=[['record_item_id','record_id','line_order','raw_name','product_id',
+ 'quantity','amount_tax_included','category_id','price_eligible','created_at',
+ 'updated_at','version','deleted_at'],
+ ['line-a','receipt-a',1,'牛乳','p-a',1,198,0,false,'','',1,''],
+ ['line-b','receipt-b',1,'卵','p-b',1,300,0,false,'','',1,''],
+ ['incomplete-line','incomplete-a',1,'未完了','p-a',1,999,0,false,'','',1,'']];
+const done=(id,recordId,sub,idLine,seq)=>[
+ sub,id,'fakehash',JSON.stringify({status:'completed',action:'record.create',
+ entity:{record_id:recordId,household_id:sub,record_type:'receipt',
+ chain_id:sub==='h-a'?'s-a':'s-b',branch_name:null,
+ raw_store_name:sub==='h-a'?'A chain':'B chain',
+ record_date:sub==='h-a'?'2026-10-14':'2026-10-15',
+ created_at:null,updated_at:null,version:1,deleted_at:null},
+ item_ids:[idLine],sequence_no:seq}),''];
+books.processed_operations=[
+ ['household_id','operation_id','request_hash','result','processed_at'],
+ done('record-op-A','receipt-a','h-a','line-a',9),
+ done('record-op-B','receipt-b','h-b','line-b',99),
+ ['h-a','record-op-pending','fakehash',JSON.stringify({status:'prepared'}),'']];
+books.change_log.push(
+ ['record-op-A',9,'h-a','records','receipt-a','record.create',''],
+ ['record-op-B',99,'h-b','records','receipt-b','record.create','']);
+out=request('record.list');assert.equal(out.ok,true);
+assert.deepEqual(Array.from(out.data.records,r=>r.record_id),['receipt-a']);
+assert.deepEqual(Array.from(out.data.record_items,r=>r.record_item_id),['line-a']);
+assert.equal(request('record.list',{household_id:'h-b'}).error.code,'BAD_REQUEST');
+assert.equal(request('record.create',{}).error.code,'RECEIPT_WRITES_DISABLED');
+claims.sub='subject-b';
+out=request('record.list');assert.equal(out.ok,true);
+assert.deepEqual(Array.from(out.data.records,r=>r.record_id),['receipt-b']);
+assert.deepEqual(Array.from(out.data.record_items,r=>r.record_item_id),['line-b']);
+claims.sub='subject-a';
+const beforeRecordWrites=writeCalls;
+assert.equal(request('record.list').data.record_items.length,1);
+assert.equal(writeCalls,beforeRecordWrites);
+
 // Colliding Google subject/household identifiers must fail closed. Only the
 // originally selected household's rows would otherwise be returned.
 books.products.push(['p-a','h-b','i-b','ID-collision','','','',1,1,'','','']);
