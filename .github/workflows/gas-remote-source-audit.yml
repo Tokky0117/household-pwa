@@ -1,5 +1,5 @@
 name: Read-only audit of existing test GAS source
-# Independent read-only verification AFTER isolated multi-receipt GAS source sync; no Sheet writes.
+# Independent read-only verification AFTER ordinary receipt API source sync; no Sheet writes.
 on:
   push:
     branches: [stage-a-ui-handoff-review]
@@ -128,10 +128,14 @@ jobs:
             remoteMatchesPrevious?'IMMEDIATE_PRE_REPLAY_SOURCE':
             remoteMatchesBefore?'KNOWN_OLDER_BASELINE':
             'REMOTE_SOURCE_DRIFT_REVIEW_REQUIRED';
-          const localReplayRoute=local.includes("if(action==='record.trial.replay')")&&
-            local.includes("if(action==='record.create')fail('RECEIPT_WRITES_DISABLED'")&&
+          const localReceiptGate=local.includes("if(action==='record.create'){")&&
+            local.includes("assertPrototypeReceiptIdentity_(book,user);")&&
+            local.includes("function approvedPrototypeAliasSheet_(){")&&
             local.includes("function receiptTrialGuard_(book)");
-          if(!localReplayRoute)throw Error('LOCAL_RECEIPT_REPLAY_SAFETY_MISSING');
+          if(!localReceiptGate)throw Error('LOCAL_RECEIPT_PROTOTYPE_GATE_MISSING');
+          if(!remoteMatchesCurrent)throw Error('REMOTE_SOURCE_NOT_SYNCED');
+          if(!manifestMatches||sha(remoteManifest)!=='0952d47f73508eb256f1cf50f0368fe77434f8c05ea0d6defc7cf9b4e227e935')
+            throw Error('REMOTE_MANIFEST_CHANGED');
           const report=[
             'READ_ONLY_GAS_AUDIT: Test GAS source retrieved without modifying project or Sheets.',
             'Remote scripts: '+remoteFiles.length,
@@ -142,7 +146,7 @@ jobs:
               sha(remoteManifest)==='0952d47f73508eb256f1cf50f0368fe77434f8c05ea0d6defc7cf9b4e227e935'),
             'Receipt replay source update readiness: '+remoteReadiness,
             'Remote replay route currently present: '+remote.includes("if(action==='record.trial.replay')"),
-            'Local production record.create rejection remains enabled: true',
+            'Ordinary receipt API restricted to pinned existing test Sheet: true',
             'Remote source SHA256: '+crypto.createHash('sha256').update(remote).digest('hex'),
             'Remote manifest SHA256: '+crypto.createHash('sha256').update(remoteManifest).digest('hex'),
             'Manifest JSON identical: '+manifestMatches,
