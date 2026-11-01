@@ -76,6 +76,7 @@ let previewRecords=loadPreviewRecords();
 // OCR is a review draft, not a saved receipt. All pixels and OCR guesses remain in memory.
 let receiptScan=null,receiptScanBusy=false,receiptScanEpoch=0,receiptPhotoUrl=null;
 let receiptChatGptText='',receiptChatGptNotice='';
+let receiptStoreBusy=false,receiptStoreNotice='',receiptStoreNameDraft='';
 
 // The same review form can target the authenticated family only when BOTH
 // client and GAS write releases are approved. Preview stays browser-local.
@@ -141,7 +142,7 @@ async function loadReceiptCatalog(){
  }
 }
 async function saveConfirmedReceiptToSheets(approvals){
- if(!receiptRemoteWritable()||receiptSaveBusy)return;
+ if(!receiptRemoteWritable()||receiptSaveBusy||receiptStoreBusy)return;
  let existing;
  try{existing=window.KurashiReceiptJournal?.read?.()}
  catch{
@@ -199,6 +200,105 @@ async function saveConfirmedReceiptToSheets(approvals){
  }finally{receiptSaveBusy=false;render()}
 }
 
+
+
+function receiptStorePendingView(){
+ if(window.KURASHI_RECEIPT_TEST_MODE===true)return '';
+ let entry;
+ try{entry=window.KurashiLiveJournal?.read?.()}catch{
+  return '<section class="panel"><p class="ui-field-notice">保存操作記録を確認できません。新規保存を停止しています。</p></section>';
+ }
+ if(!entry)return '';
+ if(entry.action!=='store.create')return '<section class="panel"><p class="hint">別の保存操作が未完了です。元の画面で確認してください。</p></section>';
+ const auth=window.KurashiAuth?.status?.(),hid=currentReceiptCatalog()?.household_id;
+ const same=auth?.signedIn&&entry.subject===auth.subject&&entry.householdId===hid;
+ return '<section class="panel"><h2>未完了のチェーン登録</h2>'+
+  '<p class="hint">新規登録を繰り返さず、同じ操作IDで結果を確認してください。</p>'+
+  (same?'<p class="hint">対象：'+esc(entry.payload.name)+'</p>':
+    '<p class="hint">登録時の家庭とGoogleアカウントでログインしてください。</p>')+
+  '<button type="button" class="secondary" data-act="retryReceiptStore"'+
+   (same&&receiptRemoteWritable()&&!receiptStoreBusy?'':' disabled')+
+  '>同じチェーン登録を確認・再送</button></section>';
+}
+async function saveReceiptStore(retry=false){
+ if(receiptStoreBusy||receiptSaveBusy||!receiptRemoteWritable())return;
+ const catalog=currentReceiptCatalog(),auth=window.KurashiAuth?.status?.();
+ if(!catalog||!auth?.signedIn||!navigator.locks?.request)return;
+ if(!retry){
+  receiptScanFormValues();
+  receiptStoreNameDraft=String(document.getElementById('receipt-new-store-name')?.value||'')
+   .normalize('NFKC').trim();
+  if(!receiptStoreNameDraft||receiptStoreNameDraft.length>80||
+     /[\x00-\x1f\x7f<>]/.test(receiptStoreNameDraft)||
+     /^[=+@\-]/.test(receiptStoreNameDraft)){
+   receiptStoreNotice='店舗名を確認してください。';render();return;
+  }
+  const matches=catalog.stores.filter(x=>norm(x.canonical_name)===norm(receiptStoreNameDraft));
+  if(matches.length>1){
+   receiptStoreNotice='同名の店舗が複数あります。登録を停止しました。';render();return;
+  }
+  if(matches.length===1){
+   if(receiptScan){receiptScan.chainId=matches[0].chain_id;receiptScan.store=matches[0].canonical_name;}
+   receiptStoreNotice='既存のチェーンを選択しました。';render();return;
+  }
+ }
+ receiptStoreBusy=true;receiptStoreNotice='チェーンを登録しています';render();
+ try{
+  await navigator.locks.request('kurashi-live-items-write-v1',
+   {mode:'exclusive',ifAvailable:true},async lock=>{
+    if(!lock){receiptStoreNotice='別のタブが保存中です。';return}
+    const journal=window.KurashiLiveJournal;
+    const pending=journal.forAccount(auth.subject,catalog.household_id);
+    if(retry&&(pending.status!=='pending'||pending.entry.action!=='store.create')){
+     receiptStoreNotice='再確認できるチェーン登録がありません。';return;
+    }
+    if(!retry&&pending.status!=='none'){
+     receiptStoreNotice='未完了の保存操作があります。先に確認してください。';return;
+    }
+    const entry=retry?pending.entry:journal.prepare({
+     subject:auth.subject,householdId:catalog.household_id,
+     action:'store.create',payload:{name:receiptStoreNameDraft},operationId:id()
+    });
+    const epoch=receiptCatalogEpoch;
+    let accepted=false;
+    try{
+     const result=await window.KurashiGasApi.request('store.create',entry.payload,
+      {operationId:entry.operationId});
+     if(!result||result.status!=='completed'||result.action!=='store.create'||
+        result.entity?.household_id!==entry.householdId||
+        result.entity?.canonical_name!==entry.payload.name||
+        typeof result.entity?.chain_id!=='string'||!result.entity.chain_id||
+        !Number.isSafeInteger(result.sequence_no)||result.sequence_no<1)
+      throw Error('STORE_SAVE_ACK_INVALID');
+     journal.complete(entry.operationId);accepted=true;
+     if(window.KurashiAuth?.status?.()?.subject!==entry.subject||
+        epoch!==receiptCatalogEpoch||tab!=='receipt'||page!=='list')return;
+     const next=await window.KurashiGasApi.request('bootstrap',{});
+     if(window.KurashiAuth?.status?.()?.subject!==entry.subject||
+        epoch!==receiptCatalogEpoch||tab!=='receipt'||page!=='list')return;
+     if(!validateLiveSnapshot(next)||next.household_id!==entry.householdId||
+       next.stores.filter(x=>x.chain_id===result.entity.chain_id&&
+        x.household_id===entry.householdId&&
+        x.canonical_name===entry.payload.name).length!==1)
+      throw Error('STORE_CATALOG_INVALID');
+     receiptRemoteCatalog=next;
+     if(receiptScan){receiptScan.chainId=result.entity.chain_id;receiptScan.store=entry.payload.name;}
+     receiptStoreNameDraft='';receiptStoreNotice='チェーンを登録しました。明細を確認して保存できます。';
+    }catch{
+     if(!accepted){
+      try{journal.markUncertain(entry.operationId)}
+      catch{receiptStoreNotice='操作記録を更新できません。新規保存しないでください。';return}
+      receiptStoreNotice='登録結果が不明です。同じチェーン登録を確認・再送してください。';
+     }else{
+      invalidateReceiptCatalog();
+      receiptStoreNotice='店舗は保存済みですが一覧を取得できません。「店舗・商品を再取得」で確認してください。';
+     }
+    }
+   });
+ }catch{
+  receiptStoreNotice='操作を開始できません。未完了の登録がないか確認してください。';
+ }finally{receiptStoreBusy=false;render()}
+}
 
 let householdCheck=null,householdCheckSubject=null,householdCheckStatus='未確認',
  householdCheckBusy=false,householdCheckEpoch=0;
@@ -437,6 +537,7 @@ function readChatGptReceiptIntoPreview(){
     category:'',productId:''
    }))
   };
+  receiptStoreNameDraft=receiptScan.store||'';
   receiptChatGptText='';receiptChatGptNotice='';
   render();return true;
  }catch(error){
@@ -451,6 +552,7 @@ function readChatGptReceiptIntoPreview(){
 }
 
 function discardReceiptScan(){
+ receiptStoreNameDraft='';receiptStoreNotice='';
  ++receiptScanEpoch;
  receiptScanBusy=false;receiptScan=null;
  if(receiptPhotoUrl){window.URL?.revokeObjectURL?.(receiptPhotoUrl);receiptPhotoUrl=null;}
@@ -1107,6 +1209,8 @@ function receiptScanReview(){
  <pre>${esc(scan.rawPreview||'文字を認識できませんでした。写真を切り抜く・明るく撮り直すと改善する場合があります。')}</pre></details>`:''}
  ${!receiptScanBusy?`<form id="receiptScanForm">
  ${UI.formField({id:'scan-chain',name:'chain',label:'チェーン（確認必須）',control:'select',value:scan.chainId,options})}
+ ${receiptRemoteWritable()?'<details class="receipt-store-register"><summary>チェーンが一覧にない場合は登録</summary><label class="formlabel" for="receipt-new-store-name">新しいチェーン名</label><input id="receipt-new-store-name" type="text" maxlength="80" autocomplete="off" value="'+esc(receiptStoreNameDraft||scan.store||'')+'"><button type="button" class="secondary" data-act="saveReceiptStore"'+(receiptStoreBusy||receiptSaveBusy?' disabled':'')+'>チェーンを登録</button><p class="hint">家庭の店舗一覧に追加します。レシート自体は保存しません。</p></details>':''}
+ ${receiptStoreNotice?'<p class="hint" role="status">'+esc(receiptStoreNotice)+'</p>':''}
  ${UI.formField({id:'scan-date',name:'date',label:'購入日（確認必須）',type:'date',value:scan.date,required:true})}
  ${total!==null?`<p class="hint" role="status"><strong>支払合計のOCR候補：${yen(total)}</strong> ／ 抽出した明細候補の合計：${amountsReady?yen(initialSum):'未確定'}。税込・税抜や値引きが別計上される場合、明細と合計は一致しません。</p>`:''}
  ${items}
@@ -1114,7 +1218,7 @@ function receiptScanReview(){
  ${chat&&scan.taxBasis!=='included'?'<label class="receipt-scan-confirm"><input type="checkbox" name="taxResolved" value="yes" required><span>各明細の税込金額を原本・税額と照合して入力しました</span></label>':''}
  <label class="receipt-scan-confirm"><input type="checkbox" name="confirmed" value="yes" required><span>レシート原本と明細・購入日・チェーン・金額を確認しました</span></label>
  ${total!==null?'<label class="receipt-scan-confirm"><input type="checkbox" name="totalsChecked" value="yes" required><span>支払合計と、税・値引きを含む明細金額の差を確認しました</span></label>':''}
- <button type="submit" class="primary receipt-scan-save" ${scan.items.length&&(!receiptRemoteWritable()||currentReceiptCatalog())&&!receiptSaveBusy?'':'disabled'}>確認した${scan.items.length}明細を${receiptRemoteWritable()?'Google Sheetsに保存':'このSafariに試作保存'}</button>
+ <button type="submit" class="primary receipt-scan-save" ${scan.items.length&&(!receiptRemoteWritable()||currentReceiptCatalog())&&!receiptSaveBusy&&!receiptStoreBusy?'':'disabled'}>確認した${scan.items.length}明細を${receiptRemoteWritable()?'Google Sheetsに保存':'このSafariに試作保存'}</button>
  <p class="sample-price-notice">${receiptRemoteWritable()?'保存先：認証済みの家庭のGoogle Sheets。'+esc(receiptCatalogStatus)+'。金額・税・数量を原本で確認してください。':'保存先：このSafariのWebサイトデータのみ。Google Sheetsには保存しません。OCR誤読、合計金額、税・割引、数量を必ず確認してください。'}</p></form>`:''}
  <button type="button" class="secondary" data-act="discardReceiptScan">確認を終了して下書きを破棄</button>
  </section>`;
@@ -1139,7 +1243,7 @@ function receiptView(){
  <button type="button" class="primary" data-act="importChatGptReceipt">貼り付けた明細を確認</button>
  ${receiptChatGptNotice?'<p class="ui-field-notice" role="status">'+esc(receiptChatGptNotice)+'</p>':''}
  <p class="sample-price-notice">${receiptRemoteWritable()?'確認したレシートを家庭のGoogle Sheetsに保存できます。':'現在はこのSafariの試作記録だけです。Google Sheetsには未保存です。'}ChatGPT出力に会員・決済情報を含めないでください。</p>
- </section>${receiptScanReview()}${receiptPendingView()}${remoteReceiptView()}<div class="record-entry-actions"><button class="secondary" data-act="newReceipt">${miniIcon('plus')}<span>レシート明細</span></button><button class="secondary" data-act="newShelf">${miniIcon('plus')}<span>値札</span></button></div><h2 class="sectiontitle">このSafari内の試作記録（Google Sheetsには未保存）</h2><p class="hint">保存した記録はこのブラウザのWebサイトデータにあります。Google Sheets・Google Drive・ファイルアプリには保存されません。ブラウザデータを消すと記録も失われます。</p>${rows}</main>${nav()}`;
+ </section>${receiptScanReview()}${receiptStorePendingView()}${receiptPendingView()}${remoteReceiptView()}<div class="record-entry-actions"><button class="secondary" data-act="newReceipt">${miniIcon('plus')}<span>レシート明細</span></button><button class="secondary" data-act="newShelf">${miniIcon('plus')}<span>値札</span></button></div><h2 class="sectiontitle">このSafari内の試作記録（Google Sheetsには未保存）</h2><p class="hint">保存した記録はこのブラウザのWebサイトデータにあります。Google Sheets・Google Drive・ファイルアプリには保存されません。ブラウザデータを消すと記録も失われます。</p>${rows}</main>${nav()}`;
 }
 function budgetView(){
  const {total,byCategory}=budgetTotals(allPreviewRecords(),allPreviewItems(),budgetMonth);
@@ -1371,7 +1475,7 @@ const searchBindings={search:{set:v=>{query=v},update:updateSearchResults},'cata
 function syncSearch(input,refresh=true){const binding=searchBindings[input.id];if(!binding)return;binding.set(input.value);input.closest('.ui-search')?.querySelector('.clear-search')?.toggleAttribute('hidden',!input.value);if(refresh)binding.update()}
 app.addEventListener('compositionstart',e=>{if(searchBindings[e.target.id])composing=true});
 app.addEventListener('compositionend',e=>{if(searchBindings[e.target.id]){composing=false;syncSearch(e.target)}});
-app.addEventListener('input',e=>{if(e.target.id==='receipt-chatgpt-json')receiptChatGptText=String(e.target.value||'').slice(0,30000);if(searchBindings[e.target.id])syncSearch(e.target,!composing&&!e.isComposing);if(e.target.id==='name'&&duplicateItemId){duplicateItemId=null;document.getElementById('item-duplicate-notice')?.replaceChildren()}if(e.target.id==='compare-quantity'){const raw=e.target.value.trim().replace(',','.');compareQuantity=raw!==''&&Number.isFinite(Number(raw))&&Number(raw)>0?Number(raw):null;updateComparisonPrices()}});
+app.addEventListener('input',e=>{if(e.target.id==='receipt-chatgpt-json')receiptChatGptText=String(e.target.value||'').slice(0,30000);if(e.target.id==='receipt-new-store-name')receiptStoreNameDraft=String(e.target.value||'').slice(0,80);if(searchBindings[e.target.id])syncSearch(e.target,!composing&&!e.isComposing);if(e.target.id==='name'&&duplicateItemId){duplicateItemId=null;document.getElementById('item-duplicate-notice')?.replaceChildren()}if(e.target.id==='compare-quantity'){const raw=e.target.value.trim().replace(',','.');compareQuantity=raw!==''&&Number.isFinite(Number(raw))&&Number(raw)>0?Number(raw):null;updateComparisonPrices()}});
 function updateComparisonPrices(){
  const main=document.querySelector('.comparison-list');
  if(main&&page==='compare'){
@@ -1571,6 +1675,8 @@ if(action==='copyChatGptPrompt'){
 if(action==='scanReceiptCamera'||action==='scanReceiptPhoto'){
  document.getElementById(action==='scanReceiptCamera'?'receipt-camera':'receipt-photo')?.click();return;
 }
+if(action==='saveReceiptStore'){saveReceiptStore();return}
+if(action==='retryReceiptStore'){saveReceiptStore(true);return}
 if(action==='discardReceiptScan'){discardReceiptScan();render();return}
 if(action==='addReceiptScanItem'){
  if(!receiptScan||receiptScanBusy||receiptScan.items.length>=30)return;
