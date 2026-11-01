@@ -3,6 +3,7 @@ import {readFileSync} from 'node:fs';
 import vm from 'node:vm';
 const html=readFileSync(new URL('../gas-trial-connection.html',import.meta.url),'utf8');
 const api=readFileSync(new URL('../gas-api.js',import.meta.url),'utf8');
+const receiptContract=readFileSync(new URL('../receipt-save-contract.js',import.meta.url),'utf8');
 const workflow=readFileSync(new URL('../.github/workflows/pages-previews.yml',import.meta.url),'utf8');
 assert.match(workflow,/gas-trial-connection\.html/);
 assert.match(html,/id="trial-url"/);
@@ -27,6 +28,9 @@ assert.match(html,/id="catalog-result"/);
 assert.match(html,/id="catalog-detail"/);
 assert.match(html,/id="receipt-read"/);
 assert.match(html,/id="receipt-replay"/);
+assert.match(html,/id="receipt-candidate-check"/);
+assert.match(html,/receipt-save-contract\\.js/);
+assert.ok(html.includes("KurashiGasApi.request('record.trial.preflight',payload)"));
 assert.ok(html.includes("KurashiGasApi.request('record.trial.replay',{}"));
 assert.match(html,/KurashiGasApi\.request\('record\.list',\{\}\)/);
 assert.match(html,/id="ocr-review"/);
@@ -83,6 +87,14 @@ const apiMock={
    products:[{product_id:'p-test',household_id:'trial',name:'試験用・商品コード'}],
    stores:[{chain_id:'c-test',household_id:'trial',canonical_name:'[KURASHI_ALIAS_TRIAL_ONLY]'}]
   };
+  if(action==='record.trial.preflight'){
+   assert.equal(payload.version,'receipt-create-1');
+   assert.equal(payload.items.length,2);
+   assert.equal(payload.chain_id,'c-test');
+   return {version:payload.version,item_count:payload.items.length,
+    total_tax_included:payload.items.reduce((n,item)=>n+item.amount_tax_included,0),
+    trial_ready:true,write_enabled:false};
+  }
   if(action==='record.trial.replay'){
    assert.equal(options.confirmedTrialReplay,true);
    assert.equal(Object.keys(payload).length,0);
@@ -139,6 +151,12 @@ const ctx=vm.createContext({
  fetch:async (endpoint,options)=>{getCalls.push({endpoint,options});return getFetcher(endpoint,options)}
 });
 vm.runInContext(inline,ctx);
+vm.runInContext(receiptContract,ctx);
+for(const [id,value] of Object.entries({
+ 'candidate-date':'2026-11-01','candidate-name-a':'試験用・野菜',
+ 'candidate-quantity-a':'1','candidate-amount-a':'128',
+ 'candidate-name-b':'試験用・日用品',
+ 'candidate-quantity-b':'2','candidate-amount-b':'330'}))node(id).value=value;
 node('trial-url').value='https://script.google.com/macros/s/ISOLATED_ONLY/exec';
 node('trial-url').listeners.input();
 assert.equal(node('probe-get').disabled,true,'Unverified endpoint must never allow a request');
@@ -192,6 +210,22 @@ assert.equal(node('receipt-replay').disabled,false);
 await node('receipt-replay').listeners.click();
 assert.match(node('receipt-replay-result').textContent,/新規レシートなし/);
 assert.deepEqual(postCalls.slice(-2),['record.list','record.trial.replay']);
+assert.equal(node('receipt-candidate-check').disabled,false);
+await node('receipt-candidate-check').listeners.click();
+assert.match(node('receipt-candidate-result').textContent,/2明細・税込合計458円の保存前検査に合格/);
+assert.equal(postCalls.at(-1),'record.trial.preflight');
+assert.equal(Object.prototype.hasOwnProperty.call(postPayloads.at(-1).payload,'operation_id'),false);
+const beforeMalformed=postCalls.length;
+node('candidate-quantity-a').value='';
+await node('receipt-candidate-check').listeners.click();
+assert.match(node('receipt-candidate-result').textContent,/送信していません/);
+assert.equal(postCalls.length,beforeMalformed);
+node('candidate-quantity-a').value='1';
+node('candidate-name-a').value='=IMPORTXML(1)';
+await node('receipt-candidate-check').listeners.click();
+assert.match(node('receipt-candidate-result').textContent,/送信していません/);
+assert.equal(postCalls.length,beforeMalformed);
+node('candidate-name-a').value='試験用・野菜';
 
 assert.equal(ctx.window.KurashiTrialCatalogGate.ready(),false,
  'The OCR review may not fetch catalog until the explicit alias check also succeeds');
@@ -211,6 +245,7 @@ assert.equal(node('counts').textContent,'');
 // Re-verify bootstrap after URL changes before catalog actions are allowed.
 assert.equal(node('catalog-check').disabled,true);
 assert.equal(node('receipt-replay').disabled,true);
+assert.equal(node('receipt-candidate-check').disabled,true);
 node('confirm-trial-target').checked=true;
 node('confirm-trial-target').listeners.change();
 await node('check').listeners.click();
@@ -259,7 +294,7 @@ assert.equal(aliasCalls[1].payload.product_code,'00099999');
 assert.equal(aliasCalls[0].payload.operation_id,undefined);
 assert.equal(postCalls.filter(x=>x==='product.catalog').length,2,
  'Each newly confirmed URL performs its own fixture check');
-assert.ok(postCalls.every(a=>['bootstrap','product.catalog','product.alias.check','record.list','record.trial.replay'].includes(a)),
+assert.ok(postCalls.every(a=>['bootstrap','product.catalog','product.alias.check','record.list','record.trial.replay','record.trial.preflight'].includes(a)),
  'The diagnostic must never call a mutation');
 
 // A malformed or foreign catalog must stop before the alias-check request.
