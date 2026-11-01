@@ -3,6 +3,8 @@ import {readFileSync} from 'node:fs';
 import vm from 'node:vm';
 const api=readFileSync(new URL('../gas-api.js',import.meta.url),'utf8');
 const appSrc=readFileSync(new URL('../app.js',import.meta.url),'utf8');
+const gasServer=readFileSync(new URL('../gas/Code.gs',import.meta.url),'utf8');
+assert.match(gasServer,/if\(action==='record\.create'\)fail\('RECEIPT_WRITES_DISABLED'/);
 const base={household_id:'test',categories:['飲食','キッチン','洗面・風呂','洗濯・掃除','その他'].map(name=>({name})),item_groups:[],products:[],stores:[]};
 let sent=0,usedAction='';
 const win={
@@ -16,7 +18,10 @@ win.KurashiGasApi.configure('https://script.google.com/macros/s/TESTONLY123/exec
 assert.equal(win.KurashiGasApi.writeEnabled(),false);
 await assert.rejects(win.KurashiGasApi.request('item.create',{name:'テスト',category_id:0},{operationId:'idempotency-123'}),/WRITES_DISABLED/);
 await assert.rejects(win.KurashiGasApi.request('item.update',{item_group_id:'i',version:1,in_stock:false},{operationId:'idempotency-123'}),/WRITES_DISABLED/);
-assert.equal(sent,0);
+await assert.rejects(win.KurashiGasApi.request('record.create',{
+ version:'receipt-create-1',record_type:'receipt',items:[]
+},{operationId:'receipt-intent-123'}),/RECEIPT_WRITES_DISABLED/);
+assert.equal(sent,0,'Receipt write gate must reject before any network call');
 const el={innerHTML:'',addEventListener(){},insertAdjacentHTML(){}};
 const store=new Map();
 const appCtx={
