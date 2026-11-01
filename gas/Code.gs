@@ -1234,13 +1234,16 @@ function receiptPreflight_(user,payload,book){
  };
 }
 
-function receiptOwnership_(hid,payload,book){
- const stores=rows('stores',book);
+function receiptOwnership_(hid,payload,book,catalogSnapshot){
+ // A trial guard has already read these tables once. Other callers still
+ // read fresh server-side catalog rows for their own request.
+ const stores=catalogSnapshot?.stores||rows('stores',book);
  if(stores.filter(r=>String(r.obj.chain_id)===payload.chain_id&&
    String(r.obj.household_id)===hid).length!==1||
    stores.filter(r=>String(r.obj.chain_id)===payload.chain_id).length!==1)
   fail('NOT_FOUND','チェーンの所有家庭が確認できません');
- const products=rows('products',book),cats=rows('categories',book);
+ const products=catalogSnapshot?.products||rows('products',book),
+       cats=catalogSnapshot?.categories||rows('categories',book);
  for(const line of payload.items){
   if(line.product_id!==null&&
      (products.filter(r=>String(r.obj.product_id)===line.product_id&&
@@ -1297,7 +1300,7 @@ function receiptPreparedMatches_(plan,payload,hid,operationId){
   ids.add(String(row.record_item_id));
  }
 }
-function receiptCompletedReplay_(result,payload,hid,operationId,book){
+function receiptCompletedReplay_(result,payload,hid,operationId,book,trialSnapshot){
  const entity=result?.entity;
  if(result?.status!=='completed'||result.action!=='record.create'||!entity||
     String(entity.household_id)!==hid||
@@ -1309,10 +1312,11 @@ function receiptCompletedReplay_(result,payload,hid,operationId,book){
     new Set(result.item_ids).size!==result.item_ids.length||
     !Number.isSafeInteger(result.sequence_no))
   fail('RECOVERY_CONFLICT','完了履歴が保存要求と一致しません');
- const heads=rows('records',book).filter(x=>String(x.obj.record_id)===String(entity.record_id));
+ const heads=(trialSnapshot?.records||rows('records',book)).filter(
+  x=>String(x.obj.record_id)===String(entity.record_id));
  if(heads.length!==1||!receiptSameRow_(heads[0].obj,entity,'records'))
   fail('RECOVERY_CONFLICT','確定レシート行が変わっています');
- const lines=rows('record_items',book);
+ const lines=trialSnapshot?.record_items||rows('record_items',book);
  for(let i=0;i<payload.items.length;i++){
   const p=payload.items[i],id=result.item_ids[i],matches=lines.filter(x=>
    String(x.obj.record_item_id)===String(id));
@@ -1329,7 +1333,7 @@ function receiptCompletedReplay_(result,payload,hid,operationId,book){
        String(matches[0].obj.price_eligible)==='false'))
    fail('RECOVERY_CONFLICT','確定明細の内容が変わっています');
  }
- const changes=rows('change_log',book).filter(x=>
+ const changes=(trialSnapshot?.change_log||rows('change_log',book)).filter(x=>
   String(x.obj.change_id)===operationId);
  if(changes.length!==1||String(changes[0].obj.household_id)!==hid||
     String(changes[0].obj.entity_id)!==String(entity.record_id)||
@@ -1450,7 +1454,9 @@ function receiptTrialGuard_(book){
    expectedLines.push(...state.items);
    expectedLogs.push(state.log);
   }else{
-   receiptCompletedReplay_(state,payload,hid,id,book);
+   receiptCompletedReplay_(state,payload,hid,id,book,{
+    records:receipts,record_items:lines,change_log:logs
+   });
    expectedHeads.push(state.entity);
    expectedLines.push(...state.items);
    const existingLog=logHits[0]?.obj;
@@ -1494,7 +1500,7 @@ function receiptTrialGuard_(book){
   if(String(e.household_id)!==hid||safe.chain_id!==fixtures.store_id||
      safe.items.reduce((sum,item)=>sum+item.amount_tax_included,0)>1000000)
    fail('TRIAL_NOT_ISOLATED','追加レシートの保存先・金額が不正です');
-  receiptOwnership_(hid,safe,book);
+  receiptOwnership_(hid,safe,book,{stores,products,categories:cats});
   generalStates.push(stateFor(operationId,safe));
  }
  if(generalStates.filter(x=>x?.status==='prepared').length>1)
