@@ -122,6 +122,9 @@ const saved=await window.KurashiLive.save('item.create',{name:'歯磨き粉',cat
 assert.equal(saved.name,'歯磨き粉');
 assert.equal(window.KurashiLive.state().pending,null);
 assert.equal(window.KurashiLive.itemsOf(temp.call('bootstrap').data).length,2,'record reaches Sheets mock');
-assert.equal(storage.size,0,'completed save journal cleared');
+assert.equal([...storage.keys()].filter(k=>k.startsWith('kurashi-new-write-v1-')).length,0,'completed save journal cleared');
+assert.ok(storage.has('kurashi-new-confirmed-snapshot-v1'),'confirmed snapshots cached after successful load');
+assert.equal(window.KurashiLive.state().loaded,true,'successful save and refresh keep live state');
+assert.equal(window.KurashiLive.itemsOf(JSON.parse(storage.get('kurashi-new-confirmed-snapshot-v1'))).length,2,'cached refresh retains confirmed items');
 
 console.log('Temporary shared-household, live PWA, Google restore: OK');
