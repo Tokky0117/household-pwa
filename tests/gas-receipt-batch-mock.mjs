@@ -249,21 +249,11 @@ for(const phase of faults)for(const when of ['before','after']){
    {line_order:2,raw_name:'確認用・日用品',product_id:'alias-trial-product-0001',
    quantity:2,amount_tax_included:330,category_id:1,price_eligible:false}]
  };
- const accepted=trialPost('record.trial.preflight',proposed);
- assert.equal(accepted.ok,true);
- assert.equal(accepted.data.trial_ready,true);
- assert.equal(accepted.data.write_enabled,false);
- assert.equal(accepted.data.item_count,2);
- assert.equal(accepted.data.total_tax_included,458);
- assert.equal(trialPost('record.trial.preflight',proposed,'new-op-00001').error.code,
-  'BAD_REQUEST','Preflight must not accept operation IDs');
- assert.equal(trialPost('record.trial.preflight',{...proposed,chain_id:'store-B'}).error.code,
-  'NOT_FOUND','Other household store cannot be accepted');
- assert.equal(trialPost('record.trial.preflight',{...proposed,
-  items:[{...proposed.items[0],quantity:0}]}).error.code,'BAD_REQUEST');
+ assert.equal(trialPost('record.trial.preflight',proposed).error.code,
+  'TRIAL_RECEIPT_NOT_READY','Need BOTH original fixed receipts before new candidates');
+ assert.equal(trial.writes,after,'Premature candidate preflight cannot write');
  assert.equal(trialPost('record.create',proposed).error.code,
-  'RECEIPT_WRITES_DISABLED','Preflight never opens general receipt writes');
- assert.equal(trial.writes,after,'All candidate preflight calls are read-only');
+  'RECEIPT_WRITES_DISABLED');
  const confirmed=trialPost('record.trial.replay');
  assert.equal(confirmed.ok,true);
  assert.equal(confirmed.data.replayed,true);
@@ -287,8 +277,19 @@ for(const phase of faults)for(const when of ['before','after']){
  assert.equal(trial.writes,afterSecond,'Same second operation never duplicates lines');
  assert.equal(trialPost('record.trial.replay').ok,true,
   'Previous fixed first replay must still work after second save');
- assert.equal(trialPost('record.trial.preflight',proposed).ok,true,
-  'Preflight must remain read-only after second save');
+ const accepted=trialPost('record.trial.preflight',proposed);
+ assert.equal(accepted.ok,true);
+ assert.equal(accepted.data.trial_ready,true);
+ assert.equal(accepted.data.write_enabled,false);
+ assert.equal(accepted.data.item_count,2);
+ assert.equal(accepted.data.total_tax_included,458);
+ assert.equal(trialPost('record.trial.preflight',proposed,'new-op-00001').error.code,
+  'BAD_REQUEST','Preflight must not accept operation IDs');
+ assert.equal(trialPost('record.trial.preflight',{...proposed,chain_id:'store-B'}).error.code,
+  'NOT_FOUND','Other household store cannot be accepted');
+ assert.equal(trialPost('record.trial.preflight',{...proposed,
+  items:[{...proposed.items[0],quantity:0}]}).error.code,'BAD_REQUEST');
+ assert.equal(trial.writes,afterSecond,'Preflight remains write-free');
  assert.equal(trial.mock.checkReceiptTrialReadOnly().records,2);
  assert.equal(trial.mock.checkReceiptTrialReadOnly().items,4);
  assert.equal(trial.mock.runReceiptWriteTrialOnce().ok,true,
@@ -456,8 +457,9 @@ const fullTrial=()=>{
  assert.throws(()=>t.mock.receiptTrialMainCreate_(t.homeA,
   {...mainCandidate,record_date:'2026-11-02'},mainCandidateId),
   e=>e.code==='OPERATION_REUSED');
- assert.throws(()=>t.mock.receiptTrialMainCreate_(t.homeA,mainCandidate,
-  'receipt-trial-main-bbbbbbbbbbbb002'),e=>e.code==='TRIAL_LIMIT');
+ assert.equal(t.mock.receiptTrialGuard_(t.mock.spreadsheet()).generalCount,1);
+ assert.equal(t.mock.receiptTrialGuard_(t.mock.spreadsheet())
+  .generalOperationIds.length,1);
  assert.equal(t.read(t.spouse).records.length,3);
  assert.equal(t.read(t.spouse).record_items.length,6);
  assert.equal(t.read(t.other).records.length,0);
