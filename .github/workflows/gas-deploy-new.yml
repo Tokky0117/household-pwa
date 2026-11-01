@@ -19,7 +19,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
-      GAS_SCRIPT_ID_NEW: ${{ vars.GAS_SCRIPT_ID_NEW }}
+      GAS_SCRIPT_ID_NEW: ${{ vars.GAS_SCRIPT_ID_NEW || secrets.GAS_SCRIPT_ID_NEW }}
       TARGET_DEPLOYMENT_ID: AKfycbwn-SfXqRBIjJWVUUIKEsJuaUR6DLAEWbMVR-_rEB3iVZy2zi0ZNSA7JjNmyykvKjvdoQ
     steps:
       - uses: actions/checkout@v4
