@@ -762,7 +762,7 @@ for(const phase of ['journal.prepare','stores','change','journal.complete']){
  const stock=post('item.update','item-stock-normal-03',{
   item_group_id:item.item_group_id,version:1,in_stock:false
  });
- assert.equal(stock.ok,true,'Spouse changes the shared stock row');
+ assert.equal(stock.ok,true,'Spouse changes the shared stock row: '+JSON.stringify(stock.error||{}));
  assert.equal(stock.data.entity.version,2);
  assert.equal(stock.data.entity.in_stock,false);
  const latest=t.mock.bootstrap(t.homeA,t.mock.spreadsheet());
