@@ -28,7 +28,9 @@ jobs:
           fetch-depth: 0
 
       - name: Validate v1.8 preview behavior
-        run: node tests/ui-smoke.mjs
+        run: |
+          node tests/ui-smoke.mjs
+          node tests/no-login-household.mjs
 
       - name: Build isolated static previews
         shell: bash

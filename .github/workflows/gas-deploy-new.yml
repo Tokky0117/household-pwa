@@ -34,6 +34,7 @@ jobs:
           cp gas/Setup.gs "$RUNNER_TEMP/Setup.js"
           node --check "$RUNNER_TEMP/Api.js"
           node --check "$RUNNER_TEMP/Setup.js"
+          node tests/no-login-household.mjs
       - name: Prepare temporary credentials and target
         env:
           CLASPRC_JSON: ${{ secrets.CLASPRC_JSON }}
