@@ -29,6 +29,7 @@ jobs:
           node --check live-operation-journal.js
           node --check app.js
           node --check receipt-ocr.js
+          node --check receipt-chatgpt-import.js
           node --check receipt-structure.js
           node --check receipt-catalog-integration.js
           node --check ocr-lab/scan-comparison.js
