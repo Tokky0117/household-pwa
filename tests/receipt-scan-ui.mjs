@@ -42,7 +42,7 @@ assert.match(ui.receiptView(),/店舗名候補：ライフ/);
 assert.match(ui.receiptView(),/OCRが読み取った文字を確認/);
 assert.match(ui.receiptView(),/確認した2明細をこのSafariに試作保存/);
 assert.match(ui.receiptView(),/name="confirmed" value="yes" required/);
-assert.match(ui.receiptView(),/Googleログインは一時停止/);
+assert.match(ui.receiptView(),/現在のレシート保存先はこのSafari内の試作記録/);
 assert.match(ui.receiptView(),/Google Sheets・Google Drive/);
 assert.equal(ui.state().previewRecords.records.length,0,'OCR never saves automatically');
 assert.equal(storage.get('household_pwa_records_preview_v1'),undefined);
