@@ -58,6 +58,30 @@ const check=await api.request('product.alias.check',
 assert.equal(check.status,'already_registered');
 assert.equal(check.write_permitted,false);
 assert.equal(calls,3);
+assert.equal(api.receiptWriteEnabled(),false);
+const preflight=await api.request('record.preflight',{
+ version:'receipt-create-1',record_type:'receipt',chain_id:'s-a',
+ record_date:'2026-10-14',branch_name:null,raw_store_name:null,
+ items:[{line_order:1,raw_name:'牛乳',product_id:null,quantity:1,
+ amount_tax_included:198,category_id:0,price_eligible:false}]
+},{fetcher:async (_url,opts)=>{
+ calls++;
+ const sent=JSON.parse(opts.body);
+ assert.equal(sent.action,'record.preflight');
+ assert.equal(sent.operation_id,undefined,'Preflight cannot masquerade as mutation');
+ assert.equal(sent.payload.items[0].amount_tax_included,198);
+ return {ok:true,text:async()=>JSON.stringify({ok:true,data:{
+  household_id:'h-a',version:'receipt-create-1',item_count:1,
+  total_tax_included:198,member_count:2,blocked_by_pending_operation:false,
+  checked_at:'2026-11-01T01:00:00Z',write_enabled:false
+ }})};
+}});
+assert.equal(preflight.write_enabled,false);
+assert.equal(preflight.total_tax_included,198);
+assert.equal(calls,4);
+await assert.rejects(api.request('record.create',{version:'receipt-create-1'},
+ {operationId:'receipt-0001',fetcher:async()=>{throw Error('WRITE_NETWORK_REACHED')}}),
+ /RECEIPT_WRITES_DISABLED/);
 await assert.rejects(api.request('bootstrap',{}, {token:'test-id-token',fetcher:async()=>({ok:true,text:async()=>'{invalid json'} )}),/GAS_RESPONSE_INVALID/);
 await assert.rejects(api.request('bootstrap',{}, {fetcher:async()=>({ok:true,text:async()=>JSON.stringify({ok:false,error:{code:'FORBIDDEN'}})})}),/FORBIDDEN/);
 // Browser errors, failed HTTP responses, and malformed/oversized responses
