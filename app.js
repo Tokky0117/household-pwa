@@ -1030,7 +1030,7 @@ function liveReadErrorMessage(err){
  return '読み取りに失敗しました。接続先・認証・通信状況を確認してください';
 }
 // Use the original daily inventory components for authenticated Sheet rows.
-function liveListResults(){
+function liveListResults(unassigned=null){
  const groups=liveSnapshot?.item_groups||[],products=liveSnapshot?.products||[];
  const productsByItem=new Map();
  for(const p of products){
@@ -1039,6 +1039,7 @@ function liveListResults(){
   if(!productsByItem.has(k))productsByItem.set(k,[]);
   productsByItem.get(k).push(p);
  }
+ if(unassigned)unassigned.push(...(productsByItem.get('')||[]));
  const q=norm(query);
  const active=i=>i.in_stock===true||String(i.in_stock).toLowerCase()==='true';
  const matches=i=>(!q||norm(i.name).includes(q))&&(!onlyOut||!active(i));
@@ -1072,13 +1073,14 @@ function liveListView(){
  const add='<button type="button" class="iconbtn" data-act="addLive" aria-label="日用品を追加" title="日用品を追加" '+(canEdit?'':'disabled')+'>'+miniIcon('plus')+'</button>';
  const failed=liveStatus.startsWith('取得失敗：');
  const status=[...(failed?[liveStatus]:[]),...(liveBusy?['再読み込み中…']:[]),...(liveWriteStatus?[liveWriteStatus]:[])];
- const uncategorized=(liveSnapshot?.products||[]).filter(p=>!p.deleted_at&&!p.item_group_id);
+ const uncategorized=[];
+ const rows=liveListResults(uncategorized);
  return `${head('日用品','くらしストック',false,add,copy)}<main>
   ${UI.searchField({id:'search',label:'日用品を検索',placeholder:'日用品を検索',value:query,extra:'autocomplete="off"'})}
   <div class="filterrow"><label class="switchlabel"><input type="checkbox" id="onlyOut" ${onlyOut?'checked':''}>在庫なしのみ表示</label></div>
   ${status.length?'<p class="hint" role="status">'+esc(status.join('。'))+'</p>':''}
   ${liveRecoveryView()}${liveEditForm()}${liveProductForm()}
-  <div id="item-results">${liveListResults()}</div>${listHelpView()}
+  <div id="item-results">${rows}</div>${listHelpView()}
   ${uncategorized.length?'<p class="hint">未分類の商品：'+esc(uncategorized.map(p=>p.name).join('、'))+'</p>':''}
   <div class="record-entry-actions"><button type="button" class="secondary" data-act="refreshLive" ${liveBusy?'disabled':''}>再読み込み</button><button type="button" class="secondary" data-act="addLiveProduct" ${canEdit?'':'disabled'}>商品を登録</button></div>
   </main>${nav()}`;
