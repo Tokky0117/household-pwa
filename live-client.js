@@ -57,10 +57,10 @@
   if(doc.base)validateSnapshot(doc.base);
   return {base:doc.base||null,queue:doc.queue,blocked:doc.blocked||null};
  };
- function project(){
-  if(!workspace.base)return null;
-  const snap={...workspace.base,item_groups:workspace.base.item_groups.map(i=>({...i}))};
-  for(const op of workspace.queue){
+ function project(doc=workspace){
+  if(!doc.base)return null;
+  const snap={...doc.base,item_groups:doc.base.item_groups.map(i=>({...i}))};
+  for(const op of doc.queue){
    if(op.kind==='create'){
     snap.item_groups.push({item_group_id:op.clientId,
       household_id:snap.household_id,category_id:op.category_id,
@@ -72,6 +72,7 @@
    const target=snap.item_groups.find(i=>i.item_group_id===op.targetId);
    if(!target)continue;
    if(op.kind==='toggle')target.in_stock=!toBoolean(target.in_stock);
+   else if(op.kind==='set-stock')target.in_stock=op.stock;
    else if(op.kind==='edit'){
     target.name=op.name;target.category_id=op.category_id;
    }else if(op.kind==='hide')target.is_hidden=op.hidden;
@@ -245,20 +246,20 @@
   try{return await task}
   finally{if(refreshPromise===task)refreshPromise=null;notify()}
  }
- function makeOperation(action,payload,base){
+ function makeOperation(action,payload,doc){
   if(action==='item.create'){
    const name=String(payload.name||'').trim(),category_id=Number(payload.category_id);
    if(!name||name.length>80||!Number.isInteger(category_id)||category_id<0||category_id>4)
     throw Error('日用品名・カテゴリを確認してください');
    const normalized=name.normalize('NFKC').toLocaleLowerCase('ja');
-   if(project()?.item_groups.some(i=>!i.deleted_at&&
+   if(project(doc)?.item_groups.some(i=>!i.deleted_at&&
       i.name.normalize('NFKC').toLocaleLowerCase('ja')===normalized))
     throw Error('同じ日用品が登録済みです');
    return {id:operationId(),kind:'create',clientId:'local-'+uid(),name,category_id,retries:0};
   }
   if(action!=='item.update')throw Error('UNSUPPORTED');
   const targetId=String(payload.item_group_id||'');
-  const target=project()?.item_groups.find(i=>i.item_group_id===targetId&&!i.deleted_at);
+  const target=project(doc)?.item_groups.find(i=>i.item_group_id===targetId&&!i.deleted_at);
   if(!target)throw Error('日用品が見つかりません');
   if(Object.prototype.hasOwnProperty.call(payload,'in_stock')){
    // Callers use toggleStock() to preserve each tap as one semantic operation.
@@ -266,13 +267,21 @@
   }
   if(Object.prototype.hasOwnProperty.call(payload,'is_hidden'))
    return {id:operationId(),kind:'hide',targetId,hidden:!!payload.is_hidden,retries:0};
-  if(typeof payload.name==='string'&&payload.category_id!==undefined)
-   return {id:operationId(),kind:'edit',targetId,name:payload.name.trim(),
-    category_id:Number(payload.category_id),retries:0};
+  if(typeof payload.name==='string'&&payload.category_id!==undefined){
+   const name=payload.name.trim(),cat=Number(payload.category_id);
+   if(!name||name.length>80||!Number.isInteger(cat)||cat<0||cat>4)
+    throw Error('日用品名・カテゴリを確認してください');
+   const normalized=name.normalize('NFKC').toLocaleLowerCase('ja');
+   if(project(doc)?.item_groups.some(i=>i.item_group_id!==targetId&&
+     !i.deleted_at&&i.name.normalize('NFKC').toLocaleLowerCase('ja')===normalized))
+    throw Error('同じ日用品が登録済みです');
+   return {id:operationId(),kind:'edit',targetId,name,category_id:cat,retries:0};
+  }
   throw Error('UNSUPPORTED');
  }
  async function enqueue(build){
   await boot();
+  if(!workspace.base)await load();
   const ws=await modify(doc=>{
    if(!doc.base)throw Error('最初の同期が必要です。通信を確認してください');
    const op=build(doc);
@@ -285,11 +294,11 @@
   return visible||null;
  }
  async function save(action,payload){
-  return enqueue(()=>makeOperation(action,payload));
+  return enqueue(doc=>makeOperation(action,payload,doc));
  }
  async function toggleStock(itemId){
-  return enqueue(()=>{
-   const exists=project()?.item_groups.some(i=>i.item_group_id===itemId&&!i.deleted_at);
+  return enqueue(doc=>{
+   const exists=project(doc)?.item_groups.some(i=>i.item_group_id===itemId&&!i.deleted_at);
    if(!exists)throw Error('日用品が見つかりません');
    return {id:operationId(),kind:'toggle',targetId:itemId,retries:0};
   });
@@ -395,6 +404,23 @@
       'OPERATION_REUSED','RECOVERY_CONFLICT','VERSION_CONFLICT_RETRY_LIMIT',
       'HOUSEHOLD_CHANGED','QUEUE_CHANGED','UNSUPPORTED']);
      if(permanent.has(e.code||e.message)){
+      if(['BAD_REQUEST','DUPLICATE','NOT_FOUND','FORBIDDEN',
+          'OPERATION_REUSED','UNSUPPORTED'].includes(e.code)){
+       // Definite server rejection: the operation cannot commit. Roll back its
+       // optimistic projection, drop any dependent local-ID actions, then keep
+       // processing unrelated queued operations.
+       await modify(ws=>{
+        const rejected=ws.queue[0];
+        if(rejected?.id===op.id){
+         ws.queue.shift();
+         if(rejected.kind==='create')ws.queue=ws.queue.filter(q=>
+          q.targetId!==rejected.clientId);
+        }
+        return ws;
+       });
+       error=e.message||e.code;notify();
+       continue;
+      }
       await modify(ws=>{ws.blocked={id:op.id,message:e.message||e.code};return ws});
       error=e.message||e.code;return;
      }
