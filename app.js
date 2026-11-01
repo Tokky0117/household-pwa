@@ -920,7 +920,7 @@ function verifyLiveWriteResult(entry,result){
      (entry.action==='item.create'&&(
       Number(e.version)!==1||String(e.name)!==String(p.name).trim()||
       String(e.category_id)!==String(p.category_id)||
-      !(e.in_stock===true||String(e.in_stock).toLowerCase()==='true')))||
+      !(e.in_stock===false||String(e.in_stock).toLowerCase()==='false')))||
      (entry.action==='item.update'&&(
       String(e.item_group_id)!==String(p.item_group_id)||
       Number(e.version)!==Number(p.version)+1||
