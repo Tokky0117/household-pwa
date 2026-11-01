@@ -267,7 +267,11 @@ function doPost(e){
   if(action==='bootstrap')return jsonReply({ok:true,data:bootstrap(user,readContext.book)});
    if(action==='product.catalog')return jsonReply({ok:true,data:productCatalog_(user,readContext.book)});
    if(action==='product.alias.check')return jsonReply({ok:true,data:productAliasCheck_(user,payload,readContext.book)});
-  if(action==='record.list')return jsonReply({ok:true,data:receiptList_(user,readContext.book)});
+  if(action==='record.list'){
+   if(!payload||typeof payload!=='object'||Array.isArray(payload)||Object.keys(payload).length)
+    fail('BAD_REQUEST','一覧の取得条件が不正です');
+   return jsonReply({ok:true,data:receiptList_(user,readContext.book)});
+  }
   if(action==='sync')return jsonReply({ok:true,data:changes(user,payload,readContext.book)});
   // Deliberate hard gate: receipt parent+child writes have no recovery journal yet.
   // Even enabling ENABLE_EXPERIMENTAL_WRITES must never enable this endpoint.
@@ -1073,6 +1077,76 @@ function receiptSameRow_(actual,expected,name){
   return String(a)===String(e);
  });
 }
+
+function receiptPreparedMatches_(plan,payload,hid,operationId){
+ if(!plan||plan.status!=='prepared'||plan.action!=='record.create'||
+    !plan.entity||!Array.isArray(plan.items)||!plan.log||
+    plan.items.length!==payload.items.length||
+    String(plan.entity.household_id)!==hid||
+    String(plan.entity.chain_id)!==payload.chain_id||
+    String(plan.entity.record_date)!==payload.record_date||
+    String(plan.entity.branch_name??'')!==String(payload.branch_name??'')||
+    String(plan.entity.raw_store_name??'')!==String(payload.raw_store_name??'')||
+    String(plan.entity.record_type)!=='receipt'||
+    String(plan.log.change_id)!==operationId||
+    String(plan.log.household_id)!==hid||
+    String(plan.log.entity_id)!==String(plan.entity.record_id)||
+    String(plan.log.entity_type)!=='records'||plan.log.action!=='record.create'||
+    !Number.isSafeInteger(plan.log.sequence_no)||plan.log.sequence_no<1)
+  fail('RECOVERY_CONFLICT','事前ジャーナルが保存要求と一致しません');
+ const ids=new Set([String(plan.entity.record_id)]);
+ for(let i=0;i<payload.items.length;i++){
+  const row=plan.items[i],p=payload.items[i];
+  if(!row||ids.has(String(row.record_item_id))||
+     String(row.record_id)!==String(plan.entity.record_id)||
+     row.line_order!==i+1||row.quantity!==p.quantity||
+     row.amount_tax_included!==p.amount_tax_included||
+     String(row.product_id??'')!==String(p.product_id??'')||
+     String(row.raw_name??'')!==String(p.raw_name??'')||
+     row.category_id!==p.category_id||row.price_eligible!==false||
+     row.version!==1||String(row.deleted_at??'')!=='')
+   fail('RECOVERY_CONFLICT','事前ジャーナルの明細が一致しません');
+  ids.add(String(row.record_item_id));
+ }
+}
+function receiptCompletedReplay_(result,payload,hid,operationId,book){
+ const entity=result?.entity;
+ if(result?.status!=='completed'||result.action!=='record.create'||!entity||
+    String(entity.household_id)!==hid||
+    String(entity.chain_id)!==payload.chain_id||
+    String(entity.record_date)!==payload.record_date||
+    !Array.isArray(result.item_ids)||result.item_ids.length!==payload.items.length||
+    new Set(result.item_ids).size!==result.item_ids.length||
+    !Number.isSafeInteger(result.sequence_no))
+  fail('RECOVERY_CONFLICT','完了履歴が保存要求と一致しません');
+ const heads=rows('records',book).filter(x=>String(x.obj.record_id)===String(entity.record_id));
+ if(heads.length!==1||!receiptSameRow_(heads[0].obj,entity,'records'))
+  fail('RECOVERY_CONFLICT','確定レシート行が変わっています');
+ const lines=rows('record_items',book);
+ for(let i=0;i<payload.items.length;i++){
+  const p=payload.items[i],id=result.item_ids[i],matches=lines.filter(x=>
+   String(x.obj.record_item_id)===String(id));
+  if(matches.length!==1||String(matches[0].obj.record_id)!==String(entity.record_id)||
+     Number(matches[0].obj.line_order)!==i+1||
+     Number(matches[0].obj.quantity)!==p.quantity||
+     Number(matches[0].obj.amount_tax_included)!==p.amount_tax_included||
+     String(matches[0].obj.raw_name??'')!==String(p.raw_name??'')||
+     String(matches[0].obj.product_id??'')!==String(p.product_id??'')||
+     String(matches[0].obj.category_id??'')!==String(p.category_id??'')||
+     !(matches[0].obj.price_eligible===false||
+       String(matches[0].obj.price_eligible)==='false'))
+   fail('RECOVERY_CONFLICT','確定明細の内容が変わっています');
+ }
+ const changes=rows('change_log',book).filter(x=>
+  String(x.obj.change_id)===operationId);
+ if(changes.length!==1||String(changes[0].obj.household_id)!==hid||
+    String(changes[0].obj.entity_id)!==String(entity.record_id)||
+    String(changes[0].obj.action)!=='record.create'||
+    Number(changes[0].obj.sequence_no)!==result.sequence_no)
+  fail('RECOVERY_CONFLICT','確定変更履歴が一致しません');
+ return result;
+}
+
 /** Called only from reviewed isolated tests; NOT from the public dispatcher. */
 function mutateReceiptSafely_(user,payload,operationId){
  if(typeof operationId!=='string'||!/^[A-Za-z0-9_-]{8,128}$/.test(operationId))
@@ -1106,16 +1180,9 @@ function mutateReceiptSafely_(user,payload,operationId){
   if(existing){
    try{plan=JSON.parse(String(existing.obj.result))}
    catch(_){fail('RECOVERY_CONFLICT','保存履歴が破損しています')}
-   if(plan.status==='completed'){
-    if(!plan.entity||!Array.isArray(plan.item_ids))
-     fail('RECOVERY_CONFLICT','確定済みの記録が不正です');
-    return plan;
-   }
-   if(plan.status!=='prepared'||plan.action!=='record.create'||
-      !plan.entity||!Array.isArray(plan.items)||!plan.log||
-      String(plan.entity.household_id)!==hid||plan.items.length!==valid.items.length||
-      String(plan.log.change_id)!==operationId)
-    fail('RECOVERY_CONFLICT','復旧する計画が不正です');
+   if(plan.status==='completed')
+    return receiptCompletedReplay_(plan,valid,hid,operationId,book);
+   receiptPreparedMatches_(plan,valid,hid,operationId);
   }else{
    receiptOwnership_(hid,valid,book);
    const now=new Date().toISOString(),recordId=Utilities.getUuid();
@@ -1202,7 +1269,8 @@ function mutateReceiptSafely_(user,payload,operationId){
 /** Opt-in read-only: expose only completed, journal-verified household rows. */
 function receiptList_(user,book){
  const hid=String(user.householdId),b=book||spreadsheet();
- const records=scoped('records',hid,b);
+ const everyRecord=rows('records',b);
+ const records=everyRecord.filter(x=>String(x.obj.household_id)===hid&&!x.obj.deleted_at);
  const allItems=rows('record_items',b),logs=rows('change_log',b);
  const operations=operationRowsForHousehold_(hid,b);
  // Limit return payload; never truncate purchase history silently.
@@ -1217,8 +1285,11 @@ function receiptList_(user,book){
      !Array.isArray(state.item_ids))continue;
   const id=String(state.entity.record_id||'');
   const parents=records.filter(x=>String(x.obj.record_id)===id);
-  if(parents.length!==1)continue;
-  if(String(parents[0].obj.household_id)!==hid)continue;
+  if(parents.length!==1||everyRecord.filter(x=>
+     String(x.obj.record_id)===id).length!==1)continue;
+  if(String(parents[0].obj.household_id)!==hid||
+     String(state.entity.household_id)!==hid||
+     !receiptSameRow_(parents[0].obj,state.entity,'records'))continue;
   const changes=logs.filter(x=>String(x.obj.change_id)===String(operation.obj.operation_id));
   if(changes.length!==1||String(changes[0].obj.household_id)!==hid||
      String(changes[0].obj.entity_id)!==id||
@@ -1228,7 +1299,7 @@ function receiptList_(user,book){
   const lineItems=allItems.filter(x=>ids.has(String(x.obj.record_item_id))&&
     String(x.obj.record_id)===id&&!x.obj.deleted_at);
   if(lineItems.length!==ids.size||lineItems.some(x=>
-     lineItems.filter(z=>String(z.obj.record_item_id)===String(x.obj.record_item_id)).length!==1))
+     allItems.filter(z=>String(z.obj.record_item_id)===String(x.obj.record_item_id)).length!==1))
     continue;
   lineItems.sort((a,c)=>Number(a.obj.line_order)-Number(c.obj.line_order));
   if(lineItems.some((x,i)=>Number(x.obj.line_order)!==i+1))continue;
