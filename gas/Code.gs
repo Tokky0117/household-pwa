@@ -287,7 +287,8 @@ function doPost(e){
   if(action==='record.trial.preflight'){
    if(input.operation_id!==undefined)fail('BAD_REQUEST','診断に操作IDは不要です');
    const trial=receiptTrialGuard_(readContext.book);
-   if(!trial.completed||trial.records!==1||trial.items!==2)
+   if(!trial.completed||trial.records<1||trial.records>2||
+      trial.items!==trial.records*2)
     fail('TRIAL_RECEIPT_NOT_READY','試験用レシートの確定が必要です');
    if(String(user.householdId)!==trial.householdId||
       String(user.userId)!==trial.userId)
@@ -315,7 +316,8 @@ function doPost(e){
       Object.keys(payload).length||input.operation_id!==undefined)
     fail('BAD_REQUEST','試験レシートの再確認では入力を受け付けません');
    const trial=receiptTrialGuard_(readContext.book);
-   if(!trial.completed||trial.records!==1||trial.items!==2)
+   if(!trial.completed||trial.records<1||trial.records>2||
+      trial.items!==trial.records*2)
     fail('TRIAL_RECEIPT_NOT_READY','保存済みの試験レシートを先に確認してください');
    if(String(user.householdId)!==trial.householdId||
       String(user.userId)!==trial.userId)
@@ -1325,6 +1327,19 @@ function receiptTrialPayload_(){
     amount_tax_included:298,category_id:0,price_eligible:false}
   ]};
 }
+
+const RECEIPT_TRIAL_SECOND_ID_='receipt-trial-create-00000002';
+function receiptTrialSecondPayload_(){
+ return {version:'receipt-create-1',record_type:'receipt',
+  chain_id:RECEIPT_TRIAL_FIXTURE_.store_id,record_date:'2026-11-01',
+  branch_name:null,raw_store_name:'[KURASHI_RECEIPT_TRIAL_SECOND_ONLY]',
+  items:[
+   {line_order:1,raw_name:'試験用・野菜',product_id:null,quantity:1,
+    amount_tax_included:128,category_id:0,price_eligible:false},
+   {line_order:2,raw_name:'試験用・日用品',product_id:null,quantity:2,
+    amount_tax_included:330,category_id:1,price_eligible:false}
+  ]};
+}
 function receiptTrialGuard_(book){
  const props=PropertiesService.getScriptProperties();
  if(!approvedPrototypeAliasSheet_()||
@@ -1357,56 +1372,67 @@ function receiptTrialGuard_(book){
        baseLog=logs.filter(r=>String(r.obj.change_id)===fixtures.operation_id);
  if(baseAlias.length!==1||baseLog.length!==1)
   fail('TRIAL_NOT_ISOLATED','既存の商品コード試験が完了していません');
- const trialOps=ops.filter(r=>String(r.obj.operation_id)===trial.operation_id),
-       trialLogs=logs.filter(r=>String(r.obj.change_id)===trial.operation_id);
- if(trialOps.length>1||trialLogs.length>1||
-    ops.some(x=>String(x.obj.household_id)!==hid)||
-    logs.some(x=>String(x.obj.household_id)!==hid))
-  fail('TRIAL_NOT_ISOLATED','操作履歴に別家庭または重複があります');
- for(const op of ops){
+ const allowed=new Set([fixtures.operation_id,trial.operation_id,RECEIPT_TRIAL_SECOND_ID_]);
+ if(ops.some(x=>!allowed.has(String(x.obj.operation_id))||
+      String(x.obj.household_id)!==hid)||
+    logs.some(x=>!allowed.has(String(x.obj.change_id))||
+      String(x.obj.household_id)!==hid)||
+    ops.length>3||logs.length>3)
+  fail('TRIAL_NOT_ISOLATED','想定外の操作履歴があります');
+ const expectedHeads=[],expectedLines=[],expectedLogs=[];
+ const stateFor=(id,payload)=>{
+  const hits=ops.filter(x=>String(x.obj.operation_id)===id),
+        logHits=logs.filter(x=>String(x.obj.change_id)===id);
+  if(hits.length>1||logHits.length>1)
+   fail('TRIAL_NOT_ISOLATED','試験用の操作IDが重複しています');
+  if(!hits.length){
+   if(logHits.length)fail('TRIAL_NOT_ISOLATED','保存されていない変更履歴があります');
+   return null;
+  }
   let state;
-  try{state=JSON.parse(String(op.obj.result))}
-  catch(_){fail('TRIAL_NOT_ISOLATED','既存の保存履歴が破損しています')}
-  if(String(op.obj.operation_id)!==trial.operation_id&&
-     state?.status==='prepared')
-   fail('RECOVERY_REQUIRED','別の未完了操作が残っています');
- }
- let expectedRecord=null,expectedItems=[];
- if(trialOps.length){
-  let state;
-  try{state=JSON.parse(String(trialOps[0].obj.result))}
-  catch(_){fail('TRIAL_NOT_ISOLATED','試験レシートの履歴が破損しています')}
-  if(!['prepared','completed'].includes(state?.status)||
-     state?.action!=='record.create')
-   fail('TRIAL_NOT_ISOLATED','試験レシートの記録が不正です');
-  expectedRecord=state.status==='prepared'?state.entity:state.entity;
-  expectedItems=state.items;
-  if(!expectedRecord||!Array.isArray(expectedItems)||
-     expectedItems.length!==2||
-     String(expectedRecord.household_id)!==hid||
-     String(expectedRecord.chain_id)!==trial.store_id||
-     String(expectedRecord.raw_store_name)!=='[KURASHI_RECEIPT_TRIAL_ONLY]'||
-     expectedItems.some((line,i)=>line.line_order!==i+1||
-       line.amount_tax_included!==(i===0?198:298)||
-       String(line.product_id??'')!==String(i===0?trial.product_id:'')||
-       line.quantity!==(i===0?1:2)||
-       String(line.record_id)!==String(expectedRecord.record_id)))
-   fail('TRIAL_NOT_ISOLATED','保存計画が固定の試験内容と一致しません');
- }
- if((!expectedRecord&&(receipts.length||lines.length||trialLogs.length))||
-    (expectedRecord&&(receipts.length>1||lines.length>2||
-       receipts.some(x=>!receiptSameRow_(x.obj,expectedRecord,'records'))||
-       lines.some(x=>!expectedItems.some(e=>
-         String(e.record_item_id)===String(x.obj.record_item_id)&&
-         receiptSameRow_(x.obj,e,'record_items'))))))
+  try{state=JSON.parse(String(hits[0].obj.result))}
+  catch(_){fail('TRIAL_NOT_ISOLATED','試験の保存履歴が破損しています')}
+  if(!state||!['prepared','completed'].includes(state.status)||
+     state.action!=='record.create'||
+     String(hits[0].obj.request_hash)!==receiptDigest_(payload))
+   fail('TRIAL_NOT_ISOLATED','試験レシートの操作内容が一致しません');
+  if(state.status==='prepared'){
+   receiptPreparedMatches_(state,payload,hid,id);
+   expectedHeads.push(state.entity);
+   expectedLines.push(...state.items);
+   expectedLogs.push(state.log);
+  }else{
+   receiptCompletedReplay_(state,payload,hid,id,book);
+   expectedHeads.push(state.entity);
+   expectedLines.push(...state.items);
+   const existingLog=logHits[0]?.obj;
+   if(!existingLog)fail('TRIAL_NOT_ISOLATED','確定操作の変更履歴がありません');
+   expectedLogs.push(existingLog);
+  }
+  const plannedLog=expectedLogs[expectedLogs.length-1];
+  if(logHits.length&&(!plannedLog||
+     !receiptSameRow_(logHits[0].obj,plannedLog,'change_log')))
+   fail('TRIAL_NOT_ISOLATED','変更履歴の内容が一致しません');
+  return state;
+ };
+ const primary=stateFor(trial.operation_id,receiptTrialPayload_());
+ const secondary=stateFor(RECEIPT_TRIAL_SECOND_ID_,receiptTrialSecondPayload_());
+ if(secondary&&primary?.status!=='completed')
+  fail('TRIAL_NOT_ISOLATED','先に固定の1件目を確定してください');
+ if((!primary&&(receipts.length||lines.length))||
+    receipts.length>expectedHeads.length||lines.length>expectedLines.length||
+    new Set(expectedHeads.map(x=>String(x.record_id))).size!==expectedHeads.length||
+    new Set(expectedLines.map(x=>String(x.record_item_id))).size!==expectedLines.length||
+    receipts.some(x=>!expectedHeads.some(e=>receiptSameRow_(x.obj,e,'records')))||
+    lines.some(x=>!expectedLines.some(e=>receiptSameRow_(x.obj,e,'record_items'))))
   fail('TRIAL_NOT_ISOLATED','試験以外の購入履歴があります');
- if(trialLogs.length&&
-    (!expectedRecord||trialLogs[0].obj.entity_id!==expectedRecord.record_id))
-  fail('TRIAL_NOT_ISOLATED','変更履歴に想定外のレシートが存在します');
+ if(logs.some(x=>String(x.obj.change_id)!==fixtures.operation_id&&
+    !expectedLogs.some(e=>receiptSameRow_(x.obj,e,'change_log'))))
+  fail('TRIAL_NOT_ISOLATED','想定外の変更履歴があります');
  return {householdId:hid,userId:String(member.user_id),
-  records:receipts.length,items:lines.length,completed:trialOps.length>0&&
-    (()=>{try{return JSON.parse(String(trialOps[0].obj.result)).status==='completed'}
-     catch(_){return false}})()};
+  records:receipts.length,items:lines.length,completed:primary?.status==='completed',
+  secondStarted:!!secondary,secondCompleted:secondary?.status==='completed'};
+
 }
 /** Owner runs one public editor function after deploying updated trial code.
  * The editor-only helper is intentionally not a doPost action.
@@ -1422,8 +1448,10 @@ function runReceiptWriteTrialOnce(){
   fail('TRIAL_RESULT_MISMATCH','同じレシートの再送結果が一致しません');
  const after=receiptTrialGuard_(spreadsheet()),
        visible=receiptList_(user);
- if(!after.completed||after.records!==1||after.items!==2||
-    visible.records.length!==1||visible.record_items.length!==2)
+ if(!after.completed||![1,2].includes(after.records)||
+    after.items!==after.records*2||
+    visible.records.length!==after.records||
+    visible.record_items.length!==after.items)
   fail('TRIAL_RESULT_MISMATCH','保存行・明細・読取結果が一致しません');
  Logger.log('RECEIPT_TRIAL_OK: record=1, lines=2, amount=496, replay=same, writes=isolated');
  return {ok:true,records:1,items:2,amount:496,replay:true};
