@@ -11,6 +11,7 @@
  const RECEIPT_BATCH_WRITE_ENABLED=false;
  // Fixed, previously completed isolated trial fixture only.
  const TRIAL_REPLAY_ACTION='record.trial.replay';
+ const TRIAL_SECOND_ACTION='record.trial.second.save';
  const MAX_RESPONSE=1024*1024;
  function configure(url){
    if(!url){endpoint='';return}
@@ -25,11 +26,13 @@
    if(action==='record.create'&&!RECEIPT_BATCH_WRITE_ENABLED)
      throw new Error('RECEIPT_WRITES_DISABLED');
    if(!endpoint)throw new Error('GAS_NOT_CONFIGURED');
-   if(action===TRIAL_REPLAY_ACTION){
-   if(options.confirmedTrialReplay!==true||!payload||
-      typeof payload!=='object'||Array.isArray(payload)||
+   if(action===TRIAL_REPLAY_ACTION||action===TRIAL_SECOND_ACTION){
+   const confirmed=action===TRIAL_REPLAY_ACTION?
+    options.confirmedTrialReplay===true:options.confirmedTrialSecondSave===true;
+   if(!confirmed||!payload||typeof payload!=='object'||Array.isArray(payload)||
       Object.keys(payload).length||options.operationId!==undefined)
-    throw new Error('TRIAL_REPLAY_NOT_CONFIRMED');
+    throw new Error(action===TRIAL_REPLAY_ACTION?
+     'TRIAL_REPLAY_NOT_CONFIRMED':'TRIAL_SECOND_NOT_CONFIRMED');
   }else if(!['bootstrap','sync','product.catalog','product.alias.check','record.list','household.status','record.preflight','record.trial.preflight'].includes(action)){
      if(!MUTATIONS.has(action))throw new Error('UNSUPPORTED');
      if(action==='record.create'?!RECEIPT_BATCH_WRITE_ENABLED:!LIVE_WRITE_ENABLED)
