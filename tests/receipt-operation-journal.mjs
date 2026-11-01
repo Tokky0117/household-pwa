@@ -134,31 +134,29 @@ signedIn=true;b.KURASHI_RECEIPT_TEST_MODE=true;
 await assert.rejects(b.KurashiReceiptSaveSession.create({...args,operationId:'receipt-op-008'}),
  /RECEIPT_WRITES_DISABLED/);
 assert.equal(calls.length,3);
-// Staging candidate uses the SAME durable intent and lock. It may not be
-// created from normal preview or send through public record.create.
+// Old uncertain trial journal entries can still be RECOVERED but no longer
+// permit new trialCreate calls. Only ordinary create is publicly available.
 b.KURASHI_RECEIPT_TEST_MODE=false;
 enabled=false;
-const trialId='receipt-trial-main-cccccccccccc001';
-const trialArgs={...args,operationId:trialId};
-await assert.rejects(b.KurashiReceiptSaveSession.trialCreate(trialArgs),
+const oldTrialId='receipt-trial-main-cccccccccccc001';
+const oldTrialArgs={...args,operationId:oldTrialId};
+assert.equal(typeof b.KurashiReceiptSaveSession.trialCreate,'undefined');
+await assert.rejects(b.KurashiReceiptSaveSession.create(oldTrialArgs),
  /RECEIPT_WRITES_DISABLED/);
 assert.equal(b.KurashiReceiptJournal.read(),null);
 b.KURASHI_RECEIPT_STAGE_A_TRIAL=true;
 assert.equal(b.KurashiReceiptSaveSession.writeEnabled(),false);
-assert.equal(b.KurashiReceiptSaveSession.trialWriteEnabled(),false);
-await assert.rejects(b.KurashiReceiptSaveSession.create(trialArgs),
- /RECEIPT_WRITES_DISABLED/);
+b.KurashiReceiptJournal.prepare(oldTrialArgs);
 networkError=true;
-await assert.rejects(b.KurashiReceiptSaveSession.trialCreate(trialArgs),
+await assert.rejects(b.KurashiReceiptSaveSession.retry({subject,householdId:'h1'}),
  /SIMULATED_TIMEOUT/);
 assert.equal(calls.length,4);
 assert.equal(calls.at(-1).action,'record.trial.main.create');
 assert.equal(calls.at(-1).confirmedTrialMainSave,true);
-assert.equal(b.KurashiReceiptJournal.read().operationId,trialId);
 const c=boot();
 c.KURASHI_RECEIPT_STAGE_A_TRIAL=true;
-assert.equal(c.KurashiReceiptJournal.read().operationId,trialId);
-assert.equal(calls.length,4,'Reload does not retry staging write');
+assert.equal(c.KurashiReceiptJournal.read().operationId,oldTrialId);
+assert.equal(calls.length,4,'Reload does not retry the old journal automatically');
 subject='9999999999';
 await assert.rejects(c.KurashiReceiptSaveSession.retry({subject,householdId:'h1'}),
  /RECEIPT_NO_MATCHING_PENDING/);
@@ -167,10 +165,8 @@ networkError=false;
 const completedTrial=await c.KurashiReceiptSaveSession.retry({subject,householdId:'h1'});
 assert.equal(completedTrial.status,'completed');
 assert.equal(calls.length,5);
-assert.equal(calls.at(-1).action,'record.trial.main.create');
-assert.equal(calls.at(-1).operationId,trialId);
+assert.equal(calls.at(-1).operationId,oldTrialId);
 assert.equal(calls.at(-1).confirmedTrialMainSave,true);
 assert.equal(c.KurashiReceiptJournal.read(),null);
-assert.equal(c.KurashiReceiptSaveSession.writeEnabled(),false);
 assert.equal(storage.size,0);
-console.log('Receipt journal PASS: normal and trial same-ID retries, reload, accounts, locks, no auto sends');
+console.log('Receipt journal PASS: normal save and historical same-ID recovery, locks, no auto sends');
