@@ -5,7 +5,7 @@
  const CLIENT_ID='290567395833-cdemend3itmapsgsounu8pf72hgvm315.apps.googleusercontent.com';
  const STORAGE='kurashi-new-write-v1-';
  const SNAPSHOT_CACHE='kurashi-new-confirmed-snapshot-v1';
- let fresh=false,loadPromise=null;
+ let fresh=false,loadPromise=null,mutating=false,savingItemId=null;
  const listeners=new Set();
  let token=null,subject='temporary-household',expiry=0,snapshot=null,household=null,busy=false,error='',gisReady=false;
  let loginRequired=false; // Set true if GAS reports UNAUTHORIZED.
@@ -19,7 +19,7 @@
  }catch(_){snapshot=null;household=null}
  const state=()=>({signedIn:!loginRequired||(!!token&&Date.now()<expiry),
   loginRequired,temporary:!loginRequired,loaded:fresh,cached:!!snapshot&&!fresh,
-  householdId:household,busy,error,pending:pending()});
+  householdId:household,busy,mutating,savingItemId,error,pending:pending()});
  const notify=()=>listeners.forEach(cb=>cb(state(),snapshot));
  const pending=()=>{if(!subject)return null;try{const saved=localStorage.getItem(STORAGE+subject);return saved?JSON.parse(saved):null}catch{return {error:'STORAGE_UNAVAILABLE'}}};
  const clearPending=()=>{if(subject)localStorage.removeItem(STORAGE+subject)};
@@ -120,6 +120,7 @@
  }
  async function load(){
   if(loginRequired&&(!token||Date.now()>=expiry))return false;
+  if(mutating)return false;
   if(loadPromise)return loadPromise;
   const serial=++requestSerial,currentSubject=subject;
   busy=true;error='';notify();
@@ -163,28 +164,57 @@
    notify();
   }
   clearPending();
-  await load();
   return response.entity;
  }
  async function save(action,payload){
   if(!state().signedIn)throw Error('LOGIN_REQUIRED');
-  if(loadPromise)await loadPromise;
-  if(!fresh||!snapshot){
-   if(!await load())throw Error(error||'読み込みに失敗しました');
+  if(mutating)throw Error('BUSY');
+  mutating=true;
+  let before=null,entityId=null,confirmed=false;
+  try{
+   if(loadPromise)await loadPromise;
+   if(!fresh||!snapshot){
+    // Initial read can run while the operation slot is reserved.
+    mutating=false;
+    let ok;
+    try{ok=await load()}finally{mutating=true}
+    if(!ok)throw Error(error||'読み込みに失敗しました');
+   }
+   if(busy)throw Error('BUSY');
+   if(pending())throw Error('RECOVERY_REQUIRED');
+   if(!['item.create','item.update'].includes(action))throw Error('UNSUPPORTED');
+   const entry={action,payload,operationId:'op-'+crypto.randomUUID(),subject,householdId:household};
+   try{localStorage.setItem(STORAGE+subject,JSON.stringify(entry))}
+   catch(_){throw Error('STORAGE_UNAVAILABLE')}
+   busy=true;error='';
+   if(action==='item.update'&&typeof payload.in_stock==='boolean'&&snapshot){
+    const current=snapshot.item_groups.find(i=>i.item_group_id===payload.item_group_id);
+    if(current&&Number(current.version)===Number(payload.version)){
+     before={...current};entityId=current.item_group_id;savingItemId=entityId;
+     snapshot={...snapshot,item_groups:snapshot.item_groups.map(i=>
+      i.item_group_id===entityId?{...i,in_stock:payload.in_stock}:i)};
+    }
+   }
+   notify();
+   try{
+    const value=await transmit(entry);
+    confirmed=true;
+    return value;
+   }catch(e){
+    if(stableErrors.has(e.code)){
+     clearPending();
+     if(before&&snapshot){
+      snapshot={...snapshot,item_groups:snapshot.item_groups.map(i=>
+       i.item_group_id===entityId?before:i)};
+     }
+    }
+    error=e.code||e.message||'保存結果を確認できません';
+    throw e;
+   }
+  }finally{
+   mutating=false;busy=false;savingItemId=null;notify();
+   if(confirmed)void load();
   }
-  if(busy)throw Error('BUSY');
-  if(pending())throw Error('RECOVERY_REQUIRED');
-  if(!['item.create','item.update'].includes(action))throw Error('UNSUPPORTED');
-  const entry={action,payload,operationId:'op-'+crypto.randomUUID(),subject,householdId:household};
-  try{localStorage.setItem(STORAGE+subject,JSON.stringify(entry))}
-  catch(_){throw Error('STORAGE_UNAVAILABLE')}
-  busy=true;error='';notify();
-  try{return await transmit(entry)}
-  catch(e){
-   if(stableErrors.has(e.code))clearPending();
-   error=e.code||e.message||'保存結果を確認できません';
-   throw e;
-  }finally{busy=false;notify()}
  }
  async function retry(){
   const entry=pending();
@@ -202,7 +232,7 @@
   itemsOf,catalogueOf};
  window.addEventListener('kurashi-gis-ready',initialize);
  document.addEventListener('DOMContentLoaded',()=>{if(!loginRequired)load()});
- window.addEventListener('pageshow',()=>{if(state().signedIn&&!pending())load()});
- document.addEventListener('visibilitychange',()=>{if(!document.hidden&&state().signedIn&&!pending())load()});
+ window.addEventListener('pageshow',()=>{if(state().signedIn&&!pending()&&!mutating)load()});
+ document.addEventListener('visibilitychange',()=>{if(!document.hidden&&state().signedIn&&!pending()&&!mutating)load()});
  if(document.readyState==='complete')initialize();
 })();

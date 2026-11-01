@@ -644,11 +644,13 @@ if(liveMode && (el.matches('[data-pedit],[data-premove],[data-pick]')||
  }
 if(el.dataset.listEdit){duplicateItemId=null;selected=el.dataset.listEdit;editReturnPage='list';openSwipeId=null;page='edit';render();return}if(el.dataset.listHide){selected=el.dataset.listHide;setOpenSwipe(null);dialog={title:'日用品を削除',message:'日用品リストから削除します。',buttons:[{id:'cancel',label:'キャンセル'},{id:'confirmHide',label:'削除',critical:true}]};render();return}
 if(el.dataset.tab){tab=el.dataset.tab;page='list';openSwipeId=null;menu=false;render();return}if(el.dataset.cat!==undefined){if(onlyOut)return;const c=Number(el.dataset.cat);collapsed.has(c)?collapsed.delete(c):collapsed.add(c);render();return}if(el.dataset.stock){const i=items.find(x=>x.id===el.dataset.stock);if(!i)return;
- if(liveMode){window.KurashiLive.save('item.update',
-   {item_group_id:i.id,version:i.version,in_stock:!i.inStock})
-   .catch(err=>inlineActionNotice(document.querySelector('[data-stock="'+i.id+'"]')||el,
+ if(liveMode){
+   const sync=window.KurashiLive.state();
+   if(sync.mutating||sync.pending)return;
+   window.KurashiLive.save('item.update',{item_group_id:i.id,version:i.version,in_stock:!i.inStock})
+    .catch(err=>inlineActionNotice(document.querySelector('[data-stock="'+i.id+'"]')||el,
      err.message||'在庫を保存できませんでした'));return}
- i.inStock=!i.inStock;i.version++;persist();render();return}if(el.dataset.open){if(openSwipeId){setOpenSwipe(null);return}listScrollPosition=window.scrollY;selected=el.dataset.open;page='compare';period='1y';priceScope='product';initializeCompare();periodMenu=false;menu=false;openSwipeId=null;render();return}if(el.dataset.pedit){openSwipeId=null;const p=catalogue.products.find(x=>x.id===el.dataset.pedit);if(p&&p.itemGroupId===selected){editingProductId=p.id;page='productEdit';render()}return}
+  i.inStock=!i.inStock;i.version++;persist();render();return}if(el.dataset.open){if(openSwipeId){setOpenSwipe(null);return}listScrollPosition=window.scrollY;selected=el.dataset.open;page='compare';period='1y';priceScope='product';initializeCompare();periodMenu=false;menu=false;openSwipeId=null;render();return}if(el.dataset.pedit){openSwipeId=null;const p=catalogue.products.find(x=>x.id===el.dataset.pedit);if(p&&p.itemGroupId===selected){editingProductId=p.id;page='productEdit';render()}return}
 if(el.dataset.premove){openSwipeId=null;
  const p=catalogue.products.find(x=>x.id===el.dataset.premove);
  if(p&&p.itemGroupId===selected){dialog={title:'商品の登録解除',message:`「${productTitle(p)}」の登録を解除します。過去の最安値集計対象からも外れます。`,buttons:[{id:'cancel',label:'キャンセル'},{id:'confirmProductUnlink',label:'解除する',critical:true}],pending:{productId:p.id}};renderDialogOnly()}return;
@@ -746,6 +748,31 @@ if(liveMode)window.KurashiLive.subscribe((state,data)=>{
  if(data)catalogue=window.KurashiLive.catalogueOf(data);
  if(!['add','edit','recordAdd','productEdit','productPick','productCreate'].includes(page))render();
 });
+// Pull down at top of inventory to refresh, including standalone iOS home-screen apps.
+let pullToRefresh=null;
+app.addEventListener('touchstart',e=>{
+ if(!liveMode||page!=='list'||tab!=='items'||dialog||menu||
+  window.scrollY>5||e.touches.length!==1||
+  e.target.closest('button,input,textarea,select,a,.sheet-back,.dialog-back'))return;
+ const t=e.touches[0];pullToRefresh={id:t.identifier,x:t.clientX,y:t.clientY,eligible:true};
+},{passive:true});
+app.addEventListener('touchmove',e=>{
+ const p=pullToRefresh;if(!p)return;
+ const t=[...e.changedTouches].find(t=>t.identifier===p.id);if(!t)return;
+ const dy=t.clientY-p.y,dx=t.clientX-p.x;
+ if(dy<0||Math.abs(dx)>Math.abs(dy)*0.8||window.scrollY>5)p.eligible=false;
+},{passive:true});
+app.addEventListener('touchend',e=>{
+ const p=pullToRefresh;if(!p)return;
+ const t=[...e.changedTouches].find(t=>t.identifier===p.id);if(!t)return;
+ pullToRefresh=null;
+ if(!p.eligible||t.clientY-p.y<85||page!=='list')return;
+ const state=window.KurashiLive.state();
+ if(state.mutating||state.pending)return;
+ window.KurashiLive.load().then(ok=>
+  say(ok?'最新の状態に更新しました':'更新できませんでした。接続状態をご確認ください'));
+},{passive:true});
+app.addEventListener('touchcancel',()=>{pullToRefresh=null},{passive:true});
 if('serviceWorker'in navigator&&location.protocol.startsWith('http'))navigator.serviceWorker.register('./sw.js').catch(()=>{});
 
 // Long-press ordering applies to item groups and registered products.
