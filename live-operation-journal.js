@@ -5,7 +5,7 @@
 (function(){
  'use strict';
  const KEY='kurashi_live_item_pending_v1';
- const ACTIONS=new Set(['item.create','item.update']);
+ const ACTIONS=new Set(['item.create','item.update','store.create']);
  const isId=id=>typeof id==='string'&&/^[a-zA-Z0-9_-]{8,128}$/.test(id);
  const validScope=(subject,householdId)=>typeof subject==='string'&&/^[0-9]+$/.test(subject)&&
    typeof householdId==='string'&&householdId.length>0&&householdId.length<=128;
