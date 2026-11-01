@@ -7,7 +7,7 @@ const header=(name,cols)=>[cols];
 const books={
  categories:[['category_id','name','fixed_order'],[0,'飲食',1],[1,'キッチン',2],[2,'洗面・風呂',3],[3,'洗濯・掃除',4],[4,'その他',5]],
  households:[['household_id','display_name','version','updated_at'],['h-a','A',1,''],['h-b','B',1,'']],
- users:[['user_id','household_id','display_name','auth_subject'],['u-a','h-a','Alice','subject-a'],['u-b','h-b','Bob','subject-b']],
+ users:[['user_id','household_id','display_name','auth_subject'],['u-a','h-a','Alice','subject-a'],['u-a2','h-a','Spouse','subject-a2'],['u-b','h-b','Bob','subject-b']],
  item_groups:[['item_group_id','household_id','category_id','name','normalized_name','in_stock','sort_order','is_hidden','version','created_at','updated_at','deleted_at'],
  ['i-a','h-a',0,'A item','a item',true,1,false,1,'','',''],
  ['i-b','h-b',0,'B item','b item',true,1,false,1,'','','']],
@@ -235,6 +235,13 @@ books.change_log.push(
 out=request('record.list');assert.equal(out.ok,true);
 assert.deepEqual(Array.from(out.data.records,r=>r.record_id),['receipt-a']);
 assert.deepEqual(Array.from(out.data.record_items,r=>r.record_item_id),['line-a']);
+claims.sub='subject-a2';
+const spouseRecords=request('record.list');
+assert.equal(spouseRecords.ok,true);
+assert.deepEqual(Array.from(spouseRecords.data.records,r=>r.record_id),['receipt-a'],
+ 'The second independently authenticated user of the same family sees the same receipt');
+assert.equal(spouseRecords.data.household_id,'h-a');
+claims.sub='subject-a';
 assert.equal(request('record.list',{household_id:'h-b'}).error.code,'BAD_REQUEST');
 assert.equal(request('record.create',{}).error.code,'RECEIPT_WRITES_DISABLED');
 claims.sub='subject-b';
