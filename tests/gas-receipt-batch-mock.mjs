@@ -655,4 +655,78 @@ const laterPayload=i=>({
   'HOUSEHOLD_MEMBERSHIP_INVALID','Duplicate login subjects abort mutations');
  assert.equal(t.writes,writes,'Denied attempts do not touch Sheets');
 }
+
+// Ordinary household store master: no fixed receipt, test-only cap or new Sheet.
+// Both registered spouses can create a chain and use it in normal receipt saves.
+{
+ const t=fullTrial();
+ t.data.users.push(['u-A2','house-A','Spouse','1234567891']);
+ t.mock.ContentService={MimeType:{JSON:'application/json'},
+  createTextOutput(content){return{setMimeType(){return this},getContent(){return content}}}};
+ let actor=t.spouse;
+ t.mock.authenticate=()=>actor;
+ const post=(action,id,p)=>JSON.parse(t.mock.doPost({postData:{contents:JSON.stringify({
+  id_token:'test-token',action,operation_id:id,payload:p
+ })}}).getContent());
+ const name='架空の新しいスーパー';
+ const first=post('store.create','store-op-00001',{name});
+ assert.equal(first.ok,true,'Second registered spouse creates a store');
+ assert.equal(first.data.action,'store.create');
+ const storeId=first.data.entity.chain_id;
+ assert.equal(t.rowObjects('stores').length,2);
+ const writes=t.writes;
+ const again=post('store.create','store-op-00001',{name});
+ assert.equal(again.ok,true);
+ assert.equal(again.data.entity.chain_id,storeId);
+ assert.equal(t.writes,writes,'Store same-ID replay never writes');
+ assert.equal(post('store.create','store-op-00002',{name}).error.code,'DUPLICATE');
+ assert.equal(post('store.create','store-op-00003',{name:'=IMPORTXML(1)'}).error.code,'BAD_REQUEST');
+ assert.equal(post('store.create','store-op-00001',{name:'別名'}).error.code,'OPERATION_REUSED');
+ const preflight=t.mock.receiptPreflight_(t.spouse,{
+  ...mainCandidate,chain_id:storeId
+ },t.mock.spreadsheet());
+ assert.equal(preflight.blocked_by_pending_operation,false);
+ actor=t.homeA;
+ const saved=post('record.create','receipt-new-chain-001',{
+  ...mainCandidate,chain_id:storeId,record_date:'2026-11-03'
+ });
+ assert.equal(saved.ok,true,'First spouse may save a receipt at the new store');
+ assert.equal(t.read(t.spouse).records.length,3);
+ assert.equal(t.read(t.homeA).record_items.length,6);
+ actor=t.other;
+ assert.equal(post('store.create','store-op-foreign',{name:'第三のスーパー'}).error.code,
+  'TRIAL_NOT_ISOLATED','Foreign household cannot register a store');
+}
+// Store registration uses the SAME operation ID to recover an interrupted Sheet
+// write, and an incomplete intent blocks any different receipt operation.
+for(const phase of ['journal.prepare','stores','change','journal.complete']){
+ for(const when of ['before','after']){
+  const t=fullTrial(),id='store-fault-00001',data={name:'試験用別チェーン'};
+  t.stop(phase,when);
+  assert.throws(()=>t.mock.mutateStoreSafely_(t.homeA,data,id),
+   new RegExp('INJECTED_'+phase+'_'+when));
+  assert.equal(t.locked,false);
+  const journal=t.rowObjects('processed_operations').find(x=>x.operation_id===id);
+  if(journal&&JSON.parse(journal.result).status==='prepared')
+   assert.throws(()=>t.mock.mutateReceiptSafely_(t.homeA,mainCandidate,
+    'receipt-after-store-fault'),e=>e.code==='RECOVERY_REQUIRED');
+  const done=t.mock.mutateStoreSafely_(t.homeA,data,id);
+  assert.equal(done.status,'completed');
+  const count=t.writes;
+  assert.equal(t.mock.mutateStoreSafely_(t.homeA,data,id).entity.chain_id,
+   done.entity.chain_id);
+  assert.equal(t.writes,count,'Completed store replay is idempotent');
+  assert.equal(t.rowObjects('stores').length,2);
+  assert.equal(t.rowObjects('change_log').length,4);
+  assert.equal(t.rowObjects('processed_operations').length,4);
+ }
+}
+{
+ const t=fullTrial(),id='store-tamper-001',data={name:'改ざん検知店舗'};
+ const done=t.mock.mutateStoreSafely_(t.homeA,data,id);
+ const row=t.data.stores.find(x=>x[0]===done.entity.chain_id);
+ row[t.columns.stores.indexOf('canonical_name')]='書換え';
+ assert.throws(()=>t.mock.mutateStoreSafely_(t.homeA,data,id),
+  e=>e.code==='RECOVERY_CONFLICT');
+}
 console.log('GAS receipt batch: normal record.create, same-ID recovery, legacy fixtures PASS');
