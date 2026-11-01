@@ -16,7 +16,7 @@ const context={
 };
 const vmContext=vm.createContext(context);
 const testAPI=vm.runInContext(src+"\n({settingsView,listView,refreshLive,liveListView,previewState:()=>({items,liveMode,liveSnapshot,liveStatus,liveBusy,tab,page}),setSettings(){tab='settings';page='list'},leave(){leaveRemoteView('試作データ表示')},render})",vmContext);
-assert.match(testAPI.settingsView(),/Google Sheetsから読み取る/);
+assert.match(testAPI.settingsView(),/日用品・商品・店舗を読み取る/);
 assert.equal(testAPI.previewState().items[0].name,'ローカル牛乳');
 await testAPI.refreshLive();
 const state=testAPI.previewState();
@@ -29,7 +29,7 @@ assert.doesNotMatch(view,/data-stock=/);
 assert.equal(testAPI.previewState().items[0].name,'ローカル牛乳');
 assert.equal(JSON.parse(storage.get('household_pwa_ui_v3'))[0].name,'ローカル牛乳');
 testAPI.leave();
-assert.match(testAPI.listView(),/ローカル牛乳/);
+assert.doesNotMatch(testAPI.listView(),/ローカル牛乳/);
 assert.match(html,/KurashiGasApi\.configure\("https:\/\/script\.google\.com\/macros\/s\//);
 assert.match(html,/kurashi-gis-ready/);
 // A slow bootstrap response must not resurrect a household after leaving
@@ -77,7 +77,7 @@ authListener(currentAuth);
 assert.equal(testAPI.previewState().liveSnapshot,null);
 assert.equal(testAPI.previewState().liveMode,false);
 assert.doesNotMatch(testAPI.listView(),/PRIVATE-B/);
-assert.match(testAPI.listView(),/ローカル牛乳/);
+assert.doesNotMatch(testAPI.listView(),/ローカル牛乳/);
 // Token expiry does not necessarily emit a callback. The next render
 // must also erase a remote view when status() reports expiration.
 currentAuth={configured:true,signedIn:true,subject:'subject-B'};
@@ -188,7 +188,7 @@ assert.equal(testAPI.previewState().liveMode,false);
 assert.equal(testAPI.previewState().liveSnapshot,null);
 assert.match(testAPI.settingsView(),/通信に失敗しました/);
 assert.match(testAPI.settingsView(),/CORS/);
-assert.match(testAPI.settingsView(),/もう一度読み取る/);
+assert.match(testAPI.settingsView(),/日用品・商品・店舗を読み取る/);
 assert.doesNotMatch(testAPI.settingsView(),/SECRET_ENDPOINT_DO_NOT_DISPLAY/);
 context.window.KurashiGasApi.request=async()=>{readCalls++;return snapshot('h-c','CONFIRMED-OLD');};
 await testAPI.refreshLive();
