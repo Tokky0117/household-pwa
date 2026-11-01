@@ -52,6 +52,7 @@ const ctx={
 }}}}},
  UrlFetchApp:{fetch(url){urlCalls++;assert.match(url,/^https:\/\/oauth2\.googleapis\.com\/tokeninfo\?id_token=/);return {getResponseCode(){return responseCode},getContentText(){return JSON.stringify(claims)}}}},
  ContentService:{MimeType:{JSON:'json'},createTextOutput(s){return {setMimeType(){return s}}}},
+ LockService:{getScriptLock(){return {tryLock(){return true},releaseLock(){}}}},
  Date,JSON
 };
 vm.createContext(ctx);vm.runInContext(source,ctx,{filename:'Code.gs'});
