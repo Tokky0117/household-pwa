@@ -97,6 +97,8 @@ const makeScan=()=>({
 api.setScan(makeScan());
 let html=api.receiptScanReview();
 assert.match(html,/確認した2明細をGoogle Sheetsに保存/);
+assert.match(html,/税込明細合計（円・数量分）/);
+assert.match(html,/単価ではありません/);
 assert.match(html,/value="store-A"/);
 assert.match(html,/value="product-A"/);
 const approval={receiptReviewed:true,totalsReviewed:true,taxResolved:false};
