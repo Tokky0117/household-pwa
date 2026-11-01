@@ -1191,7 +1191,13 @@ function readListHelpOpen(){
 }
 let listHelpOpen=readListHelpOpen();
 function listHelpView(){
- const helpLines=[
+ const helpLines=liveMode?[
+  '「あり／なし」を押して在庫を切り替え',
+  '日用品名を押して商品を登録',
+  '左スワイプで編集・削除',
+  '右上の＋で日用品を追加',
+  '左上のコピーアイコンで在庫なしをコピー'
+ ]:[
   '「あり／なし」を押して在庫を切り替え',
   '日用品名を押して価格情報を確認',
   '左スワイプで編集・削除',
@@ -1208,16 +1214,15 @@ function listHelpView(){
 }
 function listView(){
  if(liveMode)return liveListView();
- return `${head('日用品','Google Sheets')}<main><section class="panel">
- <h2>家庭の日用品</h2>
- <p>${window.KurashiAuth?.status?.()?.signedIn?'Google Sheetsから日用品を読み取ってください。':'設定からGoogleアカウントでログインしてください。'}</p>
- <button type="button" class="secondary" data-act="refreshLive" ${window.KurashiAuth?.status?.()?.signedIn&&!liveBusy?'':'disabled'}>${liveBusy?'読み込み中…':'Google Sheetsから読み取る'}</button>
- </section></main>${nav()}`;
- // Legacy local preview remains unreachable from the normal list.
-
- const copy='<button class="iconbtn" type="button" data-act="copyList" aria-label="在庫なしをコピー" title="在庫なしをコピー">'+miniIcon('copy')+'</button>';
- const add='<button class="iconbtn" type="button" data-act="add" aria-label="日用品を追加" title="日用品を追加">'+miniIcon('plus')+'</button>';
- return `${head('日用品','くらしストック',false,add,copy)}<main>${UI.searchField({id:'search',label:'日用品を検索',placeholder:'日用品を検索',value:query,extra:'autocomplete="off"'})}<div class="filterrow"><label class="switchlabel"><input type="checkbox" id="onlyOut" ${onlyOut?'checked':''}>在庫なしのみ表示</label></div><div id="item-results">${listResults()}</div>${listHelpView()}</main>${nav()}`;
+ const copy='<button type="button" class="iconbtn" disabled aria-label="在庫なしをコピー">'+miniIcon('copy')+'</button>';
+ const add='<button type="button" class="iconbtn" disabled aria-label="日用品を追加">'+miniIcon('plus')+'</button>';
+ const signedIn=window.KurashiAuth?.status?.()?.signedIn===true;
+ return `${head('日用品','くらしストック',false,add,copy)}<main>
+  ${UI.searchField({id:'search',label:'日用品を検索',placeholder:'日用品を検索',value:'',extra:'disabled'})}
+  <div class="filterrow"><label class="switchlabel"><input type="checkbox" disabled>在庫なしのみ表示</label></div>
+  <p class="hint" role="status">${signedIn?'Google Sheetsから日用品を読み込んでください。':'設定からGoogleアカウントでログインしてください。'}</p>
+  <button type="button" class="secondary" data-act="refreshLive" ${signedIn&&!liveBusy?'':'disabled'}>${liveBusy?'読み込み中…':'再読み込み'}</button>
+ </main>${nav()}`;
 }
 function priceCompareView(){
  const i=current();if(!i){page='list';return listView()}
@@ -1911,6 +1916,7 @@ function startPending(row,e,inputType){
 }
 function dragRowSelector(kind){return kind==='product'?'.comparison-product[data-product-id],.catalogue-row[data-product-id]':'[data-item-id]'}
 app.addEventListener('pointerdown',e=>{
+ if(liveMode&&page==='list')return;
  if(e.pointerType==='touch'||e.button!==0||dialog||!['list','products','compare'].includes(page))return;
  if(page==='list'&&(query||onlyOut))return;
  if(e.target.closest('input,textarea,select,[data-stock],[data-list-edit],[data-list-hide],[data-premove],[data-product-menu],[data-pedit],[data-cat]'))return;
@@ -1951,6 +1957,7 @@ app.addEventListener('pointerup',e=>endDrag(e));
 app.addEventListener('pointercancel',e=>endDrag(e,true));
 app.addEventListener('contextmenu',e=>{if(activeDrag||pendingDrag&&e.target.closest('[data-item-id],[data-product-id]'))e.preventDefault()});
 app.addEventListener('touchstart',e=>{
+ if(liveMode&&page==='list')return;
  if(e.touches.length!==1||dialog||!['list','products','compare'].includes(page)||page==='list'&&(query||onlyOut))return;
  if(e.target.closest('input,textarea,select,[data-stock],[data-list-edit],[data-list-hide],[data-premove],[data-product-menu],[data-pedit],[data-cat]'))return;
  const row=e.target.closest(dragRowSelector(page==='compare'||page==='products'?'product':'item'));
