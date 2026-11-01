@@ -27,9 +27,10 @@ const ctx=vm.createContext({window:win,document:{getElementById:id=>id==='app'?a
  removeItem(k){mutations++;storage.delete(k)}
 },navigator:{},location:{protocol:'file:'},Date,Intl,URL,console,setTimeout:()=>1,clearTimeout(){}});
 const extra='\n({refreshRemoteReceipts,remoteReceiptView,clearRemoteReceipts,'+
- 'validateRemoteReceipts,render,'+
+ 'validateRemoteReceipts,render,budgetView,'+
  'state:()=>({remoteReceipts,remoteReceiptSubject,remoteReceiptStatus,remoteReceiptBusy}),'+
  "setReceiptTab(){tab='receipt';page='list'},"+
+ "setBudgetTab(){tab='budget';page='list';budgetMonth='2026-10'},"+
  "leaveReceipt(){tab='items';clearRemoteReceipts()}})";
 const ui=vm.runInContext(source+extra,ctx);
 ui.setReceiptTab();
@@ -42,6 +43,18 @@ assert.match(ui.remoteReceiptView(),/コノミヤ/);
 assert.match(ui.remoteReceiptView(),/牛乳/);
 assert.match(ui.remoteReceiptView(),/198円/);
 assert.equal(mutations,priorWrites,'Read-only path must not persist receipt content');
+// The family budget must be separate from demo and browser-local expenses.
+ui.setBudgetTab();
+const familyBudget=ui.budgetView();
+assert.match(familyBudget,/確定レシート（家計簿・読み取り専用）/);
+assert.match(familyBudget,/2026-10の確定購入額/);
+assert.match(familyBudget,/198円/);
+assert.match(familyBudget,/合算しません/);
+const beforeBudgetRefresh=requests.length;
+await ui.refreshRemoteReceipts();
+assert.equal(requests.length,beforeBudgetRefresh+1,
+ 'The budget read is explicit, not background synchronization');
+ui.setReceiptTab();
 subject='subject-B';
 ui.render();
 assert.equal(ui.state().remoteReceipts,null,'Account change clears earlier receipt rows');
