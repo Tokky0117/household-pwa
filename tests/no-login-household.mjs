@@ -170,5 +170,40 @@ assert.equal(temp.db.processed_operations.length,afterCommit,
 assert.equal(pill(c),'なし');
 c.window.document.querySelector('[data-tab="settings"]').click();
 assert.match(c.window.document.body.textContent,/試作 v0\.52\.0/);
-c.window.close();
-console.log('IndexedDB durable queue, 2 real button taps, offline restart, idempotent replay: OK');
+
+// New item IDs can be referenced by edits/hides before the first GAS save.
+online=false;
+const draft=await c.window.KurashiLive.save('item.create',{name:'試作テスト品',category_id:1});
+assert.match(draft.item_group_id,/^local-/);
+await c.window.KurashiLive.save('item.update',{
+ item_group_id:draft.item_group_id,name:'試作テスト品・更新',category_id:1,version:1
+});
+await c.window.KurashiLive.save('item.update',{
+ item_group_id:draft.item_group_id,is_hidden:true,version:1
+});
+assert.equal(c.window.KurashiLive.state().queued,3,'create, edit and hide persist as 3 commands');
+c.window.close();online=true;
+let d=appSession();
+await waitFor(()=>d.window.KurashiLive.state().queued===0 &&
+ temp.db.item_groups.some(row=>row.includes('試作テスト品・更新')),
+ 'restarted PWA resolves temporary ID and saves create, edit, hide in order');
+const hidden=temp.call('bootstrap').data.item_groups.find(x=>x.name==='試作テスト品・更新');
+assert.ok(hidden&&hidden.is_hidden===true&&Number(hidden.version)===3,
+ 'queued edit and hide both reached GAS after create was acknowledged');
+// A concurrent spouse-side change triggers a version rebase. Preserve the
+// *desired* stock value, rather than applying another blind inversion.
+await waitFor(()=>!d.window.KurashiLive.state().busy,'finished post-queue refresh');
+const other=temp.call('item.update',{
+ item_group_id:id,version:5,in_stock:true
+},'op-other-device-abcdefghijklmnop');
+assert.equal(other.ok,true,'spouse simulated update');
+assert.equal(Number(other.data.entity.version),6);
+const accepted=await d.window.KurashiLive.toggleStock(id);
+assert.equal(accepted.in_stock,true,'optimistic value expresses the tapped intention');
+await waitFor(()=>temp.call('bootstrap').data.item_groups.find(x=>x.item_group_id===id).version===7 &&
+ d.window.KurashiLive.state().queued===0,
+ 'VERSION_CONFLICT triggers rebase and desired state is preserved');
+assert.equal(temp.call('bootstrap').data.item_groups.find(x=>x.item_group_id===id).in_stock,true);
+d.window.close();
+console.log('IndexedDB queue, DOM double-tap, offline restart, create/edit/hide, idempotent retry, version conflict: OK');
+
