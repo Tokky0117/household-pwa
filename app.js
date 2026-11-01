@@ -846,18 +846,6 @@ function liveRecoveryView(){
 }
 
 const liveCategories=()=>CATS.map((name,i)=>`<option value="${i}" ${Number(liveEditor?.category_id)===i?'selected':''}>${esc(name)}</option>`).join('');
-function liveEditForm(){
- if(!liveEditor)return '';
- const editing=!!liveEditor.item_group_id;
- const fields=UI.formField({id:'live-name',label:'日用品名',value:liveEditor.name,
-  maxlength:150,required:true,placeholder:'例：食器用スポンジ'})+
-  '<div class="formfield"><label for="live-category">カテゴリ</label><select id="live-category">'+liveCategories()+'</select></div>';
- return UI.sheet({title:editing?'日用品を編集':'日用品を追加',
-  variant:'item-editor-sheet',body:`<div id="live-editor">${fields}
-   <div class="formactions"><button type="button" class="primary" data-act="saveLive"
-    ${liveWritable()&&!liveWriteBusy&&livePending().status==='none'?'':'disabled'}>${editing?'変更を保存':'登録する'}</button></div>
-  </div>`});
-}
 function openLiveEditor(item){
  if(!liveSnapshot||liveWriteBusy||livePending().status!=='none')return;
  liveEditor={item_group_id:item?.item_group_id||null,name:String(item?.name||''),category_id:Number(item?.category_id??0),version:item?.version??null};
@@ -1191,7 +1179,7 @@ function listView(){
   ${UI.searchField({id:'search',label:'日用品を検索',placeholder:'日用品を検索',value:query,extra:'autocomplete="off"'})}
   <div class="filterrow"><label class="switchlabel"><input type="checkbox" id="onlyOut" ${onlyOut?'checked':''}>在庫なしのみ表示</label></div>
   ${notice?'<p class="hint" role="status">'+esc(notice)+'</p>':''}
-  ${loaded?liveRecoveryView():''}${liveEditForm()}${liveProductForm()}
+  ${loaded?liveRecoveryView():''}${liveEditor?formView():''}${liveProductForm()}
   <div id="item-results">${listResults()}</div>${listHelpView()}
   ${failed&&auth?.signedIn?'<button type="button" class="secondary" data-act="refreshLive">接続を再試行</button>':''}
  </main>${nav()}`;
@@ -1223,14 +1211,24 @@ function priceCompareView(){
 <div id="shop-compare-fields" ${shopExpanded?'':'hidden'}><p class="shop-compare-instruction">店頭商品の内容量を入力</p>${UI.quantityUnitFields({quantityId:"compare-quantity",unitId:"compare-unit",quantity:compareQuantity??"",unit:compareUnit||UNIT_OPTIONS[0],placeholder:"例：1100",extra:'inputmode="decimal"'})}</div></section>`;
  return `${head('価格情報',i.name,true)}<main class="detail-main comparison-main"><p class="price-purpose">登録した商品の、お店ごとの最安値を確認</p>${UI.sectionHeading({title:"登録商品",subtitle:priceScope==='unit'&&unitLabel?unitLabel+"の換算価格":"税込・安い順",className:"detail-section-heading price-heading",trailing:UI.dropdown({id:"price-period",value:period,label:"期間",compact:true,open:periodMenu,options:[{value:"3m",label:"直近3か月"},{value:"1y",label:"直近1年"}]})})}<div class="comparison-list">${productRows}</div><button type="button" class="tertiary manage-add product-register-action" data-act="productPick">${miniIcon('plus')}<span>商品を登録</span></button></main>${unitControls}`;
 }
+// The original edit/add half-sheet is the only item form in both data modes.
 function formView(){
- const editing=page==='edit',i=editing?current():null;
+ const remote=!!liveEditor,editing=remote?!!liveEditor.item_group_id:page==='edit';
+ const i=remote?{name:liveEditor.name,category:liveEditor.category_id}:
+  editing?current():null;
  const title=editing?'日用品を編集':'日用品を追加';
  const fields=[
   UI.formField({id:'name',label:'日用品名',value:i?.name||'',maxlength:80,required:true,placeholder:'例：食器用スポンジ'}),
   UI.formField({id:'category',label:'カテゴリ',control:'select',value:i?.category??0,options:CATS.map((label,value)=>({label,value}))})
  ].join('');
- return UI.sheet({title,variant:'item-editor-sheet',body:`<form id="itemForm">${fields}<div id="item-duplicate-notice"></div><div class="formactions"><button type="submit" class="primary">${editing?'変更を保存':'登録する'}</button></div></form>`});
+ const duplicate=remote&&liveEditor.duplicateRow?liveEditor.duplicateRow:null;
+ const action=duplicate?
+  '<div class="ui-inline-notice" role="status"><p>'+esc(duplicate.is_hidden?
+   '以前登録した日用品があります':'すでに登録されています')+'</p>'+
+  '<button type="button" class="secondary" data-act="'+
+    (duplicate.is_hidden?'restoreLive':'showExistingLive')+'">'+
+    (duplicate.is_hidden?'リストに戻す':'リストで表示')+'</button></div>':'';
+ return UI.sheet({title,variant:'item-editor-sheet',body:`<form id="itemForm">${fields}<div id="item-duplicate-notice">${action}</div><div class="formactions"><button type="submit" class="primary" ${remote&&!liveWritable()?'disabled':''}>${editing?'変更を保存':'登録する'}</button></div></form>`});
 }
 // Shared registered-product row: name opens editing; long press changes display order.
 function managementRow({name,sub,action,aria,details='',editId=null,productId=null}) {
@@ -1629,7 +1627,29 @@ if(form.id==='recordForm'){
  const input={type:newRecordType,chainId:String(d.get('chain')||''),date:String(d.get('date')||''),productId:String(d.get('product')||''),rawName:String(d.get('raw')||''),quantity:String(d.get('quantity')||''),amount:String(d.get('amount')||''),category:String(d.get('category')||'')};
  if(!savePreviewRecord(input)){fieldNotice(form,'記録の金額・個数・商品・チェーンを確認してください','record-amount');return}
  page='list';tab='receipt';render();return;
- }if(form.id==='itemForm'){const i=page==='edit'?current():null;saveItem(String(d.get('name')??i?.name??'').trim(),Number(d.get('category')??i?.category??0))}
+ }if(form.id==='itemForm'){
+ const i=liveEditor?null:page==='edit'?current():null;
+ const name=String(d.get('name')??i?.name??'').trim();
+ const category=Number(d.get('category')??i?.category??0);
+ if(liveEditor){
+  if(!liveWritable()||!liveMode||!liveSnapshot)return;
+  if(!name||name.length>80||/^[=+@-]/.test(name)||!Number.isSafeInteger(category)||category<0||category>=CATS.length){
+   fieldNotice(form,'日用品名とカテゴリを確認してください','name');return;
+  }
+  const duplicate=(liveSnapshot.item_groups||[]).find(x=>!x.deleted_at&&
+   String(x.item_group_id)!==String(liveEditor.item_group_id??'')&&
+   norm(x.name)===norm(name));
+  if(duplicate){
+   liveEditor={...liveEditor,name,category_id:category,duplicateRow:duplicate};
+   render();return;
+  }
+  const payload=liveEditor.item_group_id?
+   {item_group_id:liveEditor.item_group_id,version:liveEditor.version,name,category_id:category}:
+   {name,category_id:category};
+  liveMutate(liveEditor.item_group_id?'item.update':'item.create',payload);return;
+ }
+ saveItem(name,category);return;
+}
 if(form.id==='productCreateForm'){
  const name=String(d.get('name')||'').trim(),quantity=Number(String(d.get('quantity')||'').replace(',','.')),unit=String(d.get('unit')||'');
  if(!name||(String(d.get('quantity')||'').trim()!==''&&(!Number.isFinite(quantity)||quantity<=0))||!UNIT_OPTIONS.includes(unit)){fieldNotice(form,'商品名・内容量・単位を確認してください',!name?'new-product-name':'new-product-quantity');return}
@@ -1673,7 +1693,17 @@ if(el.dataset.act==='addLive'){
  if(!liveSnapshot){if(!liveBusy)maybeLoadHousehold();say(liveStatus.startsWith('取得失敗：')?'設定から接続を再試行してください':'家庭データを読み込み中です');return}
  openLiveEditor(null);return
 }
- if(el.dataset.act==='copyLiveList'){
+ if(el.dataset.act==='showExistingLive'){
+ const row=liveEditor?.duplicateRow;if(!row||!liveMode)return;
+ liveEditor=null;onlyOut=false;query='';collapsed.delete(Number(row.category_id));
+ selected=String(row.item_group_id);page='list';render();return;
+}
+if(el.dataset.act==='restoreLive'){
+ const row=liveEditor?.duplicateRow;
+ if(!row||!liveMode||!liveWritable())return;
+ liveMutate('item.update',{item_group_id:row.item_group_id,version:Number(row.version),is_hidden:false});return;
+}
+if(el.dataset.act==='copyLiveList'){
   const contents=CATS.map((cat,i)=>{
    const rows=(liveSnapshot?.item_groups||[]).filter(x=>
     Number(x.category_id)===i&&!x.deleted_at&&!x.is_hidden&&
