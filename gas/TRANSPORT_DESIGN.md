@@ -269,3 +269,10 @@ Chromeの接続テスト画面でGoogleログイン、GAS WebアプリへのPOST
 - HTMLにデータ値を文字列連結で埋め込まず、`textContent`で安全に描画。実際のGASコードで模擬読み取り・危険文字列を含む日用品名・HTML内JS構文・通常doGetの非公開応答を検証済み。
 - 試験用の「自分のみ」アクセス権維持が前提。**汎用の家庭認証・本番PWA接続・オフライン同期は未実装**。意思決定と残課題は`gas/TRANSPORT_DECISION.md`を参照。
 - 専用シートの現在の1件は変更しない。書込ゲートと運用中GAS・`main`はそのまま。
+
+## 2026-11-01：保存前の認証済み読み取り専用診断
+
+- `record.preflight` をGAS `doPost` とPWAの `gas-api.js` に追加。入力は `receipt-create-1` の候補。Google認証から得た家庭の店舗・商品・カテゴリをサーバー側で検査し、未完了ジャーナルを検出する。結果は件数・税込合計・登録人数・未完了の有無・`write_enabled=false` のみ。内容の保存・同期・承認やガード解除は一切しない。
+- 既存の `record.create` は引き続き公開入口で明示拒否、クライアントも `RECEIPT_BATCH_WRITE_ENABLED=false`。読取経路は未デプロイで、実GitHub PagesからGASへのCORS接続成功・iPhone実機・実Sheetでの応答時間は未確認。
+- 新しい `tests/receipt-save-parity.mjs` の47件と認証隔離テストをオフラインCIへ追加。これらは**GAS／Sheetを通信しないモック試験**にすぎない。
+
