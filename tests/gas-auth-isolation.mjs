@@ -95,7 +95,8 @@ books.users.push(['duplicate-subject','h-a','Duplicate','subject-a2']);
 assert.equal(request('household.status').error.code,'HOUSEHOLD_MEMBERSHIP_INVALID');
 books.users.pop();
 books.users.push(['duplicate-id','h-a','Duplicate','subject-a']);
-assert.equal(request('household.status').error.code,'HOUSEHOLD_MEMBERSHIP_INVALID');
+assert.equal(request('household.status').error.code,'FORBIDDEN',
+ 'Duplicated current subject must be refused in authenticate before diagnostic');
 books.users.pop();
 
 const catalogReadStart=spreadsheetOpens;
