@@ -131,6 +131,28 @@ ui.setBudgetTab();
 ui.setBudgetMonth('2026-11');
 assert.match(ui.budgetView(),/2026-11の確定購入額<\/span><strong>1,008円/);
 assert.equal(mutations,priorWrites,'3-receipt readback never adds a browser-local write');
+// A registered product reference in the confirmed receipt may show its
+// household's present stock state, but never changes the stock or the amount.
+const linkedFixture=await respond();
+respond=async()=>({...linkedFixture,
+ record_items:linkedFixture.record_items.map(line=>line.record_item_id==='main-2'?
+  {...line,product_id:'product-sheets'}:line)});
+win.KurashiReceiptSaveSession={writeEnabled:()=>true};
+vm.runInContext("receiptCatalogSubject='subject-A';receiptRemoteCatalog="+JSON.stringify({
+ household_id:'home-A',
+ products:[{product_id:'product-sheets',household_id:'home-A',item_group_id:'item-7',name:'洗濯用品'}],
+ item_groups:[{item_group_id:'item-7',household_id:'home-A',name:'洗剤',in_stock:false}]
+})+";",ctx);
+ui.setReceiptTab();
+await ui.refreshRemoteReceipts();
+assert.match(ui.remoteReceiptView(),/登録商品：洗濯用品 ／ 日用品：洗剤 ／ 在庫なし/);
+assert.match(ui.remoteReceiptView(),/架空の日用品 · 2点/);
+assert.match(ui.remoteReceiptView(),/明細合計 340円/);
+assert.equal(mutations,priorWrites,'Cross-screen product lookup must remain read-only');
+// Never show the name or stock from a catalog whose household ID differs.
+vm.runInContext("receiptRemoteCatalog={household_id:'home-B',products:[{product_id:'product-sheets',name:'別家庭の秘密'}],item_groups:[]}",ctx);
+assert.doesNotMatch(ui.remoteReceiptView(),/別家庭の秘密/);
+assert.doesNotMatch(ui.remoteReceiptView(),/登録商品：洗濯用品/);
 ui.setReceiptTab();
 subject='subject-B';
 ui.render();
