@@ -9,6 +9,8 @@
  const MUTATIONS=new Set(['item.create','item.update','record.create']);
  // Receipt batch writes need separate server journal and user approval.
  const RECEIPT_BATCH_WRITE_ENABLED=false;
+ // Fixed, previously completed isolated trial fixture only.
+ const TRIAL_REPLAY_ACTION='record.trial.replay';
  const MAX_RESPONSE=1024*1024;
  function configure(url){
    if(!url){endpoint='';return}
@@ -23,7 +25,12 @@
    if(action==='record.create'&&!RECEIPT_BATCH_WRITE_ENABLED)
      throw new Error('RECEIPT_WRITES_DISABLED');
    if(!endpoint)throw new Error('GAS_NOT_CONFIGURED');
-   if(!['bootstrap','sync','product.catalog','product.alias.check','record.list','household.status','record.preflight'].includes(action)){
+   if(action===TRIAL_REPLAY_ACTION){
+   if(options.confirmedTrialReplay!==true||!payload||
+      typeof payload!=='object'||Array.isArray(payload)||
+      Object.keys(payload).length||options.operationId!==undefined)
+    throw new Error('TRIAL_REPLAY_NOT_CONFIRMED');
+  }else if(!['bootstrap','sync','product.catalog','product.alias.check','record.list','household.status','record.preflight'].includes(action)){
      if(!MUTATIONS.has(action))throw new Error('UNSUPPORTED');
      if(action==='record.create'?!RECEIPT_BATCH_WRITE_ENABLED:!LIVE_WRITE_ENABLED)
        throw new Error(action==='record.create'?'RECEIPT_WRITES_DISABLED':'WRITES_DISABLED');
