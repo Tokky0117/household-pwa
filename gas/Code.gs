@@ -327,14 +327,28 @@ function bootstrap(user,book){
  // Do not cache rows: household and schema checks remain per-request.
  const activeBook=book||spreadsheet();
  const householdId=user.householdId;
- return {
+ // Read atomically relative to batched reorder writers. If a previous
+ // reorder stopped after some row writes, never show its partial state.
+ const lock=LockService.getScriptLock();
+ if(!lock.tryLock(20000))fail('BUSY','読み取りが混み合っています');
+ try{
+  const pending=operationRowsForHousehold_(String(householdId),activeBook).some(row=>{
+   let state;
+   try{state=JSON.parse(String(row.obj.result))}
+   catch(_){return false}
+   return state?.status==='prepared'&&
+    ['item.reorder','product.reorder'].includes(state.action);
+  });
+  if(pending)fail('RECOVERY_REQUIRED','未完了の並び替えを復旧してください');
+  return {
   household_id:householdId,
   categories:rows('categories',activeBook).map(x=>publicRow(x.obj)),
   item_groups:scoped('item_groups',householdId,activeBook).map(x=>publicRow(x.obj)),
   products:scoped('products',householdId,activeBook).map(x=>publicRow(x.obj)),
   stores:rows('stores',activeBook).filter(x=>String(x.obj.household_id)===householdId).map(x=>publicRow(x.obj)),
   sequence_no:currentSequence(householdId,activeBook)
- };
+  };
+ }finally{lock.releaseLock()}
 }
 /**
  * Read-only, opt-in product catalog for STEP 3.
@@ -536,6 +550,13 @@ function mutateOrderSafely_(user,action,payload,operationId){
   const book=spreadsheet(),hid=String(user.householdId);
   assertPrototypeReceiptIdentity_(book,user);
   const table=isItem?'item_groups':'products',idKey=isItem?'item_group_id':'product_id';
+  if(!isItem){
+   const group=rows('item_groups',book).filter(row=>
+    String(row.obj.item_group_id)===String(payload.item_group_id)&&
+    String(row.obj.household_id)===hid&&!row.obj.deleted_at&&
+    !(row.obj.is_hidden===true||String(row.obj.is_hidden).toLowerCase()==='true'));
+   if(group.length!==1)fail('NOT_FOUND','登録先の日用品が見つかりません');
+  }
   const operations=rows('processed_operations',book);
   const homeOps=operations.filter(r=>String(r.obj.household_id)===hid);
   const duplicates=operations.filter(r=>String(r.obj.operation_id)===operationId);
