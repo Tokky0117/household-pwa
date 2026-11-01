@@ -74,7 +74,11 @@ error(payload({version:1}),'product-update-op-002','VERSION_CONFLICT');
 error(payload({product_id:'foreign-product'}),'product-update-op-002','NOT_FOUND');
 error(payload({item_group_id:'foreign-group',version:2}),'product-update-op-002','NOT_FOUND');
 error(payload({name:'=FORMULA',version:2}),'product-update-op-002','BAD_REQUEST');
-error(payload({name:'牛乳',version:2,package_unit:'mL'}),'product-update-op-002','BAD_REQUEST'=== 'NO' ? 'DUPLICATE':'DUPLICATE');
+row('products',{product_id:'product-duplicate',household_id:'home-A',item_group_id:'item-A',
+ item_group_order:2,name:'牛乳',normalized_name:'牛乳',package_quantity:900,package_unit:'mL',
+ version:1,created_at:'2026-11-01T00:00:00.000Z',
+ updated_at:'2026-11-01T00:00:00.000Z',deleted_at:null});
+error(payload({name:'牛乳',version:2}),'product-update-op-002','DUPLICATE');
 // Prepare/write/log/finalize recovery using EXACT immutable operation ID.
 failAt='before-log';
 const edit=payload({version:2,item_group_id:'item-B',name:'牛乳B'});
