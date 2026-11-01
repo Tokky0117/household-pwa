@@ -91,7 +91,10 @@ function harness(editorTrial=false){
    computeDigest(algo,input){assert.equal(algo,'sha256');return Array.from(createHash('sha256').update(input).digest())},
    base64EncodeWebSafe(bytes){return Buffer.from(bytes).toString('base64url')}
   },
-  Date,JSON,Logger:{log(){}}
+  Date,JSON,Logger:{log(){}},
+  HtmlService:{createHtmlOutput(content){return{
+    getContent(){return content},setTitle(){return this}
+   }}}
  };
  vm.createContext(mock);vm.runInContext(source,mock,{filename:'gas/Code.gs'});
  // The production isolation guard remains in place. Override only in this
@@ -195,6 +198,10 @@ for(const phase of faults)for(const when of ['before','after']){
  assert.equal(trial.mock.PropertiesService.getScriptProperties()
   .getProperty('RECEIPT_WRITES_ENABLED'),'false');
  const before=trial.writes;
+ const page=trial.mock.doGet({parameter:{trial_receipt:'1'}});
+ assert.match(page.getContent(),/試験レシートを保存・同じ操作を確認/);
+ assert.match(page.getContent(),/checkReceiptTrialReadOnly/);
+ assert.equal(trial.writes,before,'A GET must never write to Sheets');
  const first=trial.mock.runReceiptWriteTrialOnce();
  assert.equal(first.ok,true);
  assert.equal(first.items,2);
@@ -207,6 +214,9 @@ for(const phase of faults)for(const when of ['before','after']){
  const replay=trial.mock.runReceiptWriteTrialOnce();
  assert.equal(replay.replay,true);
  assert.equal(trial.writes,after,'Editor trial must be idempotent');
+ assert.equal(trial.mock.doGet({parameter:{trial_receipt:'1'}})
+  .getContent().includes('税込合計496円'),true);
+ assert.equal(trial.writes,after,'Trial page GET remains read-only after save');
  assert.ok(after>before);
  assert.equal(trial.mock.checkReceiptTrialReadOnly().completed,true);
  trial.data.record_items[1][trial.columns.record_items.indexOf('amount_tax_included')]=999;
