@@ -67,8 +67,40 @@ function kurashiAuthenticate_(idToken) {
       Number(claims.exp) <= Math.floor(Date.now() / 1000))
     kurashiFail_('UNAUTHORIZED','Googleログインを確認できません');
   const book = kurashiBook_();
-  const matches = kurashiRows_('users',book).filter(x=>
+  let matches = kurashiRows_('users',book).filter(x=>
     String(x.value.auth_subject) === String(claims.sub));
+  // The two household accounts are approved by the owner using a script
+  // property; their Google-verified emails are used ONLY for initial binding.
+  // Subsequent requests authenticate using immutable Google "sub".
+  if (matches.length === 0) {
+    const email=String(claims.email||'').toLowerCase();
+    const approved=String(PropertiesService.getScriptProperties()
+      .getProperty('HOUSEHOLD_MEMBER_EMAILS')||'').split(',')
+      .map(s=>s.trim().toLowerCase()).filter(Boolean);
+    if (approved.length!==2 || new Set(approved).size!==2 ||
+        !email || !approved.includes(email) ||
+        (claims.email_verified!==true && claims.email_verified!=='true'))
+      kurashiFail_('FORBIDDEN','この家庭にはアクセスできません');
+    const lock=LockService.getScriptLock();
+    if (!lock.tryLock(20000)) kurashiFail_('BUSY','ログインが混み合っています');
+    try {
+      const users=kurashiRows_('users',book);
+      if (users.some(x=>String(x.value.auth_subject)===String(claims.sub))) {
+        matches=users.filter(x=>String(x.value.auth_subject)===String(claims.sub));
+      } else {
+        if (users.length>=2 || users.some(x=>String(x.value.user_id)==='')) 
+          kurashiFail_('FORBIDDEN','利用者の登録を確認できません');
+        const homes=kurashiRows_('households',book);
+        if (homes.length!==1 || !homes[0].value.household_id)
+          kurashiFail_('FORBIDDEN','家庭の設定が不正です');
+        const value={user_id:'user-'+Utilities.getUuid(),
+          household_id:String(homes[0].value.household_id),
+          display_name:'利用者',auth_subject:String(claims.sub)};
+        kurashiAppend_('users',value,book);
+        matches=[{value:value}];
+      }
+    } finally { lock.releaseLock(); }
+  }
   if (matches.length !== 1)
     kurashiFail_('FORBIDDEN','この家庭にはアクセスできません');
   const member = matches[0].value;
