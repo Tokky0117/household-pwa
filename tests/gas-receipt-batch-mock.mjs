@@ -91,7 +91,7 @@ function harness(editorTrial=false){
    computeDigest(algo,input){assert.equal(algo,'sha256');return Array.from(createHash('sha256').update(input).digest())},
    base64EncodeWebSafe(bytes){return Buffer.from(bytes).toString('base64url')}
   },
-  Date,JSON
+  Date,JSON,Logger:{log(){}}
  };
  vm.createContext(mock);vm.runInContext(source,mock,{filename:'gas/Code.gs'});
  // The production isolation guard remains in place. Override only in this
