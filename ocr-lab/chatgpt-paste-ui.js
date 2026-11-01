@@ -6,7 +6,7 @@ import '../receipt-product-matching.js';
 import '../receipt-alias-preflight.js';
 import {createConfirmationPreview} from './confirmation-preview.js';
 import {
- IMPORT_VERSION,parseChatGptReceiptJson,editChatGptReceiptDraft,draftQuality
+ IMPORT_VERSION,parseChatGptReceiptJson,editChatGptReceiptDraft,draftQuality,makeChatGptReceiptPrompt
 } from './chatgpt-receipt-import.js';
 const $=id=>document.getElementById(id);
 const source=$('chatgpt-paste-input'),message=$('chatgpt-paste-status');
@@ -17,24 +17,7 @@ const review=createConfirmationPreview({
  summary:$('chatgpt-candidate-summary'),list:$('chatgpt-candidate-list')
 });
 let draft=null;
-const prompt=[
- '次のレシート画像から、印字されている購入明細だけを読み取ってください。',
- '出力はJSONオブジェクトのみ。Markdownや説明文、コードフェンスは付けないでください。',
- 'レシート以外の情報（会員番号・決済・取引番号・カード番号・電話番号等）は出力しないでください。',
- 'メーカー・ブランド・正式商品名・JAN/SKU・数量・税率は推測して埋めないでください。画像で読めない値はnullにしてください。',
- 'quantityは購入数（例：20個入という内容量ではない）、grossAmountは値引前の明細合計、discountは正の値引額、netAmountは値引後の明細合計です。',
- '数字は円の整数で、1,000のような桁区切りや円記号を付けません。値引きがないと画像から判断できる場合だけdiscountを0にします。',
- '値引き行は対象商品の明細に対応させ、対応先が不明なら任意の行へ振り分けず該当値をnullとします。',
- '税が合計の外に加算される場合taxBasisはexcluded、税込の場合included、不明ならunknown。unknownのときtaxTotalはnull。',
- '読めない商品名も明細行自体が確認できればnameをnullにして残してください。商品ごとの数量・金額の曖昧さは人間が原本と確認します。',
- '次のキーだけを使い、ルートと全明細のキーを省略しないでください。',
- JSON.stringify({
-  version:IMPORT_VERSION,purchaseDate:null,storeName:null,
-  taxBasis:'unknown',taxTotal:null,receiptTotal:null,printedCount:null,
-  items:[{name:null,code:null,quantity:null,unitPrice:null,
-   grossAmount:null,discount:null,netAmount:null}]
- },null,2)
-].join('\n');
+const prompt=makeChatGptReceiptPrompt();
 const fieldLabels=[
  ['name','商品名'],['code','SKU / JAN'],['quantity','購入数量（候補）'],
  ['unitPrice','単価'],['grossAmount','値引前金額'],['discount','値引額'],
