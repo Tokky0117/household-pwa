@@ -359,7 +359,7 @@ function doPost(e){
     records:2,items:4,amount:458
    }});
   }
-  // The next acceptance path: ONE reviewed candidate receipt only in the
+  // Staged receipt pilot, capped at twenty receipts in the
   // pinned existing test household. It shares the normal receipt transaction
   // and same-ID recovery engine but NEVER opens general record.create.
   if(action==='record.trial.main.create'){
@@ -1519,9 +1519,9 @@ function receiptTrialGuard_(book){
    generalStates.every(x=>x?.status==='completed')};
 }
 /**
- * INTERNAL ONLY — next-stage general receipt in existing trial household.
- * Not reachable from doPost; record.create remains hard-disabled.
- * One operation ID survives partial failure, with the shared journal.
+ * Test-only receipt mutation behind the pinned authenticated doPost route.
+ * Normal record.create remains hard-disabled; each confirmation uses a new
+ * immutable operation ID and the shared recovery journal.
  */
 function receiptTrialMainCreate_(user,payload,operationId){
  if(typeof operationId!=='string'||
