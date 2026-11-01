@@ -117,6 +117,9 @@ const apiMock={
    if(secondSaved)records.push({record_id:'r2',record_type:'receipt',
     chain_id:'c-test',raw_store_name:'[KURASHI_RECEIPT_TRIAL_SECOND_ONLY]',
     record_date:'2026-11-01'});
+   if(receiptMode==='extra')records.push({record_id:'r3',record_type:'receipt',
+    chain_id:'c-test',raw_store_name:'試験用の追加一般明細',
+    record_date:'2026-11-01'});
    const record_items=[
     {record_item_id:'line1',record_id:'r1',line_order:1,quantity:1,
      amount_tax_included:receiptMode==='bad-price'?999:198,product_id:'p-test',
@@ -132,6 +135,10 @@ const apiMock={
     {record_item_id:'line4',record_id:'r2',line_order:2,quantity:2,
      amount_tax_included:330,product_id:null,raw_name:'試験用・日用品',
      category_id:1,price_eligible:false});
+   if(receiptMode==='extra')record_items.push(
+    {record_item_id:'line5',record_id:'r3',line_order:1,quantity:1,
+     amount_tax_included:240,product_id:null,raw_name:'試験用・一般追加',
+     category_id:0,price_eligible:false});
    return {household_id:receiptMode==='foreign'?'other-family':'trial',records,record_items};
   }
   if(action==='product.catalog'){
@@ -263,6 +270,11 @@ await node('receipt-read').listeners.click();
 assert.match(node('receipt-read-result').textContent,/確定レシート2件・明細4件/);
 await node('receipt-replay').listeners.click();
 assert.match(node('receipt-replay-result').textContent,/新規レシートなし/);
+receiptMode='extra';
+await node('receipt-read').listeners.click();
+assert.match(node('receipt-read-result').textContent,/追加の一般試験レシート1件/);
+assert.match(node('receipt-read-result').textContent,/書き込み0件/);
+receiptMode='valid';
 
 assert.equal(ctx.window.KurashiTrialCatalogGate.ready(),false,
  'The OCR review may not fetch catalog until the explicit alias check also succeeds');
