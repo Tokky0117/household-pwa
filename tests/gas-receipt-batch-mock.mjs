@@ -302,7 +302,7 @@ for(const phase of faults)for(const when of ['before','after']){
  assert.equal(trial.writes,afterSecond,'Denied actions must not write');
  assert.equal(trial.mock.doGet({parameter:{trial_receipt:'1'}})
   .getContent().includes('税込合計496円'),true);
- assert.equal(trial.writes,after,'Trial page GET remains read-only after save');
+ assert.equal(trial.writes,afterSecond,'Trial page GET remains read-only after save');
  assert.ok(after>before);
  assert.equal(trial.mock.checkReceiptTrialReadOnly().completed,true);
  trial.data.record_items[1][trial.columns.record_items.indexOf('amount_tax_included')]=999;
