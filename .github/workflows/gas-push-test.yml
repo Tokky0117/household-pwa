@@ -1,11 +1,7 @@
 name: Push GAS to test project (manual)
-# ONE-TIME source-only sync of ordinary item/product writes to the EXISTING pinned test GAS.
-# Strict pre-source checksum, pinned target ID, manifest preservation, backup,
-# source-hash post-check; remove this temporary push trigger immediately after.
+# Manual-only. Item, product, stock, receipt and store API source was
+# synced to the pinned existing test GAS; automatic source updates are OFF.
 on:
-  push:
-    branches: [stage-a-ui-handoff-review]
-    paths: ['.github/workflows/gas-push-test.yml']
   workflow_dispatch:
     inputs:
       confirm_target_backup:
@@ -26,7 +22,7 @@ concurrency:
 
 jobs:
   push-test:
-    if: github.ref == 'refs/heads/stage-a-ui-handoff-review' && (github.event_name == 'push' || (inputs.confirm_target_backup == 'BACKUP_DONE' && inputs.confirm_test_source == 'TEST_GAS_UPDATE'))
+    if: github.ref == 'refs/heads/stage-a-ui-handoff-review' && inputs.confirm_target_backup == 'BACKUP_DONE' && inputs.confirm_test_source == 'TEST_GAS_UPDATE'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
