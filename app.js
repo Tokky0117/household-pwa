@@ -755,7 +755,7 @@ function convertQuantity(amount,from,to){
 function load(){try{const d=JSON.parse(localStorage.getItem(key));return Array.isArray(d)?d:makeSeed()}catch{return makeSeed()}}
 // Read-only remote snapshot lives in memory only. Local preview data is never overwritten.
 let liveSnapshot=null,liveStatus='未取得',liveBusy=false,liveMode=false;
-let liveEditor=null,liveWriteBusy=false,liveWriteStatus='';
+let liveEditor=null,liveProductEditor=null,liveWriteBusy=false,liveWriteStatus='';
 let liveOwnerSubject=null,liveRequestSubject=null,liveSessionEpoch=0;
 const liveWritable=()=>window.KurashiGasApi?.writeEnabled?.()===true&&
  window.KurashiAuth?.status?.()?.signedIn===true;
@@ -768,7 +768,7 @@ function sameLiveSession(subject,epoch){
 function leaveRemoteView(message='未取得'){
  liveSessionEpoch++;
  liveSnapshot=null;liveOwnerSubject=null;liveRequestSubject=null;
- liveMode=false;liveEditor=null;liveBusy=false;
+ liveMode=false;liveEditor=null;liveProductEditor=null;liveBusy=false;
  liveWriteStatus='';liveStatus=message;
 }
 // Stop presenting a pending read when the user navigates away. The HTTP
@@ -788,7 +788,7 @@ function onLiveAuthChange(auth){
   (auth?.signedIn!==true||auth.subject!==householdCheckSubject);
  const receiptMismatch=remoteReceiptSubject!==null&&
   (auth?.signedIn!==true||auth.subject!==remoteReceiptSubject);
- const wasShowingRemote=!!liveSnapshot||liveMode||!!liveEditor;
+ const wasShowingRemote=!!liveSnapshot||liveMode||!!liveEditor||!!liveProductEditor;
  if(receiptCatalogSubject!==null&&
     (auth?.signedIn!==true||auth.subject!==receiptCatalogSubject))
   invalidateReceiptCatalog();
@@ -827,8 +827,32 @@ function liveEditForm(){
 function openLiveEditor(item){
  if(!liveSnapshot||liveWriteBusy||livePending().status!=='none')return;
  liveEditor={item_group_id:item?.item_group_id||null,name:String(item?.name||''),category_id:Number(item?.category_id??0),version:item?.version??null};
+ liveProductEditor=null;liveWriteStatus='';render();
+}
+function openLiveProductEditor(groupId){
+ if(!liveSnapshot||!liveWritable()||liveWriteBusy||livePending().status!=='none')return;
+ const group=groupId===null?null:liveSnapshot.item_groups.find(x=>
+  x.item_group_id===groupId&&!x.deleted_at&&!x.is_hidden);
+ if(groupId!==null&&!group)return;
+ liveEditor=null;liveProductEditor={item_group_id:groupId,
+  group_name:group?.name||'在庫グループ未設定'};
  liveWriteStatus='';render();
 }
+function liveProductForm(){
+ if(!liveProductEditor)return '';
+ const choices='<option value="">単位を選択</option>'+
+  UNIT_OPTIONS.map(u=>'<option value="'+esc(u)+'">'+esc(u)+'</option>').join('');
+ return '<section class="panel" id="live-product-editor"><h2>商品を登録</h2>'+
+  '<p class="hint">在庫グループ：'+esc(liveProductEditor.group_name)+'</p>'+
+  '<label class="formfield">商品名<input id="live-product-name" type="text" maxlength="150" autocomplete="off"></label>'+
+  '<label class="formfield">内容量（任意）<input id="live-product-quantity" type="number" step="any" min="0" inputmode="decimal" placeholder="例：900"></label>'+
+  '<label class="formfield">単位<select id="live-product-unit">'+choices+'</select></label>'+
+  '<p class="hint">商品マスタを家庭のGoogle Sheetsに登録します。購入履歴は追加しません。</p>'+
+  '<button type="button" data-act="saveLiveProduct"'+
+   (liveWritable()&&!liveWriteBusy&&livePending().status==='none'?'':' disabled')+
+   '>商品を保存</button><button type="button" class="secondary" data-act="cancelLiveProduct">キャンセル</button></section>';
+}
+
 async function withLiveWriteLock(work){
  // Shared across tabs on the same origin. Never guess that a localStorage
  // check is an atomic cross-tab lock: fail closed without Web Locks.
@@ -860,7 +884,7 @@ async function sendPendingLive(entry){
   // Do not restore any snapshot to a different or signed-out account.
   window.KurashiLiveJournal.complete(entry.operationId);
   if(!sameLiveSession(subject,epoch)||!liveMode)return;
-  liveEditor=null;
+  liveEditor=null;liveProductEditor=null;
   liveWriteStatus='保存が確定しました。データを更新しています。';
   try{
    const data=await window.KurashiGasApi.request('bootstrap');
@@ -955,12 +979,12 @@ function liveListView(){
    const linked=productsByItem.get(String(i.item_group_id))||[];
    return `<div class="item"><div class="swipe-front"><div class="itemname" style="text-align:left"><span class="item-title">${esc(i.name)}</span><span class="list-prices">${linked.length?esc(linked.map(p=>p.name).join('、')):'登録商品なし'}</span></div><div class="item-stock-area">${i.in_stock===true||String(i.in_stock).toLowerCase()==='true'?'在庫あり':'在庫なし'}</div></div>
  <div class="row" style="gap:8px;padding:8px">
- <button type="button" class="secondary" data-act="editLive" data-live-id="${esc(i.item_group_id)}" ${canEdit?'':'disabled'}>編集</button>
+ <button type="button" class="secondary" data-act="editLive" data-live-id="${esc(i.item_group_id)}" ${canEdit?'':'disabled'}>編集</button><button type="button" class="secondary" data-act="addLiveProduct" data-live-id="${esc(i.item_group_id)}" ${canEdit?'':'disabled'}>商品を登録</button>
  <button type="button" class="secondary" data-act="stockLive" data-live-id="${esc(i.item_group_id)}" ${canEdit?'':'disabled'}>在庫切替</button>
  <button type="button" class="secondary" data-act="hideLive" data-live-id="${esc(i.item_group_id)}" ${canEdit?'':'disabled'}>非表示</button></div></div>`;
   }).join('')||'<p class="hint">登録なし</p>'}</section>`;
  }).join('');
- return `${head('日用品','Google Sheets')}<main><div class="panel"><strong>${label}</strong>${readNotice?'<p class="hint" role="'+(readFailed?'alert':'status')+'">'+esc(readNotice)+'</p>':''}<p class="hint">カテゴリ ${liveSnapshot?.categories?.length||0} 件の読み取りを確認しました。日用品・商品・店舗はシートの登録件数を表示しています。</p>${allEmpty?'<p class="hint">この家庭のデータは空です。試作データを確認する場合は「試作データに戻る」を押してください。</p>':''}<p class="hint">${liveWritable()?'登録・編集・在庫変更はGoogle Sheetsに保存され、同じ家庭のアカウントで共有されます。':'読み取り専用です。Google Sheetsへの保存はまだ有効ではありません。'}</p><p class="hint">日用品 ${groups.length} 件 ／ 商品 ${products.length} 件 ／ 店舗 ${stores.length} 件</p><button class="secondary" data-act="refreshLive" ${liveBusy?'disabled':''}>${liveBusy?'再取得中…':'再読み込み'}</button><button class="secondary" data-act="leaveLive">試作データに戻る</button><p class="hint" role="status">${esc(liveWriteStatus)}</p><button type="button" class="secondary" data-act="addLive" ${canEdit?'':'disabled'}>日用品を登録</button><p class="hint">${liveWritable()?'登録・編集・在庫変更が利用できます。':'登録・編集・在庫変更・削除は実装準備中です。安全確認が終わるまで無効です。'}</p></div>${liveRecoveryView()}${liveEditForm()}${rows}<div class="panel"><h2>店舗（読み取り専用）</h2><p class="hint">${stores.length?esc(stores.map(x=>x.canonical_name).join('、')):'登録なし'}</p></div></main>${nav()}`;
+ return `${head('日用品','Google Sheets')}<main><div class="panel"><strong>${label}</strong>${readNotice?'<p class="hint" role="'+(readFailed?'alert':'status')+'">'+esc(readNotice)+'</p>':''}<p class="hint">カテゴリ ${liveSnapshot?.categories?.length||0} 件の読み取りを確認しました。日用品・商品・店舗はシートの登録件数を表示しています。</p>${allEmpty?'<p class="hint">この家庭のデータは空です。試作データを確認する場合は「試作データに戻る」を押してください。</p>':''}<p class="hint">${liveWritable()?'登録・編集・在庫変更はGoogle Sheetsに保存され、同じ家庭のアカウントで共有されます。':'読み取り専用です。Google Sheetsへの保存はまだ有効ではありません。'}</p><p class="hint">日用品 ${groups.length} 件 ／ 商品 ${products.length} 件 ／ 店舗 ${stores.length} 件</p><button class="secondary" data-act="refreshLive" ${liveBusy?'disabled':''}>${liveBusy?'再取得中…':'再読み込み'}</button><button class="secondary" data-act="leaveLive">試作データに戻る</button><p class="hint" role="status">${esc(liveWriteStatus)}</p><button type="button" class="secondary" data-act="addLive" ${canEdit?'':'disabled'}>日用品を登録</button><button type="button" class="secondary" data-act="addLiveProduct" ${canEdit?'':'disabled'}>未分類の商品を登録</button><p class="hint">${liveWritable()?'登録・編集・在庫変更が利用できます。':'登録・編集・在庫変更・削除は実装準備中です。安全確認が終わるまで無効です。'}</p></div>${liveRecoveryView()}${liveEditForm()}${liveProductForm()}${rows}<div class="panel"><h2>店舗（読み取り専用）</h2><p class="hint">${stores.length?esc(stores.map(x=>x.canonical_name).join('、')):'登録なし'}</p></div></main>${nav()}`;
 }
 async function refreshLive(){
  if(liveBusy||liveWriteBusy)return;
@@ -1558,6 +1582,23 @@ if(el.dataset.uiChoice!==undefined){
 if(el.dataset.listEdit){duplicateItemId=null;selected=el.dataset.listEdit;editReturnPage='list';openSwipeId=null;page='edit';render();return}if(el.dataset.listHide){selected=el.dataset.listHide;setOpenSwipe(null);dialog={title:'日用品を削除',message:'日用品リストから削除します。',buttons:[{id:'cancel',label:'キャンセル'},{id:'confirmHide',label:'削除',critical:true}]};render();return}
 if(el.dataset.act==='retryLive'){retryLive();return}
 if(el.dataset.act==='addLive'){openLiveEditor(null);return}
+if(el.dataset.act==='addLiveProduct'){openLiveProductEditor(el.dataset.liveId||null);return}
+if(el.dataset.act==='cancelLiveProduct'){liveProductEditor=null;render();return}
+if(el.dataset.act==='saveLiveProduct'){
+ if(!liveProductEditor||!liveWritable())return;
+ const name=String(document.getElementById('live-product-name')?.value||'').trim();
+ const quantityText=String(document.getElementById('live-product-quantity')?.value||'').trim();
+ const unit=String(document.getElementById('live-product-unit')?.value||'');
+ const quantity=quantityText===''?null:Number(quantityText);
+ if(!name||name.length>150||/^[=+@-]/.test(name)||
+    (quantity===null&&unit!=='')||
+    (quantity!==null&&(!Number.isFinite(quantity)||quantity<=0||
+     !UNIT_OPTIONS.includes(unit)))){
+  liveWriteStatus='商品名・内容量・単位を確認してください';render();return;
+ }
+ liveMutate('product.create',{item_group_id:liveProductEditor.item_group_id,
+  name,package_quantity:quantity,package_unit:quantity===null?null:unit});return;
+}
 if(el.dataset.act==='editLive'){const item=liveSnapshot?.item_groups?.find(x=>String(x.item_group_id)===el.dataset.liveId);if(item)openLiveEditor(item);return}
 if(el.dataset.act==='cancelLive'){liveEditor=null;render();return}
 if(el.dataset.act==='saveLive'){
