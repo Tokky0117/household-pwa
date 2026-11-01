@@ -85,7 +85,7 @@ vm.runInContext("tab='settings';page='list';",ctx);
 finishB(homeB);await tick();
 assert.equal(api.state().tab,'settings','Automatic load must not steal the current tab');
 assert.equal(api.state().liveSnapshot.household_id,'home-B');
-assert.doesNotMatch(api.listView(),/家庭の牛乳/);
+assert.doesNotMatch(api.listView(),/<span class="item-title">家庭の牛乳<\/span>/);
 assert.match(api.listView(),/別家庭の牛乳/);
 // Unannounced token expiry must clear private rows on next render.
 auth={configured:true,signedIn:false,subject:null};
