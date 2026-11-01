@@ -52,10 +52,10 @@ const ctx=vm.createContext({window:win,document,localStorage:storage,
  setTimeout:()=>1,clearTimeout(){},Date,Intl,URL,console});
 vm.runInContext(journalSource,ctx);
 const app=vm.runInContext(appSource+
- "\n({refreshLive,liveListView,openLiveProductEditor,liveProductForm,"+
+ "\n({refreshLive,listView,openLiveProductEditor,liveProductForm,"+
  "liveMutate,retryLive,livePending,state:()=>({liveSnapshot,liveProductEditor})})",ctx);
 await app.refreshLive();
-assert.match(app.liveListView(),/data-act="addLiveProduct"/);
+assert.match(app.listView(),/data-act="addLive"/);
 app.openLiveProductEditor('group-A');
 assert.match(app.liveProductForm(),/商品を登録/);
 assert.match(app.liveProductForm(),/牛乳/);
@@ -65,14 +65,15 @@ await app.liveMutate('product.create',newProduct);
 assert.equal(physicalWrites,1);
 assert.equal(win.KurashiLiveJournal.read()?.state,'uncertain');
 assert.equal(win.KurashiLiveJournal.read()?.action,'product.create');
-assert.match(app.liveListView(),/同じ操作を確認・再送/);
+assert.match(app.listView(),/同じ操作を確認・再送/);
 await app.retryLive();
 assert.equal(physicalWrites,1,'Same operation ID must not register twice');
 assert.equal(win.KurashiLiveJournal.read(),null);
 assert.equal(sheet.products.length,1);
 assert.equal(app.state().liveSnapshot.products[0].name,'900mLの牛乳');
 assert.equal(app.state().liveProductEditor,null);
-assert.match(app.liveListView(),/900mLの牛乳/);
+assert.equal(app.state().liveSnapshot.products[0].name,'900mLの牛乳');
+assert.doesNotMatch(app.listView(),/スーパー青空/);
 assert.equal(new Set(requests.filter(x=>x.action==='product.create')
  .map(x=>x.operationId)).size,1);
 console.log('Normal product master UI: create, uncertain response, exact-ID retry and stock catalog reload PASS');
