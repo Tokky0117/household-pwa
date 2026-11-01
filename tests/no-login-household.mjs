@@ -184,9 +184,18 @@ await c.window.KurashiLive.save('item.update',{
 assert.equal(c.window.KurashiLive.state().queued,3,'create, edit and hide persist as 3 commands');
 c.window.close();online=true;
 let d=appSession();
-await waitFor(()=>d.window.KurashiLive.state().queued===0 &&
- temp.db.item_groups.some(row=>row.includes('試作テスト品・更新')),
- 'restarted PWA resolves temporary ID and saves create, edit, hide in order');
+try{
+ await waitFor(()=>d.window.KurashiLive.state().queued===0 &&
+  temp.db.item_groups.some(row=>row.includes('試作テスト品・更新')),
+  'restarted PWA resolves temporary ID and saves create, edit, hide in order');
+}catch(e){
+ console.log('RESTART_QUEUE_DIAGNOSTICS',JSON.stringify({
+  state:d.window.KurashiLive.state(),
+  sheetRows:temp.db.item_groups.slice(1),
+  sentRequests:sent.slice(-12).map(x=>({action:x.action,payload:x.payload,operation_id:x.operation_id}))
+ }));
+ throw e;
+}
 const hidden=temp.call('bootstrap').data.item_groups.find(x=>x.name==='試作テスト品・更新');
 assert.ok(hidden&&hidden.is_hidden===true&&Number(hidden.version)===3,
  'queued edit and hide both reached GAS after create was acknowledged');
