@@ -1,5 +1,5 @@
 name: Read-only audit of existing test GAS source
-# Read-only comparison before next test-only GAS source update; no Sheets writes.
+# Independent read-only verification after candidate trial GAS source sync; no Sheet writes.
 on:
   push:
     branches: [stage-a-ui-handoff-review]
@@ -137,6 +137,7 @@ jobs:
             'Remote scripts: '+remoteFiles.length,
             'Remote matches accepted receipt #2 deployed source (verified by 41277891744): '+remoteMatchesLastVerifiedPush,
             'Remote and branch script source identical: '+(sha(local)===sha(remote)),
+            'Candidate create route present: '+remote.includes("if(action==='record.trial.main.create')"),
             'Post-sync manifest preserved exactly: '+(
               sha(remoteManifest)==='0952d47f73508eb256f1cf50f0368fe77434f8c05ea0d6defc7cf9b4e227e935'),
             'Receipt replay source update readiness: '+remoteReadiness,
