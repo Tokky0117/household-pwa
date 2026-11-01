@@ -189,4 +189,12 @@ assert.equal(ui.savePreviewReceiptScan(excluded),true,
 const persisted=JSON.parse(storage.get('household_pwa_records_preview_v1'));
 assert.equal(persisted.record_items.at(-1).amount_tax_included,108);
 assert.ok(!JSON.stringify(persisted).includes('chatgpt_paste'));
+chatGptInput.value=JSON.stringify({...aiInput,taxBasis:'included',taxTotal:0,
+ receiptTotal:200,items:[{...aiInput.items[0],quantity:1,netAmount:200}]});
+press('importChatGptReceipt');
+assert.equal(ui.state().receiptScan.items[0].amount,'',
+ 'A mathematically inconsistent ChatGPT line cannot be prefilled as a real price');
+assert.match(ui.receiptView(),/計算に矛盾があります/);
+assert.equal(ui.savePreviewReceiptScan(ui.state().receiptScan),false,
+ 'Known inconsistent ChatGPT amounts must require user correction');
 console.log('Main PWA ChatGPT paste: shared review, strict parse, missing quantity and tax safety PASS');
