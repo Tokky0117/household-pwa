@@ -557,6 +557,17 @@ function saveItem(name,category){
 }
 let scrollToId=null;
 function commitItem(name,category){
+ if(liveMode){
+  const editing=page==='edit',original=editing?current():null;
+  const payload=editing?
+   {item_group_id:original?.id,version:original?.version,name,category_id:category}:
+   {name,category_id:category};
+  window.KurashiLive.save(editing?'item.update':'item.create',payload).then(entity=>{
+   if(!editing){collapsed.delete(category);query='';onlyOut=false;scrollToId=entity.item_group_id}
+   page=editing?editReturnPage:'list';openSwipeId=null;render();
+  }).catch(err=>fieldNotice(document.getElementById('itemForm'),err.message||'保存できませんでした','name'));
+  return;
+ }
  const sheet=document.querySelector('.sheet-back');
  if(sheet&&!sheet.classList.contains('closing')){
   sheet.classList.add('closing');sheet.style.pointerEvents='none';
@@ -592,7 +603,10 @@ function updateComparisonPrices(){
  }
 }
 app.addEventListener('change',e=>{if(e.target.id==='onlyOut'){const wasOut=onlyOut;onlyOut=e.target.checked;if(wasOut&&!onlyOut)collapsed.clear();render()}});
-app.addEventListener('submit',e=>{e.preventDefault();const form=e.target;const d=new FormData(form);if(form.id==='recordForm'){
+app.addEventListener('submit',e=>{e.preventDefault();const form=e.target;const d=new FormData(form);
+ if(liveMode&&['recordForm','productCreateForm'].includes(form.id)){
+  fieldNotice(form,'この機能のGoogle Sheets保存はまだ接続していません');return
+ }if(form.id==='recordForm'){
  const input={type:newRecordType,chainId:String(d.get('chain')||''),date:String(d.get('date')||''),productId:String(d.get('product')||''),rawName:String(d.get('raw')||''),quantity:String(d.get('quantity')||''),amount:String(d.get('amount')||''),category:String(d.get('category')||'')};
  if(!savePreviewRecord(input)){fieldNotice(form,'記録の金額・個数・商品・チェーンを確認してください','record-amount');return}
  page='list';tab='receipt';render();return;
@@ -620,8 +634,17 @@ if(el.dataset.uiChoice!==undefined){
  wrapper.querySelectorAll('[data-ui-choice]').forEach(b=>{const selected=b===el;b.classList.toggle('selected',selected);b.setAttribute('aria-pressed',String(selected));const tick=b.querySelector('.ui-menu-selected');if(tick)tick.textContent=selected?'✓':''});
  closeAllDropdowns();wrapper.querySelector('.ui-select-trigger')?.focus();return;
 }
+if(liveMode && (el.matches('[data-pedit],[data-premove],[data-pick]')||
+  ['productPick','productCreate','newReceipt','newShelf'].includes(el.dataset.act))){
+  inlineActionNotice(el,'この機能のGoogle Sheets保存はまだ接続していません');return;
+ }
 if(el.dataset.listEdit){duplicateItemId=null;selected=el.dataset.listEdit;editReturnPage='list';openSwipeId=null;page='edit';render();return}if(el.dataset.listHide){selected=el.dataset.listHide;setOpenSwipe(null);dialog={title:'日用品を削除',message:'日用品リストから削除します。',buttons:[{id:'cancel',label:'キャンセル'},{id:'confirmHide',label:'削除',critical:true}]};render();return}
-if(el.dataset.tab){tab=el.dataset.tab;page='list';openSwipeId=null;menu=false;render();return}if(el.dataset.cat!==undefined){if(onlyOut)return;const c=Number(el.dataset.cat);collapsed.has(c)?collapsed.delete(c):collapsed.add(c);render();return}if(el.dataset.stock){const i=items.find(x=>x.id===el.dataset.stock);i.inStock=!i.inStock;i.version++;persist();render();return}if(el.dataset.open){if(openSwipeId){setOpenSwipe(null);return}listScrollPosition=window.scrollY;selected=el.dataset.open;page='compare';period='1y';priceScope='product';initializeCompare();periodMenu=false;menu=false;openSwipeId=null;render();return}if(el.dataset.pedit){openSwipeId=null;const p=catalogue.products.find(x=>x.id===el.dataset.pedit);if(p&&p.itemGroupId===selected){editingProductId=p.id;page='productEdit';render()}return}
+if(el.dataset.tab){tab=el.dataset.tab;page='list';openSwipeId=null;menu=false;render();return}if(el.dataset.cat!==undefined){if(onlyOut)return;const c=Number(el.dataset.cat);collapsed.has(c)?collapsed.delete(c):collapsed.add(c);render();return}if(el.dataset.stock){const i=items.find(x=>x.id===el.dataset.stock);if(!i)return;
+ if(liveMode){window.KurashiLive.save('item.update',
+   {item_group_id:i.id,version:i.version,in_stock:!i.inStock})
+   .catch(err=>inlineActionNotice(document.querySelector('[data-stock="'+i.id+'"]')||el,
+     err.message||'在庫を保存できませんでした'));return}
+ i.inStock=!i.inStock;i.version++;persist();render();return}if(el.dataset.open){if(openSwipeId){setOpenSwipe(null);return}listScrollPosition=window.scrollY;selected=el.dataset.open;page='compare';period='1y';priceScope='product';initializeCompare();periodMenu=false;menu=false;openSwipeId=null;render();return}if(el.dataset.pedit){openSwipeId=null;const p=catalogue.products.find(x=>x.id===el.dataset.pedit);if(p&&p.itemGroupId===selected){editingProductId=p.id;page='productEdit';render()}return}
 if(el.dataset.premove){openSwipeId=null;
  const p=catalogue.products.find(x=>x.id===el.dataset.premove);
  if(p&&p.itemGroupId===selected){dialog={title:'商品の登録解除',message:`「${productTitle(p)}」の登録を解除します。過去の最安値集計対象からも外れます。`,buttons:[{id:'cancel',label:'キャンセル'},{id:'confirmProductUnlink',label:'解除する',critical:true}],pending:{productId:p.id}};renderDialogOnly()}return;
@@ -648,7 +671,12 @@ if(action==='confirmProductMove'&&p){
  if(product&&product.itemGroupId===p.fromId)setProductGroup(product,selected);
  page='compare';initializeCompare();render();return;
 }
-if(action==='discardChanges'){goBack();return}if(action==='confirmHide'){current().hidden=true;current().version++;persist();page='list';openSwipeId=null}if(action==='resetYes'){items=makeSeed();catalogue=sampleCatalogue();previewRecords={records:[],record_items:[]};localStorage.removeItem(previewRecordsKey);persist();persistCatalogue();page='list';tab='items'}render();return}const action=el.dataset.act;if(!action)return;if(action==='toggleListHelp'){
+if(action==='discardChanges'){goBack();return}if(action==='confirmHide'){if(liveMode){const i=current();if(i)
+   window.KurashiLive.save('item.update',{item_group_id:i.id,version:i.version,is_hidden:true})
+   .then(()=>{page='list';openSwipeId=null;render()})
+   .catch(err=>inlineActionNotice(document.querySelector('[data-list-hide="'+i.id+'"]'),err.message||'削除できませんでした'));
+   render();return}
+ current().hidden=true;current().version++;persist();page='list';openSwipeId=null}if(action==='resetYes'){items=makeSeed();catalogue=sampleCatalogue();previewRecords={records:[],record_items:[]};localStorage.removeItem(previewRecordsKey);persist();persistCatalogue();page='list';tab='items'}render();return}const action=el.dataset.act;if(!action)return;if(action==='toggleListHelp'){
  listHelpOpen=!listHelpOpen;
  try{localStorage.setItem(helpOpenKey,String(listHelpOpen))}catch{}
  const control=document.querySelector('.list-help-toggle');
@@ -664,7 +692,12 @@ if(action==='restoreItem'||action==='showExistingItem'){
  const form=document.getElementById('itemForm');
  const typed=form?.querySelector('#name')?.value||'';
  if(!item||norm(item.name)!==norm(typed)||(action==='restoreItem')!==Boolean(item.hidden)){duplicateItemId=null;form?.querySelector('#item-duplicate-notice')?.replaceChildren();return}
- if(action==='restoreItem'){item.hidden=false;item.version=(item.version||0)+1}
+ if(action==='restoreItem'){if(liveMode){
+  window.KurashiLive.save('item.update',{item_group_id:item.id,version:item.version,is_hidden:false})
+   .then(()=>revealItem(items.find(i=>i.id===item.id)||item))
+   .catch(err=>fieldNotice(document.getElementById('itemForm'),err.message||'戻せませんでした','name'));
+  return;
+ }item.hidden=false;item.version=(item.version||0)+1}
  revealItem(item);return;
 }
 if(action==='back'){back();return}if(action==='add'){duplicateItemId=null;selected=null;menu=false;openSwipeId=null;page='add'}if(action==='menu'){menu=!menu}if(['edit','products'].includes(action)){menu=false;editReturnPage=page;page=action}
@@ -675,6 +708,8 @@ if(action==='prevMonth'||action==='nextMonth'){
  const [year,month]=budgetMonth.split('-').map(Number);const d=new Date(year,month-1+(action==='prevMonth'?-1:1),1);
  budgetMonth=[d.getFullYear(),String(d.getMonth()+1).padStart(2,'0')].join('-');render();return;
 }
+if(liveMode&&action==='liveLogout'){window.KurashiLive.logout();items=[];catalogue={products:[],chains:[],branches:[]};page='list';tab='items';render();return}
+if(liveMode&&action==='retryLive'){window.KurashiLive.retry().catch(err=>inlineActionNotice(el,err.message||'再確認できませんでした'));return}
 if(action==='sync'){inlineActionNotice(el,'同期は未接続です');return}if(action==='reset'){dialog={title:'仮データを初期化しますか？',message:'この端末で行った変更がすべて消え、最初のサンプル状態に戻ります。',buttons:[{id:'cancel',label:'キャンセル'},{id:'resetYes',label:'初期化する',primary:true,danger:true}]}}render()});
 // Shared dismissal behavior: menus close when focus moves to the rest of the page.
 // Do not rerender the whole screen: that would discard form contents and search focus.
@@ -759,6 +794,8 @@ function endDrag(e,cancel=false){
  suppressClick=true;setTimeout(()=>{suppressClick=false},200);
  if(cancel){render();return}
  if(!d.moved){render();return}
+ if(liveMode){render();inlineActionNotice(document.querySelector('.category')||document.querySelector('.comparison-list'),
+  '並び替えのGoogle Sheets保存はまだ接続していません');return}
  if(d.kind==='item'){
   const rows=[...document.querySelectorAll('.swipe-item[data-item-id]:not(.drag-ghost)')].filter(row=>row.dataset.categoryId===d.category);
   rows.forEach((row,index)=>{const i=items.find(x=>x.id===row.dataset.itemId);if(i){i.order=index+1;i.version=(i.version||0)+1}});
