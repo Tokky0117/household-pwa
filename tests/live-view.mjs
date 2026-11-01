@@ -232,7 +232,7 @@ await testAPI.refreshLive();
 assert.equal(testAPI.previewState().liveSnapshot,null);
 assert.equal(testAPI.previewState().liveMode,false);
 assert.doesNotMatch(testAPI.listView(),/別家庭の非公開商品/);
-assert.match(testAPI.settingsView(),/読み取りに失敗/);
+assert.match(testAPI.settingsView(),/取得失敗：応答の形式を確認できません/);
 const dangling=snapshot('h-c','同じ家庭の日用品');
 dangling.products=[{product_id:'unknown-group',household_id:'h-c',
  item_group_id:'nonexistent-group',name:'未確認の紐付け'}];
