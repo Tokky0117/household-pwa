@@ -556,14 +556,22 @@ function mutateOrderSafely_(user,action,payload,operationId){
   if(old){
    try{plan=JSON.parse(String(old.obj.result))}
    catch(_){fail('RECOVERY_CONFLICT','並び替えの履歴が不正です')}
-   if(!plan||!['prepared','completed'].includes(plan.status)||
+   if(plan?.status==='completed'){
+    if(plan.action!==action||!Number.isSafeInteger(plan.sequence_no)||
+       !Array.isArray(plan.ordered_ids)||
+       JSON.stringify(plan.ordered_ids)!==JSON.stringify(ordered.map(x=>x.id))||
+       !Array.isArray(plan.entities)||plan.entities.some(x=>String(x.household_id)!==hid))
+     fail('RECOVERY_CONFLICT','確定済みの並び替え記録が不正です');
+    return plan;
+   }
+   if(!plan||plan.status!=='prepared'||
       plan.action!==action||plan.household_id!==hid||
       String(plan.scope)!==String(payload[scopeKey])||
       JSON.stringify(plan.ordered)!==JSON.stringify(ordered)||
       !Array.isArray(plan.before)||!Array.isArray(plan.after)||
-      !Array.isArray(plan.logs)||!Number.isSafeInteger(plan.last_sequence))
+      !Array.isArray(plan.logs)||!Number.isSafeInteger(plan.last_sequence)||
+      !plan.logs.length)
     fail('RECOVERY_CONFLICT','再送した並び替えが一致しません');
-   if(plan.status==='completed')return plan;
   }else{
    const all=rows(table,book);
    const active=all.filter(row=>String(row.obj.household_id)===hid&&
