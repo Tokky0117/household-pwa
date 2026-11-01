@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import vm from 'node:vm';
 const source=readFileSync(new URL('../app.js',import.meta.url),'utf8');
-let subject='subject-A',signedIn=true,respond=async()=>({
+let subject='subject-A',signedIn=false,respond=async()=>({
  household_id:'home-A',
  records:[{record_id:'r1',household_id:'home-A',record_type:'receipt',
   chain_id:'store-A',record_date:'2026-10-14',raw_store_name:'コノミヤ'}],
@@ -34,6 +34,7 @@ const extra='\n({refreshRemoteReceipts,remoteReceiptView,clearRemoteReceipts,'+
  "setBudgetMonth(month){budgetMonth=month},"+
  "leaveReceipt(){tab='items';clearRemoteReceipts()}})";
 const ui=vm.runInContext(source+extra,ctx);
+signedIn=true;
 ui.setReceiptTab();
 assert.match(ui.remoteReceiptView(),/確定レシートを読み取る/);
 const priorWrites=mutations;
