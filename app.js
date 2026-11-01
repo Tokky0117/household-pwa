@@ -95,9 +95,12 @@ function readChatGptReceiptIntoPreview(){
     rawName:item.name||'',quantity:item.quantity===null?'':String(item.quantity),
     // Excluded / unknown tax cannot be mistaken for tax-included line
     // prices. The user must explicitly enter each confirmed tax-included sum.
-    amount:parsed.taxBasis==='included'&&item.netAmount!==null?
+    amount:parsed.taxBasis==='included'&&item.netAmount!==null&&
+     !item.issues.includes('line_amount_mismatch')&&
+     !item.issues.includes('unit_quantity_mismatch')?
      String(item.netAmount):'',
-    readNetAmount:item.netAmount,category:'',productId:''
+    readNetAmount:item.netAmount,importWarnings:item.issues.slice(),
+    category:'',productId:''
    }))
   };
   receiptChatGptText='';receiptChatGptNotice='';
@@ -201,7 +204,8 @@ function receiptScanFormValues(){
   amount:String(data.get('amount-'+i)||''),
   productId:String(data.get('product-'+i)||''),
   category:String(data.get('category-'+i)||''),
-  readNetAmount:item.readNetAmount??null
+  readNetAmount:item.readNetAmount??null,
+  importWarnings:item.importWarnings||[]
  }));
  if(receiptScan.source==='chatgpt_paste')
   receiptScan.taxResolvedForPreview=data.get('taxResolved')==='yes';
@@ -726,6 +730,8 @@ function receiptScanReview(){
  const categories=[{value:'',label:'未分類'},...CATS.map((c,i)=>({value:String(i),label:c}))];
  const items=scan.items.map((item,i)=>`<section class="receipt-review-line">
  <div class="receipt-review-line-title"><strong>明細 ${i+1}</strong><button type="button" class="secondary" data-act="removeReceiptScanItem" data-ocr-index="${i}">除外</button></div>
+ ${chat&&item.importWarnings?.some(code=>code==='line_amount_mismatch'||code==='unit_quantity_mismatch')?
+  '<p class="ui-field-notice">ChatGPTの数量×単価／値引前・値引後の計算に矛盾があります。原本で確認して税込金額を入力してください。</p>':''}
  ${scan.source==='chatgpt_paste'&&scan.taxBasis!=='included'?
   '<p class="hint">ChatGPTの税別・税区分不明の差引額：'+
    (Number.isSafeInteger(item.readNetAmount)?yen(item.readNetAmount):'不明')+
