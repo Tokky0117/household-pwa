@@ -368,9 +368,16 @@ function doPost(e){
    const result=receiptTrialMainCreate_(user,payload,input.operation_id);
    return jsonReply({ok:true,data:result});
   }
-  // Production/general receipt writes remain blocked independently of all
-  // test-only actions and existing experimental-write property settings.
-  if(action==='record.create')fail('RECEIPT_WRITES_DISABLED','レシート一括保存は安全検証中です');
+  // Ordinary receipt API is available only on the already pinned prototype
+  // spreadsheet; no experimental write switch or new test endpoint is needed.
+  if(action==='record.create'){
+   if(!approvedPrototypeAliasSheet_())
+    fail('RECEIPT_WRITES_DISABLED','対象の保存環境を確認してください');
+   const book=readContext.book;
+   assertPrototypeReceiptIdentity_(book,user);
+   const result=mutateReceiptSafely_(user,payload,input.operation_id,true);
+   return jsonReply({ok:true,data:result});
+  }
   if(!['item.create','item.update','product.create','product.update','product.move','product.alias.create'].includes(action))fail('UNSUPPORTED','未対応の操作です');
   return jsonReply({ok:true,data:mutate_(user,action,payload,input.operation_id)});
  }catch(err){
@@ -1529,6 +1536,17 @@ function receiptTrialGuard_(book){
  * Normal record.create remains hard-disabled; each confirmation uses a new
  * immutable operation ID and the shared recovery journal.
  */
+/** Existing trial spreadsheet only; never infers approval from a UI flag. */
+function assertPrototypeReceiptIdentity_(book,user){
+ if(!approvedPrototypeAliasSheet_())
+  fail('RECEIPT_WRITES_DISABLED','許可されていない保存先です');
+ const homes=rows('households',book),users=rows('users',book);
+ if(homes.length!==1||users.length!==1||
+    String(homes[0].obj.household_id)!==String(user.householdId)||
+    String(users[0].obj.household_id)!==String(user.householdId)||
+    String(users[0].obj.user_id)!==String(user.userId))
+  fail('TRIAL_NOT_ISOLATED','既存試験家庭との対応が一致しません');
+}
 function receiptTrialMainCreate_(user,payload,operationId){
  if(typeof operationId!=='string'||
     !/^receipt-trial-main-[A-Za-z0-9_-]{12,64}$/.test(operationId))
@@ -1638,9 +1656,12 @@ function mutateReceiptSafely_(user,payload,operationId,localEditorTrial){
   const book=localEditorTrial===true?spreadsheet():requireIsolatedWriteTrial(false),
         hid=String(user.householdId);
   if(localEditorTrial===true){
-   const trial=receiptTrialGuard_(book);
-   if(hid!==trial.householdId||String(user.userId)!==trial.userId)
-    fail('TRIAL_NOT_ISOLATED','試験用ユーザーの所属が一致しません');
+   if(approvedPrototypeAliasSheet_())assertPrototypeReceiptIdentity_(book,user);
+   else{
+    const trial=receiptTrialGuard_(book);
+    if(hid!==trial.householdId||String(user.userId)!==trial.userId)
+     fail('TRIAL_NOT_ISOLATED','試験用ユーザーの所属が一致しません');
+   }
   }
   const valid=receiptPayload_(payload),digest=receiptDigest_(valid);
   const allOps=rows('processed_operations',book),matching=allOps.filter(
