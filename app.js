@@ -780,7 +780,7 @@ function load(){try{const d=JSON.parse(localStorage.getItem(key));return Array.i
 // Read-only remote snapshot lives in memory only. Local preview data is never overwritten.
 let liveSnapshot=null,liveStatus='未取得',liveBusy=false,liveMode=false;
 let liveEditor=null,liveProductEditor=null,liveWriteBusy=false,liveWriteStatus='';
-let liveOwnerSubject=null,liveRequestSubject=null,liveSessionEpoch=0;
+let liveOwnerSubject=null,liveRequestSubject=null,liveSessionEpoch=0,liveRecoveryHouseholdId=null;
 const liveWritable=()=>window.KurashiGasApi?.writeEnabled?.()===true&&
  window.KurashiAuth?.status?.()?.signedIn===true;
 // Auth state is the source of truth, not a previously received Sheet snapshot.
@@ -791,7 +791,7 @@ function sameLiveSession(subject,epoch){
 }
 function leaveRemoteView(message='未取得'){
  liveSessionEpoch++;
- liveSnapshot=null;liveOwnerSubject=null;liveRequestSubject=null;
+ liveSnapshot=null;liveOwnerSubject=null;liveRequestSubject=null;liveRecoveryHouseholdId=null;
  liveMode=false;liveEditor=null;liveProductEditor=null;liveBusy=false;
  liveWriteStatus='';liveStatus=message;
 }
@@ -807,7 +807,7 @@ function abandonLiveReadOnNavigation(){
 let automaticLiveRead=false;
 function maybeLoadHousehold(auth=window.KurashiAuth?.status?.()){
  if(auth?.signedIn!==true||!auth.subject||liveBusy||liveWriteBusy||
-    liveSnapshot&&liveOwnerSubject===auth.subject||liveStatus.startsWith('取得失敗：'))return;
+    liveSnapshot&&liveOwnerSubject===auth.subject||liveRecoveryHouseholdId||liveStatus.startsWith('取得失敗：'))return;
  void refreshLive({background:true});
 }
 function onLiveAuthChange(auth){
@@ -832,7 +832,7 @@ function onLiveAuthChange(auth){
 }
 function livePending(){
  const subject=window.KurashiAuth?.status?.()?.subject;
- const householdId=liveSnapshot?.household_id;
+ const householdId=liveSnapshot?.household_id||liveRecoveryHouseholdId;
  try{return window.KurashiLiveJournal?.forAccount(subject,householdId)||{status:'none',entry:null}}
  catch(_){return {status:'invalid',entry:null}}
 }
@@ -842,7 +842,7 @@ function liveRecoveryView(){
  if(pending.status==='different-account')return '<div class="panel"><h2>未完了の保存操作</h2><p class="hint">この端末には別のアカウントまたは家庭の未完了操作があります。現在のアカウントから送信できません。</p></div>';
  if(pending.status==='invalid')return '<div class="panel"><h2>保存操作の記録エラー</h2><p class="hint">端末の操作記録を確認できません。新しい保存を停止しています。</p></div>';
  const entry=pending.entry;
- return '<section class="panel"><h2>未完了の保存操作</h2><p class="hint">処理結果が未確定です。自動送信はしません。</p><p class="hint">対象：'+esc(entry.payload.name||entry.payload.item_group_id||'日用品')+'</p><button type="button" class="secondary" data-act="retryLive" '+(liveWritable()&&!liveWriteBusy?'':'disabled')+'>同じ操作を確認・再送</button><p class="hint">同じ操作IDと内容でのみ再送します。</p></section>';
+ return '<section class="panel"><h2>未完了の保存操作</h2><p class="hint">処理結果が未確定です。自動送信はしません。</p><p class="hint">対象：'+esc(entry.action.endsWith('.reorder')?'並び順':entry.payload.name||entry.payload.item_group_id||'日用品')+'</p><button type="button" class="secondary" data-act="retryLive" '+(liveWritable()&&!liveWriteBusy?'':'disabled')+'>同じ操作を確認・再送</button><p class="hint">同じ操作IDと内容でのみ再送します。</p></section>';
 }
 
 const liveCategories=()=>CATS.map((name,i)=>`<option value="${i}" ${Number(liveEditor?.category_id)===i?'selected':''}>${esc(name)}</option>`).join('');
@@ -950,13 +950,22 @@ async function sendPendingLive(entry){
   liveWriteStatus='操作記録とログイン中の家庭が一致しません';render();return
  }
  const epoch=liveSessionEpoch,subject=entry.subject;
+ let bootstrapAfterRecovery=false;
  liveWriteBusy=true;liveWriteStatus='保存操作を確認中';render();
  try{
   const result=await window.KurashiGasApi.request(entry.action,entry.payload,{operationId:entry.operationId});
   const entity=verifyLiveWriteResult(entry,result);
   // Only this validated operation may clear its original durable journal.
   window.KurashiLiveJournal.complete(entry.operationId);
-  if(!sameLiveSession(subject,epoch)||!liveMode)return;
+  if(!sameLiveSession(subject,epoch))return;
+  if(!liveMode&&liveRecoveryHouseholdId===entry.householdId){
+   liveRecoveryHouseholdId=null;
+   liveStatus='保存を復旧しました。家庭データを読み込み中です';
+   liveWriteStatus='保存を復旧しました';
+   bootstrapAfterRecovery=true;
+   return;
+  }
+  if(!liveMode)return;
   applyConfirmedLiveEntity(entry,entity);
   liveEditor=null;liveProductEditor=null;
   if(entry.action.startsWith('product.')&&['productCreate','productEdit','productPick'].includes(page)){
@@ -981,11 +990,16 @@ async function sendPendingLive(entry){
     liveWriteStatus='操作記録を更新できません。新しい保存を行わず、端末の設定を確認してください。';
    return
   }
-  if(sameLiveSession(subject,epoch)&&liveMode)
-   liveWriteStatus='保存結果が未確定です（'+String(err?.message||'UNKNOWN')+'）。同じ操作を確認・再送してください。新しい操作は開始できません。';
+  if(sameLiveSession(subject,epoch)){
+   liveWriteStatus='保存結果が未確定です。同じ操作を確認・再送してください。新しい保存は開始できません。';
+   if(liveRecoveryHouseholdId)liveStatus=liveWriteStatus;
+  }
  }finally{
   liveWriteBusy=false;
-  if(sameLiveSession(subject,epoch)&&liveMode)render();
+  if(sameLiveSession(subject,epoch)){
+   render();
+   if(bootstrapAfterRecovery)void refreshLive({background:true});
+  }
  }
 }
 function updateLiveProductGroup(product,destination){
@@ -1070,11 +1084,33 @@ async function refreshLive({background=false}={}){
   // Never steal focus or restore a read after leaving its original screen.
   if(!sameLiveSession(subject,epoch)||(!background&&(tab!==requestTab||page!==requestPage)))return;
   if(!validateLiveSnapshot(data))throw Error('RESPONSE_SHAPE_INVALID');
-  liveSnapshot=data;liveOwnerSubject=subject;liveMode=true;
+  liveSnapshot=data;liveOwnerSubject=subject;liveMode=true;liveRecoveryHouseholdId=null;
   liveStatus='取得成功';
   if(!background){tab='items';page='list';selected=null;openSwipeId=null;}
  }catch(err){
-  if(sameLiveSession(subject,epoch))liveStatus='取得失敗：'+liveReadErrorMessage(err);
+  if(sameLiveSession(subject,epoch)&&err?.apiCode==='RECOVERY_REQUIRED'){
+   // Authenticate the household separately before trusting a local journal
+   // after reload. This path NEVER sends a pending write automatically.
+   try{
+    const scope=await window.KurashiGasApi.request('household.status');
+    const journal=window.KurashiLiveJournal?.read?.();
+    if(!sameLiveSession(subject,epoch))return;
+    if(journal&&journal.subject===subject&&
+       journal.householdId===scope?.household_id&&
+       ['item.reorder','product.reorder'].includes(journal.action)){
+     liveRecoveryHouseholdId=scope.household_id;
+     liveOwnerSubject=subject;
+     liveSnapshot=null;liveMode=false;
+     liveStatus='並び替えの保存が未完了です。同じ操作を確認・再送してください';
+    }else{
+     liveStatus='取得失敗：別端末の未完了操作があります。元の端末で保存を復旧してください';
+    }
+   }catch(_){
+    if(sameLiveSession(subject,epoch))
+     liveStatus='取得失敗：保存の復旧に必要な家庭の認証情報を確認できません';
+   }
+  }else if(sameLiveSession(subject,epoch))
+   liveStatus='取得失敗：'+liveReadErrorMessage(err);
  }finally{
   if(epoch===liveSessionEpoch){liveRequestSubject=null;liveBusy=false;automaticLiveRead=false;render()}
  }
@@ -1192,13 +1228,14 @@ function listView(){
  const failed=liveStatus.startsWith('取得失敗：'),loaded=liveMode&&!!liveSnapshot;
  const copy='<button type="button" class="iconbtn" data-act="copyLiveList" aria-label="在庫なしをコピー" title="在庫なしをコピー" '+(loaded?'':'disabled')+'>'+miniIcon('copy')+'</button>';
  const add='<button type="button" class="iconbtn" data-act="addLive" aria-label="日用品を追加" title="日用品を追加">'+miniIcon('plus')+'</button>';
- const notice=failed?liveStatus:!auth?.signedIn?'設定からGoogleログインしてください。':
+ const notice=liveRecoveryHouseholdId?liveStatus:
+  failed?liveStatus:!auth?.signedIn?'設定からGoogleログインしてください。':
   !loaded?'家庭の日用品を読み込み中…':liveWriteStatus;
  return `${head('日用品','くらしストック',false,add,copy)}<main>
   ${UI.searchField({id:'search',label:'日用品を検索',placeholder:'日用品を検索',value:query,extra:'autocomplete="off"'})}
   <div class="filterrow"><label class="switchlabel"><input type="checkbox" id="onlyOut" ${onlyOut?'checked':''}>在庫なしのみ表示</label></div>
   ${notice?'<p class="hint" role="status">'+esc(notice)+'</p>':''}
-  ${loaded?liveRecoveryView():''}${liveEditor?formView():''}
+  ${liveRecoveryView()}${liveEditor?formView():''}
   <div id="item-results">${listResults()}</div>${listHelpView()}
   ${failed&&auth?.signedIn?'<button type="button" class="secondary" data-act="refreshLive">接続を再試行</button>':''}
  </main>${nav()}`;
