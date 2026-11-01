@@ -202,6 +202,11 @@ for(const phase of faults)for(const when of ['before','after']){
  assert.match(page.getContent(),/試験レシートを保存・同じ操作を確認/);
  assert.match(page.getContent(),/checkReceiptTrialReadOnly/);
  assert.equal(trial.writes,before,'A GET must never write to Sheets');
+ trial.stop('child-1','after');
+ assert.throws(()=>trial.mock.runReceiptWriteTrialOnce(),/INJECTED_child-1_after/);
+ assert.equal(trial.rowObjects('records').length,1);
+ assert.equal(trial.rowObjects('record_items').length,1,
+  'Interrupted editor trial must retain prepared journal and first line');
  const first=trial.mock.runReceiptWriteTrialOnce();
  assert.equal(first.ok,true);
  assert.equal(first.items,2);
