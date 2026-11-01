@@ -1,0 +1,103 @@
+name: Recover existing GAS webapp version only (one time)
+on:
+  push:
+    branches: [stage-a-ui-handoff-review]
+    paths: ['.github/workflows/gas-publish-recovery-once.yml']
+permissions:
+  contents: read
+concurrency:
+  group: household-existing-gas-webapp-deployment
+  cancel-in-progress: false
+jobs:
+  publish:
+    if: github.ref == 'refs/heads/stage-a-ui-handoff-review' && github.event.head_commit.message == 'Recover verified existing GAS webapp deployment once'
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Validate code, pinned script and credentials
+        env:
+          CLASPRC_JSON: ${{ secrets.CLASPRC_JSON }}
+          GAS_SCRIPT_ID_TEST: ${{ secrets.GAS_SCRIPT_ID_TEST }}
+        run: |
+          set -euo pipefail
+          cp gas/Code.gs "$RUNNER_TEMP/approved-gas.js"
+          node --check "$RUNNER_TEMP/approved-gas.js"
+          node tests/gas-normal-dispatch.mjs
+          node tests/gas-product-update-transaction.mjs
+          node tests/gas-item-initial-stock.mjs
+          mkdir -p "$RUNNER_TEMP/verified-gas"
+          node - <<'NODE'
+          const fs=require('node:fs'),crypto=require('node:crypto'),path=require('node:path');
+          const id=process.env.GAS_SCRIPT_ID_TEST,creds=process.env.CLASPRC_JSON;
+          if(!id||!creds||crypto.createHash('sha256').update(id).digest('hex')!==
+            '9c4113806442904861bb84dede2d9c542449a5c9ed5b494abe451cda0c1f4739')
+            throw Error('PINNED_GAS_SCRIPT_MISMATCH');
+          const parsed=JSON.parse(creds);
+          if(!parsed||typeof parsed!=='object'||Array.isArray(parsed))throw Error('INVALID_CREDENTIAL_FILE');
+          fs.writeFileSync(path.join(process.env.HOME,'.clasprc.json'),JSON.stringify(parsed),{mode:0o600});
+          fs.writeFileSync(path.join(process.env.RUNNER_TEMP,'verified-gas','.clasp.json'),
+            JSON.stringify({scriptId:id,rootDir:'.'})+'\n',{mode:0o600});
+          NODE
+      - name: Read synchronized existing GAS source and deployed webapps
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP/verified-gas"
+          npx --yes @google/clasp@3 pull
+          npx --yes @google/clasp@3 list-deployments > "$RUNNER_TEMP/existing-deployments-before.txt"
+      - name: Validate existing source, manifest and exact PWA deployment
+        run: |
+          set -euo pipefail
+          node - <<'NODE'
+          const fs=require('node:fs'),path=require('node:path'),crypto=require('node:crypto');
+          const folder=path.join(process.env.RUNNER_TEMP,'verified-gas');
+          const files=fs.readdirSync(folder).filter(x=>!x.startsWith('.')).sort();
+          if(JSON.stringify(files)!==JSON.stringify(['appsscript.json','コード.js']))
+            throw Error('UNKNOWN_REMOTE_GAS_FILES');
+          const hash=s=>crypto.createHash('sha256').update(s).digest('hex');
+          const current=fs.readFileSync(path.join(folder,'コード.js'),'utf8');
+          const approved=fs.readFileSync('gas/Code.gs','utf8');
+          if(hash(current)!==hash(approved))throw Error('GAS_SOURCE_NOT_SYNCHRONIZED');
+          const manifest=fs.readFileSync(path.join(folder,'appsscript.json'),'utf8');
+          if(hash(manifest)!=='0952d47f73508eb256f1cf50f0368fe77434f8c05ea0d6defc7cf9b4e227e935')
+            throw Error('GAS_MANIFEST_CHANGED');
+          const html=fs.readFileSync('index.html','utf8');
+          const prefix='KurashiGasApi.configure("https://script.google.com/macros/s/';
+          const id=html.split(prefix)[1]?.split('/exec")')[0];
+          if(!id||!/^AKfy[A-Za-z0-9_-]{20,}$/.test(id))
+            throw Error('PWA_WEBAPP_URL_INVALID');
+          const list=fs.readFileSync(process.env.RUNNER_TEMP+'/existing-deployments-before.txt','utf8');
+          const found=[...new Set(list.match(/AKfy[A-Za-z0-9_-]{20,}/g)||[])];
+          if(found.length!==2||found.filter(value=>value===id).length!==1)
+            throw Error('WEBAPP_NOT_FROM_PINNED_SCRIPT');
+          fs.writeFileSync(process.env.RUNNER_TEMP+'/verified-deployment-id',id,{mode:0o600});
+          console.log('EXISTING_WEBAPP_VERIFIED: source, manifest, script and PWA endpoint all match');
+          NODE
+      - name: Update pinned existing webapp (no new deployment)
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP/verified-gas"
+          deployment="$(cat "$RUNNER_TEMP/verified-deployment-id")"
+          npx --yes @google/clasp@3 create-deployment --deploymentId "$deployment" --description "kurashi-stock product update and initial inventory defaults" > "$RUNNER_TEMP/existing-webapp-result.txt"
+          npx --yes @google/clasp@3 list-deployments > "$RUNNER_TEMP/existing-deployments-after.txt"
+          node - <<'NODE'
+          const fs=require('node:fs');
+          const ids=n=>[...new Set((fs.readFileSync(process.env.RUNNER_TEMP+'/'+n,'utf8')
+            .match(/AKfy[A-Za-z0-9_-]{20,}/g)||[]))].sort();
+          const before=ids('existing-deployments-before.txt');
+          const after=ids('existing-deployments-after.txt');
+          if(before.length!==2||JSON.stringify(before)!==JSON.stringify(after))
+            throw Error('DEPLOYMENT_IDS_CHANGED');
+          console.log('SAME_GAS_WEBAPP_PUBLISHED: IDs unchanged, no new deployment, no Sheet mutation');
+          fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY,
+            'SAME_GAS_WEBAPP_PUBLISHED: existing deployment version updated without new GAS, deployment, or Sheet data.\n');
+          NODE
+      - name: Remove downloaded sources, deployment IDs and credentials
+        if: always()
+        run: |
+          rm -f "$HOME/.clasprc.json" "$RUNNER_TEMP/approved-gas.js"
+          rm -rf "$RUNNER_TEMP/verified-gas"
+          rm -f "$RUNNER_TEMP/existing-deployments-before.txt" "$RUNNER_TEMP/existing-deployments-after.txt" "$RUNNER_TEMP/existing-webapp-result.txt" "$RUNNER_TEMP/verified-deployment-id"
