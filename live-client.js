@@ -130,6 +130,12 @@
    response.entity?.household_id!==entry.householdId||
    !Number.isSafeInteger(Number(response.sequence_no))||!response.entity?.item_group_id)
    throw Error('RESPONSE_INVALID');
+  if(snapshot&&snapshot.household_id===entry.householdId){
+   snapshot={...snapshot,
+    item_groups:[...snapshot.item_groups.filter(x=>x.item_group_id!==response.entity.item_group_id),response.entity],
+    sequence_no:response.sequence_no};
+   notify();
+  }
   clearPending();
   await load();
   return response.entity;
@@ -151,8 +157,8 @@
  }
  async function retry(){
   const entry=pending();
-  if(!entry||entry.error||!state().signedIn||!snapshot||
-   entry.subject!==subject||entry.householdId!==household)
+  if(!entry||entry.error||!state().signedIn||
+   entry.subject!==subject||(household&&entry.householdId!==household))
    throw Error('RECOVERY_UNAVAILABLE');
   if(busy)throw Error('BUSY');
   busy=true;error='';notify();
