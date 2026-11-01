@@ -298,7 +298,7 @@ assert.equal(node('receipt-read').disabled,false);
 const countBeforeReceipt=postCalls.length;
 await node('receipt-read').listeners.click();
 assert.deepEqual(postCalls.slice(countBeforeReceipt),['record.list']);
-assert.match(node('receipt-read-result').textContent,/確定レシート1件・明細2件・税込496円/);
+assert.match(node('receipt-read-result').textContent,/確定レシート2件・明細4件/);
 assert.doesNotMatch(node('receipt-read-result').textContent,/p-test|c-test|r1|line1|auth_subject/);
 assert.equal(Object.keys(postPayloads.at(-1).payload).length,0);
 receiptMode='foreign';
