@@ -1,15 +1,15 @@
 /* CacheStorage is shared across main and all previews on the same origin.
  * This service worker may only remove its own older cache generations.
  */
-const CACHE='household-ui-v68';
+const CACHE='household-ui-v69';
 const ASSETS=[
  './','./index.html',
- './styles.css?v=68','./app.js?v=68','./auth.js?v=68',
- './gas-api.js?v=68','./live-operation-journal.js?v=68',
- './receipt-ocr.js?v=68',
- './receipt-chatgpt-import.js?v=68',
- './receipt-save-contract.js?v=68','./receipt-operation-journal.js?v=68',
- './receipt-save-session.js?v=68',
+ './styles.css?v=69','./app.js?v=69','./auth.js?v=69',
+ './gas-api.js?v=69','./live-operation-journal.js?v=69',
+ './receipt-ocr.js?v=69',
+ './receipt-chatgpt-import.js?v=69',
+ './receipt-save-contract.js?v=69','./receipt-operation-journal.js?v=69',
+ './receipt-save-session.js?v=69',
  './manifest.webmanifest','./icon.svg'
 ];
 const CACHE_FAMILY=CACHE.replace(/v[0-9]+$/,'v');
