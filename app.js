@@ -551,11 +551,17 @@ function onLiveAuthChange(auth){
  const mismatch=auth?.signedIn!==true||
   (liveOwnerSubject!==null&&auth.subject!==liveOwnerSubject)||
   (liveRequestSubject!==null&&auth.subject!==liveRequestSubject);
- if(!mismatch)return;
+ const householdMismatch=householdCheckSubject!==null&&
+  (auth?.signedIn!==true||auth.subject!==householdCheckSubject);
+ const receiptMismatch=remoteReceiptSubject!==null&&
+  (auth?.signedIn!==true||auth.subject!==remoteReceiptSubject);
  const wasShowingRemote=!!liveSnapshot||liveMode||!!liveEditor;
- // Invalidate even a pending request that has not yet returned any data.
- leaveRemoteView('Googleログインが必要です');
- if(wasShowingRemote)render();
+ const hadHousehold=householdMismatch&&(!!householdCheck||householdCheckBusy);
+ const hadReceipts=receiptMismatch&&(!!remoteReceipts||remoteReceiptBusy);
+ if(householdMismatch)clearHouseholdCheck('Googleログインが必要です');
+ if(receiptMismatch)clearRemoteReceipts('Googleログインが必要です');
+ if(mismatch)leaveRemoteView('Googleログインが必要です');
+ if(wasShowingRemote&&mismatch||hadHousehold||hadReceipts)render();
 }
 function livePending(){
  const subject=window.KurashiAuth?.status?.()?.subject;
