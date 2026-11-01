@@ -106,11 +106,28 @@ jobs:
             'mutateItemSafely_','runIsolatedItemWriteTrialOnce_'];
           const baseline=baselineFunctions.map(name=>({name,present:remote.includes('function '+name+'(')}));
           const sha=s=>crypto.createHash('sha256').update(s).digest('hex').slice(0,12);
+          // Deployment staging is READ-ONLY. Pin the same historical GAS
+          // source as the existing manual-only push workflow.
+          const approvedBeforeReplay=child.execFileSync('git',['show',
+            '8c6b6c14f63515370f2c2b66541795df9df52e95:gas/Code.gs'],
+            {encoding:'utf8'});
+          const remoteMatchesBefore=sha(remote)===sha(approvedBeforeReplay);
+          const remoteMatchesCurrent=sha(remote)===sha(local);
+          const remoteReadiness=remoteMatchesCurrent?'LATEST_SOURCE_PRESENT':
+            remoteMatchesBefore?'KNOWN_BASELINE_MANUAL_UPDATE_NEEDED':
+            'REMOTE_SOURCE_DRIFT_REVIEW_REQUIRED';
+          const localReplayRoute=local.includes("if(action==='record.trial.replay')")&&
+            local.includes("if(action==='record.create')fail('RECEIPT_WRITES_DISABLED'")&&
+            local.includes("function receiptTrialGuard_(book)");
+          if(!localReplayRoute)throw Error('LOCAL_RECEIPT_REPLAY_SAFETY_MISSING');
           const report=[
             'READ_ONLY_GAS_AUDIT: Test GAS source retrieved without modifying project or Sheets.',
             'Remote scripts: '+remoteFiles.length,
             'Remote matches previous verified GitHub gas source: '+(sha(priorSource)===sha(remote)),
             'Remote and branch script source identical: '+(sha(local)===sha(remote)),
+            'Receipt replay source update readiness: '+remoteReadiness,
+            'Remote replay route currently present: '+remote.includes("if(action==='record.trial.replay')"),
+            'Local production record.create rejection remains enabled: true',
             'Remote source SHA256: '+crypto.createHash('sha256').update(remote).digest('hex'),
             'Remote manifest SHA256: '+crypto.createHash('sha256').update(remoteManifest).digest('hex'),
             'Manifest JSON identical: '+manifestMatches,
