@@ -37,6 +37,8 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
@@ -106,7 +108,14 @@ jobs:
           // Refuse any source/manifest drift since the final read-only audit.
           const crypto=require('node:crypto');
           const digest=text=>crypto.createHash('sha256').update(text).digest('hex');
-          const approvedSource='3d70888002c8651b3498041b81f5226599bd17955944139334b89818a8afc605';
+          const approvedSource='e8d066191f5ee83a8b02336d785192391d3ebe14fc23bbe8061f070d2e6858fb';
+          // Verify the remote source is byte-identical to an already-reviewed
+          // historical GitHub GAS source, not just a guessed replacement hash.
+          const git=require('node:child_process');
+          const baseline='8c6b6c14f63515370f2c2b66541795df9df52e95';
+          const history=git.execFileSync('git',['show',baseline+':gas/Code.gs'],{encoding:'utf8'});
+          if(digest(history)!==approvedSource)
+            throw Error('KNOWN_GITHUB_SOURCE_FINGERPRINT_MISMATCH');
           const approvedManifest='0952d47f73508eb256f1cf50f0368fe77434f8c05ea0d6defc7cf9b4e227e935';
           const remote=fs.readFileSync(path.join(remoteDir,codeFiles[0]),'utf8');
           if(digest(remote)!==approvedSource){
