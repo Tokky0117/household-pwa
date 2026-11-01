@@ -141,13 +141,13 @@ function kurashiBootstrap_(user) {
   };
 }
 function kurashiNormalize_(name) {
-  return String(name).normalize('NFKC').trim().replace(/\\s+/g,' ').toLocaleLowerCase('ja');
+  return String(name).normalize('NFKC').trim().replace(/\s+/g,' ').toLocaleLowerCase('ja');
 }
 function kurashiName_(name) {
   if (typeof name !== 'string') kurashiFail_('BAD_REQUEST','日用品名が不正です');
   const trimmed=name.trim();
-  if (!trimmed || trimmed.length>80 || /^[=+@\\-]/.test(trimmed) ||
-      /[\\x00-\\x1f\\x7f<>]/.test(trimmed))
+  if (!trimmed || trimmed.length>80 || /^[=+@\-]/.test(trimmed) ||
+      /[\x00-\x1f\x7f<>]/.test(trimmed))
     kurashiFail_('BAD_REQUEST','日用品名を確認してください');
   return trimmed;
 }
