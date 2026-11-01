@@ -26,7 +26,7 @@ const calls=[];
 let fetch=async action=>{assert.equal(action,'bootstrap');return snapshot('home-A','家庭の牛乳')};
 const context={window:{
  scrollTo(){},scrollY:0,addEventListener(){},
- KurashiAuth:{status:()=>auth,subscribe(fn){listener=fn}},
+ KurashiAuth:{status:()=>auth,subscribe(fn){listener=fn},signIn(){return true}} ,
  KurashiGasApi:{request:async(action,...args)=>{
   calls.push(action);return fetch(action,...args)
  }}
