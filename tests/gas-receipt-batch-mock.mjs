@@ -214,6 +214,8 @@ for(const phase of faults)for(const when of ['before','after']){
   })}}).getContent());
  assert.equal(trialPost('record.trial.replay').error.code,
   'TRIAL_RECEIPT_NOT_READY','Never create a receipt via the replay route');
+ assert.equal(trialPost('record.trial.preflight',payload).error.code,
+  'TRIAL_RECEIPT_NOT_READY','Candidate preflight cannot skip completed fixture');
  const before=trial.writes;
  const page=trial.mock.doGet({parameter:{trial_receipt:'1'}});
  assert.match(page.getContent(),/試験レシートを保存・同じ操作を確認/);
@@ -236,6 +238,30 @@ for(const phase of faults)for(const when of ['before','after']){
  const replay=trial.mock.runReceiptWriteTrialOnce();
  assert.equal(replay.replay,true);
  assert.equal(trial.writes,after,'Editor trial must be idempotent');
+ const proposed={
+  version:'receipt-create-1',record_type:'receipt',
+  chain_id:'alias-trial-store-0001',record_date:'2026-11-01',
+  branch_name:null,raw_store_name:'試験用スーパー',
+  items:[{line_order:1,raw_name:'確認用・青果',product_id:null,
+   quantity:1,amount_tax_included:128,category_id:0,price_eligible:false},
+   {line_order:2,raw_name:'確認用・日用品',product_id:'alias-trial-product-0001',
+   quantity:2,amount_tax_included:330,category_id:1,price_eligible:false}]
+ };
+ const accepted=trialPost('record.trial.preflight',proposed);
+ assert.equal(accepted.ok,true);
+ assert.equal(accepted.data.trial_ready,true);
+ assert.equal(accepted.data.write_enabled,false);
+ assert.equal(accepted.data.item_count,2);
+ assert.equal(accepted.data.total_tax_included,458);
+ assert.equal(trialPost('record.trial.preflight',proposed,'new-op-00001').error.code,
+  'BAD_REQUEST','Preflight must not accept operation IDs');
+ assert.equal(trialPost('record.trial.preflight',{...proposed,chain_id:'store-B'}).error.code,
+  'NOT_FOUND','Other household store cannot be accepted');
+ assert.equal(trialPost('record.trial.preflight',{...proposed,
+  items:[{...proposed.items[0],quantity:0}]}).error.code,'BAD_REQUEST');
+ assert.equal(trialPost('record.create',proposed).error.code,
+  'RECEIPT_WRITES_DISABLED','Preflight never opens general receipt writes');
+ assert.equal(trial.writes,after,'All candidate preflight calls are read-only');
  const confirmed=trialPost('record.trial.replay');
  assert.equal(confirmed.ok,true);
  assert.equal(confirmed.data.replayed,true);
@@ -246,6 +272,8 @@ for(const phase of faults)for(const when of ['before','after']){
  assert.equal(trialPost('record.trial.replay',{},'new-op-123456').error.code,'BAD_REQUEST');
  trial.mock.authenticate=()=>trial.other;
  assert.equal(trialPost('record.trial.replay').error.code,'TRIAL_NOT_ISOLATED');
+ assert.equal(trialPost('record.trial.preflight',proposed).error.code,
+  'TRIAL_NOT_ISOLATED');
  trial.mock.authenticate=()=>trial.homeA;
  assert.equal(trial.writes,after,'Denied actions must not write');
  assert.equal(trial.mock.doGet({parameter:{trial_receipt:'1'}})
