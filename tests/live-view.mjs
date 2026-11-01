@@ -162,4 +162,46 @@ assert.equal(associationReads-before,0,'Inventory summary must not repeatedly re
 assert.match(largeView,/日用品0/);
 assert.match(largeView,/価格記録なし/);
 assert.doesNotMatch(largeView,/削除済み商品/);
+// Same original long-press UI now creates a full-sibling, versioned batch.
+window.KurashiGasApi.writeEnabled=()=>true;
+const ordering=snapshot('home-C','分類0');
+ordering.item_groups=[
+ {item_group_id:'a',household_id:'home-C',category_id:0,name:'A',sort_order:1,version:4,in_stock:true},
+ {item_group_id:'b',household_id:'home-C',category_id:0,name:'B',sort_order:2,version:7,in_stock:false}
+];
+ordering.products=[
+ {product_id:'p1',household_id:'home-C',item_group_id:'a',name:'商品1',item_group_order:1,version:2},
+ {product_id:'p2',household_id:'home-C',item_group_id:'a',name:'商品2',item_group_order:2,version:3}
+];
+ctx.ordering=ordering;
+vm.runInContext("liveSnapshot=ordering;liveMode=true;selected='a'",ctx);
+const forItem=vm.runInContext("householdOrderMutation('item',0,['b','a'])",ctx);
+assert.equal(forItem.action,'item.reorder');
+assert.deepEqual(JSON.parse(JSON.stringify(forItem.payload)),{
+ category_id:0,rows:[{id:'b',version:7},{id:'a',version:4}]
+});
+assert.equal(vm.runInContext("householdOrderMutation('item',0,['a','b'])",ctx),null);
+assert.throws(()=>vm.runInContext("householdOrderMutation('item',0,['a'])",ctx),/ORDER_SIBLING_SET_CHANGED/);
+const forProduct=vm.runInContext("householdOrderMutation('product',null,['p2','p1'])",ctx);
+assert.equal(forProduct.action,'product.reorder');
+assert.deepEqual(JSON.parse(JSON.stringify(forProduct.payload)),{
+ item_group_id:'a',rows:[{id:'p2',version:3},{id:'p1',version:2}]
+});
+const result={status:'completed',action:'product.reorder',sequence_no:18,
+ ordered_ids:['p2','p1'],entities:[
+ {...ordering.products[1],item_group_order:1,version:4},
+ {...ordering.products[0],item_group_order:2,version:3}
+]};
+ctx.orderInput={action:'product.reorder',payload:forProduct.payload,householdId:'home-C'};
+ctx.orderResult=result;
+const verified=vm.runInContext("verifyLiveWriteResult(orderInput,orderResult)",ctx);
+assert.equal(verified.length,2);
+vm.runInContext("applyConfirmedLiveEntity(orderInput,orderResult.entities)",ctx);
+assert.deepEqual(JSON.parse(JSON.stringify(api.state().liveSnapshot.products.map(p=>[p.product_id,p.item_group_order,p.version]))),
+ [['p1',2,3],['p2',1,4]]);
+ctx.orderResult={...result,entities:[{...result.entities[0],household_id:'other'}]};
+assert.throws(()=>vm.runInContext("verifyLiveWriteResult(orderInput,orderResult)",ctx),/GAS_RESULT_UNVERIFIED/);
+ctx.orderResult={...result,ordered_ids:['p1','p2']};
+assert.throws(()=>vm.runInContext("verifyLiveWriteResult(orderInput,orderResult)",ctx),/GAS_RESULT_UNVERIFIED/);
+console.log('Original long-press reorder PASS: full-set/version payload, scoped ack, immediate confirmed order');
 console.log('Household daily UI PASS: auto-read, original + and stock UI, no fake data, auth isolation, failure recovery and linear rendering');
