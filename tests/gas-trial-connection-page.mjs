@@ -53,7 +53,7 @@ assert.match(getHandler[1],/mode:'cors'/);
 assert.doesNotMatch(getHandler[1],/getToken|id_token|Authorization|localStorage|sessionStorage|URLSearchParams/);
 assert.match(getHandler[1],/原因未確定/);
 
-assert.match(api,/const LIVE_WRITE_ENABLED=false/);
+assert.match(api,/const LIVE_WRITE_ENABLED=\(\)=>RECEIPT_BATCH_WRITE_ENABLED\(\)/);
 assert.match(html,/通常のレシート登録は行いません/);
 assert.match(html,/⑨だけが既存の試験シートへ架空の固定2件目を保存します/);
 // Execute the actual inline browser script against a minimal in-memory DOM.
