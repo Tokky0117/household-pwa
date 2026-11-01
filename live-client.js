@@ -118,9 +118,9 @@
    branches:[]
   };
  }
- async function load(){
+ async function load(allowDuringMutation=false){
   if(loginRequired&&(!token||Date.now()>=expiry))return false;
-  if(mutating)return false;
+  if(mutating&&!allowDuringMutation)return false;
   if(loadPromise)return loadPromise;
   const serial=++requestSerial,currentSubject=subject;
   busy=true;error='';notify();
@@ -174,11 +174,8 @@
   try{
    if(loadPromise)await loadPromise;
    if(!fresh||!snapshot){
-    // Initial read can run while the operation slot is reserved.
-    mutating=false;
-    let ok;
-    try{ok=await load()}finally{mutating=true}
-    if(!ok)throw Error(error||'読み込みに失敗しました');
+    // Initial read is allowed without releasing the mutation slot.
+    if(!await load(true))throw Error(error||'読み込みに失敗しました');
    }
    if(busy)throw Error('BUSY');
    if(pending())throw Error('RECOVERY_REQUIRED');
