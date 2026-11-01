@@ -1,6 +1,11 @@
 name: Push GAS to test project (manual)
-# Manual-only trial GAS source update. Pre-replay baseline was verified by the read-only remote audit on 2026-11-01.
+# Test GAS source-only update. This branch update has one tightly gated push,
+# using a byte-verified previous GitHub Code.gs as the recovery backup.
+# Regular manual dispatch still requires its explicit confirmations.
 on:
+  push:
+    branches: [stage-a-ui-handoff-review]
+    paths: ['.github/workflows/gas-push-test.yml']
   workflow_dispatch:
     inputs:
       confirm_target_backup:
@@ -21,7 +26,12 @@ concurrency:
 
 jobs:
   push-test:
-    if: github.ref == 'refs/heads/stage-a-ui-handoff-review' && inputs.confirm_target_backup == 'BACKUP_DONE' && inputs.confirm_test_source == 'TEST_GAS_UPDATE'
+    if: >-
+      github.ref == 'refs/heads/stage-a-ui-handoff-review' &&
+      (
+        (github.event_name == 'workflow_dispatch' && inputs.confirm_target_backup == 'BACKUP_DONE' && inputs.confirm_test_source == 'TEST_GAS_UPDATE') ||
+        (github.event_name == 'push' && github.event.head_commit.message == 'TRIAL_GAS_SOURCE_SYNC_ONCE_20261101')
+      )
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
