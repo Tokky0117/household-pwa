@@ -6,6 +6,12 @@
 
 
 
+## 2026-11-01 実装9追補：認証付き試験保存POSTの複数件化（コードのみ）
+
+- 同じ`record.trial.main.create` / `record.trial.preflight` / `record.list`を維持。**追加累計20レシート**まで別々の`receipt-trial-main-...`操作IDを持たせ、既存の端末ジャーナルとGAS側の`processed_operations`で同一IDの再送・復旧を継続。上限を超える新しいIDは`TRIAL_LIMIT`、既存IDの完了再送は書込なし。
+- 実試験Sheetの整合性検査では一度読んだ`records`・`record_items`・`change_log`・既存カタログを同一ガード内で再利用。通常の更新時は読み取り専用スナップショットを使って書き込み可否を決定せず、ロック下で対象行を再確認する。公開一般`record.create`は無効。
+- **モック回帰のみ成功、試験GASの新コード公開と実機継続保存はまだ未実施**。追加の試験画面や新しい通信プロトコルは作成しない。
+
 ## 2026-11-01 実装9追補：一般レシートの試験専用POSTを準備（未デプロイ）
 
 - `record.trial.main.create` を**既存の試験家庭だけ**の認証付きPOSTとして開発ブランチに追加。入力は `receipt-create-1` の確認済み明細と `operation_id=receipt-trial-main-...`。サーバーでは固定2件の完成・固定シート／家庭／試験ユーザー・既存店舗の所有・新規操作ID1件上限を確認。既存の `mutateReceiptSafely_` のロック、準備ジャーナル、部分失敗復旧と照合を再利用する。通常の `record.create` はGAS・PWAとも引き続き拒否。
