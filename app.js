@@ -1064,7 +1064,7 @@ function liveListView(){
  <button type="button" class="secondary" data-act="hideLive" data-live-id="${esc(i.item_group_id)}" ${canEdit?'':'disabled'}>非表示</button></div></div>`;
   }).join('')||'<p class="hint">登録なし</p>'}</section>`;
  }).join('');
- return `${head('日用品','Google Sheets')}<main><div class="panel"><strong>${label}</strong>${readNotice?'<p class="hint" role="'+(readFailed?'alert':'status')+'">'+esc(readNotice)+'</p>':''}<p class="hint">カテゴリ ${liveSnapshot?.categories?.length||0} 件の読み取りを確認しました。日用品・商品・店舗はシートの登録件数を表示しています。</p>${allEmpty?'<p class="hint">この家庭のデータは空です。試作データを確認する場合は「試作データに戻る」を押してください。</p>':''}<p class="hint">${liveWritable()?'登録・編集・在庫変更はGoogle Sheetsに保存され、同じ家庭のアカウントで共有されます。':'読み取り専用です。Google Sheetsへの保存はまだ有効ではありません。'}</p><p class="hint">日用品 ${groups.length} 件 ／ 商品 ${products.length} 件 ／ 店舗 ${stores.length} 件</p><button class="secondary" data-act="refreshLive" ${liveBusy?'disabled':''}>${liveBusy?'再取得中…':'再読み込み'}</button><button class="secondary" data-act="leaveLive">試作データに戻る</button><p class="hint" role="status">${esc(liveWriteStatus)}</p><button type="button" class="secondary" data-act="addLive" ${canEdit?'':'disabled'}>日用品を登録</button><button type="button" class="secondary" data-act="addLiveProduct" ${canEdit?'':'disabled'}>未分類の商品を登録</button><p class="hint">${liveWritable()?'登録・編集・在庫変更が利用できます。':'登録・編集・在庫変更・削除は実装準備中です。安全確認が終わるまで無効です。'}</p></div>${liveRecoveryView()}${liveEditForm()}${liveProductForm()}${rows}<div class="panel"><h2>店舗（読み取り専用）</h2><p class="hint">${stores.length?esc(stores.map(x=>x.canonical_name).join('、')):'登録なし'}</p></div></main>${nav()}`;
+ return `${head('日用品','Google Sheets')}<main><div class="panel"><strong>${label}</strong>${readNotice?'<p class="hint" role="'+(readFailed?'alert':'status')+'">'+esc(readNotice)+'</p>':''}<p class="hint">カテゴリ ${liveSnapshot?.categories?.length||0} 件の読み取りを確認しました。日用品・商品・店舗はシートの登録件数を表示しています。</p>${allEmpty?'<p class="hint">この家庭の日用品・商品はまだ登録されていません。</p>':''}<p class="hint">${liveWritable()?'登録・編集・在庫変更はGoogle Sheetsに保存され、同じ家庭のアカウントで共有されます。':'読み取り専用です。Google Sheetsへの保存はまだ有効ではありません。'}</p><p class="hint">日用品 ${groups.length} 件 ／ 商品 ${products.length} 件 ／ 店舗 ${stores.length} 件</p><button class="secondary" data-act="refreshLive" ${liveBusy?'disabled':''}>${liveBusy?'再取得中…':'再読み込み'}</button><p class="hint" role="status">${esc(liveWriteStatus)}</p><button type="button" class="secondary" data-act="addLive" ${canEdit?'':'disabled'}>日用品を登録</button><button type="button" class="secondary" data-act="addLiveProduct" ${canEdit?'':'disabled'}>未分類の商品を登録</button><p class="hint">${liveWritable()?'登録・編集・在庫変更が利用できます。':'登録・編集・在庫変更・削除は実装準備中です。安全確認が終わるまで無効です。'}</p></div>${liveRecoveryView()}${liveEditForm()}${liveProductForm()}${rows}<div class="panel"><h2>店舗（読み取り専用）</h2><p class="hint">${stores.length?esc(stores.map(x=>x.canonical_name).join('、')):'登録なし'}</p></div></main>${nav()}`;
 }
 async function refreshLive(){
  if(liveBusy||liveWriteBusy)return;
@@ -1185,6 +1185,13 @@ function listHelpView(){
 }
 function listView(){
  if(liveMode)return liveListView();
+ return `${head('日用品','Google Sheets')}<main><section class="panel">
+ <h2>家庭の日用品</h2>
+ <p>${window.KurashiAuth?.status?.()?.signedIn?'Google Sheetsから日用品を読み取ってください。':'設定からGoogleアカウントでログインしてください。'}</p>
+ <button type="button" class="secondary" data-act="refreshLive" ${window.KurashiAuth?.status?.()?.signedIn&&!liveBusy?'':'disabled'}>${liveBusy?'読み込み中…':'Google Sheetsから読み取る'}</button>
+ </section></main>${nav()}`;
+ // Legacy local preview remains unreachable from the normal list.
+
  const copy='<button class="iconbtn" type="button" data-act="copyList" aria-label="在庫なしをコピー" title="在庫なしをコピー">'+miniIcon('copy')+'</button>';
  const add='<button class="iconbtn" type="button" data-act="add" aria-label="日用品を追加" title="日用品を追加">'+miniIcon('plus')+'</button>';
  return `${head('日用品','くらしストック',false,add,copy)}<main>${UI.searchField({id:'search',label:'日用品を検索',placeholder:'日用品を検索',value:query,extra:'autocomplete="off"'})}<div class="filterrow"><label class="switchlabel"><input type="checkbox" id="onlyOut" ${onlyOut?'checked':''}>在庫なしのみ表示</label></div><div id="item-results">${listResults()}</div>${listHelpView()}</main>${nav()}`;
