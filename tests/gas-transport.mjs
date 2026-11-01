@@ -1,261 +1,71 @@
+// Normal authenticated GAS transport. No external requests or real household writes.
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import vm from 'node:vm';
-const code=readFileSync(new URL('../gas-api.js',import.meta.url),'utf8');
-const window={KurashiAuth:{getToken:()=> 'test-id-token'}};
-const ctx={window,URL,AbortController,setTimeout,clearTimeout};
-vm.runInNewContext(code,ctx);
-const api=window.KurashiGasApi;
-assert.equal(api.status().configured,false);
-await assert.rejects(api.request('bootstrap'),/GAS_NOT_CONFIGURED/);
-assert.throws(()=>api.configure('http://script.google.com/macros/s/id/exec'),/GAS_ENDPOINT_INVALID/);
-assert.throws(()=>api.configure('https://evil.example/'),/GAS_ENDPOINT_INVALID/);
-api.configure('https://script.google.com/macros/s/TEST123/exec');
-assert.equal(api.status().configured,true);
-await assert.rejects(api.request('item.create'),/WRITES_DISABLED/);
-assert.equal(api.writeEnabled(),false);
-await assert.rejects(api.request('product.create'),/WRITES_DISABLED/);
-await assert.rejects(api.request('product.alias.create',{product_id:'p1',chain_id:'s1',product_code:'00012345',confirmed:true},{operationId:'would-write-0001'}),/UNSUPPORTED/);
-await assert.rejects(api.request('bootstrap',{}, {token:''}),/LOGIN_REQUIRED/);
-let calls=0;
-const fetcher=async (url,opts)=>{
- calls++;assert.equal(url,'https://script.google.com/macros/s/TEST123/exec');
- assert.equal(opts.method,'POST');assert.equal(opts.mode,'cors');
- assert.equal(opts.credentials,'omit');
- assert.equal(opts.headers['Content-Type'],'text/plain;charset=utf-8');
- assert.ok(!url.includes('test-id-token'));
- const parsed=JSON.parse(opts.body);
- assert.equal(parsed.id_token,'test-id-token');
- assert.equal(parsed.action,'bootstrap');
- return {ok:true,text:async()=>JSON.stringify({ok:true,data:{categories:[{name:'飲食'}]}})};
-};
-const data=await api.request('bootstrap',{}, {fetcher});
-window.KurashiAuth.getToken=()=>null;
-await assert.rejects(api.request('bootstrap',{}, {fetcher}),/LOGIN_REQUIRED/);
-window.KurashiAuth.getToken=()=> 'test-id-token';
-assert.equal(data.categories[0].name,'飲食');
-assert.equal(calls,1);
-const catalog=await api.request('product.catalog',{}, {fetcher:async (_url,opts)=>{
- calls++;
- const request=JSON.parse(opts.body);
- assert.equal(request.action,'product.catalog');
- assert.equal(request.operation_id,undefined);
- assert.equal(opts.credentials,'omit');
- assert.equal(opts.headers['Content-Type'],'text/plain;charset=utf-8');
- return {ok:true,text:async()=>JSON.stringify({ok:true,data:{household_id:'h-a',products:[],product_aliases:[],stores:[]}})};
-}});
-assert.equal(catalog.household_id,'h-a');
-assert.equal(calls,2);
-const check=await api.request('product.alias.check',
- {product_id:'p-a',chain_id:'s-a',product_code:'0000000123456'},
- {fetcher:async (_url,opts)=>{
-  calls++;const sent=JSON.parse(opts.body);
-  assert.equal(sent.action,'product.alias.check');
-  assert.equal(sent.operation_id,undefined);
-  assert.equal(sent.payload.product_code,'0000000123456');
-  return {ok:true,text:async()=>JSON.stringify({ok:true,data:{status:'already_registered',write_permitted:false}})};
- }});
-assert.equal(check.status,'already_registered');
-assert.equal(check.write_permitted,false);
-assert.equal(calls,3);
-assert.equal(api.receiptWriteEnabled(),false);
-// The general receipt route is still disabled, but an isolated test action
-// may use a caller-confirmed, durable operation ID with a checked payload.
-const candidateId='receipt-trial-main-aaaaaaaaaaaa001';
-const candidatePayload={
- version:'receipt-create-1',record_type:'receipt',
- chain_id:'alias-trial-store-0001',record_date:'2026-11-01',
- branch_name:null,raw_store_name:'架空の確認済み店舗',
- items:[{line_order:1,raw_name:'架空の商品',product_id:null,quantity:1,
-  amount_tax_included:250,category_id:0,price_eligible:false}]
-};
-await assert.rejects(api.request('record.trial.main.create',candidatePayload,
- {operationId:candidateId}),/TRIAL_MAIN_NOT_CONFIRMED/);
-await assert.rejects(api.request('record.trial.main.create',candidatePayload,
- {confirmedTrialMainSave:true,operationId:'invalid-op-01'}),/TRIAL_MAIN_NOT_CONFIRMED/);
-let trialCandidateNetwork=0;
-const candidateResult=await api.request('record.trial.main.create',candidatePayload,{
- confirmedTrialMainSave:true,operationId:candidateId,
- fetcher:async(_url,opts)=>{
-  trialCandidateNetwork++;
-  const sent=JSON.parse(opts.body);
-  assert.equal(sent.action,'record.trial.main.create');
-  assert.equal(sent.operation_id,candidateId);
-  assert.equal(sent.id_token,'test-id-token');
-  assert.equal(sent.payload.items[0].amount_tax_included,250);
-  return{ok:true,text:async()=>JSON.stringify({ok:true,data:{
-   status:'completed',action:'record.create',entity:{record_id:'r1',household_id:'h-a'},
-   item_ids:['line-1'],sequence_no:3
-  }})};
- }
-});
-assert.equal(candidateResult.item_ids.length,1);
-assert.equal(trialCandidateNetwork,1,'Trial mutation is never retried automatically');
-assert.equal(api.receiptWriteEnabled(),false,'Trial never opens record.create');
-// Only a verified trial operator may request a completed fixed-fixture replay.
-await assert.rejects(api.request('record.trial.replay',{}),/TRIAL_REPLAY_NOT_CONFIRMED/);
-await assert.rejects(api.request('record.trial.second.save',{}),
- /TRIAL_SECOND_NOT_CONFIRMED/);
-await assert.rejects(api.request('record.trial.second.save',{items:[]},
- {confirmedTrialSecondSave:true}),/TRIAL_SECOND_NOT_CONFIRMED/);
-await assert.rejects(api.request('record.trial.second.save',{},
- {confirmedTrialSecondSave:true,operationId:'other-op-0001'}),
- /TRIAL_SECOND_NOT_CONFIRMED/);
-const second=await api.request('record.trial.second.save',{},
- {confirmedTrialSecondSave:true,fetcher:async(_url,opts)=>{
-  const sent=JSON.parse(opts.body);
-  assert.equal(sent.action,'record.trial.second.save');
-  assert.equal(sent.operation_id,undefined);
-  assert.deepEqual(sent.payload,{});
-  return {ok:true,text:async()=>JSON.stringify({ok:true,data:{
-   status:'completed',replayed:false,records:2,items:4,amount:458
-  }})};
- }});
-assert.equal(second.records,2);
-await assert.rejects(api.request('record.trial.replay',{items:[]},
- {confirmedTrialReplay:true}),/TRIAL_REPLAY_NOT_CONFIRMED/);
-await assert.rejects(api.request('record.trial.replay',{},
- {confirmedTrialReplay:true,operationId:'unexpected-op-01'}),
- /TRIAL_REPLAY_NOT_CONFIRMED/);
-const replay=await api.request('record.trial.replay',{},
- {confirmedTrialReplay:true,fetcher:async (_url,opts)=>{
-  const sent=JSON.parse(opts.body);
-  assert.equal(sent.action,'record.trial.replay');
-  assert.equal(sent.operation_id,undefined);
-  assert.deepEqual(sent.payload,{});
-  assert.equal(sent.id_token,'test-id-token');
-  assert.equal(opts.credentials,'omit');
-  return {ok:true,text:async()=>JSON.stringify({ok:true,data:{
-   status:'completed',replayed:true,records:1,items:2,amount:496
-  }})};
- }});
-assert.equal(replay.replayed,true);
-assert.equal(api.receiptWriteEnabled(),false,'Trial replay never releases production writes');
-const preflight=await api.request('record.preflight',{
- version:'receipt-create-1',record_type:'receipt',chain_id:'s-a',
- record_date:'2026-10-14',branch_name:null,raw_store_name:null,
- items:[{line_order:1,raw_name:'牛乳',product_id:null,quantity:1,
- amount_tax_included:198,category_id:0,price_eligible:false}]
-},{fetcher:async (_url,opts)=>{
- calls++;
- const sent=JSON.parse(opts.body);
- assert.equal(sent.action,'record.preflight');
- assert.equal(sent.operation_id,undefined,'Preflight cannot masquerade as mutation');
- assert.equal(sent.payload.items[0].amount_tax_included,198);
- return {ok:true,text:async()=>JSON.stringify({ok:true,data:{
-  household_id:'h-a',version:'receipt-create-1',item_count:1,
-  total_tax_included:198,member_count:2,blocked_by_pending_operation:false,
-  checked_at:'2026-11-01T01:00:00Z',write_enabled:false
- }})};
-}});
-assert.equal(preflight.write_enabled,false);
-assert.equal(preflight.total_tax_included,198);
-const isolated=await api.request('record.trial.preflight',{
- version:'receipt-create-1',record_type:'receipt',chain_id:'s-a',
- record_date:'2026-11-01',branch_name:null,raw_store_name:'検証用店舗',
- items:[{line_order:1,raw_name:'試験商品',product_id:null,quantity:2,
-  amount_tax_included:300,category_id:0,price_eligible:false}]
-},{fetcher:async (_url,opts)=>{
- const sent=JSON.parse(opts.body);
- assert.equal(sent.action,'record.trial.preflight');
- assert.equal(sent.operation_id,undefined);
- assert.equal(sent.id_token,'test-id-token');
- return {ok:true,text:async()=>JSON.stringify({ok:true,data:{
-  version:'receipt-create-1',item_count:1,
-  total_tax_included:300,trial_ready:true,write_enabled:false
- }})};
-}});
-assert.equal(isolated.trial_ready,true);
-assert.equal(isolated.write_enabled,false);
-assert.equal(api.receiptWriteEnabled(),false);
-assert.equal(calls,4);
-await assert.rejects(api.request('record.create',{version:'receipt-create-1'},
- {operationId:'receipt-0001',fetcher:async()=>{throw Error('WRITE_NETWORK_REACHED')}}),
- /RECEIPT_WRITES_DISABLED/);
-await assert.rejects(api.request('bootstrap',{}, {token:'test-id-token',fetcher:async()=>({ok:true,text:async()=>'{invalid json'} )}),/GAS_RESPONSE_INVALID/);
-await assert.rejects(api.request('bootstrap',{}, {fetcher:async()=>({ok:true,text:async()=>JSON.stringify({ok:false,error:{code:'FORBIDDEN'}})})}),/FORBIDDEN/);
-// Browser errors, failed HTTP responses, and malformed/oversized responses
-// must never trigger hidden automatic retries. A write may have committed
-// before a network timeout, so the caller must retain the SAME operation ID.
-let attempts=0;
-await assert.rejects(api.request('bootstrap',{}, {fetcher:async()=>{
- attempts++;throw new TypeError('Network request failed');
-}}),/Network request failed/);
-assert.equal(attempts,1,'CORS/network errors must not cause automatic retries');
-await assert.rejects(api.request('sync',{after_sequence:2}, {fetcher:async()=>{
- attempts++;return {ok:false,status:503};
-}}),/GAS_HTTP_503/);
-assert.equal(attempts,2,'HTTP failures must not cause automatic retries');
-await assert.rejects(api.request('bootstrap',{}, {fetcher:async()=>{
- attempts++;return {ok:true,text:async()=>'<html>Google sign in</html>'};
-}}),/GAS_RESPONSE_INVALID/);
-assert.equal(attempts,3,'An HTML login/error page is not successful JSON');
-await assert.rejects(api.request('bootstrap',{}, {fetcher:async()=>{
- attempts++;return {ok:true,text:async()=> 'x'.repeat(1024*1024+1)};
-}}),/GAS_RESPONSE_TOO_LARGE/);
-assert.equal(attempts,4,'Oversized responses cannot be treated as data');
-await assert.rejects(api.request('bootstrap',{}, {fetcher:async()=>{
- attempts++;return {ok:true,text:async()=>JSON.stringify({ok:false,error:{code:'RECOVERY_REQUIRED'}})};
-}}),/RECOVERY_REQUIRED/);
-assert.equal(attempts,5,'Server-side recovery errors are surfaced without an automatic retry');
-// Replace the timeout clock with a deterministic fake to test the actual
-// AbortSignal path without waiting 15 seconds.
-const originalSetTimeout=ctx.setTimeout,originalClearTimeout=ctx.clearTimeout;
-let timerDelay=null,cleared=false;
-ctx.setTimeout=(callback,ms)=>{timerDelay=ms;callback();return 99};
-ctx.clearTimeout=id=>{assert.equal(id,99);cleared=true};
-await assert.rejects(api.request('bootstrap',{}, {fetcher:async(_url,opts)=>{
- attempts++;
- assert.equal(opts.signal.aborted,true);
- throw new Error('ABORTED_BY_CLIENT_TIMEOUT');
-}}),/ABORTED_BY_CLIENT_TIMEOUT/);
-assert.equal(attempts,6,'Aborted requests are never auto-retried');
-assert.equal(timerDelay,15000,'Existing 15-second timeout is kept');
-assert.equal(cleared,true,'Timer is always cleaned up');
-ctx.setTimeout=originalSetTimeout;ctx.clearTimeout=originalClearTimeout;
-// The existing staging preview sends the ordinary API, never a new trial action.
-window.KURASHI_RECEIPT_STAGE_A_TRIAL=true;
-assert.equal(api.receiptWriteEnabled(),true);
-const operationId='receipt-normal-001';
-const normal=await api.request('record.create',candidatePayload,{
- operationId,fetcher:async(_url,opts)=>{
-  const sent=JSON.parse(opts.body);
-  assert.equal(sent.action,'record.create');
-  assert.equal(sent.operation_id,operationId);
-  assert.equal(sent.payload.items.length,1);
-  return {ok:true,text:async()=>JSON.stringify({ok:true,data:{
-   status:'completed',action:'record.create',
-   entity:{record_id:'normal-1',household_id:'h-a'},
-   item_ids:['normal-line-1'],sequence_no:10
-  }})};
- }
-});
-assert.equal(normal.entity.record_id,'normal-1');
-const productPayload={item_group_id:'item-A',name:'おいしい牛乳',
- package_quantity:900,package_unit:'mL'};
-const productOp='product-normal-0001';
-const product=await api.request('product.create',productPayload,{
- operationId:productOp,fetcher:async(_url,opts)=>{
-  const sent=JSON.parse(opts.body);
-  assert.equal(sent.action,'product.create');
-  assert.equal(sent.operation_id,productOp);
-  assert.equal(sent.payload.item_group_id,'item-A');
-  return {ok:true,text:async()=>JSON.stringify({ok:true,data:{
-   status:'completed',action:'product.create',
-   entity:{product_id:'product-A',household_id:'h-a'},sequence_no:11
-  }})};
- }
-});
-assert.equal(product.entity.product_id,'product-A');
 
-await assert.rejects(api.request('record.create',candidatePayload,{
- fetcher:async()=>{throw Error('MUST_NOT_SEND')}
-}),/OPERATION_ID_REQUIRED/);
-window.KURASHI_RECEIPT_STAGE_A_TRIAL=false;
-assert.equal(api.receiptWriteEnabled(),false);
-await assert.rejects(api.request('record.create',candidatePayload,{
- operationId:'receipt-normal-002',fetcher:async()=>{throw Error('MUST_NOT_SEND')}
-}),/RECEIPT_WRITES_DISABLED/);
-api.configure('');
+const source=readFileSync(new URL('../gas-api.js',import.meta.url),'utf8');
+let token='mock-google-token';
+const win={KurashiAuth:{getToken:()=>token}};
+vm.runInNewContext(source,{window:win,URL,AbortController,setTimeout,clearTimeout});
+const api=win.KurashiGasApi;
 assert.equal(api.status().configured,false);
-console.log('GAS transport adapter offline checks PASS');
+assert.equal(api.writeEnabled(),false);
+await assert.rejects(api.request('bootstrap'),/GAS_NOT_CONFIGURED/);
+for(const url of ['http://script.google.com/macros/s/TEST123/exec',
+ 'https://evil.example/','https://script.google.com/macros/s/TEST123/exec?token=BAD'])
+ assert.throws(()=>api.configure(url),/GAS_ENDPOINT_INVALID/);
+const endpoint='https://script.google.com/macros/s/TEST123/exec';
+api.configure(endpoint);
+assert.equal(api.writeEnabled(),true);
+assert.equal(api.receiptWriteEnabled(),true);
+assert.equal(api.status().configured,true);
+for(const action of ['record.trial.replay','record.trial.main.create','record.trial.second.save',
+ 'record.trial.preflight','product.alias.create'])
+ await assert.rejects(api.request(action,{}, {operationId:'legacy-op-001'}),/UNSUPPORTED/);
+for(const action of ['item.create','item.update','product.create','store.create','record.create']){
+ await assert.rejects(api.request(action,{}),/OPERATION_ID_REQUIRED/);
+ await assert.rejects(api.request(action,{}, {operationId:'unsafe!'}),/OPERATION_ID_REQUIRED/);
+}
+token=null;
+await assert.rejects(api.request('bootstrap'),/LOGIN_REQUIRED/);
+token='mock-google-token';
+const seen=[];
+const fetcher=async(url,opts)=>{
+ assert.equal(url,endpoint);
+ assert.equal(opts.method,'POST');
+ assert.equal(opts.mode,'cors');
+ assert.equal(opts.credentials,'omit');
+ assert.equal(opts.headers['Content-Type'],'text/plain;charset=utf-8');
+ assert.ok(!url.includes(token));
+ const body=JSON.parse(opts.body);
+ assert.equal(body.id_token,token);
+ seen.push(body);
+ return {ok:true,text:async()=>JSON.stringify({ok:true,data:{status:'completed',
+  entity:{household_id:'home-A'},sequence_no:1}})};
+};
+for(const action of ['bootstrap','record.preflight','record.list','household.status',
+ 'product.catalog','product.alias.check','sync']){
+ await api.request(action,{}, {fetcher});
+ assert.equal(seen.at(-1).operation_id,undefined,'Reads must never carry an operation ID');
+}
+const operationId='confirmed-idempotent-00001';
+for(const action of ['item.create','item.update','product.create','store.create','record.create']){
+ await api.request(action,{name:'確認済み'}, {operationId,fetcher});
+ assert.equal(seen.at(-1).action,action);
+ assert.equal(seen.at(-1).operation_id,operationId);
+}
+assert.equal(seen.length,12);
+let attempts=0;
+await assert.rejects(api.request('record.create',{}, {operationId,fetcher:async()=>{
+ attempts++;throw new TypeError('SIMULATED_NETWORK_LOSS');
+}}),/SIMULATED_NETWORK_LOSS/);
+assert.equal(attempts,1,'Mutations must never be retried automatically');
+await assert.rejects(api.request('bootstrap',{}, {fetcher:async()=>
+ ({ok:true,text:async()=>'<html>Sign in</html>'})}),/GAS_RESPONSE_INVALID/);
+await assert.rejects(api.request('bootstrap',{}, {fetcher:async()=>
+ ({ok:false,status:503})}),/GAS_HTTP_503/);
+await assert.rejects(api.request('bootstrap',{}, {fetcher:async()=>
+ ({ok:true,text:async()=>JSON.stringify({ok:false,error:{code:'FORBIDDEN'}})})}),/FORBIDDEN/);
+await assert.rejects(api.request('bootstrap',{}, {fetcher:async()=>
+ ({ok:true,text:async()=> 'x'.repeat(1024*1024+1)})}),/GAS_RESPONSE_TOO_LARGE/);
+console.log('Normal GAS transport: scoped read/write contract, no trial action or retry PASS');
