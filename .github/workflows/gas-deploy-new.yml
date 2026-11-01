@@ -15,7 +15,7 @@ concurrency:
 
 jobs:
   deploy:
-    if: github.ref == 'refs/heads/preview-v46-clean-base' && vars.GAS_SCRIPT_ID_NEW != ''
+    if: github.ref == 'refs/heads/preview-v46-clean-base'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
