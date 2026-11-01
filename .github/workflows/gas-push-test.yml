@@ -1,7 +1,10 @@
 name: Push GAS to test project (manual)
-# Manual-only after successful receipt candidate source sync (2026-11-01).
-# Source updates require reviewed target, backup and explicit approval.
+# One-time, pinned source-only sync of the existing isolated test GAS.
+# Trigger will be removed immediately after the verified push.
 on:
+  push:
+    branches: [stage-a-ui-handoff-review]
+    paths: ['.github/workflows/gas-push-test.yml']
   workflow_dispatch:
     inputs:
       confirm_target_backup:
@@ -22,7 +25,7 @@ concurrency:
 
 jobs:
   push-test:
-    if: github.ref == 'refs/heads/stage-a-ui-handoff-review' && inputs.confirm_target_backup == 'BACKUP_DONE' && inputs.confirm_test_source == 'TEST_GAS_UPDATE'
+    if: github.ref == 'refs/heads/stage-a-ui-handoff-review' && ((github.event_name == 'workflow_dispatch' && inputs.confirm_target_backup == 'BACKUP_DONE' && inputs.confirm_test_source == 'TEST_GAS_UPDATE') || (github.event_name == 'push' && github.event.head_commit.message == 'IMPLEMENT9_MULTI_RECEIPT_TEST_GAS_SYNC_ONCE_20261101'))
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -98,11 +101,11 @@ jobs:
           // Refuse any source/manifest drift since the final read-only audit.
           const crypto=require('node:crypto');
           const digest=text=>crypto.createHash('sha256').update(text).digest('hex');
-          const approvedSource='49139f2ba0f1788379415f793fb08f7e1deb4fc08f7dcb3cbf0d1a1c62547672';
+          const approvedSource='d283b16c5097fc42eb3d2e7086ec866538d353dd53d9e4dc71046845aa878953';
           // Verify the remote source is byte-identical to an already-reviewed
           // historical GitHub GAS source, not just a guessed replacement hash.
           const git=require('node:child_process');
-          const baseline='6637a04e1ed3e7639dcd05fbcc4d7b1703f84acd';
+          const baseline='2cd4dde4fa474e33961a1040409aaaec44375be2';
           const history=git.execFileSync('git',['show',baseline+':gas/Code.gs'],{encoding:'utf8'});
           if(digest(history)!==approvedSource)
             throw Error('KNOWN_GITHUB_SOURCE_FINGERPRINT_MISMATCH');
@@ -151,14 +154,14 @@ jobs:
       - name: Back up verified remote source and manifest before replacement
         uses: actions/upload-artifact@v4
         with:
-          name: test-gas-pre-main-receipt-${{ github.run_id }}
+          name: test-gas-pre-multi-receipts-${{ github.run_id }}
           path: |
             ${{ runner.temp }}/kurashi-test-gas/remote/コード.js
             ${{ runner.temp }}/kurashi-test-gas/remote/appsscript.json
           if-no-files-found: error
           retention-days: 30
 
-      - name: Replace source code in verified test GAS only (receipt 2 trial)
+      - name: Replace multi-receipt source in verified test GAS only
         shell: bash
         run: |
           set -euo pipefail
