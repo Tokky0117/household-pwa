@@ -7,7 +7,7 @@ const contract=readFileSync(new URL('../receipt-save-contract.js',import.meta.ur
 const calls=[],events={},store=new Map();
 let subject='1234567890',enabled=true,trialEnabled=false,
  preflightBlocked=false,preflightWrongHome=false,trialInvalid=false;
-let saved=0,trialSaved=0,seq=0;
+let saved=0,trialSaved=0,seq=0;const trialOperationIds=[];
 const household='home-A';
 const categories=['飲食','キッチン','洗面・風呂','洗濯・掃除','その他']
  .map((name,i)=>({name,category_id:i}));
@@ -43,7 +43,7 @@ const win={
   writeEnabled:()=>enabled,trialWriteEnabled:()=>trialEnabled,
   pending:()=>({status:'none',entry:null}),
   async trialCreate(args){
-   trialSaved++;
+   trialSaved++;trialOperationIds.push(args.operationId);
    assert.equal(args.subject,subject);
    assert.equal(args.householdId,household);
    assert.match(args.operationId,/^receipt-trial-main-[A-Za-z0-9_-]{12,64}$/);
@@ -145,6 +145,16 @@ assert.equal(saved,1,'General record.create is still not called for trial save')
 assert.equal(api.state().receiptScan,null);
 assert.deepEqual(calls.slice(-3).map(x=>x[0]),[
  'record.trial.preflight','record.trial.preflight','record.list']);
+// A second confirmed scan can be submitted with its own operation ID.
+// It uses the existing screen; the test-only action does not enable record.create.
+api.setScan({...makeScan(),date:'2026-10-15'});
+await api.saveConfirmedReceiptToSheets(approval);
+assert.equal(trialSaved,2,'Two distinct confirmed scans can be saved');
+assert.equal(saved,1,'Normal record.create stays disabled for the trial');
+assert.equal(new Set(trialOperationIds).size,2,'Each new receipt gets a unique intent');
+assert.equal(api.state().receiptScan,null);
+assert.deepEqual(calls.slice(-2).map(x=>x[0]),
+ ['record.trial.preflight','record.list']);
 trialEnabled=false;
 assert.equal(api.receiptRemoteWritable(),false,'No approval means local preview only');
-console.log('Main PWA receipt: normal and isolated trial preflight/save, one existing review UI PASS');
+console.log('Main PWA receipt: sequential confirmed trial saves, unique intents and unchanged review UI PASS');
