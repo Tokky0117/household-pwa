@@ -1,0 +1,86 @@
+name: Identify existing GAS source (read only)
+on:
+  push:
+    branches: [stage-a-ui-handoff-review]
+    paths: ['.github/workflows/gas-source-identify.yml']
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify existing GAS identity and read source
+        env:
+          CLASPRC_JSON: ${{ secrets.CLASPRC_JSON }}
+          GAS_SCRIPT_ID_TEST: ${{ secrets.GAS_SCRIPT_ID_TEST }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/gas-source-audit"
+          node - <<'NODE'
+          const fs=require('node:fs'),path=require('node:path'),crypto=require('node:crypto');
+          const id=process.env.GAS_SCRIPT_ID_TEST,credentials=process.env.CLASPRC_JSON;
+          if(!id||!credentials)throw Error('CREDENTIALS_NOT_CONFIGURED');
+          const hash=crypto.createHash('sha256').update(id).digest('hex');
+          if(hash!=='9c4113806442904861bb84dede2d9c542449a5c9ed5b494abe451cda0c1f4739')
+            throw Error('WRONG_SCRIPT_ID');
+          fs.writeFileSync(path.join(process.env.HOME,'.clasprc.json'),credentials,{mode:0o600});
+          fs.writeFileSync(path.join(process.env.RUNNER_TEMP,'gas-source-audit','.clasp.json'),JSON.stringify({scriptId:id,rootDir:'.'})+'\n',{mode:0o600});
+          console.log('Verified designated existing GAS project; reading source only.');
+          NODE
+          cd "$RUNNER_TEMP/gas-source-audit"
+          npx --yes @google/clasp@3 pull
+      - name: Compare remote source to all prior Git revisions without printing content
+        shell: bash
+        run: |
+          set -euo pipefail
+          node - <<'NODE'
+          const fs=require('node:fs'),path=require('node:path'),crypto=require('node:crypto'),
+           cp=require('node:child_process');
+          const folder=path.join(process.env.RUNNER_TEMP,'gas-source-audit');
+          const files=fs.readdirSync(folder).filter(n=>!n.startsWith('.')).sort();
+          if(JSON.stringify(files)!==JSON.stringify(['appsscript.json','コード.js']))
+            throw Error('UNEXPECTED_SCRIPT_FILES');
+          const remote=fs.readFileSync(path.join(folder,'コード.js'),'utf8');
+          const hash=s=>crypto.createHash('sha256').update(s).digest('hex');
+          const history=cp.execFileSync('git',['log','--format=%H','--','gas/Code.gs'],{encoding:'utf8'})
+           .trim().split(/\n/).filter(Boolean);
+          const fn=s=>new Set([...s.matchAll(/(?:^|\n)function\s+([a-zA-Z_$][\w$]*)\s*\(/g)].map(x=>x[1]));
+          const remFns=fn(remote);
+          let matched=null,best=null;
+          for(const commit of history){
+           const original=cp.execFileSync('git',['show',commit+':gas/Code.gs'],{encoding:'utf8'});
+           if(hash(original)===hash(remote)){matched=commit;break}
+           const known=fn(original);
+           const removed=[...remFns].filter(x=>!known.has(x));
+           const added=[...known].filter(x=>!remFns.has(x));
+           const distance=removed.length+added.length;
+           if(!best||distance<best.distance)best={commit,distance,
+            missingInRemote:added.length,additionalRemote:removed.length,
+            remoteOnly:removed.slice(0,60).sort(),candidateOnly:added.slice(0,60).sort(),
+            size:original.length};
+          }
+          const manifest=fs.readFileSync(path.join(folder,'appsscript.json'),'utf8');
+          const result={
+           remote_source_sha256:hash(remote),
+           remote_source_bytes:Buffer.byteLength(remote),
+           remote_manifest_matches_expected:hash(manifest)==='0952d47f73508eb256f1cf50f0368fe77434f8c05ea0d6defc7cf9b4e227e935',
+           history_versions_checked:history.length,
+           matching_commit:matched,
+           ...(matched?{}:{closest_by_declared_functions:best})
+          };
+          const output=JSON.stringify(result);
+          console.log('READ_ONLY_GAS_SOURCE_IDENTIFICATION '+output);
+          fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY,output+'\n');
+          NODE
+      - name: Remove downloaded data and secrets
+        if: always()
+        shell: bash
+        run: rm -rf "$HOME/.clasprc.json" "$RUNNER_TEMP/gas-source-audit"
