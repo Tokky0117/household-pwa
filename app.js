@@ -282,7 +282,7 @@ function listView(){
    s.busy&&!s.loaded?'家庭の日用品を読み込み中…':''):'';
  const copy='<button class="iconbtn" type="button" data-act="copyList" aria-label="在庫なしをコピー" title="在庫なしをコピー">'+miniIcon('copy')+'</button>';
  const add='<button class="iconbtn" type="button" data-act="add" aria-label="日用品を追加" title="日用品を追加">'+miniIcon('plus')+'</button>';
- return `${head('日用品','くらしストック_試作',false,add,copy)}<main>${UI.searchField({id:'search',label:'日用品を検索',placeholder:'日用品を検索',value:query,extra:'autocomplete="off"'})}<div class="filterrow"><label class="switchlabel"><input type="checkbox" id="onlyOut" ${onlyOut?'checked':''}>在庫なしのみ表示</label></div><div id="item-results">${listResults()}</div>${notice?'<p class="hint" role="status">'+esc(notice)+'</p>':''}${listHelpView()}</main>${nav()}`;
+ return `${head('日用品','くらしストック_試作',false,add,copy)}<main>${UI.searchField({id:'search',label:'日用品を検索',placeholder:'日用品を検索',value:query,extra:'autocomplete="off"'})}<div class="filterrow"><label class="switchlabel"><input type="checkbox" id="onlyOut" ${onlyOut?'checked':''}>在庫なしのみ表示</label></div><div id="item-results">${listResults()}</div>${liveMode?'<p id="list-sync-status" class="hint" role="status" '+(notice?'':'hidden')+'>'+esc(notice)+'</p>':''}${listHelpView()}</main>${nav()}`;
 }
 function priceCompareView(){
  const i=current();if(!i){page='list';return listView()}
@@ -773,6 +773,14 @@ if(liveMode)window.KurashiLive.subscribe((state,data)=>{
    if(pill)pill.textContent=next.inStock?'あり':'なし';
    patched++;
   });
+  const syncLabel=document.getElementById('list-sync-status');
+  if(syncLabel){
+   const note=!state.signedIn?'設定からGoogleログインしてください。':
+    state.error?'Google Sheets: '+state.error:
+    state.queued?'未反映の操作 '+state.queued+'件（自動で保存します）':
+    state.cached?'前回取得した内容を表示中。Google Sheetsと再接続しています。':'';
+   syncLabel.textContent=note;syncLabel.hidden=!note;
+  }
   if(patched===nextItems.filter(x=>!x.hidden).length)return;
  }
  render();
@@ -798,7 +806,11 @@ app.addEventListener('touchend',e=>{
  pullToRefresh=null;
  if(!p.eligible||t.clientY-p.y<85||page!=='list')return;
  const state=window.KurashiLive.state();
- if(state.mutating||state.pending)return;
+ if(state.queued){
+  say('端末に保存した操作をGoogle Sheetsへ同期中です');
+  void window.KurashiLive.retry();
+  return;
+ }
  window.KurashiLive.load().then(ok=>
   say(ok?'最新の状態に更新しました':'更新できませんでした。接続状態をご確認ください'));
 },{passive:true});
