@@ -26,6 +26,9 @@ jobs:
         with: {fetch-depth: 0}
       - uses: actions/setup-node@v4
         with: {node-version: '22'}
+      - name: Install durable queue regression-test dependencies
+        run: npm install --no-save --no-package-lock --ignore-scripts fake-indexeddb@6.2.4 jsdom@26.1.0
+
       - name: Validate new GAS JavaScript
         shell: bash
         run: |

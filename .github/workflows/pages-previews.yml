@@ -27,6 +27,9 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Install browser and IndexedDB regression-test dependencies
+        run: npm install --no-save --no-package-lock --ignore-scripts fake-indexeddb@6.2.4 jsdom@26.1.0
+
       - name: Validate v1.8 preview behavior
         run: |
           node tests/ui-smoke.mjs
