@@ -7,6 +7,8 @@
  // Explicit release gate: requires separate reviewed deployment to enable writes.
  const LIVE_WRITE_ENABLED=false;
  const MUTATIONS=new Set(['item.create','item.update']);
+ // Receipt batch writes need separate server journal and user approval.
+ const RECEIPT_BATCH_WRITE_ENABLED=false;
  const MAX_RESPONSE=1024*1024;
  function configure(url){
    if(!url){endpoint='';return}
@@ -18,6 +20,8 @@
  }
  function status(){return {configured:!!endpoint};}
  async function request(action,payload,options={}){
+   if(action==='record.create'&&!RECEIPT_BATCH_WRITE_ENABLED)
+     throw new Error('RECEIPT_WRITES_DISABLED');
    if(!endpoint)throw new Error('GAS_NOT_CONFIGURED');
    if(!['bootstrap','sync','product.catalog','product.alias.check'].includes(action)){
      if(!MUTATIONS.has(action))throw new Error('UNSUPPORTED');
