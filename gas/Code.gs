@@ -287,6 +287,28 @@ function doPost(e){
    return jsonReply({ok:true,data:receiptList_(user,readContext.book)});
   }
   if(action==='sync')return jsonReply({ok:true,data:changes(user,payload,readContext.book)});
+  // Authenticated, fixed-fixture REPLAY ONLY on the previously verified
+  // isolated trial Sheet. It cannot create a new receipt or accept user data.
+  if(action==='record.trial.replay'){
+   if(!payload||typeof payload!=='object'||Array.isArray(payload)||
+      Object.keys(payload).length||input.operation_id!==undefined)
+    fail('BAD_REQUEST','試験レシートの再確認では入力を受け付けません');
+   const trial=receiptTrialGuard_(readContext.book);
+   if(!trial.completed||trial.records!==1||trial.items!==2)
+    fail('TRIAL_RECEIPT_NOT_READY','保存済みの試験レシートを先に確認してください');
+   if(String(user.householdId)!==trial.householdId||
+      String(user.userId)!==trial.userId)
+    fail('TRIAL_NOT_ISOLATED','試験用の家庭・ユーザーが一致しません');
+   const result=mutateReceiptSafely_(user,receiptTrialPayload_(),
+      RECEIPT_TRIAL_FIXTURE_.operation_id,true);
+   if(result.status!=='completed'||result.action!=='record.create'||
+      result.entity?.household_id!==trial.householdId||
+      !Array.isArray(result.item_ids)||result.item_ids.length!==2)
+    fail('TRIAL_RESULT_MISMATCH','再送結果が一致しません');
+   return jsonReply({ok:true,data:{
+    status:'completed',replayed:true,records:1,items:2,amount:496
+   }});
+  }
   // Deliberate hard gate: receipt parent+child writes have no recovery journal yet.
   // Even enabling ENABLE_EXPERIMENTAL_WRITES must never enable this endpoint.
   if(action==='record.create')fail('RECEIPT_WRITES_DISABLED','レシート一括保存は安全検証中です');
