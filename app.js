@@ -82,15 +82,9 @@ let receiptChatGptText='',receiptChatGptNotice='';
 let receiptRemoteCatalog=null,receiptCatalogSubject=null,
  receiptCatalogBusy=false,receiptCatalogStatus='未取得',receiptCatalogEpoch=0,
  receiptSaveBusy=false;
-function receiptTrialWritable(){
- return window.KURASHI_RECEIPT_TEST_MODE!==true&&
-  window.KurashiReceiptSaveSession?.trialWriteEnabled?.()===true&&
-  window.KurashiAuth?.status?.()?.signedIn===true;
-}
 function receiptRemoteWritable(){
  return window.KURASHI_RECEIPT_TEST_MODE!==true&&
-  (window.KurashiReceiptSaveSession?.writeEnabled?.()===true||
-   receiptTrialWritable())&&
+  window.KurashiReceiptSaveSession?.writeEnabled?.()===true&&
   window.KurashiAuth?.status?.()?.signedIn===true;
 }
 function currentReceiptCatalog(){
@@ -175,26 +169,19 @@ async function saveConfirmedReceiptToSheets(approvals){
   render();return;
  }
  receiptSaveBusy=true;receiptScan.status='確認した明細を保存しています…';render();
- const trial=receiptTrialWritable()&&!window.KurashiReceiptSaveSession?.writeEnabled?.(); // Legacy trial adapter only; stage-a uses record.create.
  try{
-  const preflight=await window.KurashiGasApi.request(
-   trial?'record.trial.preflight':'record.preflight',payload);
+  const preflight=await window.KurashiGasApi.request('record.preflight',payload);
   if(!receiptRemoteWritable()||window.KurashiAuth?.status?.()?.subject!==subject||
      epoch!==receiptCatalogEpoch)throw Error('RECEIPT_SESSION_CHANGED');
   const sum=payload.items.reduce((n,item)=>n+item.amount_tax_included,0);
   if(!preflight||preflight.version!==payload.version||
      preflight.item_count!==payload.items.length||
      preflight.total_tax_included!==sum||preflight.write_enabled!==false||
-     (trial?(preflight.trial_ready!==true||
-       Object.keys(preflight).sort().join(',')!==
-        'item_count,total_tax_included,trial_ready,version,write_enabled'):
-      (preflight.household_id!==catalog.household_id||
-       preflight.blocked_by_pending_operation!==false)))
+     preflight.household_id!==catalog.household_id||
+     preflight.blocked_by_pending_operation!==false)
    throw Error('RECEIPT_PREFLIGHT_FAILED');
-  const operationId=trial?'receipt-trial-main-'+id():id();
-  await (trial?window.KurashiReceiptSaveSession.trialCreate:
-    window.KurashiReceiptSaveSession.create)({
-   subject,householdId:catalog.household_id,payload,operationId
+  await window.KurashiReceiptSaveSession.create({
+   subject,householdId:catalog.household_id,payload,operationId:id()
   });
   if(window.KurashiAuth?.status?.()?.subject!==subject)return;
   discardReceiptScan();receiptRecoveryNotice='';
@@ -1151,7 +1138,7 @@ function receiptView(){
  <textarea id="receipt-chatgpt-json" rows="5" maxlength="30000" spellcheck="false" autocomplete="off" placeholder="JSONのみ貼り付け（説明やコードフェンス不要）">${esc(receiptChatGptText)}</textarea>
  <button type="button" class="primary" data-act="importChatGptReceipt">貼り付けた明細を確認</button>
  ${receiptChatGptNotice?'<p class="ui-field-notice" role="status">'+esc(receiptChatGptNotice)+'</p>':''}
- <p class="sample-price-notice">${receiptTrialWritable()?'隔離試験GASに確認済みレシートを追加保存できます（試験用は最大20件）。夫婦間同期は未接続。':receiptRemoteWritable()?'認証済み家庭のGoogle Sheetsへの保存を準備中です。':'現在はこのSafariの試作記録だけです。Google Sheets・夫婦間同期には未接続。'}ChatGPT出力に会員・決済情報を含めないでください。</p>
+ <p class="sample-price-notice">${receiptRemoteWritable()?'確認したレシートを家庭のGoogle Sheetsに保存できます。':'現在はこのSafariの試作記録だけです。Google Sheetsには未保存です。'}ChatGPT出力に会員・決済情報を含めないでください。</p>
  </section>${receiptScanReview()}${receiptPendingView()}${remoteReceiptView()}<div class="record-entry-actions"><button class="secondary" data-act="newReceipt">${miniIcon('plus')}<span>レシート明細</span></button><button class="secondary" data-act="newShelf">${miniIcon('plus')}<span>値札</span></button></div><h2 class="sectiontitle">このSafari内の試作記録（Google Sheetsには未保存）</h2><p class="hint">保存した記録はこのブラウザのWebサイトデータにあります。Google Sheets・Google Drive・ファイルアプリには保存されません。ブラウザデータを消すと記録も失われます。</p>${rows}</main>${nav()}`;
 }
 function budgetView(){
@@ -1173,7 +1160,7 @@ function settingsView(){
   '<label class="formfield" for="stage-trial-endpoint">既存の試験GAS /exec URL<input id="stage-trial-endpoint" type="url" inputmode="url" autocomplete="off" spellcheck="false" placeholder="https://script.google.com/macros/s/.../exec"></label>'+
   '<button type="button" class="secondary" data-act="connectStageTrial">試験GASに接続</button>'+
   '<p class="hint" role="status">接続：'+(window.KurashiGasApi?.status?.()?.configured?'設定済み。認証後に試験家庭のマスタを確認します。':'未設定。通常のGASには自動接続しません。')+'</p>'+
-  '<p class="hint">この接続先では既存の試験家庭に限り、一般レシートを追加で最大20件まで試せます。実家庭のデータは使用しないでください。</p></section>':'';
+  '<p class="hint">既存の試験家庭の登録ユーザーだけが通常のレシート保存APIを利用できます。実家庭の購入情報はまだ登録しないでください。</p></section>':'';
  const auth=window.KurashiAuth?.status?.()||{configured:false,signedIn:false};const loginPanel=`<div class="panel"><h2>Googleログイン（接続準備）</h2><p class="hint">${auth.signedIn?'この端末でログイン済みです。実データの同期はまだ無効です。':auth.configured?'初回のみGoogleアカウントでログインします。期限切れ時は再ログインが必要です。':'Googleログインの接続設定を準備中です。現時点では試作データだけを利用できます。'}</p>${auth.signedIn?'<button type="button" class="secondary" data-act="googleSignOut">ログアウト</button>':auth.configured?'<div id="google-login-button"></div>':''}</div>`;return `${head('設定','くらしストック')}<main>${stageConnect}${loginPanel}<div class="panel"><h2>Google Sheets読み取り</h2><p class="hint" role="${liveStatus.startsWith('取得失敗：')?'alert':'status'}">状態：${esc(liveStatus)}。ログイン後、日用品・商品・店舗を読み取れます。保存や同期はまだ行いません。${liveStatus.startsWith('取得失敗：')?'自動再試行はしません。必要ならもう一度読み取ってください。':''}</p><button class="secondary" data-act="refreshLive" style="width:100%" ${auth.signedIn&&!liveBusy?'':'disabled'}>${liveBusy?'読み取り中…':liveStatus.startsWith('取得失敗：')?'もう一度読み取る':'Google Sheetsから読み取る'}</button>${liveMode?'<button class="secondary" data-act="leaveLive" style="width:100%">試作データに戻る</button>':''}</div>${householdCheckView(auth)}<div class="panel"><h2>試作版の操作</h2><p class="hint">変更内容はこの端末の localStorage のみに保存され、夫婦間では共有されません。</p><button class="secondary danger" data-act="reset">仮データを初期状態に戻す</button></div><div class="panel"><h2>今後の実装</h2><p class="hint">レシート／値札のチェーン照合、Google Apps Script 接続、認証、オフライン差分同期を追加予定です。</p></div></main>${nav()}`}
 // All confirmation dialogs share one DOM and CSS. A Japanese full stop ends a paragraph line.
 function dialogView(){
