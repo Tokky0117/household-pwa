@@ -136,7 +136,11 @@ jobs:
             local.includes("function receiptTrialGuard_(book)");
           if(!localReceiptGate)throw Error('LOCAL_RECEIPT_PROTOTYPE_GATE_MISSING');
           if(!remoteMatchesCurrent)throw Error('REMOTE_SOURCE_NOT_SYNCED');
-          if(!manifestMatches||sha(remoteManifest)!=='0952d47f73508eb256f1cf50f0368fe77434f8c05ea0d6defc7cf9b4e227e935')
+          // The existing Apps Script manifest intentionally has extra deployment
+          // settings/scopes. Preserve and pin its original bytes, rather than
+          // replacing it with the repository's minimal manifest.
+          if(sha(remoteManifest)!=='0952d47f73508eb256f1cf50f0368fe77434f8c05ea0d6defc7cf9b4e227e935'||
+             missingScopes.length||remoteConf.runtimeVersion!=='V8')
             throw Error('REMOTE_MANIFEST_CHANGED');
           const report=[
             'READ_ONLY_GAS_AUDIT: Test GAS source retrieved without modifying project or Sheets.',
