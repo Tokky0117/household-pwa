@@ -111,10 +111,16 @@ jobs:
           const approvedBeforeReplay=child.execFileSync('git',['show',
             '8c6b6c14f63515370f2c2b66541795df9df52e95:gas/Code.gs'],
             {encoding:'utf8'});
+          // 2026-11-01, last GAS source before the browser replay route.
+          const latestBeforeReplay=child.execFileSync('git',['show',
+            '2e38612b9114d301f3e17cb5f62119a82f00dae7:gas/Code.gs'],
+            {encoding:'utf8'});
+          const remoteMatchesPrevious=sha(remote)===sha(latestBeforeReplay);
           const remoteMatchesBefore=sha(remote)===sha(approvedBeforeReplay);
           const remoteMatchesCurrent=sha(remote)===sha(local);
           const remoteReadiness=remoteMatchesCurrent?'LATEST_SOURCE_PRESENT':
-            remoteMatchesBefore?'KNOWN_BASELINE_MANUAL_UPDATE_NEEDED':
+            remoteMatchesPrevious?'IMMEDIATE_PRE_REPLAY_SOURCE':
+            remoteMatchesBefore?'KNOWN_OLDER_BASELINE':
             'REMOTE_SOURCE_DRIFT_REVIEW_REQUIRED';
           const localReplayRoute=local.includes("if(action==='record.trial.replay')")&&
             local.includes("if(action==='record.create')fail('RECEIPT_WRITES_DISABLED'")&&
