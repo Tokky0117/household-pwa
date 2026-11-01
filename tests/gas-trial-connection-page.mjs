@@ -27,7 +27,7 @@ assert.match(html,/id="catalog-result"/);
 assert.match(html,/id="catalog-detail"/);
 assert.match(html,/id="receipt-read"/);
 assert.match(html,/id="receipt-replay"/);
-assert.match(html,/KurashiGasApi\\.request\\('record\\.trial\\.replay',\\{\\}/);
+assert.ok(html.includes("KurashiGasApi.request('record.trial.replay',{}"));
 assert.match(html,/KurashiGasApi\.request\('record\.list',\{\}\)/);
 assert.match(html,/id="ocr-review"/);
 assert.match(html,/id="ocr-review-text"/);
