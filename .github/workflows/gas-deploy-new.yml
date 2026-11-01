@@ -3,7 +3,7 @@ name: Deploy only the NEW Kurashi GAS
 on:
   push:
     branches: [preview-v46-clean-base]
-    paths: ['gas/Api.gs', 'gas/Setup.gs', 'tests/no-login-household.mjs', '.github/workflows/gas-deploy-new.yml']
+    paths: ['gas/Api.gs', 'gas/Setup.gs', '.github/workflows/gas-deploy-new.yml']
   workflow_dispatch:
 
 permissions:

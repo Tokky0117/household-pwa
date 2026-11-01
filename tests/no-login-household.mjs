@@ -138,12 +138,15 @@ let a=appSession();
 await waitFor(()=>a.window.KurashiLive.state().loaded&&pill(a)==='あり','first Sheets bootstrap');
 // Each offline tap saves to IndexedDB and flips the same DOM button immediately.
 online=false;
+const sameStockButton=a.window.document.querySelector('[data-stock="'+id+'"]');
 clickStock(a);
 await waitFor(()=>pill(a)==='なし'&&a.window.KurashiLive.state().queued===1,
  'first tap persists, updates visible stock');
 clickStock(a);
 await waitFor(()=>pill(a)==='あり'&&a.window.KurashiLive.state().queued===2,
  'second tap accepted before previous GAS write');
+assert.equal(a.window.document.querySelector('[data-stock="'+id+'"]'),sameStockButton,
+ 'v46 stock button retains the same DOM node across repeated taps and network status');
 assert.equal(getVersion(),2,'server unchanged during offline actions');
 a.window.close();online=true;
 // Fresh PWA process, same IndexedDB database. It must drain both commands.
