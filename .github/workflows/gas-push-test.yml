@@ -1,5 +1,5 @@
 name: Push GAS to test project (manual)
-# Manual-only trial GAS update: read-only catalog test installed; temporary push trigger disabled.
+# Manual-only trial GAS source update. Pre-replay baseline was verified by the read-only remote audit on 2026-11-01.
 on:
   workflow_dispatch:
     inputs:
@@ -97,11 +97,11 @@ jobs:
           // Refuse any source/manifest drift since the final read-only audit.
           const crypto=require('node:crypto');
           const digest=text=>crypto.createHash('sha256').update(text).digest('hex');
-          const approvedSource='e8d066191f5ee83a8b02336d785192391d3ebe14fc23bbe8061f070d2e6858fb';
+          const approvedSource='4c4ca18eda742edcec88eb4f5db8ad956b44c052d5ea4fd33f6676e1d3ba2d81';
           // Verify the remote source is byte-identical to an already-reviewed
           // historical GitHub GAS source, not just a guessed replacement hash.
           const git=require('node:child_process');
-          const baseline='8c6b6c14f63515370f2c2b66541795df9df52e95';
+          const baseline='2e38612b9114d301f3e17cb5f62119a82f00dae7';
           const history=git.execFileSync('git',['show',baseline+':gas/Code.gs'],{encoding:'utf8'});
           if(digest(history)!==approvedSource)
             throw Error('KNOWN_GITHUB_SOURCE_FINGERPRINT_MISMATCH');
@@ -175,8 +175,14 @@ jobs:
           if(!required.every(name=>src.includes('function '+name+'(')))
             throw Error('TEST_GAS_SOURCE_VERIFY_FAILED');
           if(!src.includes("if(action==='record.create')fail('RECEIPT_WRITES_DISABLED'")||
+            !src.includes("if(action==='record.trial.replay')")||
             !src.includes("function approvedPrototypeAliasSheet_(){"))
             throw Error('RECEIPT_PRODUCTION_WRITE_GATE_INVALID');
+          const expected=fs.readFileSync(process.env.GITHUB_WORKSPACE+'/gas/Code.gs','utf8');
+          const crypto=require('node:crypto');
+          const sha=text=>crypto.createHash('sha256').update(text).digest('hex');
+          if(sha(src)!==sha(expected))
+            throw Error('TEST_GAS_UPDATED_SOURCE_MISMATCH');
           fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY,
             'TEST_GAS_SOURCE_UPDATE_OK: test GAS source only; no deployment, no Sheets writes.\n');
           console.log('TEST_GAS_SOURCE_UPDATE_OK: no web app deployment, no spreadsheet writes');
