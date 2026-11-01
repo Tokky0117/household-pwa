@@ -75,6 +75,44 @@ function loadPreviewRecords(){
 let previewRecords=loadPreviewRecords();
 // OCR is a review draft, not a saved receipt. All pixels and OCR guesses remain in memory.
 let receiptScan=null,receiptScanBusy=false,receiptScanEpoch=0,receiptPhotoUrl=null;
+let receiptChatGptText='',receiptChatGptNotice='';
+function readChatGptReceiptIntoPreview(){
+ const api=window.KurashiReceiptImport;
+ if(!api?.parseChatGptReceiptJson){receiptChatGptNotice='読み取り形式を準備できません。画面を再読み込みしてください。';render();return false}
+ try{
+  const parsed=api.parseChatGptReceiptJson(receiptChatGptText);
+  if(parsed.items.length>30)throw Error('PREVIEW_ITEM_LIMIT');
+  // A printed store name is a candidate. Never create a new chain or
+  // use fuzzy matches; users explicitly confirm it in the shared review.
+  const names=catalogue.chains.filter(c=>norm(c.name)===norm(parsed.storeName||''));
+  discardReceiptScan();
+  receiptScan={
+   source:'chatgpt_paste',taxBasis:parsed.taxBasis,taxTotal:parsed.taxTotal,
+   store:parsed.storeName||'',date:parsed.purchaseDate||'',chainId:names.length===1?names[0].id:'',
+   receiptTotal:parsed.receiptTotal,rawPreview:'',recognizedCharacters:0,
+   status:'ChatGPT読取候補です。原本と数量・商品・税込額を確認してください。',
+   items:parsed.items.map(item=>({
+    rawName:item.name||'',quantity:item.quantity===null?'':String(item.quantity),
+    // Excluded / unknown tax cannot be mistaken for tax-included line
+    // prices. The user must explicitly enter each confirmed tax-included sum.
+    amount:parsed.taxBasis==='included'&&item.netAmount!==null?
+     String(item.netAmount):'',
+    readNetAmount:item.netAmount,category:'',productId:''
+   }))
+  };
+  receiptChatGptText='';receiptChatGptNotice='';
+  render();return true;
+ }catch(error){
+  const code=String(error?.message||'');
+  receiptChatGptNotice=code==='PREVIEW_ITEM_LIMIT'?
+   '一度に確認できるのは30明細までです。レシートを分けて取り込んでください。':
+   code==='INVALID_JSON'?'JSONの形式を確認してください。':
+   code==='JSON_SIZE_OR_EMPTY'?'30,000文字以内のJSONを貼り付けてください。':
+   '取込形式が正しくありません（'+code+'）。指示文を更新して読み直すか、JSONを修正してください。';
+  render();return false;
+ }
+}
+
 function discardReceiptScan(){
  ++receiptScanEpoch;
  receiptScanBusy=false;receiptScan=null;
@@ -122,6 +160,8 @@ function deletePreviewRecord(recordId){
  previewRecords=next;return true;
 }
 function savePreviewReceiptScan(input){
+ if(input?.source==='chatgpt_paste'&&input.taxBasis!=='included'&&
+    input.taxResolvedForPreview!==true)return false;
  if(!input||!Array.isArray(input.items)||input.items.length<1||input.items.length>30||
     !catalogue.chains.some(c=>c.id===input.chainId))return false;
  const date=String(input.date||''),parts=date.split('-').map(Number);
@@ -160,8 +200,11 @@ function receiptScanFormValues(){
   quantity:String(data.get('quantity-'+i)||''),
   amount:String(data.get('amount-'+i)||''),
   productId:String(data.get('product-'+i)||''),
-  category:String(data.get('category-'+i)||'')
+  category:String(data.get('category-'+i)||''),
+  readNetAmount:item.readNetAmount??null
  }));
+ if(receiptScan.source==='chatgpt_paste')
+  receiptScan.taxResolvedForPreview=data.get('taxResolved')==='yes';
 }
 const allPreviewRecords=()=>demoRecords.concat(previewRecords.records);
 const allPreviewItems=()=>demoRecordItems.concat(previewRecords.record_items);
