@@ -1093,6 +1093,8 @@ function receiptScanReview(){
  const amountsReady=scan.items.every(item=>String(item.amount??'').trim()!=='');
  return `<section class="panel receipt-scan-panel"><h2>${chat?'ChatGPT読取結果（保存前・未確定）':'写真の読み取り結果（保存前）'}</h2>
  <p class="hint" id="receipt-scan-progress" role="status">${esc(scan.status)}</p>
+ ${receiptRemoteWritable()&&!currentReceiptCatalog()&&!receiptCatalogBusy?
+ '<p class="hint">家庭の登録済み店舗・商品を確認できません。確認後に保存してください。</p><button type="button" class="secondary" data-act="refreshReceiptCatalog">店舗・商品を再取得</button>':''}
  <p class="hint">${chat?
   'ChatGPTの候補は自動確定しません。商品名・数量・金額・チェーン・日付をレシート原本と確認してください。':
   'OCRの候補は自動確定しません。レシート原本と照合して、不要な候補を除外してください。'}チェーンが一覧になければ保存しないでください。</p>
@@ -1529,6 +1531,7 @@ if(action==='catalogueList'){pickerAll=!pickerAll;const heading=document.querySe
 }
 if(action==='retryReceiptSave'){retryReceiptSave();return;}
 if(action==='checkHouseholdConnection'){checkHouseholdConnection();return;}
+if(action==='refreshReceiptCatalog'){invalidateReceiptCatalog();loadReceiptCatalog();return;}
 if(action==='refreshRemoteReceipts'){refreshRemoteReceipts();return;}
 if(action==='importChatGptReceipt'){
  const field=document.getElementById('receipt-chatgpt-json');
