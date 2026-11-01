@@ -97,6 +97,33 @@ ui.setBudgetMonth('2026-11');
 assert.match(ui.budgetView(),/2026-11の確定購入額/);
 assert.match(ui.budgetView(),/458円/);
 assert.equal(mutations,priorWrites,'Showing accepted two receipts is read-only');
+// iPhone implementation 9: the third accepted test receipt has TWO units
+// whose combined, tax-inclusive line subtotal is 340 JPY, not 340 JPY each.
+const fixedTwo=await respond();
+respond=async()=>({
+ ...fixedTwo,
+ records:[...fixedTwo.records,
+  {record_id:'r-main',household_id:'home-A',record_type:'receipt',
+   chain_id:'store-A',record_date:'2026-11-01',
+   raw_store_name:'[KURASHI_ALIAS_TRIAL_ONLY]'}],
+ record_items:[...fixedTwo.record_items,
+  {record_item_id:'main-1',record_id:'r-main',line_order:1,
+   raw_name:'試験用・架空の食品',quantity:1,amount_tax_included:210,category_id:0},
+  {record_item_id:'main-2',record_id:'r-main',line_order:2,
+   raw_name:'試験用・架空の日用品',quantity:2,amount_tax_included:340,category_id:1}]
+});
+ui.setReceiptTab();
+await ui.refreshRemoteReceipts();
+assert.equal(ui.state().remoteReceipts.records.length,3);
+assert.equal(ui.state().remoteReceipts.record_items.length,6);
+const threeView=ui.remoteReceiptView();
+assert.match(threeView,/2明細 · 550円/);
+assert.match(threeView,/架空の日用品 · 2点<\\/span><strong>明細合計 340円/);
+assert.doesNotMatch(threeView,/明細合計 680円/);
+ui.setBudgetTab();
+ui.setBudgetMonth('2026-11');
+assert.match(ui.budgetView(),/2026-11の確定購入額<\\/span><strong>1008円/);
+assert.equal(mutations,priorWrites,'3-receipt readback never adds a browser-local write');
 ui.setReceiptTab();
 subject='subject-B';
 ui.render();
