@@ -1,10 +1,7 @@
 name: Push GAS to test project (manual)
-# One-time pinned source update to the SAME existing test GAS.
-# Restore manual-only trigger immediately after this source-only push.
+# Manual-only. Ordinary receipt API was synced to the same existing test GAS.
+# Re-review source fingerprint before any future manual update.
 on:
-  push:
-    branches: [stage-a-ui-handoff-review]
-    paths: ['.github/workflows/gas-push-test.yml']
   workflow_dispatch:
     inputs:
       confirm_target_backup:
@@ -25,7 +22,7 @@ concurrency:
 
 jobs:
   push-test:
-    if: github.ref == 'refs/heads/stage-a-ui-handoff-review' && (github.event_name == 'push' || (inputs.confirm_target_backup == 'BACKUP_DONE' && inputs.confirm_test_source == 'TEST_GAS_UPDATE'))
+    if: github.ref == 'refs/heads/stage-a-ui-handoff-review' && inputs.confirm_target_backup == 'BACKUP_DONE' && inputs.confirm_test_source == 'TEST_GAS_UPDATE'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
