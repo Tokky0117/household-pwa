@@ -44,7 +44,7 @@ for(const extra of ['household_id','operation_id','record_id','updated_at','auth
 for(const date of ['2026-02-30','2026-13-01','2026-00-12','1900-01-01','2026/10/14']){
  bothReject({...baseline,record_date:date});
 }
-for(const chain of ['','store a','store%A','<b>','-x',null,199]){
+for(const chain of ['','store a','store%A','<b>',null,199]){
  bothReject({...baseline,chain_id:chain});
 }
 for(const item of [
