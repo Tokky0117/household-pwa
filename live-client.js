@@ -6,6 +6,7 @@
  const STORAGE='kurashi-new-write-v1-';
  const SNAPSHOT_CACHE='kurashi-new-confirmed-snapshot-v1';
  let fresh=false,loadPromise=null,mutating=false,savingItemId=null;
+ let stockQueue=Promise.resolve(); // Preserve each tap, serially using latest server version.
  const listeners=new Set();
  let token=null,subject='temporary-household',expiry=0,snapshot=null,household=null,busy=false,error='',gisReady=false;
  let loginRequired=false; // Set true if GAS reports UNAUTHORIZED.
@@ -177,6 +178,7 @@
     // Initial read is allowed without releasing the mutation slot.
     if(!await load(true))throw Error(error||'読み込みに失敗しました');
    }
+   if(busy&&loadPromise)await loadPromise;
    if(busy)throw Error('BUSY');
    if(pending())throw Error('RECOVERY_REQUIRED');
    if(!['item.create','item.update'].includes(action))throw Error('UNSUPPORTED');
@@ -213,6 +215,22 @@
    if(confirmed)void load();
   }
  }
+ // Each tap is queued and computes the next state using the latest confirmed version.
+ // The UI never silently ignores taps while a previous Sheets write is running.
+ function toggleStock(itemId){
+  const next=stockQueue.then(async()=>{
+   if(loadPromise)await loadPromise;
+   if(pending())throw Error('RECOVERY_REQUIRED');
+   const item=snapshot?.item_groups.find(x=>x.item_group_id===itemId&&!x.deleted_at);
+   if(!item)throw Error('日用品が見つかりません。画面を更新してください');
+   const newState=!(item.in_stock===true||String(item.in_stock).toLowerCase()==='true');
+   return save('item.update',{
+    item_group_id:itemId,version:Number(item.version),in_stock:newState
+   });
+  });
+  stockQueue=next.catch(()=>{});
+  return next;
+ }
  async function retry(){
   const entry=pending();
   if(!entry||entry.error||!state().signedIn||
@@ -222,9 +240,9 @@
   busy=true;error='';notify();
   try{return await transmit(entry)}
   catch(e){error=e.code||e.message||'保存結果を確認できません';throw e}
-  finally{busy=false;notify()}
+  finally{busy=false;notify();if(!pending())void load()}
  }
- window.KurashiLive={state,load,save,retry,logout,renderLogin,
+ window.KurashiLive={state,load,save,toggleStock,retry,logout,renderLogin,
   subscribe:cb=>{listeners.add(cb);return ()=>listeners.delete(cb)},
   itemsOf,catalogueOf};
  window.addEventListener('kurashi-gis-ready',initialize);
