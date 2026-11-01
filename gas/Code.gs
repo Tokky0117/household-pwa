@@ -1,7 +1,6 @@
 /**
- * くらしストック GAS API — initial safe vertical slice.
- * Not deployed; no household data is safe to enter until Google sign-in,
- * deployment permissions and integration tests are completed.
+ * くらしストック GAS API — authenticated household-scoped storage.
+ * Source changes require backup/verification before deployment; no automatic GAS publish.
  *
  * Script properties: SPREADSHEET_ID, GOOGLE_CLIENT_ID.
  * Deploy as owner only after reviewing sharing and identity configuration.
@@ -57,9 +56,10 @@ function doPost(e){
    return jsonReply({ok:true,data:receiptList_(user,readContext.book)});
   }
   if(action==='sync')return jsonReply({ok:true,data:changes(user,payload,readContext.book)});
-  // Ordinary receipt API is available only on the already pinned prototype
-  // spreadsheet; no experimental write switch or new test endpoint is needed.
+  // All normal writes are restricted to the already approved household Sheet.
   if(action==='store.create'){
+   if(!approvedPrototypeAliasSheet_())
+    fail('WRITES_DISABLED','対象の保存環境を確認してください');
    return jsonReply({ok:true,data:mutateStoreSafely_(user,payload,input.operation_id)});
   }
   if(action==='product.create'){
@@ -67,7 +67,7 @@ function doPost(e){
     fail('WRITES_DISABLED','対象の保存環境を確認してください');
    return jsonReply({ok:true,data:mutateProductSafely_(user,payload,input.operation_id)});
   }
-  // Existing pinned trial Sheet: ordinary household item/stock operations.
+  // Existing pinned household Sheet: ordinary item/stock operations.
   // Reuse the existing locked, crash-recoverable item transaction.
   if(action==='item.create'||action==='item.update'){
    if(!approvedPrototypeAliasSheet_())
