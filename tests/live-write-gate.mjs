@@ -4,7 +4,8 @@ import vm from 'node:vm';
 const api=readFileSync(new URL('../gas-api.js',import.meta.url),'utf8');
 const appSrc=readFileSync(new URL('../app.js',import.meta.url),'utf8');
 const gasServer=readFileSync(new URL('../gas/Code.gs',import.meta.url),'utf8');
-assert.match(gasServer,/if\(action==='record\.create'\)fail\('RECEIPT_WRITES_DISABLED'/);
+assert.match(gasServer,/if\(action==='record\.create'\)\{/);
+assert.match(gasServer,/if\(!approvedPrototypeAliasSheet_\(\)\)/);
 const base={household_id:'test',categories:['飲食','キッチン','洗面・風呂','洗濯・掃除','その他'].map(name=>({name})),item_groups:[],products:[],stores:[]};
 let sent=0,usedAction='';
 const win={
