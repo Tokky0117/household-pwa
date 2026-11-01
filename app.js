@@ -1653,6 +1653,19 @@ if(el.dataset.uiChoice!==undefined){
  wrapper.querySelectorAll('[data-ui-choice]').forEach(b=>{const selected=b===el;b.classList.toggle('selected',selected);b.setAttribute('aria-pressed',String(selected));const tick=b.querySelector('.ui-menu-selected');if(tick)tick.textContent=selected?'✓':''});
  closeAllDropdowns();wrapper.querySelector('.ui-select-trigger')?.focus();return;
 }
+if(el.dataset.listEdit){
+ if(liveMode){const item=liveSnapshot?.item_groups?.find(x=>String(x.item_group_id)===el.dataset.listEdit);if(item)openLiveEditor(item)}
+ return;
+}
+if(el.dataset.listHide){
+ if(liveMode){
+  const row=liveSnapshot?.item_groups?.find(x=>String(x.item_group_id)===el.dataset.listHide);
+  if(row){setOpenSwipe(null);dialog={title:'日用品を削除',message:'日用品リストから削除します。',buttons:[
+   {id:'cancel',label:'キャンセル'},{id:'confirmHideLive',label:'削除',critical:true}],
+   pending:{itemId:String(row.item_group_id),version:Number(row.version)}};renderDialogOnly()}
+ }
+ return;
+}
 if(el.dataset.listEdit){duplicateItemId=null;selected=el.dataset.listEdit;editReturnPage='list';openSwipeId=null;page='edit';render();return}if(el.dataset.listHide){selected=el.dataset.listHide;setOpenSwipe(null);dialog={title:'日用品を削除',message:'日用品リストから削除します。',buttons:[{id:'cancel',label:'キャンセル'},{id:'confirmHide',label:'削除',critical:true}]};render();return}
 if(el.dataset.act==='retryLive'){retryLive();return}
 if(el.dataset.act==='addLive'){
@@ -1712,8 +1725,7 @@ if(el.dataset.act==='back'&&(liveEditor||liveProductEditor)){
  liveEditor=null;liveProductEditor=null;render();return;
 }
 if(el.dataset.act==='refreshLive'){refreshLive();return}
-if(el.dataset.act==='leaveLive'){leaveRemoteView('試作データ表示');tab='items';page='list';render();return}
-if(liveMode&&tab==='items'&&page==='list'&&!el.dataset.tab&&el.dataset.cat===undefined&&el.dataset.act!=='toggleListHelp'){return}
+// Daily UI never switches back to local demo storage.
 if(el.dataset.tab){if(el.dataset.tab!==tab||page!=='list')abandonLiveReadOnNavigation();if(el.dataset.tab!=='receipt'&&tab==='receipt'){
  discardReceiptScan();receiptChatGptText='';receiptChatGptNotice='';
  if(el.dataset.tab!=='budget')clearRemoteReceipts();
@@ -1728,8 +1740,14 @@ if(tab==='items'&&liveWritable()&&!liveMode&&!liveBusy)refreshLive();
 if(['receipt','budget'].includes(tab)&&connectedReceiptHousehold()&&
    !remoteReceipts&&!remoteReceiptBusy&&remoteReceiptStatus==='未取得')
  refreshRemoteReceipts();
-return}if(el.dataset.cat!==undefined){if(onlyOut)return;const c=Number(el.dataset.cat);collapsed.has(c)?collapsed.delete(c):collapsed.add(c);render();return}if(el.dataset.stock){const i=items.find(x=>x.id===el.dataset.stock);i.inStock=!i.inStock;i.version++;persist();render();return}if(el.dataset.open){if(openSwipeId){setOpenSwipe(null);return}listScrollPosition=window.scrollY;selected=el.dataset.open;page='compare';period='1y';priceScope='product';initializeCompare();periodMenu=false;menu=false;openSwipeId=null;render();return}if(el.dataset.pedit){openSwipeId=null;const p=catalogue.products.find(x=>x.id===el.dataset.pedit);if(p&&p.itemGroupId===selected){editingProductId=p.id;page='productEdit';render()}return}
-if(el.dataset.premove){openSwipeId=null;
+return}if(el.dataset.cat!==undefined){if(onlyOut)return;const c=Number(el.dataset.cat);collapsed.has(c)?collapsed.delete(c):collapsed.add(c);render();return}if(el.dataset.stock){
+ if(!liveMode||!liveWritable())return;
+ const row=liveSnapshot?.item_groups?.find(x=>String(x.item_group_id)===el.dataset.stock);
+ if(row)liveMutate('item.update',{item_group_id:row.item_group_id,version:Number(row.version),
+  in_stock:!(row.in_stock===true||String(row.in_stock).toLowerCase()==='true')});
+ return;
+}if(el.dataset.open){if(!liveMode)return;if(openSwipeId){setOpenSwipe(null);return}listScrollPosition=window.scrollY;selected=el.dataset.open;page='compare';period='1y';priceScope='product';initializeCompare();periodMenu=false;menu=false;openSwipeId=null;render();return}if(el.dataset.pedit){if(liveMode){inlineActionNotice(el,'商品編集はSheets連携準備中です');return}openSwipeId=null;const p=catalogue.products.find(x=>x.id===el.dataset.pedit);if(p&&p.itemGroupId===selected){editingProductId=p.id;page='productEdit';render()}return}
+if(el.dataset.premove){if(liveMode){inlineActionNotice(el,'商品解除はSheets連携準備中です');return}openSwipeId=null;
  const p=catalogue.products.find(x=>x.id===el.dataset.premove);
  if(p&&p.itemGroupId===selected){dialog={title:'商品の登録解除',message:`「${productTitle(p)}」の登録を解除します。過去の最安値集計対象からも外れます。`,buttons:[{id:'cancel',label:'キャンセル'},{id:'confirmProductUnlink',label:'解除する',critical:true}],pending:{productId:p.id}};renderDialogOnly()}return;
 }
@@ -1745,6 +1763,13 @@ if(el.dataset.pick){
 }
 if(el.dataset.dialog){if(el.dataset.dialog==='cancel'&&(dialog?.title==='変更を破棄しますか？'||dialog?.title==='比較単位について')){dialog=null;document.querySelector('.dialog-back')?.remove();return}const action=el.dataset.dialog,p=dialog?.pending;dialog=null;
 
+if(action==='confirmHideLive'&&p){
+ const row=liveSnapshot?.item_groups?.find(x=>String(x.item_group_id)===p.itemId);
+ if(liveMode&&liveWritable()&&row&&Number(row.version)===p.version)
+  liveMutate('item.update',{item_group_id:p.itemId,version:p.version,is_hidden:true});
+ else render();
+ return;
+}
 if(action==='confirmDeletePreviewReceipt'&&p){
  const removed=deletePreviewRecord(p.recordId);
  render();
@@ -1783,6 +1808,7 @@ if(action==='restoreItem'||action==='showExistingItem'){
  revealItem(item);return;
 }
 if(action==='back'){if(liveEditor||liveProductEditor){liveEditor=null;liveProductEditor=null;render();return}back();return}if(action==='add'){duplicateItemId=null;selected=null;menu=false;openSwipeId=null;page='add'}if(action==='menu'){menu=!menu}if(['edit','products'].includes(action)){menu=false;editReturnPage=page;page=action}
+if(action==='productPick'&&liveMode){openLiveProductEditor(selected);return}
 if(action==='productPick'){pickQuery='';pickerAll=true;openSwipeId=null;page=action}
 if(action==='productCreate'){page='productCreate';openSwipeId=null};if(action==='shopToggle'){shopExpanded=!shopExpanded;priceScope=shopExpanded?'unit':'product';if(!shopExpanded)compareQuantity=null;render();return}
 if(action==='catalogueList'){pickerAll=!pickerAll;const heading=document.querySelector('.catalogue-list-heading');if(heading)heading.textContent=pickerAll?'登録一覧':'候補（最大3件）';const target=document.getElementById('catalogue-results');if(target)target.innerHTML=pickerResults();el.textContent=pickerAll?'候補に戻る':'登録一覧から選ぶ';return}if(action==='hide'){menu=false;dialog={title:'日用品を削除',message:'日用品リストから削除します',buttons:[{id:'cancel',label:'キャンセル'},{id:'confirmHide',label:'削除',primary:true}]}}if(action==='copyList'){const txt=CATS.map((cat,idx)=>{const rows=visible().filter(i=>i.category===idx&&!i.inStock).sort((a,b)=>a.order-b.order);return rows.length?cat+'\n'+rows.map(i=>'- '+i.name).join('\n'):''}).filter(Boolean).join('\n\n');menu=false;render();if(!txt){inlineActionNotice(document.querySelector('[data-act="copyList"]'),'在庫なしの日用品はありません');return}navigator.clipboard.writeText(txt).then(()=>say('在庫なしをコピーしました',{anchor:'[data-act="copyList"]'})).catch(()=>inlineActionNotice(document.querySelector('[data-act="copyList"]'),'コピーできませんでした'));return}if(action==='deletePreviewReceipt'){
