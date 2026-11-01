@@ -77,7 +77,7 @@ function kurashiAuthenticate_(idToken) {
     const approved=String(PropertiesService.getScriptProperties()
       .getProperty('HOUSEHOLD_MEMBER_EMAILS')||'').split(',')
       .map(s=>s.trim().toLowerCase()).filter(Boolean);
-    if (approved.length!==2 || new Set(approved).size!==2 ||
+    if (approved.length<1 || approved.length>2 || new Set(approved).size!==approved.length ||
         !email || !approved.includes(email) ||
         (claims.email_verified!==true && claims.email_verified!=='true'))
       kurashiFail_('FORBIDDEN','この家庭にはアクセスできません');
@@ -88,7 +88,7 @@ function kurashiAuthenticate_(idToken) {
       if (users.some(x=>String(x.value.auth_subject)===String(claims.sub))) {
         matches=users.filter(x=>String(x.value.auth_subject)===String(claims.sub));
       } else {
-        if (users.length>=2 || users.some(x=>String(x.value.user_id)==='')) 
+        if (users.length>=approved.length || users.some(x=>String(x.value.user_id)==='')) 
           kurashiFail_('FORBIDDEN','利用者の登録を確認できません');
         const homes=kurashiRows_('households',book);
         if (homes.length!==1 || !homes[0].value.household_id)
