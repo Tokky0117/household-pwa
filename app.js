@@ -830,12 +830,15 @@ function liveRecoveryView(){
 const liveCategories=()=>CATS.map((name,i)=>`<option value="${i}" ${Number(liveEditor?.category_id)===i?'selected':''}>${esc(name)}</option>`).join('');
 function liveEditForm(){
  if(!liveEditor)return '';
- return `<section class="panel" id="live-editor"><h2>${liveEditor.item_group_id?'日用品の編集':'日用品の登録'}</h2>
- <label class="formfield">名称<input id="live-name" type="text" maxlength="150" value="${esc(liveEditor.name)}" autocomplete="off"></label>
- <label class="formfield">カテゴリ<select id="live-category">${liveCategories()}</select></label>
- <p class="hint">${liveWritable()?'Google Sheetsに保存します。':'保存は安全確認が終わるまで無効です。入力内容はGoogle Sheetsへ送信されません。'}</p>
- <button type="button" data-act="saveLive" ${liveWritable()&&!liveWriteBusy&&livePending().status==='none'?'':'disabled'}>保存する</button>
- <button type="button" class="secondary" data-act="cancelLive">キャンセル</button></section>`;
+ const editing=!!liveEditor.item_group_id;
+ const fields=UI.formField({id:'live-name',label:'日用品名',value:liveEditor.name,
+  maxlength:150,required:true,placeholder:'例：食器用スポンジ'})+
+  '<div class="formfield"><label for="live-category">カテゴリ</label><select id="live-category">'+liveCategories()+'</select></div>';
+ return UI.sheet({title:editing?'日用品を編集':'日用品を追加',
+  variant:'item-editor-sheet',body:`<div id="live-editor">${fields}
+   <div class="formactions"><button type="button" class="primary" data-act="saveLive"
+    ${liveWritable()&&!liveWriteBusy&&livePending().status==='none'?'':'disabled'}>${editing?'変更を保存':'登録する'}</button></div>
+  </div>`});
 }
 function openLiveEditor(item){
  if(!liveSnapshot||liveWriteBusy||livePending().status!=='none')return;
@@ -854,18 +857,19 @@ function openLiveProductEditor(groupId){
 function liveProductForm(){
  if(!liveProductEditor)return '';
  const choices='<option value="">単位を選択</option>'+
-  UNIT_OPTIONS.map(u=>'<option value="'+esc(u)+'">'+esc(u)+'</option>').join('');
- return '<section class="panel" id="live-product-editor"><h2>商品を登録</h2>'+
+  UNIT_OPTIONS.map(unit=>'<option value="'+esc(unit)+'">'+esc(unit)+'</option>').join('');
+ return UI.sheet({title:'商品を登録',variant:'product-picker-modal',body:
+  '<div id="live-product-editor">'+
   '<p class="hint">在庫グループ：'+esc(liveProductEditor.group_name)+'</p>'+
-  '<label class="formfield">商品名<input id="live-product-name" type="text" maxlength="150" autocomplete="off"></label>'+
-  '<label class="formfield">内容量（任意）<input id="live-product-quantity" type="number" step="any" min="0" inputmode="decimal" placeholder="例：900"></label>'+
-  '<label class="formfield">単位<select id="live-product-unit">'+choices+'</select></label>'+
-  '<p class="hint">商品マスタを家庭のGoogle Sheetsに登録します。購入履歴は追加しません。</p>'+
-  '<button type="button" data-act="saveLiveProduct"'+
-   (liveWritable()&&!liveWriteBusy&&livePending().status==='none'?'':' disabled')+
-   '>商品を保存</button><button type="button" class="secondary" data-act="cancelLiveProduct">キャンセル</button></section>';
+  UI.formField({id:'live-product-name',label:'商品名',maxlength:150,required:true})+
+  '<div class="ui-quantity-unit">'+
+  '<div class="formfield"><label for="live-product-quantity">内容量（任意）</label><input id="live-product-quantity" type="number" step="any" min="0" inputmode="decimal" placeholder="例：900"></div>'+
+  '<div class="formfield"><label for="live-product-unit">単位</label><select id="live-product-unit">'+choices+'</select></div></div>'+
+  '<p class="hint">家庭のGoogle Sheetsに商品を登録します。購入履歴は追加しません。</p>'+
+  '<div class="formactions"><button type="button" class="primary" data-act="saveLiveProduct"'+
+  (liveWritable()&&!liveWriteBusy&&livePending().status==='none'?'':' disabled')+
+  '>登録する</button></div></div>'});
 }
-
 async function withLiveWriteLock(work){
  // Shared across tabs on the same origin. Never guess that a localStorage
  // check is an atomic cross-tab lock: fail closed without Web Locks.
@@ -1795,7 +1799,7 @@ if(action==='restoreItem'||action==='showExistingItem'){
  if(action==='restoreItem'){item.hidden=false;item.version=(item.version||0)+1}
  revealItem(item);return;
 }
-if(action==='back'){back();return}if(action==='add'){duplicateItemId=null;selected=null;menu=false;openSwipeId=null;page='add'}if(action==='menu'){menu=!menu}if(['edit','products'].includes(action)){menu=false;editReturnPage=page;page=action}
+if(action==='back'){if(liveEditor||liveProductEditor){liveEditor=null;liveProductEditor=null;render();return}back();return}if(action==='add'){duplicateItemId=null;selected=null;menu=false;openSwipeId=null;page='add'}if(action==='menu'){menu=!menu}if(['edit','products'].includes(action)){menu=false;editReturnPage=page;page=action}
 if(action==='productPick'){pickQuery='';pickerAll=true;openSwipeId=null;page=action}
 if(action==='productCreate'){page='productCreate';openSwipeId=null};if(action==='shopToggle'){shopExpanded=!shopExpanded;priceScope=shopExpanded?'unit':'product';if(!shopExpanded)compareQuantity=null;render();return}
 if(action==='catalogueList'){pickerAll=!pickerAll;const heading=document.querySelector('.catalogue-list-heading');if(heading)heading.textContent=pickerAll?'登録一覧':'候補（最大3件）';const target=document.getElementById('catalogue-results');if(target)target.innerHTML=pickerResults();el.textContent=pickerAll?'候補に戻る':'登録一覧から選ぶ';return}if(action==='hide'){menu=false;dialog={title:'日用品を削除',message:'日用品リストから削除します',buttons:[{id:'cancel',label:'キャンセル'},{id:'confirmHide',label:'削除',primary:true}]}}if(action==='copyList'){const txt=CATS.map((cat,idx)=>{const rows=visible().filter(i=>i.category===idx&&!i.inStock).sort((a,b)=>a.order-b.order);return rows.length?cat+'\n'+rows.map(i=>'- '+i.name).join('\n'):''}).filter(Boolean).join('\n\n');menu=false;render();if(!txt){inlineActionNotice(document.querySelector('[data-act="copyList"]'),'在庫なしの日用品はありません');return}navigator.clipboard.writeText(txt).then(()=>say('在庫なしをコピーしました',{anchor:'[data-act="copyList"]'})).catch(()=>inlineActionNotice(document.querySelector('[data-act="copyList"]'),'コピーできませんでした'));return}if(action==='deletePreviewReceipt'){
