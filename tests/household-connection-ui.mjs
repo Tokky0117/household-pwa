@@ -22,7 +22,8 @@ const ctx=vm.createContext({window:win,document:{getElementById:id=>id==='app'?s
  navigator:{},location:{protocol:'file:'},Date,Intl,URL,console,setTimeout:()=>1,clearTimeout(){}});
 const extra='\n({checkHouseholdConnection,householdCheckView,validateHouseholdCheck,render,'+
  'settingsView,clearHouseholdCheck,'+
- 'state:()=>({householdCheck,householdCheckSubject,householdCheckStatus,householdCheckBusy}),'+
+ 'state:()=>({householdCheck,householdCheckSubject,householdCheckStatus,householdCheckBusy,remoteReceipts,remoteReceiptSubject}),'+
+ "setRemote(subject,hid){remoteReceiptSubject=subject;remoteReceipts={household_id:hid,records:[],record_items:[]}},"+
  "toSettings(){tab='settings';page='list'},"+
  "away(){tab='receipt';page='list';clearHouseholdCheck()}})";
 const api=vm.runInContext(source+extra,ctx);
@@ -45,10 +46,13 @@ subject='9876543210';
 api.render();
 assert.equal(api.state().householdCheck,null);
 assert.doesNotMatch(api.settingsView(),/family-A/);
+api.setRemote(subject,'family-A');
 reply=async()=>({household_id:'family-B',member_count:1,
  two_member_count:false,receipt_write_enabled:false});
 await api.checkHouseholdConnection();
 assert.equal(api.state().householdCheck.household_id,'family-B');
+assert.equal(api.state().remoteReceipts,null,
+ 'A reassignment within the same Google subject clears old household data');
 assert.match(api.settingsView(),/2人での利用登録は未確認/);
 // A late response for a previous session cannot repopulate a new account.
 reply=()=>new Promise(resolve=>{resolver=resolve});
