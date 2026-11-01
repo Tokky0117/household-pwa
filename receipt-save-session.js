@@ -103,6 +103,6 @@
  }
  root.KurashiReceiptSaveSession={
   create,trialCreate,retry,pending:accountPending,
-  writeEnabled:receiptGate,trialWriteEnabled:trialGate
+  writeEnabled:receiptGate,trialWriteEnabled:()=>false
  };
 })(typeof window==='undefined'?globalThis:window);
