@@ -24,7 +24,14 @@ let catalogue=loadCatalogue(),pickQuery='',pickKind='product',pickerAll=false,ed
 const persistCatalogue=()=>localStorage.setItem(catalogueKey,JSON.stringify(catalogue));
 const productTitle=p=>p.name+(p.packageQuantity&&p.packageUnit?' '+p.packageQuantity+p.packageUnit:'');
 const linkedItemName=p=>items.find(i=>i.id===p.itemGroupId)?.name||'未登録';
-const registeredProducts=itemId=>catalogue.products.filter(p=>p.itemGroupId===itemId).sort((a,b)=>(a.itemGroupOrder??9999)-(b.itemGroupOrder??9999));
+const registeredProducts=itemId=>(liveMode?
+ (liveSnapshot?.products||[]).filter(p=>!p.deleted_at&&String(p.item_group_id??'')===String(itemId)).map(p=>({
+  id:String(p.product_id),name:String(p.name),itemGroupId:p.item_group_id,
+  itemGroupOrder:Number(p.item_group_order)||9999,
+  packageQuantity:p.package_quantity==null?null:Number(p.package_quantity),
+  packageUnit:p.package_unit||'',aliases:[]
+ })):catalogue.products.filter(p=>p.itemGroupId===itemId))
+ .sort((a,b)=>(a.itemGroupOrder??9999)-(b.itemGroupOrder??9999));
 function reorderProducts(itemId,ids){
  const currentProducts=registeredProducts(itemId);
  if(currentProducts.length!==ids.length||new Set(ids).size!==ids.length||currentProducts.some(p=>!ids.includes(p.id)))return false;
@@ -718,6 +725,7 @@ function priceCandidates(records,details,periodValue,today=new Date()){
 }
 const daysFromDate=d=>[d.getFullYear(),String(d.getMonth()+1).padStart(2,'0'),String(d.getDate()).padStart(2,'0')].join('-');
 function chainMinima(productId,periodValue,records=allPreviewRecords(),details=allPreviewItems(),today=new Date()){
+ if(liveMode)return []; // No trial/sample prices in the authenticated household UI.
  const candidates=priceCandidates(records,details,periodValue,today).filter(r=>r.product_id===productId);
  const winners=new Map();
  for(const r of candidates){
@@ -743,8 +751,11 @@ function budgetTotals(records,details,yearMonth){
  for(const r of included){const cat=r.category_id??'uncategorized';byCategory.set(cat,(byCategory.get(cat)||0)+r.amount_tax_included)}
  return {total:included.reduce((sum,r)=>sum+r.amount_tax_included,0),byCategory};
 }
-const chainLabel=id=>catalogue.chains.find(c=>c.id===id)?.name||'チェーン未設定';
+const chainLabel=id=>(liveMode?
+ (liveSnapshot?.stores||[]).find(c=>String(c.chain_id)===String(id))?.canonical_name:
+ catalogue.chains.find(c=>c.id===id)?.name)||'チェーン未設定';
 const listPriceText=item=>{
+ if(liveMode)return '価格記録なし';
  const first=registeredProducts(item.id)[0];
  if(!first)return '価格記録なし';
  const best=chainMinima(first.id,'1y')[0];
@@ -1040,62 +1051,6 @@ function liveReadErrorMessage(err){
  if(/^GAS_HTTP_[0-9]{3}$/.test(code))return '接続先がHTTP '+code.slice(9)+'を返しました';
  return '読み取りに失敗しました。接続先・認証・通信状況を確認してください';
 }
-// Use the original daily inventory components for authenticated Sheet rows.
-function liveListResults(unassigned=null){
- const groups=liveSnapshot?.item_groups||[],products=liveSnapshot?.products||[];
- const productsByItem=new Map();
- for(const p of products){
-  if(p.deleted_at)continue;
-  const k=String(p.item_group_id??'');
-  if(!productsByItem.has(k))productsByItem.set(k,[]);
-  productsByItem.get(k).push(p);
- }
- if(unassigned)unassigned.push(...(productsByItem.get('')||[]));
- const q=norm(query);
- const active=i=>i.in_stock===true||String(i.in_stock).toLowerCase()==='true';
- const matches=i=>(!q||norm(i.name).includes(q))&&(!onlyOut||!active(i));
- const canEdit=liveWritable()&&!liveWriteBusy&&livePending().status==='none';
- return CATS.map((cat,idx)=>{
-  const filtered=groups.filter(i=>!i.deleted_at&&!i.is_hidden&&Number(i.category_id)===idx)
-   .sort((a,b)=>Number(a.sort_order||0)-Number(b.sort_order||0)).filter(matches);
-  if((q||onlyOut)&&!filtered.length)return '';
-  const closed=!q&&!onlyOut&&collapsed.has(idx);
-  return `<section class="category">
-   <button class="cathead" data-cat="${idx}" aria-expanded="${!closed}" ${onlyOut?'disabled aria-disabled="true"':''}><strong>${esc(cat)}</strong><span class="count">${filtered.length}点</span><span class="cat-arrow-slot" aria-hidden="true">${onlyOut?'':chevron(closed?'down':'up')}</span></button>
-   ${closed?'':filtered.length?filtered.map(i=>{
-    const key=String(i.item_group_id),stock=active(i),linked=productsByItem.get(key)||[];
-    return `<div class="item swipe-item ${openSwipeId===key?'swipe-open':''}" data-item-id="${esc(key)}" data-category-id="${idx}">
-     <div class="swipe-actions">
-      <button type="button" class="swipe-edit" data-act="editLive" data-live-id="${esc(key)}" tabindex="${openSwipeId===key?0:-1}" ${canEdit?'':'disabled'} aria-label="${esc(i.name)}を編集">${miniIcon('pencil')}<span>編集</span></button>
-      <button type="button" class="swipe-delete" data-act="hideLive" data-live-id="${esc(key)}" tabindex="${openSwipeId===key?0:-1}" ${canEdit?'':'disabled'} aria-label="${esc(i.name)}を削除">${miniIcon('trash')}<span>削除</span></button>
-     </div>
-     <div class="swipe-front">
-      <button type="button" class="itemname" data-act="addLiveProduct" data-live-id="${esc(key)}" ${canEdit?'':'disabled'} aria-label="${esc(i.name)}の商品を登録"><span class="item-title">${esc(i.name)}</span><span class="list-prices">${linked.length?esc(linked.map(p=>p.name).join('、')):'登録商品なし'}</span></button>
-      <div class="item-stock-area"><button class="stock ${stock?'':'off'}" type="button" data-act="stockLive" data-live-id="${esc(key)}" ${canEdit?'':'disabled'} aria-label="${esc(i.name)}の在庫を切り替える" aria-pressed="${stock}"><span class="stock-pill" aria-hidden="true">${stock?'あり':'なし'}</span></button></div>
-      <span class="swipe-peek" aria-hidden="true"></span>
-     </div>
-    </div>`;
-   }).join(''):'<div class="empty">該当する日用品はありません</div>'}</section>`;
- }).join('')||'<div class="empty">一致する日用品はありません</div>';
-}
-function liveListView(){
- const canEdit=liveWritable()&&!liveWriteBusy&&livePending().status==='none';
- const copy='<button type="button" class="iconbtn" data-act="copyLiveList" aria-label="在庫なしをコピー" title="在庫なしをコピー">'+miniIcon('copy')+'</button>';
- const add='<button type="button" class="iconbtn" data-act="addLive" aria-label="日用品を追加" title="日用品を追加" '+(canEdit?'':'disabled')+'>'+miniIcon('plus')+'</button>';
- const failed=liveStatus.startsWith('取得失敗：');
- const status=[...(failed?[liveStatus]:[]),...(liveBusy?['再読み込み中…']:[]),...(liveWriteStatus?[liveWriteStatus]:[])];
- const uncategorized=[];
- const rows=liveListResults(uncategorized);
- return `${head('日用品','くらしストック',false,add,copy)}<main>
-  ${UI.searchField({id:'search',label:'日用品を検索',placeholder:'日用品を検索',value:query,extra:'autocomplete="off"'})}
-  <div class="filterrow"><label class="switchlabel"><input type="checkbox" id="onlyOut" ${onlyOut?'checked':''}>在庫なしのみ表示</label></div>
-  ${status.length?'<p class="hint" role="status">'+esc(status.join('。'))+'</p>':''}
-  ${liveRecoveryView()}${liveEditForm()}${liveProductForm()}
-  <div id="item-results">${rows}</div>${listHelpView()}
-  ${uncategorized.length?'<p class="hint">未分類の商品：'+esc(uncategorized.map(p=>p.name).join('、'))+'</p>':''}
-  ${failed?'<button type="button" class="secondary" data-act="refreshLive">接続を再試行</button>':''}
-  </main>${nav()}`;
-}
 async function refreshLive({background=false}={}){
  if(liveBusy||liveWriteBusy)return;
  const auth=window.KurashiAuth?.status?.();
@@ -1124,7 +1079,17 @@ let previousPage='list', previousSelected=null, listScrollPosition=0, compareQua
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const norm=s=>String(s).normalize('NFKC').trim().replace(/\s+/g,' ').toLocaleLowerCase('ja');
 const id=()=>crypto.randomUUID?.()||`id-${Date.now()}-${Math.random()}`;
-function persist(){localStorage.setItem(key,JSON.stringify(items))}function visible(){return items.filter(i=>!i.hidden)}function current(){return items.find(i=>i.id===selected)}
+function persist(){localStorage.setItem(key,JSON.stringify(items))}
+function householdItems(){
+ return (liveSnapshot?.item_groups||[]).filter(x=>!x.deleted_at).map(x=>({
+  id:String(x.item_group_id),name:String(x.name),category:Number(x.category_id),
+  inStock:x.in_stock===true||String(x.in_stock).toLowerCase()==='true',
+  hidden:x.is_hidden===true||String(x.is_hidden).toLowerCase()==='true',
+  order:Number(x.sort_order)||0,version:Number(x.version)
+ }));
+}
+function visible(){return (liveMode?householdItems():items).filter(i=>!i.hidden)}
+function current(){return (liveMode?householdItems():items).find(i=>i.id===selected)}
 const icons={items:'<rect x="4" y="5" width="16" height="16" rx="2"/><path d="M4 11h16M10 5v16"/>',receipt:'<path d="M6 3h12v18l-3-2-3 2-3-2-3 2z"/><path d="M9 8h6M9 12h6"/>',budget:'<rect x="3" y="5" width="18" height="15" rx="3"/><path d="M3 10h18M16 15h3"/>',settings:'<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.9 4.9 7 7M17 17l2.1 2.1M2 12h3M19 12h3M4.9 19.1 7 17M17 7l2.1-2.1"/>'};
 const chevron=(direction='right')=>`<svg class="ui-chevron ${direction}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg>`;
 const miniIcon=k=>{const paths={search:'<circle cx="10.8" cy="10.8" r="7"/><path d="m16 16 5 5"/>',plus:'<path d="M12 5v14M5 12h14"/>',copy:'<rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/>',pencil:'<path d="M12 20h9"/><path d="m16 4 4 4-12 12H4v-4L16 4Z"/>',trash:'<path d="M4 7h16M10 7V4h4v3M7 7l1 13h8l1-13M10 11v6M14 11v6"/>',star:'<path d="m12 2 3.1 6.4 7 .9-5.1 5 .9 7-5.9-3.2-5.9 3.2.9-7-5.1-5 7-.9z"/>',package:'<path d="m3 7 9-4 9 4v10l-9 4-9-4zM3 7l9 4 9-4M12 11v10"/>',ruler:'<path d="M3 16 16 3l5 5L8 21zM13 6l3 3M10 9l3 3M7 12l3 3"/>',close:'<path d="M5 5l14 14M19 5 5 19"/>'};return `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths[k]||''}</svg>`};
@@ -1173,7 +1138,7 @@ function nav(){return `<nav class="bottom" aria-label="メインメニュー"><d
 function listResults(){
  const q=norm(query),matches=i=>(!q||norm(i.name).includes(q))&&(!onlyOut||!i.inStock);
  return CATS.map((cat,idx)=>{
-  const all=visible().filter(i=>i.category===idx).sort((a,b)=>a.order-b.order),filtered=all.filter(matches);
+  const all=(liveMode?visible():[]).filter(i=>i.category===idx).sort((a,b)=>a.order-b.order),filtered=all.filter(matches);
   if((q||onlyOut)&&!filtered.length)return '';
   const closed=!q&&!onlyOut&&collapsed.has(idx);
   return `<section class="category"><button class="cathead" data-cat="${idx}" aria-expanded="${!closed}" ${onlyOut?'disabled aria-disabled="true"':''}><strong>${cat}</strong><span class="count">${filtered.length}点</span><span class="cat-arrow-slot" aria-hidden="true">${onlyOut?'':chevron(closed?'down':'up')}</span></button>${closed?'':filtered.length?filtered.map(i=>`
@@ -1199,13 +1164,7 @@ function readListHelpOpen(){
 }
 let listHelpOpen=readListHelpOpen();
 function listHelpView(){
- const helpLines=liveMode?[
-  '「あり／なし」を押して在庫を切り替え',
-  '日用品名を押して商品を登録',
-  '左スワイプで編集・削除',
-  '右上の＋で日用品を追加',
-  '左上のコピーアイコンで在庫なしをコピー'
- ]:[
+ const helpLines=[
   '「あり／なし」を押して在庫を切り替え',
   '日用品名を押して価格情報を確認',
   '左スワイプで編集・削除',
@@ -1220,21 +1179,21 @@ function listHelpView(){
  ${helpLines.map(line=>`<p>${esc(line)}</p>`).join('')}</div>
  </section>`;
 }
+// One daily inventory view: Sheets changes data, not UI structure.
 function listView(){
- if(liveMode)return liveListView();
- // Same original list shell before the first authenticated read. Do not show
- // demo inventory or require a manual "read Sheets" button.
- const signedIn=window.KurashiAuth?.status?.()?.signedIn===true;
- const copy='<button type="button" class="iconbtn" disabled aria-label="在庫なしをコピー">'+miniIcon('copy')+'</button>';
+ const auth=window.KurashiAuth?.status?.();
+ const failed=liveStatus.startsWith('取得失敗：'),loaded=liveMode&&!!liveSnapshot;
+ const copy='<button type="button" class="iconbtn" data-act="copyLiveList" aria-label="在庫なしをコピー" title="在庫なしをコピー" '+(loaded?'':'disabled')+'>'+miniIcon('copy')+'</button>';
  const add='<button type="button" class="iconbtn" data-act="addLive" aria-label="日用品を追加" title="日用品を追加">'+miniIcon('plus')+'</button>';
- const failed=liveStatus.startsWith('取得失敗：');
- const status=failed?liveStatus:signedIn?'家庭の日用品を読み込み中…':'設定からGoogleログインしてください。';
+ const notice=failed?liveStatus:!auth?.signedIn?'設定からGoogleログインしてください。':
+  !loaded?'家庭の日用品を読み込み中…':liveWriteStatus;
  return `${head('日用品','くらしストック',false,add,copy)}<main>
   ${UI.searchField({id:'search',label:'日用品を検索',placeholder:'日用品を検索',value:query,extra:'autocomplete="off"'})}
   <div class="filterrow"><label class="switchlabel"><input type="checkbox" id="onlyOut" ${onlyOut?'checked':''}>在庫なしのみ表示</label></div>
-  ${status?'<p class="hint" role="status">'+esc(status)+'</p>':''}
-  ${failed&&signedIn?'<button type="button" class="secondary" data-act="refreshLive">接続を再試行</button>':''}
-  <div id="item-results">${liveListResults()}</div>${listHelpView()}
+  ${notice?'<p class="hint" role="status">'+esc(notice)+'</p>':''}
+  ${loaded?liveRecoveryView():''}${liveEditForm()}${liveProductForm()}
+  <div id="item-results">${listResults()}</div>${listHelpView()}
+  ${failed&&auth?.signedIn?'<button type="button" class="secondary" data-act="refreshLive">接続を再試行</button>':''}
  </main>${nav()}`;
 }
 function priceCompareView(){
@@ -1622,7 +1581,7 @@ function commitItem(name,category){
 }
 // 入力欄自体は再作成しない。日本語IMEの変換中もフォーカスと入力状態を維持する。
 let composing=false;
-function updateSearchResults(){const target=document.getElementById('item-results');if(target)target.innerHTML=liveMode?liveListResults():listResults()}
+function updateSearchResults(){const target=document.getElementById('item-results');if(target)target.innerHTML=listResults()}
 const searchBindings={search:{set:v=>{query=v},update:updateSearchResults},'catalogue-search':{set:v=>{pickQuery=v},update:()=>{const target=document.getElementById('catalogue-results');if(target)target.innerHTML=pickerResults()}}};
 function syncSearch(input,refresh=true){const binding=searchBindings[input.id];if(!binding)return;binding.set(input.value);input.closest('.ui-search')?.querySelector('.clear-search')?.toggleAttribute('hidden',!input.value);if(refresh)binding.update()}
 app.addEventListener('compositionstart',e=>{if(searchBindings[e.target.id])composing=true});
