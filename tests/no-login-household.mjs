@@ -162,8 +162,8 @@ const afterCommit=temp.db.processed_operations.length;
 assert.equal(afterCommit,history+1);
 b.window.close();
 let c=appSession();
-await waitFor(()=>c.window.KurashiLive.state().queued===0,
- 'same operation ID safely replayed on restart');
+await waitFor(()=>c.window.KurashiLive.state().queued===0&&pill(c)==='なし',
+ 'same operation ID safely replayed and displayed on restart');
 assert.equal(getVersion(),5,'replay did not toggle again');
 assert.equal(temp.db.processed_operations.length,afterCommit,
  'GAS did not create an extra processed operation');
