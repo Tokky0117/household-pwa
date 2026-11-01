@@ -398,11 +398,11 @@ async function refreshRemoteReceipts(){
  if(!auth?.signedIn||!auth.subject){
   clearRemoteReceipts('Googleログインが必要です');render();return;
  }
- const epoch=++remoteReceiptEpoch,subject=auth.subject,requestTab=tab;
+ const epoch=++remoteReceiptEpoch,subject=auth.subject;
  remoteReceiptBusy=true;remoteReceiptSubject=subject;remoteReceiptStatus='読み取り中';render();
  try{
   const data=await window.KurashiGasApi.request('record.list',{});
-  if(epoch!==remoteReceiptEpoch||tab!==requestTab||page!=='list'||
+  if(epoch!==remoteReceiptEpoch||!['receipt','budget'].includes(tab)||page!=='list'||
      window.KurashiAuth?.status?.()?.signedIn!==true||
      window.KurashiAuth?.status?.()?.subject!==subject)return;
   if(!validateRemoteReceipts(data))throw Error('RECEIPT_RESPONSE_INVALID');
@@ -415,6 +415,11 @@ async function refreshRemoteReceipts(){
  }finally{
   if(epoch===remoteReceiptEpoch){remoteReceiptBusy=false;render();}
  }
+}
+function connectedReceiptHousehold(){
+ return window.KURASHI_RECEIPT_TEST_MODE!==true&&
+  window.KurashiAuth?.status?.()?.signedIn===true&&
+  window.KurashiGasApi?.status?.()?.configured===true;
 }
 function remoteBudgetView(){
  if(window.KURASHI_RECEIPT_TEST_MODE===true)return '';
@@ -1243,9 +1248,15 @@ function receiptView(){
  <button type="button" class="primary" data-act="importChatGptReceipt">貼り付けた明細を確認</button>
  ${receiptChatGptNotice?'<p class="ui-field-notice" role="status">'+esc(receiptChatGptNotice)+'</p>':''}
  <p class="sample-price-notice">${receiptRemoteWritable()?'確認したレシートを家庭のGoogle Sheetsに保存できます。':'現在はこのSafariの試作記録だけです。Google Sheetsには未保存です。'}ChatGPT出力に会員・決済情報を含めないでください。</p>
- </section>${receiptScanReview()}${receiptStorePendingView()}${receiptPendingView()}${remoteReceiptView()}<div class="record-entry-actions"><button class="secondary" data-act="newReceipt">${miniIcon('plus')}<span>レシート明細</span></button><button class="secondary" data-act="newShelf">${miniIcon('plus')}<span>値札</span></button></div><h2 class="sectiontitle">このSafari内の試作記録（Google Sheetsには未保存）</h2><p class="hint">保存した記録はこのブラウザのWebサイトデータにあります。Google Sheets・Google Drive・ファイルアプリには保存されません。ブラウザデータを消すと記録も失われます。</p>${rows}</main>${nav()}`;
+ </section>${receiptScanReview()}${receiptStorePendingView()}${receiptPendingView()}${remoteReceiptView()}${connectedReceiptHousehold()?'':`<div class="record-entry-actions"><button class="secondary" data-act="newReceipt">${miniIcon('plus')}<span>レシート明細</span></button><button class="secondary" data-act="newShelf">${miniIcon('plus')}<span>値札</span></button></div><h2 class="sectiontitle">このSafari内の試作記録（Google Sheetsには未保存）</h2><p class="hint">保存した記録はこのブラウザのWebサイトデータにあります。Google Sheets・Google Drive・ファイルアプリには保存されません。ブラウザデータを消すと記録も失われます。</p>${rows}`}</main>${nav()}`;
 }
 function budgetView(){
+ if(connectedReceiptHousehold()){
+  const month=budgetMonth.split('-');
+  return `${head('家計簿','くらしストック')}<main class="preview-budget-page">
+  <div class="budget-month"><button type="button" class="iconbtn" data-act="prevMonth" aria-label="前月">${chevron('left')}</button><strong>${esc(month[0])}年${esc(month[1])}月</strong><button type="button" class="iconbtn" data-act="nextMonth" aria-label="翌月">${chevron('right')}</button></div>
+  ${remoteBudgetView()}</main>${nav()}`;
+ }
  const {total,byCategory}=budgetTotals(allPreviewRecords(),allPreviewItems(),budgetMonth);
  const categoryRows=[...CATS.map((name,i)=>[name,byCategory.get(i)||0]),['未分類',byCategory.get('uncategorized')||0]];
  return `${head('家計簿','くらしストック')}<main class="preview-budget-page">${remoteBudgetView()}<p class="sample-price-notice">以下はサンプルと端末内の試作記録だけです。Google Sheetsの確定金額とは合算しません。値札は集計対象外です。</p><div class="budget-month"><button type="button" class="iconbtn" data-act="prevMonth" aria-label="前月">${chevron('left')}</button><strong>${esc(budgetMonth.replace('-', '年'))}月</strong><button type="button" class="iconbtn" data-act="nextMonth" aria-label="翌月">${chevron('right')}</button></div><div class="budget-total"><span>税込合計</span><strong>${yen(total)}</strong></div><div class="budget-category-list">${categoryRows.map(([name,value])=>`<div class="budget-category-row"><span>${esc(name)}</span><strong>${yen(value)}</strong></div>`).join('')}</div></main>${nav()}`;
@@ -1570,12 +1581,17 @@ if(el.dataset.act==='leaveLive'){leaveRemoteView('試作データ表示');tab='i
 if(liveMode&&tab==='items'&&page==='list'&&!el.dataset.tab){return}
 if(el.dataset.tab){if(el.dataset.tab!==tab||page!=='list')abandonLiveReadOnNavigation();if(el.dataset.tab!=='receipt'&&tab==='receipt'){
  discardReceiptScan();receiptChatGptText='';receiptChatGptNotice='';
- clearRemoteReceipts();
+ if(el.dataset.tab!=='budget')clearRemoteReceipts();
  invalidateReceiptCatalog();
 }
+if(!['receipt','budget'].includes(el.dataset.tab)&&['receipt','budget'].includes(tab))
+ clearRemoteReceipts();
 if(el.dataset.tab!=='settings'&&tab==='settings')clearHouseholdCheck();
 tab=el.dataset.tab;page='list';openSwipeId=null;menu=false;render();
 if(tab==='receipt'&&receiptRemoteWritable())loadReceiptCatalog();
+if(['receipt','budget'].includes(tab)&&connectedReceiptHousehold()&&
+   !remoteReceipts&&!remoteReceiptBusy&&remoteReceiptStatus==='未取得')
+ refreshRemoteReceipts();
 return}if(el.dataset.cat!==undefined){if(onlyOut)return;const c=Number(el.dataset.cat);collapsed.has(c)?collapsed.delete(c):collapsed.add(c);render();return}if(el.dataset.stock){const i=items.find(x=>x.id===el.dataset.stock);i.inStock=!i.inStock;i.version++;persist();render();return}if(el.dataset.open){if(openSwipeId){setOpenSwipe(null);return}listScrollPosition=window.scrollY;selected=el.dataset.open;page='compare';period='1y';priceScope='product';initializeCompare();periodMenu=false;menu=false;openSwipeId=null;render();return}if(el.dataset.pedit){openSwipeId=null;const p=catalogue.products.find(x=>x.id===el.dataset.pedit);if(p&&p.itemGroupId===selected){editingProductId=p.id;page='productEdit';render()}return}
 if(el.dataset.premove){openSwipeId=null;
  const p=catalogue.products.find(x=>x.id===el.dataset.premove);
