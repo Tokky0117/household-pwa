@@ -71,6 +71,10 @@ function doPost(e){
    if(!approvedPrototypeAliasSheet_())fail('WRITES_DISABLED','対象の保存環境を確認してください');
    return jsonReply({ok:true,data:mutateProductUpdateSafely_(user,payload,input.operation_id)});
   }
+  if(action==='item.reorder'||action==='product.reorder'){
+   if(!approvedPrototypeAliasSheet_())fail('WRITES_DISABLED','対象の保存環境を確認してください');
+   return jsonReply({ok:true,data:mutateOrderSafely_(user,action,payload,input.operation_id)});
+  }
   // Existing pinned household Sheet: ordinary item/stock operations.
   // Reuse the existing locked, crash-recoverable item transaction.
   if(action==='item.create'||action==='item.update'){
@@ -491,6 +495,202 @@ function approvedPrototypeAliasSheet_(){
   .map(b=>(b&255).toString(16).padStart(2,'0')).join('');
  return hash===EXISTING_PROTOTYPE_SHEET_SHA256_;
 }
+/**
+ * One durable batch for a long-press reorder. Sheets does not offer a
+ * multi-row transaction: prepare the complete immutable before/after plan
+ * first, verify ALL sibling versions, then reconcile partial row/log writes
+ * using the same operation ID. Never auto-retry a failed POST.
+ *
+ * Inputs: {category_id,rows:[{id,version}...]} for item.reorder;
+ *         {item_group_id,rows:[{id,version}...]} for product.reorder.
+ * rows contains the full visible/current sibling set, in requested order.
+ */
+function mutateOrderSafely_(user,action,payload,operationId){
+ const isItem=action==='item.reorder';
+ if(!isItem&&action!=='product.reorder')fail('UNSUPPORTED','並び替え操作が不正です');
+ if(typeof operationId!=='string'||!/^[A-Za-z0-9_-]{8,110}$/.test(operationId))
+  fail('BAD_REQUEST','操作IDを確認してください');
+ const scopeKey=isItem?'category_id':'item_group_id';
+ if(!payload||typeof payload!=='object'||Array.isArray(payload)||
+    Object.keys(payload).sort().join(',')!==[scopeKey,'rows'].sort().join(',')||
+    !Array.isArray(payload.rows)||payload.rows.length<2||payload.rows.length>150)
+  fail('BAD_REQUEST','並び替えの対象を確認してください');
+ if(isItem)validCategory(payload.category_id);
+ else requiredId(payload.item_group_id);
+ const ids=new Set();
+ const ordered=payload.rows.map(r=>{
+  if(!r||typeof r!=='object'||Array.isArray(r)||
+     Object.keys(r).sort().join(',')!=='id,version'||
+     typeof r.id!=='string'||!r.id||r.id.length>128||
+     !Number.isSafeInteger(r.version)||r.version<1||ids.has(r.id))
+   fail('BAD_REQUEST','並び替えのIDとバージョンを確認してください');
+  ids.add(r.id);
+  return {id:r.id,version:r.version};
+ });
+ const clean={[scopeKey]:payload[scopeKey],rows:ordered};
+ const hash=Utilities.base64EncodeWebSafe(Utilities.computeDigest(
+  Utilities.DigestAlgorithm.SHA_256,JSON.stringify({action:action,payload:clean})));
+ const lock=LockService.getScriptLock();
+ if(!lock.tryLock(20000))fail('BUSY','保存が混み合っています');
+ try{
+  const book=spreadsheet(),hid=String(user.householdId);
+  assertPrototypeReceiptIdentity_(book,user);
+  const table=isItem?'item_groups':'products',idKey=isItem?'item_group_id':'product_id';
+  const operations=rows('processed_operations',book);
+  const homeOps=operations.filter(r=>String(r.obj.household_id)===hid);
+  const duplicates=operations.filter(r=>String(r.obj.operation_id)===operationId);
+  if(duplicates.length>1||duplicates.some(r=>String(r.obj.household_id)!==hid)||
+     new Set(homeOps.map(r=>String(r.obj.operation_id))).size!==homeOps.length)
+   fail('RECOVERY_CONFLICT','操作記録が重複しています');
+  const old=duplicates[0]||null;
+  if(old&&String(old.obj.request_hash)!==hash)
+   fail('OPERATION_REUSED','操作IDと内容が異なります');
+  for(const op of homeOps){
+   let state;
+   try{state=JSON.parse(String(op.obj.result))}
+   catch(_){fail('RECOVERY_CONFLICT','操作履歴が不正です')}
+   if(state?.status==='prepared'&&String(op.obj.operation_id)!==operationId)
+    fail('RECOVERY_REQUIRED','前の保存操作を復旧してください');
+  }
+  let plan,operationRow=old?.row;
+  if(old){
+   try{plan=JSON.parse(String(old.obj.result))}
+   catch(_){fail('RECOVERY_CONFLICT','並び替えの履歴が不正です')}
+   if(!plan||!['prepared','completed'].includes(plan.status)||
+      plan.action!==action||plan.household_id!==hid||
+      String(plan.scope)!==String(payload[scopeKey])||
+      JSON.stringify(plan.ordered)!==JSON.stringify(ordered)||
+      !Array.isArray(plan.before)||!Array.isArray(plan.after)||
+      !Array.isArray(plan.logs)||!Number.isSafeInteger(plan.last_sequence))
+    fail('RECOVERY_CONFLICT','再送した並び替えが一致しません');
+   if(plan.status==='completed')return plan;
+  }else{
+   const all=rows(table,book);
+   const active=all.filter(row=>String(row.obj.household_id)===hid&&
+     !row.obj.deleted_at&&
+     (isItem?
+       String(row.obj.category_id)===String(payload.category_id)&&
+       row.obj.is_hidden!==true&&String(row.obj.is_hidden).toLowerCase()!=='true':
+       String(row.obj.item_group_id)===String(payload.item_group_id)));
+   if(active.length!==ordered.length||
+      new Set(active.map(x=>String(x.obj[idKey]))).size!==active.length||
+      active.some(x=>!ids.has(String(x.obj[idKey]))))
+    fail('VERSION_CONFLICT','一覧が別端末で変更されています');
+   const allIds=new Set();
+   for(const item of all){
+    const id=String(item.obj[idKey]);
+    if(allIds.has(id))fail('RECOVERY_CONFLICT','データIDが重複しています');
+    allIds.add(id);
+   }
+   const byId=new Map(active.map(x=>[String(x.obj[idKey]),x.obj]));
+   for(const r of ordered)if(Number(byId.get(r.id)?.version)!==r.version)
+    fail('VERSION_CONFLICT','並び替え中にデータが変更されています');
+   const existingOrder=active.slice().sort((a,b)=>
+     Number(a.obj[isItem?'sort_order':'item_group_order'])-
+     Number(b.obj[isItem?'sort_order':'item_group_order']))
+     .map(x=>String(x.obj[idKey]));
+   if(existingOrder.every((id,i)=>id===ordered[i].id))
+    fail('NO_CHANGE','並び順は変更されていません');
+   const now=new Date().toISOString(),orderKey=isItem?'sort_order':'item_group_order';
+   const before=[],after=[];
+   for(let i=0;i<ordered.length;i++){
+    const base=byId.get(ordered[i].id);
+    if(Number(base[orderKey])===i+1)continue;
+    before.push(publicRow(base));
+    after.push({...base,[orderKey]:i+1,version:Number(base.version)+1,updated_at:now});
+   }
+   const sequence=currentSequence(hid,book);
+   const logs=after.map((entity,i)=>({
+    change_id:operationId+'-'+(i+1),sequence_no:sequence+i+1,
+    household_id:hid,entity_type:table,entity_id:String(entity[idKey]),
+    action:action,occurred_at:now
+   }));
+   plan={status:'prepared',action,household_id:hid,
+    scope:payload[scopeKey],ordered,before,after,logs,
+    last_sequence:sequence+logs.length,prepared_at:now};
+   operationRow=append_('processed_operations',{
+    household_id:hid,operation_id:operationId,
+    request_hash:hash,result:JSON.stringify(plan),processed_at:now
+   },book);
+   const saved=rows('processed_operations',book).filter(r=>
+     String(r.obj.operation_id)===operationId);
+   if(saved.length!==1||saved[0].row!==operationRow||
+      String(saved[0].obj.result)!==JSON.stringify(plan))
+    fail('RECOVERY_CONFLICT','並び替えの事前記録を確認できません');
+  }
+  // No changes may occur in the sibling group until the entire prepared
+  // operation has reconciled. Check all rows before applying any new write.
+  const all=rows(table,book),sibling=all.filter(row=>
+    String(row.obj.household_id)===hid&&!row.obj.deleted_at&&
+    (isItem?String(row.obj.category_id)===String(payload.category_id)&&
+     row.obj.is_hidden!==true&&String(row.obj.is_hidden).toLowerCase()!=='true':
+     String(row.obj.item_group_id)===String(payload.item_group_id)));
+  const byId=new Map();
+  for(const row of all){
+   const id=String(row.obj[idKey]);
+   if(byId.has(id))fail('RECOVERY_CONFLICT','同じデータIDが複数あります');
+   byId.set(id,row);
+  }
+  if(sibling.length!==ordered.length||
+     sibling.some(x=>!ids.has(String(x.obj[idKey]))))
+   fail('RECOVERY_CONFLICT','保存途中に並び替え対象が変更されました');
+  const baseById=new Map(plan.before.map(x=>[String(x[idKey]),x]));
+  const plannedById=new Map(plan.after.map(x=>[String(x[idKey]),x]));
+  if(plan.before.length!==plan.after.length||
+     plan.after.length!==plan.logs.length||
+     plan.after.some((e,i)=>String(e[idKey])!==String(plan.before[i][idKey])||
+      String(plan.logs[i].entity_id)!==String(e[idKey])||
+      String(plan.logs[i].household_id)!==hid))
+   fail('RECOVERY_CONFLICT','保存計画が破損しています');
+  for(const {id,version} of ordered){
+   const current=byId.get(id)?.obj,previous=baseById.get(id),target=plannedById.get(id);
+   if(!current||String(current.household_id)!==hid)
+    fail('RECOVERY_CONFLICT','対象行が見つかりません');
+   if(previous){
+    if(!receiptSameRow_(current,previous,table)&&
+       !receiptSameRow_(current,target,table))
+     fail('RECOVERY_CONFLICT','保存途中に行が変更されました');
+   }else if(Number(current.version)!==version)
+    fail('RECOVERY_CONFLICT','保存途中にバージョンが変更されました');
+  }
+  for(const entity of plan.after){
+   const actual=byId.get(String(entity[idKey]));
+   if(!receiptSameRow_(actual.obj,entity,table))
+    write_(table,actual.row,entity,tab(table,book));
+  }
+  const existingLogs=rows('change_log',book).filter(r=>
+    String(r.obj.household_id)===hid);
+  const ourIds=new Set(plan.logs.map(x=>x.change_id));
+  if(existingLogs.some(x=>!ourIds.has(String(x.obj.change_id))&&
+     Number(x.obj.sequence_no)>=Number(plan.logs[0]?.sequence_no)))
+   fail('RECOVERY_CONFLICT','同期履歴が別の操作と競合しています');
+  for(const record of plan.logs){
+   const observed=existingLogs.filter(x=>String(x.obj.change_id)===record.change_id);
+   if(observed.length>1||observed.length===1&&
+      !receiptSameRow_(observed[0].obj,record,'change_log'))
+    fail('RECOVERY_CONFLICT','同期履歴が一致しません');
+   if(!observed.length)append_('change_log',record,book);
+  }
+  const completed=rows(table,book),logs=rows('change_log',book);
+  for(const entity of plan.after){
+   if(completed.filter(x=>String(x.obj[idKey])===String(entity[idKey])&&
+      receiptSameRow_(x.obj,entity,table)).length!==1)
+    fail('RECOVERY_CONFLICT','並び替え後の行を確認できません');
+  }
+  for(const record of plan.logs)if(logs.filter(x=>String(x.obj.change_id)===record.change_id&&
+     receiptSameRow_(x.obj,record,'change_log')).length!==1)
+   fail('RECOVERY_CONFLICT','並び替えの履歴を確認できません');
+  const result={status:'completed',action:action,
+   ordered_ids:ordered.map(x=>x.id),
+   entities:plan.after.map(publicRow),sequence_no:plan.last_sequence};
+  write_('processed_operations',operationRow,{
+   household_id:hid,operation_id:operationId,request_hash:hash,
+   result:JSON.stringify(result),processed_at:plan.prepared_at
+  },tab('processed_operations',book));
+  return result;
+ }finally{lock.releaseLock()}
+}
+
 function mutateItemSafely_(user,action,payload,operationId){
  requiredId(operationId);
  if(!/^[A-Za-z0-9_-]{8,128}$/.test(operationId))fail('BAD_REQUEST','操作IDが不正です');
