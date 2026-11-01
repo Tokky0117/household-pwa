@@ -145,7 +145,7 @@ await assert.rejects(b.KurashiReceiptSaveSession.trialCreate(trialArgs),
 assert.equal(b.KurashiReceiptJournal.read(),null);
 b.KURASHI_RECEIPT_STAGE_A_TRIAL=true;
 assert.equal(b.KurashiReceiptSaveSession.writeEnabled(),false);
-assert.equal(b.KurashiReceiptSaveSession.trialWriteEnabled(),true);
+assert.equal(b.KurashiReceiptSaveSession.trialWriteEnabled(),false);
 await assert.rejects(b.KurashiReceiptSaveSession.create(trialArgs),
  /RECEIPT_WRITES_DISABLED/);
 networkError=true;
