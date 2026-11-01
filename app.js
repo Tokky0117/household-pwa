@@ -872,6 +872,29 @@ async function withLiveWriteLock(work){
 function verifyLiveWriteResult(entry,result){
  const p=entry.payload,e=result?.entity;
  const invalid=()=>{throw Error('GAS_RESULT_UNVERIFIED')};
+ if(entry.action==='item.reorder'||entry.action==='product.reorder'){
+  const isItem=entry.action==='item.reorder',key=isItem?'item_group_id':'product_id',
+   orderKey=isItem?'sort_order':'item_group_order',input=p.rows;
+  if(result?.status!=='completed'||result.action!==entry.action||
+     !Number.isSafeInteger(result.sequence_no)||result.sequence_no<1||
+     !Array.isArray(result.entities)||result.entities.length<1||
+     !Array.isArray(result.ordered_ids)||
+     JSON.stringify(result.ordered_ids)!==JSON.stringify(input.map(x=>x.id)))
+   invalid();
+  const indices=new Map(input.map((row,i)=>[row.id,{i,version:row.version}]));
+  const seen=new Set();
+  for(const row of result.entities){
+   const id=String(row?.[key]??''),original=indices.get(id);
+   if(!original||seen.has(id)||String(row.household_id)!==entry.householdId||
+      Number(row.version)!==original.version+1||
+      Number(row[orderKey])!==original.i+1||
+      (isItem?Number(row.category_id)!==Number(p.category_id):
+       String(row.item_group_id)!==String(p.item_group_id)))invalid();
+   seen.add(id);
+  }
+  return result.entities;
+ }
+
  if(!result||!e||typeof e!=='object'||
     String(e.household_id)!==entry.householdId||
     !Number.isSafeInteger(result.sequence_no)||result.sequence_no<1)invalid();
@@ -911,11 +934,12 @@ function applyConfirmedLiveEntity(entry,entity){
  if(!liveSnapshot||liveSnapshot.household_id!==entry.householdId)return;
  const key=entry.action.startsWith('product.')?'products':'item_groups';
  const idKey=key==='products'?'product_id':'item_group_id';
- const previous=liveSnapshot[key]||[];
- const index=previous.findIndex(x=>String(x[idKey])===String(entity[idKey]));
- const next=previous.slice();
- if(index<0)next.push(entity);
- else next[index]=entity;
+ const next=(liveSnapshot[key]||[]).slice();
+ for(const updated of Array.isArray(entity)?entity:[entity]){
+  const i=next.findIndex(row=>String(row[idKey])===String(updated[idKey]));
+  if(i<0)next.push(updated);
+  else next[i]=updated;
+ }
  liveSnapshot={...liveSnapshot,[key]:next};
 }
 async function sendPendingLive(entry){
@@ -1977,6 +2001,33 @@ if('serviceWorker'in navigator&&location.protocol.startsWith('http'))navigator.s
 // Long-press ordering applies to item groups and registered products.
 let pendingDrag=null,activeDrag=null,suppressClick=false;
 function clearPending(){if(pendingDrag){clearTimeout(pendingDrag.timer);pendingDrag=null}}
+function householdOrderMutation(kind,category,ids){
+ if(!liveMode||!liveSnapshot||!liveWritable()||liveWriteBusy||
+    livePending().status!=='none')throw Error('ORDER_NOT_WRITABLE');
+ const item=kind==='item',key=item?'item_group_id':'product_id';
+ const field=item?'sort_order':'item_group_order',scope=item?Number(category):selected;
+ if(item?(!Number.isSafeInteger(scope)||scope<0||scope>=CATS.length):!scope)
+  throw Error('ORDER_SCOPE_INVALID');
+ const siblings=(item?liveSnapshot.item_groups:liveSnapshot.products).filter(row=>
+  !row.deleted_at&&(item?Number(row.category_id)===scope&&
+   !(row.is_hidden===true||String(row.is_hidden).toLowerCase()==='true'):
+   String(row.item_group_id??'')===String(scope)));
+ const byId=new Map(siblings.map(row=>[String(row[key]),row]));
+ if(ids.length<2||ids.length>150||ids.length!==siblings.length||
+    ids.length!==byId.size||new Set(ids).size!==ids.length||
+    ids.some(id=>!byId.has(id)))throw Error('ORDER_SIBLING_SET_CHANGED');
+ const previous=siblings.slice().sort((a,b)=>Number(a[field])-Number(b[field]))
+  .map(row=>String(row[key]));
+ if(previous.every((id,i)=>id===ids[i]))return null;
+ const rows=ids.map(id=>{
+  const version=Number(byId.get(id).version);
+  if(!Number.isSafeInteger(version)||version<1)throw Error('ORDER_VERSION_INVALID');
+  return {id,version};
+ });
+ return item?
+  {action:'item.reorder',payload:{category_id:scope,rows}}:
+  {action:'product.reorder',payload:{item_group_id:String(scope),rows}};
+}
 function startDrag(p){
  if(pendingDrag!==p||!p.row.isConnected)return;
  if(listTouchSwipe){listTouchSwipe.row.classList.remove('swiping');listTouchSwipe=null}
@@ -1999,7 +2050,7 @@ function startPending(row,e,inputType){
 }
 function dragRowSelector(kind){return kind==='product'?'.comparison-product[data-product-id],.catalogue-row[data-product-id]':'[data-item-id]'}
 app.addEventListener('pointerdown',e=>{
- if(liveMode)return; // Never persist household reorder into local preview fixtures.
+ if(liveMode&&(!liveWritable()||liveWriteBusy||livePending().status!=='none'))return;
  if(e.pointerType==='touch'||e.button!==0||dialog||!['list','products','compare'].includes(page))return;
  if(page==='list'&&(query||onlyOut))return;
  if(e.target.closest('input,textarea,select,[data-stock],[data-list-edit],[data-list-hide],[data-premove],[data-product-menu],[data-pedit],[data-cat]'))return;
@@ -2025,6 +2076,18 @@ function endDrag(e,cancel=false){
  suppressClick=true;setTimeout(()=>{suppressClick=false},200);
  if(cancel){render();return}
  if(!d.moved){render();return}
+ if(liveMode){
+  const nodes=d.kind==='item'?
+   [...document.querySelectorAll('.swipe-item[data-item-id]:not(.drag-ghost)')]
+    .filter(row=>row.dataset.categoryId===d.category):
+   [...document.querySelectorAll('.comparison-product[data-product-id]:not(.drag-ghost),.catalogue-row[data-product-id]:not(.drag-ghost)')];
+  const ids=nodes.map(row=>String(d.kind==='item'?row.dataset.itemId:row.dataset.productId));
+  try{
+   const change=householdOrderMutation(d.kind,d.category,ids);
+   if(change){void liveMutate(change.action,change.payload);return}
+  }catch(_){liveWriteStatus='並び順を保存できません。最新の一覧を確認してください。'}
+  render();return;
+ }
  if(d.kind==='item'){
   const rows=[...document.querySelectorAll('.swipe-item[data-item-id]:not(.drag-ghost)')].filter(row=>row.dataset.categoryId===d.category);
   rows.forEach((row,index)=>{const i=items.find(x=>x.id===row.dataset.itemId);if(i){i.order=index+1;i.version=(i.version||0)+1}});
@@ -2040,7 +2103,7 @@ app.addEventListener('pointerup',e=>endDrag(e));
 app.addEventListener('pointercancel',e=>endDrag(e,true));
 app.addEventListener('contextmenu',e=>{if(activeDrag||pendingDrag&&e.target.closest('[data-item-id],[data-product-id]'))e.preventDefault()});
 app.addEventListener('touchstart',e=>{
- if(liveMode)return; // Never persist household reorder into local preview fixtures.
+ if(liveMode&&(!liveWritable()||liveWriteBusy||livePending().status!=='none'))return;
  if(e.touches.length!==1||dialog||!['list','products','compare'].includes(page)||page==='list'&&(query||onlyOut))return;
  if(e.target.closest('input,textarea,select,[data-stock],[data-list-edit],[data-list-hide],[data-premove],[data-product-menu],[data-pedit],[data-cat]'))return;
  const row=e.target.closest(dragRowSelector(page==='compare'||page==='products'?'product':'item'));
