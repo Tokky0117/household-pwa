@@ -220,7 +220,10 @@ const done=(id,recordId,sub,idLine,seq)=>[
  raw_store_name:sub==='h-a'?'A chain':'B chain',
  record_date:sub==='h-a'?'2026-10-14':'2026-10-15',
  created_at:null,updated_at:null,version:1,deleted_at:null},
- item_ids:[idLine],sequence_no:seq}),''];
+ items:[Object.fromEntries(books.record_items[0].map((key,i)=>{
+  const row=books.record_items.find((r,j)=>j>0&&r[0]===idLine);
+  return [key,row?.[i]===''?null:row?.[i]];
+ }))],item_ids:[idLine],sequence_no:seq}),''];
 books.processed_operations=[
  ['household_id','operation_id','request_hash','result','processed_at'],
  done('record-op-A','receipt-a','h-a','line-a',9),
