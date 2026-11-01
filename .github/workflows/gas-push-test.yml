@@ -1,10 +1,7 @@
 name: Push GAS to test project (manual)
-# One-time, pinned source-only sync of the existing isolated test GAS.
-# Trigger will be removed immediately after the verified push.
+# Manual-only after the 2026-11-01 multi-receipt source-only test GAS sync.
+# Re-audit the deployed editor source before any future update.
 on:
-  push:
-    branches: [stage-a-ui-handoff-review]
-    paths: ['.github/workflows/gas-push-test.yml']
   workflow_dispatch:
     inputs:
       confirm_target_backup:
@@ -25,7 +22,7 @@ concurrency:
 
 jobs:
   push-test:
-    if: github.ref == 'refs/heads/stage-a-ui-handoff-review' && ((github.event_name == 'workflow_dispatch' && inputs.confirm_target_backup == 'BACKUP_DONE' && inputs.confirm_test_source == 'TEST_GAS_UPDATE') || (github.event_name == 'push' && github.event.head_commit.message == 'IMPLEMENT9_MULTI_RECEIPT_TEST_GAS_SYNC_ONCE_20261101'))
+    if: github.ref == 'refs/heads/stage-a-ui-handoff-review' && inputs.confirm_target_backup == 'BACKUP_DONE' && inputs.confirm_test_source == 'TEST_GAS_UPDATE'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
