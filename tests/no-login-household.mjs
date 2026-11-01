@@ -86,7 +86,7 @@ assert.equal(signed.call('bootstrap').error.code,'UNAUTHORIZED','Google mode ref
 assert.equal(signed.call('bootstrap',{},null,'header.payload.signature').ok,true,'verified Google token still works');
 assert.equal(signed.db.users.length,2,'verified account is bound to household');
 
-assert.ok(client.includes("if(e.code==='UNAUTHORIZED'&&!loginRequired)"),'client supports auth restoration');
+assert.ok(client.includes('authRequired=true'),'client supports auth restoration');
 assert.ok(client.includes("document.addEventListener('DOMContentLoaded'"),'automatic initial load');
 assert.ok(client.includes('kurashi-stock-operations-v1'),'durable IndexedDB queue');
 assert.ok(app.includes('Google Sheets 接続済み（ログイン一時停止中）'),'Settings communicates temporary mode');
