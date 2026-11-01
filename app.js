@@ -109,6 +109,13 @@ async function checkHouseholdConnection(){
   if(epoch!==householdCheckEpoch||tab!=='settings'||page!=='list'||
      current?.signedIn!==true||current.subject!==subject)return;
   if(!validateHouseholdCheck(data))throw Error('HOUSEHOLD_RESPONSE_INVALID');
+  // Membership can change on Sheets without changing the Google subject.
+  // Invalidate all previously loaded household records if the binding moved.
+  if(remoteReceiptSubject===subject&&remoteReceipts&&
+     remoteReceipts.household_id!==data.household_id){
+   clearRemoteReceipts('家庭の所属が変更されたため、再取得が必要です');
+   leaveRemoteView('家庭の所属を再確認してください');
+  }
   householdCheck=data;
   householdCheckStatus='接続確認済み（読み取り専用）';
  }catch{
