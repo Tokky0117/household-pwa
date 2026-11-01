@@ -41,6 +41,8 @@
    // Never clear on a response with unknown schema/identity.
    if(!result||result.status!=='completed'||result.action!=='record.create'||
       result.entity?.household_id!==entry.householdId||
+      typeof result.entity?.record_id!=='string'||!result.entity.record_id||
+      !Number.isSafeInteger(result.sequence_no)||result.sequence_no<1||
       !Array.isArray(result.item_ids)||
       result.item_ids.length!==entry.payload.items.length||
       new Set(result.item_ids).size!==result.item_ids.length)
