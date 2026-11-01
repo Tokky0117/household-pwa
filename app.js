@@ -175,7 +175,7 @@ async function saveConfirmedReceiptToSheets(approvals){
   render();return;
  }
  receiptSaveBusy=true;receiptScan.status='確認した明細を保存しています…';render();
- const trial=false; // Stage-a uses the ordinary receipt API; legacy trial journal retry stays supported.
+ const trial=receiptTrialWritable()&&!window.KurashiReceiptSaveSession?.writeEnabled?.(); // Legacy trial adapter only; stage-a uses record.create.
  try{
   const preflight=await window.KurashiGasApi.request(
    trial?'record.trial.preflight':'record.preflight',payload);
