@@ -78,7 +78,7 @@ jobs:
           const local=fs.readFileSync('gas/Code.gs','utf8');
           const child=require('node:child_process');
           const priorSource=child.execFileSync('git',['show',
-            'e00cd8f2cc8b1927ee7a899884a1bec6c5c1758b:gas/Code.gs'],
+            'f28cc4cedb0005f371b5cc4b707c87b2061a01c0:gas/Code.gs'],
             {encoding:'utf8'});
           const path=require('node:path');
           const folder=path.join(process.env.RUNNER_TEMP,'remote-gas');
@@ -105,7 +105,7 @@ jobs:
           const baselineFunctions=['doGet','doPost','authenticate','bootstrap','testAllSheetsReadOnly',
             'mutateItemSafely_','runIsolatedItemWriteTrialOnce_'];
           const baseline=baselineFunctions.map(name=>({name,present:remote.includes('function '+name+'(')}));
-          const sha=s=>crypto.createHash('sha256').update(s).digest('hex').slice(0,12);
+          const sha=s=>crypto.createHash('sha256').update(s).digest('hex');
           // Deployment staging is READ-ONLY. Pin the same historical GAS
           // source as the existing manual-only push workflow.
           const approvedBeforeReplay=child.execFileSync('git',['show',
@@ -117,8 +117,14 @@ jobs:
             {encoding:'utf8'});
           const remoteMatchesPrevious=sha(remote)===sha(latestBeforeReplay);
           const remoteMatchesBefore=sha(remote)===sha(approvedBeforeReplay);
+          // Source last confirmed pushed to the existing isolated test GAS (run 41275439091).
+          const lastVerifiedPush=child.execFileSync('git',['show',
+            'f28cc4cedb0005f371b5cc4b707c87b2061a01c0:gas/Code.gs'],
+            {encoding:'utf8'});
+          const remoteMatchesLastVerifiedPush=sha(remote)===sha(lastVerifiedPush);
           const remoteMatchesCurrent=sha(remote)===sha(local);
           const remoteReadiness=remoteMatchesCurrent?'LATEST_SOURCE_PRESENT':
+            remoteMatchesLastVerifiedPush?'LAST_VERIFIED_PUSH_SOURCE':
             remoteMatchesPrevious?'IMMEDIATE_PRE_REPLAY_SOURCE':
             remoteMatchesBefore?'KNOWN_OLDER_BASELINE':
             'REMOTE_SOURCE_DRIFT_REVIEW_REQUIRED';
@@ -129,7 +135,7 @@ jobs:
           const report=[
             'READ_ONLY_GAS_AUDIT: Test GAS source retrieved without modifying project or Sheets.',
             'Remote scripts: '+remoteFiles.length,
-            'Remote matches previous verified GitHub gas source: '+(sha(priorSource)===sha(remote)),
+            'Remote matches last successful push source (run 41275439091): '+remoteMatchesLastVerifiedPush,
             'Remote and branch script source identical: '+(sha(local)===sha(remote)),
             'Receipt replay source update readiness: '+remoteReadiness,
             'Remote replay route currently present: '+remote.includes("if(action==='record.trial.replay')"),
