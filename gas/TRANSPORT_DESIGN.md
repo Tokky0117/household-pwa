@@ -4,6 +4,13 @@
 
 > **現行仕様はこの冒頭を優先**。後半の「接続前設計」「v50〜v56」等は当時の検討履歴で、実際に接続成功した範囲・書き込み方式・未実装状況が現在とは異なる。実装は `gas/Code.gs`、`gas-api.js`、`live-operation-journal.js`、安全境界と測定結果は `TRANSPORT_DECISION.md` を確認する。
 
+
+## 2026-11-01：レシート一括保存の事前契約（書込ゲート閉鎖）
+
+- [専用設計書](./RECEIPT_BATCH_WRITE_PLAN.md) と `receipt-save-contract.js`、`receipt-write-recovery-plan.js` に、最大30明細の保存要求、家庭別の所有照合、操作IDの不変性、事前ジャーナル、親・子・変更履歴の部分失敗復旧計画を定義。**処理は現在純粋関数と模擬テストのみで、実GASのレシート保存は未実装**。
+- `gas-api.js` は `record.create` を接続・認証・ネットワーク送信前に `RECEIPT_WRITES_DISABLED` で拒否。`gas/Code.gs` の認証済みアクション分岐も `RECEIPT_WRITES_DISABLED` で拒否し、既存の日用品試験書き込みゲートの変更によってレシートが書き込まれないようにする。
+- `tests/receipt-save-contract.mjs` と `tests/receipt-write-recovery-plan.mjs` をオフラインCIへ追加。親だけ保存・子の一部保存・再送・家庭違い・改ざんなどの純粋関数試験は成功。実Google Sheetsでの故障注入、家庭別レシート読み取り、夫婦2人での共有確認は未実施。
+
 ## 2026-10-31：認証付きブラウザ商品マスタ・別名照合（iPhone実機成功）
 
 - ユーザーの試験GAS実行ログから、`testAliasCatalogReadOnly` による12シート・商品/店舗/別名各1件・登録済み先頭ゼロ付きコードと未登録コードの**実Sheet読み取り照合成功**を確認した。これはGASエディタからの実行であり、**ブラウザからの認証付きHTTP成功ではない**。
