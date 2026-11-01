@@ -3,8 +3,8 @@
 ## 現在の段階
 
 - UI基準は **2026-10-22 Preview v46**、復元コミット `4297b09ccb01`。
-- 作業ブランチは `preview-v46-clean-base`。UIの `app.js`、`styles.css`、`index.html`、`sw.js` を変更しない。
-- 今回追加した `gas/Setup.gs` は **新しいGoogle Sheetsを初期作成するためだけのコード**。新しいGASプロジェクト・Sheetの実体は、まだ作成していない。
+- 作業ブランチは `preview-v46-clean-base`。v46の画面構成・CSSを維持。`app.js` の保存イベントと `index.html`／`sw.js` の読み込み部分のみ新GAS接続に合わせて更新。
+- `gas/Setup.gs` は新しいGoogle Sheetsの初期作成だけを実行するコード。利用者から新GAS・12シートの作成成功が報告済み。
 - **旧試験GAS、旧試験Sheet、main、実装11ブランチに変更を加えない**。旧レシートはコピーも削除もしない。
 
 ## 新Google Sheetsの構成（12シート）
@@ -54,14 +54,14 @@
 **既存の実装11 GASコードはコピーしない。** 冪等処理、家庭隔離、競合検知などの要件は残すが、試験専用診断や古い履歴互換処理は持ち込まない。
 
 
-## 日用品の読み取り・保存API（実装済み、実環境は未公開）
+## 日用品の読み取り・保存API（実装済み、公開済み旧版との差分反映待ち）
 
 `gas/Api.gs` は **新GASのみ** に追加するAPIである。旧試験GASのコードや設定をコピーしない。
 
 - `bootstrap`: ログインした家庭の確定カテゴリ・日用品・商品・店舗と変更番号を返す
 - `item.create`: 日用品を作る。初期在庫は「なし」
 - `item.update`: 在庫状態、非表示状態、名前とカテゴリの変更を保存する
-- 認証: Google IDトークンをGoogleへ確認し、発行先クライアントID・発行者・有効期限を検査。許可した2つのGoogleアカウントのみ家庭と紐付ける
+- 認証: Google IDトークンをGoogleへ確認し、発行先クライアントID・発行者・有効期限を検査。承認済みGoogleアドレスは1件または2件を許可し、本人のみ登録。後から2件目を追加可能。
 - 保存: `LockService`、`version`、操作ID、`processed_operations` と `change_log`。通信結果が不明なときは**同じ操作IDでのみ**確認・復旧し、別IDで自動再送しない
 - **未実装**: 商品・店舗・レシートの書込みAPI、並び替え、価格・家計簿の実データ反映。未実装APIは `UNSUPPORTED` として拒否する
 
@@ -71,7 +71,7 @@
 2. [Api.gs](./Api.gs) のコード全文をコピーして `Api.gs` に貼り付け、保存する。元の `Setup.gs`（コード.gs）は削除しない。
 3. 「プロジェクトの設定」→「スクリプト プロパティ」に以下を**自分で**登録する。
    - `GOOGLE_CLIENT_ID`: Web用 Google Identity Services のクライアントID。従来のGitHub Pages originで使用していた既存のGoogleログイン用クライアントを再利用可能（**旧GASや旧Sheetへの接続ではない**）。
-   - `HOUSEHOLD_MEMBER_EMAILS`: Googleログインを許可する夫婦2人のGoogleメールアドレスを **半角カンマ区切りで2件**。ソースコードやチャットにメールアドレスを書く必要はない。
+   - `HOUSEHOLD_MEMBER_EMAILS`: はじめは本人のGoogleメールアドレス **1件でよい**。後で夫婦2人のGoogleメールアドレスを半角カンマ区切りで2件に変更できる。ソースコードやチャットにアドレスを書かない。
    - `SPREADSHEET_ID` と `KURASHI_NEW_WORKBOOK_ID`、`KURASHI_SCHEMA_VERSION` はSetupが登録済み。手動で上書きしない。
 4. 「デプロイ」→「新しいデプロイ」→種類「ウェブアプリ」、**実行ユーザー：自分**、アクセスできるユーザー：**全員**（GAS内部で毎回GoogleのIDトークンを検証するため）。アクセス許可して公開する。
 5. 発行された **`https://script.google.com/macros/s/.../exec` のURLだけ** を次のPWA接続に使う。秘密のトークン、クライアントシークレット、メールアドレス、スプレッドシートIDはチャットへ送らない。
@@ -80,9 +80,9 @@
 
 ### 接続前の注意
 
-- 作成したSheetは、最初のGoogleログインまで `users` が空。最初のログイン時に限り、登録された2メールアドレスとGoogleの確認済みメールが一致すれば、`users` に不変のGoogle `sub` を記録する。登録できるのは最大2名。ログイン用メールはSheetに保存せず、Script Propertiesでのみ使用する。
-- ユーザーがまだGASへ接続していない段階では、復元したv46のPWAは**端末内試作状態のまま**。これをSheetへ保存済みと誤認させない。
-- 初回のWebアプリデプロイとPWA接続は未実施。以後の実機テストで確認する。
+- 作成したSheetは、最初のGoogleログインまで `users` が空。初回ログインでScript Propertiesの承認済み1～2メールアドレスとGoogleの確認済みメールが一致した場合にのみ `users` に不変のGoogle `sub` を記録する。最大2名。ログイン用メールはSheetに保存しない。
+- 新ブランチPWAは指定された新GASの /exec に接続するコードを配置済み。旧端末内のサンプル日用品・架空価格を通常表示に混ぜない。**実機でのログイン・読み書きは未受入**。
+- 初回の新GAS Webアプリは利用者がデプロイ済み。現在の /exec: `AKfycbwn-SfXqRBIjJWVUUIKEsJuaUR6DLAEWbMVR-_rEB3iVZy2zi0ZNSA7JjNmyykvKjvdoQ`。**1件登録を許可する最新 `Api.gs` の再公開とPWA受入は未完了**。
 
 ## 2026-11-01 — 以後のGASソース／公開版更新はGitHub Actions経由
 
