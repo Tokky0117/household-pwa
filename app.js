@@ -277,6 +277,7 @@ function listView(){
  const notice=s?(s.pending?'前回の保存が未確認です。設定から同じ操作を確認してください。':
   !s.signedIn?'設定からGoogleログインしてください。':
   s.cached?'前回取得した内容を表示中。Google Sheetsと再接続しています。':
+   s.busy&&s.loaded&&!s.mutating?'最新の在庫を確認中…':
    s.busy&&!s.loaded?'家庭の日用品を読み込み中…':
   s.error?'Google Sheets: '+s.error:''):'';
  const copy='<button class="iconbtn" type="button" data-act="copyList" aria-label="在庫なしをコピー" title="在庫なしをコピー">'+miniIcon('copy')+'</button>';
