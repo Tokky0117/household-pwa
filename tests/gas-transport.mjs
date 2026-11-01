@@ -61,6 +61,24 @@ assert.equal(calls,3);
 assert.equal(api.receiptWriteEnabled(),false);
 // Only a verified trial operator may request a completed fixed-fixture replay.
 await assert.rejects(api.request('record.trial.replay',{}),/TRIAL_REPLAY_NOT_CONFIRMED/);
+await assert.rejects(api.request('record.trial.second.save',{}),
+ /TRIAL_SECOND_NOT_CONFIRMED/);
+await assert.rejects(api.request('record.trial.second.save',{items:[]},
+ {confirmedTrialSecondSave:true}),/TRIAL_SECOND_NOT_CONFIRMED/);
+await assert.rejects(api.request('record.trial.second.save',{},
+ {confirmedTrialSecondSave:true,operationId:'other-op-0001'}),
+ /TRIAL_SECOND_NOT_CONFIRMED/);
+const second=await api.request('record.trial.second.save',{},
+ {confirmedTrialSecondSave:true,fetcher:async(_url,opts)=>{
+  const sent=JSON.parse(opts.body);
+  assert.equal(sent.action,'record.trial.second.save');
+  assert.equal(sent.operation_id,undefined);
+  assert.deepEqual(sent.payload,{});
+  return {ok:true,text:async()=>JSON.stringify({ok:true,data:{
+   status:'completed',replayed:false,records:2,items:4,amount:458
+  }})};
+ }});
+assert.equal(second.records,2);
 await assert.rejects(api.request('record.trial.replay',{items:[]},
  {confirmedTrialReplay:true}),/TRIAL_REPLAY_NOT_CONFIRMED/);
 await assert.rejects(api.request('record.trial.replay',{},
