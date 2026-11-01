@@ -52,13 +52,13 @@ const ctx=vm.createContext({window:win,document,localStorage:storage,
  setTimeout:()=>1,clearTimeout(){},Date,Intl,URL,console});
 vm.runInContext(journalSource,ctx);
 const app=vm.runInContext(appSource+
- "\n({refreshLive,listView,openLiveProductEditor,liveProductForm,"+
+ "\n({refreshLive,listView,productCreateView,"+
  "liveMutate,retryLive,livePending,state:()=>({liveSnapshot,liveProductEditor})})",ctx);
 await app.refreshLive();
 assert.match(app.listView(),/data-act="addLive"/);
-app.openLiveProductEditor('group-A');
-assert.match(app.liveProductForm(),/商品を登録/);
-assert.match(app.liveProductForm(),/牛乳/);
+vm.runInContext("selected='group-A';page='productCreate'",ctx);
+assert.match(app.productCreateView(),/商品を登録/);
+assert.match(app.productCreateView(),/牛乳/);
 const newProduct={item_group_id:'group-A',name:'900mLの牛乳',
  package_quantity:900,package_unit:'mL'};
 await app.liveMutate('product.create',newProduct);
