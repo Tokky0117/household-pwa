@@ -173,3 +173,10 @@ Apps Scriptの関数選択で `testCategoriesReadOnly` を選んで実行。ロ�
 - 未登録ユーザー、audience不一致、期限切れ、tokeninfoエラー、トークン未指定で読み出しを拒否するケースも含む。
 - GitHub PagesプレビューのCIで `node tests/gas-auth-isolation.mjs` を実行するよう設定。
 - **オフラインのモックテストであり、実際のOAuth、GAS APIのデプロイ権限、CORS、Safari動作は未検証。** コードの自動反映と本番データの書込みは行わない。
+
+## 2026-11-01 実装11引き継ぎ補足（既存データ保持）
+
+- GitHub `stage-a-ui-handoff-review` の最新GASソースには通常の `item.create` / `item.update` / `product.create` の操作ジャーナルと家庭別認可があるが、実Apps Scriptの公開版に反映されたとはみなさない。
+- 更新する場合は**既存の試験用スクリプトのみ**を対象とし、現行Apps ScriptソースとGitHubソースの差分照合・バックアップを必ず先に行う。履歴やSheetを初期化しない。別の試験環境、試験専用API、固定試料は追加しない。
+- 現行Webアプリを更新する操作は、必要なソース差分・回帰テスト・公開対象を確定した後に一回へ集約。GASのソース更新とWebアプリ版更新は別工程であり、GitHubの自動テストだけで実Sheet成功とは判定しない。
+- 夫婦2アカウントの実Google subject登録・同家庭読込・他家庭遮断は未受入。端末側の保存確認と失敗復旧を優先し、旧架空レシート3件／6明細を削除・再登録しない。
