@@ -68,6 +68,7 @@
  }
  async function create({subject,householdId,payload,operationId}){
   if(!receiptGate())throw Error('RECEIPT_WRITES_DISABLED');
+  if(trialId(operationId))throw Error('TRIAL_OPERATION_ID_RESERVED');
   return withLock(async()=>{
    verifiedScope(subject,householdId);
    if(!contract()?.validatePayload)throw Error('RECEIPT_CONTRACT_MISSING');
