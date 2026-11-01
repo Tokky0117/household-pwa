@@ -127,4 +127,26 @@ assert.ok(storage.has('kurashi-new-confirmed-snapshot-v1'),'confirmed snapshots 
 assert.equal(window.KurashiLive.state().loaded,true,'successful save and refresh keep live state');
 assert.equal(window.KurashiLive.itemsOf(JSON.parse(storage.get('kurashi-new-confirmed-snapshot-v1'))).length,2,'cached refresh retains confirmed items');
 
+
+// Stock tap changes the visible value immediately, persists once, and preserves version.
+let latestSnapshot=null;
+window.KurashiLive.subscribe((_status,data)=>{if(data)latestSnapshot=data});
+await new Promise(resolve=>setImmediate(resolve)); // absorb post-save background refresh
+const beforeStock=temp.call('bootstrap').data.item_groups.find(x=>x.item_group_id===id);
+assert.equal(beforeStock.in_stock,true);
+const operation=window.KurashiLive.save('item.update',{
+ item_group_id:id,version:2,in_stock:false
+});
+assert.equal(window.KurashiLive.state().mutating,true,'stock mutation slot held immediately');
+const optimistic=latestSnapshot?.item_groups.find(x=>x.item_group_id===id);
+assert.equal(optimistic?.in_stock,false,'visible stock changes on tap');
+await operation;
+await new Promise(resolve=>setImmediate(resolve));
+const savedStock=temp.call('bootstrap').data.item_groups.find(x=>x.item_group_id===id);
+assert.equal(savedStock.in_stock,false,'server stock matches tap');
+assert.equal(savedStock.version,3,'server version advanced');
+assert.equal(window.KurashiLive.state().mutating,false,'save slot released');
+assert.ok(app.includes('pullToRefresh'),'PWA includes standalone pull refresh');
+assert.ok(app.includes("window.KurashiLive.load().then"),'pull refresh fetches Sheets');
+
 console.log('Temporary shared-household, live PWA, Google restore: OK');
