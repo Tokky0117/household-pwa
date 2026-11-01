@@ -3,14 +3,15 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import vm from 'node:vm';
 const source=readFileSync(new URL('../app.js',import.meta.url),'utf8');
-let subject='1234567890',signedIn=true,requests=[],resolver=null;
+let subject='1234567890',signedIn=true,requests=[],resolver=null,authListener=null;
 let reply=async()=>({household_id:'family-A',member_count:2,
  two_member_count:true,receipt_write_enabled:false});
 const screen={innerHTML:'',addEventListener(){},insertAdjacentHTML(){}};
 const memory=new Map();let stored=0;
 const win={
  scrollTo(){},scrollY:0,KURASHI_RECEIPT_TEST_MODE:false,
- KurashiAuth:{status:()=>({signedIn,subject,configured:true}),signIn(){return false}},
+ KurashiAuth:{status:()=>({signedIn,subject,configured:true}),signIn(){return false},
+  subscribe(fn){authListener=fn}},
  KurashiGasApi:{status:()=>({configured:true}),async request(action,payload){
   requests.push({action,payload});return reply();
  }}
@@ -43,6 +44,9 @@ assert.match(api.settingsView(),/2人登録/);
 assert.doesNotMatch(api.settingsView(),/1234567890|auth_subject|user_id|email/);
 assert.equal(stored,oldStored,'Diagnostics must never persist personal data');
 subject='9876543210';
+authListener?.({signedIn,subject});
+assert.doesNotMatch(screen.innerHTML,/family-A/,
+ 'Auth change event clears family details before manual rerender');
 api.render();
 assert.equal(api.state().householdCheck,null);
 assert.doesNotMatch(api.settingsView(),/family-A/);
