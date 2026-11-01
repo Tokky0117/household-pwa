@@ -1115,7 +1115,9 @@ function receiptCompletedReplay_(result,payload,hid,operationId,book){
     String(entity.household_id)!==hid||
     String(entity.chain_id)!==payload.chain_id||
     String(entity.record_date)!==payload.record_date||
-    !Array.isArray(result.item_ids)||result.item_ids.length!==payload.items.length||
+    !Array.isArray(result.item_ids)||!Array.isArray(result.items)||
+    result.items.length!==payload.items.length||
+    result.item_ids.length!==payload.items.length||
     new Set(result.item_ids).size!==result.item_ids.length||
     !Number.isSafeInteger(result.sequence_no))
   fail('RECOVERY_CONFLICT','完了履歴が保存要求と一致しません');
@@ -1126,7 +1128,9 @@ function receiptCompletedReplay_(result,payload,hid,operationId,book){
  for(let i=0;i<payload.items.length;i++){
   const p=payload.items[i],id=result.item_ids[i],matches=lines.filter(x=>
    String(x.obj.record_item_id)===String(id));
-  if(matches.length!==1||String(matches[0].obj.record_id)!==String(entity.record_id)||
+  if(matches.length!==1||
+     !receiptSameRow_(matches[0].obj,result.items[i],'record_items')||
+     String(matches[0].obj.record_id)!==String(entity.record_id)||
      Number(matches[0].obj.line_order)!==i+1||
      Number(matches[0].obj.quantity)!==p.quantity||
      Number(matches[0].obj.amount_tax_included)!==p.amount_tax_included||
@@ -1258,6 +1262,9 @@ function mutateReceiptSafely_(user,payload,operationId){
    fail('RECOVERY_CONFLICT','保存されたレシート明細に不整合があります');
   const result={status:'completed',action:'record.create',
    entity:publicRow(plan.entity),
+   // Preserve immutable receipt lines in the completed journal. Read-only
+   // listing can then reject a row changed outside a verified transaction.
+   items:plan.items.map(x=>publicRow(x)),
    item_ids:plan.items.map(x=>x.record_item_id),
    sequence_no:plan.log.sequence_no};
   write_('processed_operations',opRow,{household_id:hid,
@@ -1295,14 +1302,17 @@ function receiptList_(user,book){
      String(changes[0].obj.entity_id)!==id||
      Number(changes[0].obj.sequence_no)!==Number(state.sequence_no))continue;
   const ids=new Set(state.item_ids);
-  if(ids.size!==state.item_ids.length||!ids.size||ids.size>30)continue;
+  if(!Array.isArray(state.items)||state.items.length!==state.item_ids.length||
+     ids.size!==state.item_ids.length||!ids.size||ids.size>30)continue;
   const lineItems=allItems.filter(x=>ids.has(String(x.obj.record_item_id))&&
     String(x.obj.record_id)===id&&!x.obj.deleted_at);
   if(lineItems.length!==ids.size||lineItems.some(x=>
      allItems.filter(z=>String(z.obj.record_item_id)===String(x.obj.record_item_id)).length!==1))
     continue;
   lineItems.sort((a,c)=>Number(a.obj.line_order)-Number(c.obj.line_order));
-  if(lineItems.some((x,i)=>Number(x.obj.line_order)!==i+1))continue;
+  if(lineItems.some((x,i)=>Number(x.obj.line_order)!==i+1||
+     String(state.item_ids[i])!==String(x.obj.record_item_id)||
+     !receiptSameRow_(x.obj,state.items[i],'record_items')))continue;
   completed.push({record:publicRow(parents[0].obj),
    items:lineItems.map(x=>publicRow(x.obj))});
  }
