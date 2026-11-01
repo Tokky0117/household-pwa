@@ -4,7 +4,7 @@
 (function(){
  'use strict';
  let endpoint='';
- const MUTATIONS=new Set(['item.create','item.update','product.create','record.create','store.create']);
+ const MUTATIONS=new Set(['item.create','item.update','product.create','product.update','record.create','store.create']);
  const READS=new Set(['bootstrap','sync','product.catalog','product.alias.check',
   'record.list','household.status','record.preflight']);
  const LIVE_WRITE_ENABLED=()=>!!endpoint;
