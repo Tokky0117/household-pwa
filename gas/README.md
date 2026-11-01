@@ -1,5 +1,7 @@
 # くらしストック — 現行 Google Apps Script 接続仕様
 
+> **2026-11-01 設計・実装の照合：** [現行開発方針とUI／データ接続の未完了項目](../CURRENT_IMPLEMENTATION_POLICY.md)。本ファイルは現行GASコード・既存デプロイの更新状況の正本であり、UIの正本ではない。
+
 更新：2026-11-01。開発ブランチ：`stage-a-ui-handoff-review`。
 
 ## 現在の構成
