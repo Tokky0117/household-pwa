@@ -1014,7 +1014,7 @@ function validateLiveSnapshot(data){
     !scopedUnique(data.products,'product_id')||
     !scopedUnique(data.stores,'chain_id'))return false;
  const groups=new Set(data.item_groups.map(row=>row.item_group_id));
- return data.products.every(p=>p.item_group_id==null||p.item_group_id===''||
+ return data.products.every(p=>p.deleted_at||p.item_group_id==null||p.item_group_id===''||
   groups.has(String(p.item_group_id)));
 }
 
