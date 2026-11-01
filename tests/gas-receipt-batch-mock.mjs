@@ -409,15 +409,17 @@ const fullTrial=()=>{
  t.mock.ContentService={MimeType:{JSON:'application/json'},
   createTextOutput(content){return{setMimeType(){return this},getContent(){return content}}}};
  t.mock.authenticate=()=>t.homeA;
- for(const action of ['record.create','record.trial.main.create']){
-  const answer=JSON.parse(t.mock.doPost({postData:{contents:JSON.stringify({
-   id_token:'test-token',action,operation_id:mainCandidateId,payload:mainCandidate
+ const doPost=({action,operation_id=mainCandidateId,payload=mainCandidate})=>
+  JSON.parse(t.mock.doPost({postData:{contents:JSON.stringify({
+   id_token:'test-token',action,operation_id,payload
   })}}).getContent());
-  assert.equal(answer.ok,false);
-  assert.equal(answer.error.code,action==='record.create'?
-   'RECEIPT_WRITES_DISABLED':'UNSUPPORTED');
- }
- assert.equal(t.writes,before,'No main candidate can be written over doPost');
+ assert.equal(doPost({action:'record.create'}).error.code,
+  'RECEIPT_WRITES_DISABLED','Normal receipt writes remain blocked');
+ assert.equal(doPost({action:'record.trial.main.create',
+  operation_id:'other-operation-01'}).error.code,'BAD_REQUEST');
+ assert.equal(doPost({action:'record.trial.main.create',
+  payload:{...mainCandidate,chain_id:'store-B'}}).error.code,'TRIAL_NOT_ISOLATED');
+ assert.equal(t.writes,before,'Denied main candidate requests cannot write');
  assert.throws(()=>t.mock.receiptTrialMainCreate_(t.other,mainCandidate,mainCandidateId),
   e=>e.code==='TRIAL_NOT_ISOLATED');
  assert.throws(()=>t.mock.receiptTrialMainCreate_(t.spouse,mainCandidate,mainCandidateId),
@@ -438,6 +440,16 @@ const fullTrial=()=>{
  assert.equal(t.rowObjects('record_items').length,6);
  assert.equal(t.mock.receiptTrialGuard_(t.mock.spreadsheet()).generalCompleted,true);
  const replayCount=t.writes;
+ const throughApi=doPost({action:'record.trial.main.create'});
+ assert.equal(throughApi.ok,true);
+ assert.equal(throughApi.data.status,'completed');
+ assert.equal(throughApi.data.entity.record_id,created.entity.record_id);
+ assert.equal(t.writes,replayCount,'Authenticated same-ID API replay is read-only');
+ t.mock.authenticate=()=>t.other;
+ assert.equal(doPost({action:'record.trial.main.create'}).error.code,
+  'TRIAL_NOT_ISOLATED');
+ t.mock.authenticate=()=>t.homeA;
+ assert.equal(t.writes,replayCount);
  assert.equal(t.mock.receiptTrialMainCreate_(t.homeA,mainCandidate,mainCandidateId)
   .entity.record_id,created.entity.record_id);
  assert.equal(t.writes,replayCount,'Generic receipt replay must be write-free');
