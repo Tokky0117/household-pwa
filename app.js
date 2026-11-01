@@ -266,7 +266,7 @@ function savePreviewReceiptScan(input){
   branch_name:null,raw_store_name:null,record_date:date,created_at:now,updated_at:now,version:1,deleted_at:null};
  const detail=items.map((item,i)=>({record_item_id:id(),record_id:recordId,line_order:i+1,
   raw_name:item.rawName,product_id:item.productId,quantity:item.quantity,amount_tax_included:item.amount,
-  category_id:item.category,price_eligible:Boolean(item.productId),
+  category_id:item.category,price_eligible:false,
   created_at:now,updated_at:now,version:1,deleted_at:null}));
  const next={records:previewRecords.records.concat([record]),record_items:previewRecords.record_items.concat(detail)};
  try{localStorage.setItem(previewRecordsKey,JSON.stringify(next));}
@@ -809,6 +809,7 @@ function receiptScanReview(){
  const scan=receiptScan,options=[{value:'',label:'チェーンを選択'},...catalogue.chains.map(c=>({value:c.id,label:c.name}))];
  const products=[{value:'',label:'商品未照合（価格比較に使用しない）'},...catalogue.products.map(p=>({value:p.id,label:productTitle(p)}))];
  const categories=[{value:'',label:'未分類'},...CATS.map((c,i)=>({value:String(i),label:c}))];
+ const chat=scan.source==='chatgpt_paste';
  const items=scan.items.map((item,i)=>`<section class="receipt-review-line">
  <div class="receipt-review-line-title"><strong>明細 ${i+1}</strong><button type="button" class="secondary" data-act="removeReceiptScanItem" data-ocr-index="${i}">除外</button></div>
  ${chat&&item.importWarnings?.some(code=>code==='line_amount_mismatch'||code==='unit_quantity_mismatch')?
@@ -828,7 +829,6 @@ function receiptScanReview(){
  const total=Number.isSafeInteger(scan.receiptTotal)?scan.receiptTotal:null;
  const initialSum=scan.items.reduce((a,item)=>a+(Number(item.amount)||0),0);
  const amountsReady=scan.items.every(item=>String(item.amount??'').trim()!=='');
- const chat=scan.source==='chatgpt_paste';
  return `<section class="panel receipt-scan-panel"><h2>${chat?'ChatGPT読取結果（保存前・未確定）':'写真の読み取り結果（保存前）'}</h2>
  <p class="hint" id="receipt-scan-progress" role="status">${esc(scan.status)}</p>
  <p class="hint">${chat?
