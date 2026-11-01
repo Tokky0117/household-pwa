@@ -13,13 +13,15 @@ const window={
  {name:'牛乳',quantity:2,amount:396},{name:'たまご',quantity:1,amount:218}]}}}
 };
 let draftForm=null;
+const chatGptInput={value:''};
 const mockCamera={clicks:0,click(){this.clicks++}};
-const doc={getElementById(id){return id==='app'?app:id==='receiptScanForm'?draftForm:id==='receipt-camera'?mockCamera:null},querySelector(){return null},querySelectorAll(){return []},
+const doc={getElementById(id){return id==='app'?app:id==='receiptScanForm'?draftForm:id==='receipt-camera'?mockCamera:id==='receipt-chatgpt-json'?chatGptInput:null},querySelector(){return null},querySelectorAll(){return []},
  createElement(){return {classList:{},style:{},setAttribute(){}}},body:{append(){}}};
 const storageApi={getItem:k=>storage.get(k)??null,setItem(k,v){storage.set(k,v)},removeItem(k){storage.delete(k)}};
 const ctx=vm.createContext({window,document:doc,localStorage:storageApi,navigator:{},location:{protocol:'file:'},
  crypto:{randomUUID:()=>String(storage.size)+'-random'},setTimeout:()=>1,clearTimeout(){},Date,Intl,URL,console,
  FormData:class FormData{constructor(form){this.values=form?.values||{}}get(key){return this.values[key]??null}}});
+vm.runInContext(readFileSync(new URL('../receipt-chatgpt-import.js',import.meta.url),'utf8'),ctx);
 const ui=vm.runInContext(source+`
 ({receiptView,scanReceiptPhoto,receiptScanReview,savePreviewReceiptScan,savePreviewRecord,deletePreviewRecord,discardReceiptScan,
   state:()=>({receiptScan,receiptScanBusy,previewRecords}),setReceiptTab(){tab='receipt';page='list'}})
@@ -135,3 +137,56 @@ assert.equal(ui.state().previewRecords.records.length,countBeforeDelete-1);
 assert.ok(!ui.state().previewRecords.record_items.some(x=>x.record_id===deleteTarget));
 console.log('Receipt delegated camera and reviewed multi-line form submit PASS');
 console.log('Manual receipt local storage failure rolls back without false success PASS');
+
+// Same main-PWA receipt confirmation form handles ChatGPT paste, not a second
+// storage path. It cannot convert exclusive-tax values to inclusive by guess.
+assert.match(html,/receipt-chatgpt-import\.js\?v=62/);
+assert.match(sw,/receipt-chatgpt-import\.js\?v=62/);
+assert.match(ui.receiptView(),/ChatGPTの読取結果を貼り付け/);
+const aiInput={
+ version:'kurashi-receipt-import-1',purchaseDate:'2026-10-14',storeName:'コノミヤ',
+ taxBasis:'excluded',taxTotal:8,receiptTotal:108,printedCount:1,
+ items:[{name:'牛乳',code:null,quantity:null,unitPrice:null,
+  grossAmount:100,discount:0,netAmount:100}]
+};
+const preChatState=ui.state().previewRecords.records.length;
+chatGptInput.value=JSON.stringify(aiInput);
+press('importChatGptReceipt');
+assert.equal(ui.state().receiptScan.source,'chatgpt_paste');
+assert.equal(ui.state().receiptScan.store,'コノミヤ');
+assert.equal(ui.state().receiptScan.chainId,'c-konomiya');
+assert.equal(ui.state().receiptScan.items[0].quantity,'');
+assert.equal(ui.state().receiptScan.items[0].amount,'');
+assert.match(ui.receiptView(),/各商品の税込明細合計は空欄/);
+assert.match(ui.receiptView(),/name="taxResolved" value="yes" required/);
+assert.equal(ui.savePreviewReceiptScan(ui.state().receiptScan),false);
+assert.equal(ui.state().previewRecords.records.length,preChatState);
+const priorDraft=ui.state().receiptScan;
+chatGptInput.value='{"version":"product-test-1"}';
+press('importChatGptReceipt');
+assert.equal(ui.state().receiptScan,priorDraft,'Invalid JSON preserves previous draft');
+chatGptInput.value=JSON.stringify({...aiInput,taxBasis:'included',
+ taxTotal:8,receiptTotal:100,items:[{...aiInput.items[0],quantity:1}]});
+press('importChatGptReceipt');
+assert.equal(ui.state().receiptScan.items[0].amount,'100',
+ 'Only included-tax net amount can prefill the tax-included field');
+assert.doesNotMatch(ui.receiptView(),/name="taxResolved"/);
+assert.equal(ui.state().receiptScan.items[0].quantity,'1');
+const mixed={...ui.state().receiptScan};
+assert.equal(ui.savePreviewReceiptScan(mixed),true);
+const savedChat=JSON.parse(storage.get('household_pwa_records_preview_v1'));
+assert.equal(savedChat.records.length,preChatState+1);
+assert.equal(savedChat.record_items.at(-1).amount_tax_included,100);
+assert.ok(!JSON.stringify(savedChat).includes('kurashi-receipt-import-1'));
+ui.discardReceiptScan();
+chatGptInput.value=JSON.stringify({...aiInput,items:[{...aiInput.items[0],
+ quantity:1}]});
+press('importChatGptReceipt');
+const excluded=ui.state().receiptScan;
+excluded.items[0].amount='108';excluded.taxResolvedForPreview=true;
+assert.equal(ui.savePreviewReceiptScan(excluded),true,
+ 'Explicitly entered tax-included amount may be saved locally after review');
+const persisted=JSON.parse(storage.get('household_pwa_records_preview_v1'));
+assert.equal(persisted.record_items.at(-1).amount_tax_included,108);
+assert.ok(!JSON.stringify(persisted).includes('chatgpt_paste'));
+console.log('Main PWA ChatGPT paste: shared review, strict parse, missing quantity and tax safety PASS');
