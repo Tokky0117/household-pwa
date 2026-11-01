@@ -232,7 +232,7 @@ node('trial-url').listeners.input();
 slowReceipt({household_id:'trial',records:[],record_items:[]});
 await pendingReceipt;
 assert.equal(node('receipt-read').disabled,true);
-assert.match(node('receipt-read-result').textContent,/③と④の接続確認後/);
+assert.match(node('receipt-read-result').textContent,/③の読み取り接続確認後/);
 receiptMode='valid';
 node('confirm-trial-target').checked=true;
 node('confirm-trial-target').listeners.change();
