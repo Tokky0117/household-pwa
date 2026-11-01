@@ -156,4 +156,13 @@ for(const phase of faults)for(const when of ['before','after']){
  assert.equal(h.rowObjects('records').length,1);
  assert.equal(h.rowObjects('record_items').length,0);
 }
+{
+ const h=harness(),record=h.execute();
+ const ix=h.columns.record_items.indexOf('amount_tax_included');
+ h.data.record_items[1][ix]=999;
+ assert.equal(h.read(h.spouse).records.length,0,
+  'A changed Sheet cell cannot be exposed as a completed receipt');
+ assert.throws(()=>h.execute(),e=>e.code==='RECOVERY_CONFLICT');
+ assert.equal(h.rowObjects('records').length,1);
+}
 console.log('GAS receipt batch 12 fault cases, spouse reads, replay, forbidden scope and gates PASS');
