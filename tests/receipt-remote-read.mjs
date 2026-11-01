@@ -122,7 +122,7 @@ assert.match(threeView,/架空の日用品 · 2点<\/span><strong>明細合計 3
 assert.doesNotMatch(threeView,/明細合計 680円/);
 ui.setBudgetTab();
 ui.setBudgetMonth('2026-11');
-assert.match(ui.budgetView(),/2026-11の確定購入額<\/span><strong>1008円/);
+assert.match(ui.budgetView(),/2026-11の確定購入額<\/span><strong>1,008円/);
 assert.equal(mutations,priorWrites,'3-receipt readback never adds a browser-local write');
 ui.setReceiptTab();
 subject='subject-B';
