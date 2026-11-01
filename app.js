@@ -726,6 +726,10 @@ function receiptScanReview(){
  const categories=[{value:'',label:'未分類'},...CATS.map((c,i)=>({value:String(i),label:c}))];
  const items=scan.items.map((item,i)=>`<section class="receipt-review-line">
  <div class="receipt-review-line-title"><strong>明細 ${i+1}</strong><button type="button" class="secondary" data-act="removeReceiptScanItem" data-ocr-index="${i}">除外</button></div>
+ ${scan.source==='chatgpt_paste'&&scan.taxBasis!=='included'?
+  '<p class="hint">ChatGPTの税別・税区分不明の差引額：'+
+   (Number.isSafeInteger(item.readNetAmount)?yen(item.readNetAmount):'不明')+
+   '。下には原本で確認した<strong>税込</strong>明細合計を入力してください。</p>':''}
  ${UI.formField({id:'scan-name-'+i,name:'name-'+i,label:'商品名（修正できます）',value:item.rawName,required:true,maxlength:120})}
  <div class="receipt-review-numbers">
  ${UI.formField({id:'scan-quantity-'+i,name:'quantity-'+i,label:'数量',type:'number',value:item.quantity,required:true,extra:'min="1" max="99" step="1" inputmode="numeric"'})}
@@ -736,25 +740,31 @@ function receiptScanReview(){
  </section>`).join('');
  const total=Number.isSafeInteger(scan.receiptTotal)?scan.receiptTotal:null;
  const initialSum=scan.items.reduce((a,item)=>a+(Number(item.amount)||0),0);
- return `<section class="panel receipt-scan-panel"><h2>写真の読み取り結果（保存前）</h2>
+ const amountsReady=scan.items.every(item=>String(item.amount??'').trim()!=='');
+ const chat=scan.source==='chatgpt_paste';
+ return `<section class="panel receipt-scan-panel"><h2>${chat?'ChatGPT読取結果（保存前・未確定）':'写真の読み取り結果（保存前）'}</h2>
  <p class="hint" id="receipt-scan-progress" role="status">${esc(scan.status)}</p>
- <p class="hint">OCRの候補は自動確定しません。レシート原本と照合して、不要な候補を除外してください。チェーンが一覧になければ試作保存しないでください。</p>
+ <p class="hint">${chat?
+  'ChatGPTの候補は自動確定しません。商品名・数量・金額・チェーン・日付をレシート原本と確認してください。':
+  'OCRの候補は自動確定しません。レシート原本と照合して、不要な候補を除外してください。'}チェーンが一覧になければ試作保存しないでください。</p>
+ ${chat&&scan.taxBasis!=='included'?'<p class="sample-price-notice">重要：税別・税区分不明のため、各商品の税込明細合計は空欄です。原本と税計算を確認して入力してください。税別金額をそのまま税込として保存しないでください。</p>':''}
  ${scan.store?'<p class="hint">店舗名候補：'+esc(scan.store)+'（チェーンは必ず選択してください）</p>':''}
  ${receiptPhotoUrl?'<img class="receipt-scan-photo" alt="選択したレシート写真（端末内のみ）" src="'+esc(receiptPhotoUrl)+'">':''}
- ${!receiptScanBusy?`<details class="receipt-ocr-diagnostic"><summary>OCRが読み取った文字を確認（診断用・未保存）</summary>
+ ${!chat&&!receiptScanBusy?`<details class="receipt-ocr-diagnostic"><summary>OCRが読み取った文字を確認（診断用・未保存）</summary>
  <p class="hint">端末内で認識した文字を表示します。会員番号などの個人情報も含まれる可能性があるため、共有する場合は伏せてください。</p>
  <pre>${esc(scan.rawPreview||'文字を認識できませんでした。写真を切り抜く・明るく撮り直すと改善する場合があります。')}</pre></details>`:''}
  ${!receiptScanBusy?`<form id="receiptScanForm">
  ${UI.formField({id:'scan-chain',name:'chain',label:'チェーン（確認必須）',control:'select',value:scan.chainId,options})}
  ${UI.formField({id:'scan-date',name:'date',label:'購入日（確認必須）',type:'date',value:scan.date,required:true})}
- ${total!==null?`<p class="hint" role="status"><strong>支払合計のOCR候補：${yen(total)}</strong> ／ 抽出した明細候補の合計：${yen(initialSum)}。税込・税抜や値引きが別計上される場合、明細と合計は一致しません。</p>`:''}
+ ${total!==null?`<p class="hint" role="status"><strong>支払合計のOCR候補：${yen(total)}</strong> ／ 抽出した明細候補の合計：${amountsReady?yen(initialSum):'未確定'}。税込・税抜や値引きが別計上される場合、明細と合計は一致しません。</p>`:''}
  ${items}
  <button type="button" class="secondary" data-act="addReceiptScanItem" ${scan.items.length>=30?'disabled':''}>＋ 明細を追加</button>
+ ${chat&&scan.taxBasis!=='included'?'<label class="receipt-scan-confirm"><input type="checkbox" name="taxResolved" value="yes" required><span>各明細の税込金額を原本・税額と照合して入力しました</span></label>':''}
  <label class="receipt-scan-confirm"><input type="checkbox" name="confirmed" value="yes" required><span>レシート原本と明細・購入日・チェーン・金額を確認しました</span></label>
  ${total!==null?'<label class="receipt-scan-confirm"><input type="checkbox" name="totalsChecked" value="yes" required><span>支払合計と、税・値引きを含む明細金額の差を確認しました</span></label>':''}
  <button type="submit" class="primary receipt-scan-save" ${scan.items.length?'':'disabled'}>確認した${scan.items.length}明細をこのSafariに試作保存</button>
  <p class="sample-price-notice">保存先：このSafariのWebサイトデータのみ。Google Sheets・Google Drive・ファイルには保存しません。OCR誤読、合計金額、税・割引、数量を必ず確認してください。</p></form>`:''}
- <button type="button" class="secondary" data-act="discardReceiptScan">写真の確認を終了</button>
+ <button type="button" class="secondary" data-act="discardReceiptScan">確認を終了して下書きを破棄</button>
  </section>`;
 }
 function receiptView(){
