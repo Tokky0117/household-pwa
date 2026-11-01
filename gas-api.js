@@ -6,7 +6,7 @@
  let endpoint='';
  // Explicit release gate: requires separate reviewed deployment to enable writes.
  const LIVE_WRITE_ENABLED=false;
- const MUTATIONS=new Set(['item.create','item.update','record.create']);
+ const MUTATIONS=new Set(['item.create','item.update','record.create','store.create']);
  // Receipt batch writes need separate server journal and user approval.
  const RECEIPT_BATCH_WRITE_ENABLED=()=>window.KURASHI_RECEIPT_STAGE_A_TRIAL===true&&
    window.KURASHI_RECEIPT_TEST_MODE!==true&&!!endpoint;
@@ -26,7 +26,7 @@
  }
  function status(){return {configured:!!endpoint};}
  async function request(action,payload,options={}){
-   if(action==='record.create'&&!RECEIPT_BATCH_WRITE_ENABLED())
+   if(['record.create','store.create'].includes(action)&&!RECEIPT_BATCH_WRITE_ENABLED())
      throw new Error('RECEIPT_WRITES_DISABLED');
    if(!endpoint)throw new Error('GAS_NOT_CONFIGURED');
    if(action===TRIAL_MAIN_ACTION){
@@ -44,8 +44,8 @@
      'TRIAL_REPLAY_NOT_CONFIRMED':'TRIAL_SECOND_NOT_CONFIRMED');
   }else if(!['bootstrap','sync','product.catalog','product.alias.check','record.list','household.status','record.preflight','record.trial.preflight'].includes(action)){
      if(!MUTATIONS.has(action))throw new Error('UNSUPPORTED');
-     if(action==='record.create'?!RECEIPT_BATCH_WRITE_ENABLED():!LIVE_WRITE_ENABLED)
-       throw new Error(action==='record.create'?'RECEIPT_WRITES_DISABLED':'WRITES_DISABLED');
+     if(['record.create','store.create'].includes(action)?!RECEIPT_BATCH_WRITE_ENABLED():!LIVE_WRITE_ENABLED)
+       throw new Error(['record.create','store.create'].includes(action)?'RECEIPT_WRITES_DISABLED':'WRITES_DISABLED');
      if(!options.operationId||!(/^[a-zA-Z0-9_-]{8,128}$/).test(options.operationId))throw new Error('OPERATION_ID_REQUIRED');
    }
    const token=options.token??window.KurashiAuth?.getToken?.();
