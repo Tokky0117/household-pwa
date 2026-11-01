@@ -63,7 +63,7 @@ assert.doesNotMatch(screen.priceCompareView(),/スーパー青空/);
 const click=dataset=>{
  const control={dataset,hasAttribute(){return false}};
  listeners.click[0]({target:{classList:{contains(){return false}},
-  closest(selector){return selector.includes('[data-')?control:null}},preventDefault(){},stopPropagation(){}});
+  closest(selector){return selector.includes('[data-pedit]')?control:null}},preventDefault(){},stopPropagation(){}});
 };
 click({pedit:'product-A'});
 assert.equal(screen.state().page,'productEdit');
