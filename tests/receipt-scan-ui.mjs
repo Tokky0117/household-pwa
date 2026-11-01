@@ -26,8 +26,8 @@ const ui=vm.runInContext(source+`
 ({receiptView,scanReceiptPhoto,receiptScanReview,savePreviewReceiptScan,savePreviewRecord,deletePreviewRecord,discardReceiptScan,
   state:()=>({receiptScan,receiptScanBusy,previewRecords}),setReceiptTab(){tab='receipt';page='list'}})
 `,ctx);
-assert.match(html,/receipt-ocr\.js\?v=65/);
-assert.match(sw,/receipt-ocr\.js\?v=65/);
+assert.match(html,/receipt-ocr\.js\?v=66/);
+assert.match(sw,/receipt-ocr\.js\?v=66/);
 assert.match(ui.receiptView(),/カメラで撮影/);
 assert.match(ui.receiptView(),/写真を選択/);
 assert.match(ui.receiptView(),/Google Sheetsには未保存/);
@@ -140,8 +140,8 @@ console.log('Manual receipt local storage failure rolls back without false succe
 
 // Same main-PWA receipt confirmation form handles ChatGPT paste, not a second
 // storage path. It cannot convert exclusive-tax values to inclusive by guess.
-assert.match(html,/receipt-chatgpt-import\.js\?v=65/);
-assert.match(sw,/receipt-chatgpt-import\.js\?v=65/);
+assert.match(html,/receipt-chatgpt-import\.js\?v=66/);
+assert.match(sw,/receipt-chatgpt-import\.js\?v=66/);
 assert.match(ui.receiptView(),/ChatGPTの読取結果を貼り付け/);
 const aiInput={
  version:'kurashi-receipt-import-1',purchaseDate:'2026-10-14',storeName:'コノミヤ',
