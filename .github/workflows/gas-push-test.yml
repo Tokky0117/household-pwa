@@ -1,7 +1,10 @@
 name: Push GAS to test project (manual)
-# Manual-only. A single limited source-sync trigger was used for receipt #2.
-# Retain its pinned source checks; no future automatic GAS updates.
+# One authorized source-only sync for the existing isolated test GAS.
+# The push trigger is single-message gated and will be removed immediately.
 on:
+  push:
+    branches: [stage-a-ui-handoff-review]
+    paths: ['.github/workflows/gas-push-test.yml']
   workflow_dispatch:
     inputs:
       confirm_target_backup:
@@ -22,7 +25,7 @@ concurrency:
 
 jobs:
   push-test:
-    if: github.ref == 'refs/heads/stage-a-ui-handoff-review' && inputs.confirm_target_backup == 'BACKUP_DONE' && inputs.confirm_test_source == 'TEST_GAS_UPDATE'
+    if: github.ref == 'refs/heads/stage-a-ui-handoff-review' && ((github.event_name == 'workflow_dispatch' && inputs.confirm_target_backup == 'BACKUP_DONE' && inputs.confirm_test_source == 'TEST_GAS_UPDATE') || (github.event_name == 'push' && github.event.head_commit.message == 'IMPLEMENT9_MAIN_TRIAL_GAS_SOURCE_SYNC_ONCE_20261101'))
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -98,11 +101,11 @@ jobs:
           // Refuse any source/manifest drift since the final read-only audit.
           const crypto=require('node:crypto');
           const digest=text=>crypto.createHash('sha256').update(text).digest('hex');
-          const approvedSource='83a6ee929a4be18f06678d9c154a6f2618b804cb1fb2406b4338fba22bbeb217';
+          const approvedSource='49139f2ba0f1788379415f793fb08f7e1deb4fc08f7dcb3cbf0d1a1c62547672';
           // Verify the remote source is byte-identical to an already-reviewed
           // historical GitHub GAS source, not just a guessed replacement hash.
           const git=require('node:child_process');
-          const baseline='f28cc4cedb0005f371b5cc4b707c87b2061a01c0';
+          const baseline='6637a04e1ed3e7639dcd05fbcc4d7b1703f84acd';
           const history=git.execFileSync('git',['show',baseline+':gas/Code.gs'],{encoding:'utf8'});
           if(digest(history)!==approvedSource)
             throw Error('KNOWN_GITHUB_SOURCE_FINGERPRINT_MISMATCH');
@@ -151,7 +154,7 @@ jobs:
       - name: Back up verified remote source and manifest before replacement
         uses: actions/upload-artifact@v4
         with:
-          name: test-gas-pre-receipt2-${{ github.run_id }}
+          name: test-gas-pre-main-receipt-${{ github.run_id }}
           path: |
             ${{ runner.temp }}/kurashi-test-gas/remote/コード.js
             ${{ runner.temp }}/kurashi-test-gas/remote/appsscript.json
@@ -182,11 +185,12 @@ jobs:
             'approvedPrototypeAliasSheet_','assertAliasEditorTrialIdentity_',
             'runAliasTrialWriteOnce','testAliasCatalogReadOnly','verifyAliasFixtureCommitted_',
             'runReceiptWriteTrialOnce','checkReceiptTrialReadOnly','receiptTrialGuard_',
-            'receiptTrialSecondPayload_',
+            'receiptTrialSecondPayload_','receiptTrialMainCreate_',
             'mutateReceiptSafely_','receiptList_','receiptTrialPage_'];
           if(!required.every(name=>src.includes('function '+name+'(')))
             throw Error('TEST_GAS_SOURCE_VERIFY_FAILED');
-          if(!src.includes("if(action==='record.trial.second.save')")||
+          if(!src.includes("if(action==='record.trial.main.create')")||
+            !src.includes("if(action==='record.trial.second.save')")||
             !src.includes("if(action==='record.trial.preflight')")||
             !src.includes("if(action==='record.create')fail('RECEIPT_WRITES_DISABLED'")||
             !src.includes("if(action==='record.trial.replay')")||
