@@ -787,11 +787,17 @@ function leaveRemoteView(message='未取得'){
 // Stop presenting a pending read when the user navigates away. The HTTP
 // request may still finish, but its response is invalidated immediately.
 function abandonLiveReadOnNavigation(){
- if(!liveBusy||liveWriteBusy)return;
+ if(!liveBusy||liveWriteBusy||automaticLiveRead)return;
  liveSessionEpoch++;
  liveRequestSubject=null;
  liveBusy=false;
  liveStatus='画面切替により読み取りを中断しました';
+}
+let automaticLiveRead=false;
+function maybeLoadHousehold(auth=window.KurashiAuth?.status?.()){
+ if(auth?.signedIn!==true||!auth.subject||liveBusy||liveWriteBusy||
+    liveSnapshot&&liveOwnerSubject===auth.subject||liveStatus.startsWith('取得失敗：'))return;
+ void refreshLive({background:true});
 }
 function onLiveAuthChange(auth){
  const mismatch=auth?.signedIn!==true||
@@ -811,6 +817,7 @@ function onLiveAuthChange(auth){
  if(receiptMismatch)clearRemoteReceipts('Googleログインが必要です');
  if(mismatch)leaveRemoteView('Googleログインが必要です');
  if(wasShowingRemote&&mismatch||hadHousehold||hadReceipts)render();
+ maybeLoadHousehold(auth);
 }
 function livePending(){
  const subject=window.KurashiAuth?.status?.()?.subject;
@@ -1086,27 +1093,28 @@ function liveListView(){
   ${liveRecoveryView()}${liveEditForm()}${liveProductForm()}
   <div id="item-results">${rows}</div>${listHelpView()}
   ${uncategorized.length?'<p class="hint">未分類の商品：'+esc(uncategorized.map(p=>p.name).join('、'))+'</p>':''}
-  <div class="record-entry-actions"><button type="button" class="secondary" data-act="refreshLive" ${liveBusy?'disabled':''}>再読み込み</button><button type="button" class="secondary" data-act="addLiveProduct" ${canEdit?'':'disabled'}>商品を登録</button></div>
+  ${failed?'<button type="button" class="secondary" data-act="refreshLive">接続を再試行</button>':''}
   </main>${nav()}`;
 }
-async function refreshLive(){
+async function refreshLive({background=false}={}){
  if(liveBusy||liveWriteBusy)return;
  const auth=window.KurashiAuth?.status?.();
  if(!auth?.signedIn||!auth.subject){liveStatus='Googleログインが必要です';render();return}
  const epoch=++liveSessionEpoch,subject=auth.subject,requestTab=tab,requestPage=page;
- liveRequestSubject=subject;
+ liveRequestSubject=subject;automaticLiveRead=background;
  liveBusy=true;liveStatus='取得中';render();
  try{
   const data=await window.KurashiGasApi.request('bootstrap');
   // Never steal focus or restore a read after leaving its original screen.
-  if(!sameLiveSession(subject,epoch)||tab!==requestTab||page!==requestPage)return;
+  if(!sameLiveSession(subject,epoch)||(!background&&(tab!==requestTab||page!==requestPage)))return;
   if(!validateLiveSnapshot(data))throw Error('RESPONSE_SHAPE_INVALID');
   liveSnapshot=data;liveOwnerSubject=subject;liveMode=true;
-  liveStatus='取得成功';tab='items';page='list';selected=null;openSwipeId=null;
+  liveStatus='取得成功';
+  if(!background){tab='items';page='list';selected=null;openSwipeId=null;}
  }catch(err){
   if(sameLiveSession(subject,epoch))liveStatus='取得失敗：'+liveReadErrorMessage(err);
  }finally{
-  if(epoch===liveSessionEpoch){liveRequestSubject=null;liveBusy=false;render()}
+  if(epoch===liveSessionEpoch){liveRequestSubject=null;liveBusy=false;automaticLiveRead=false;render()}
  }
 }
 let items=load(),tab='items',page='list',selected=null,query='',onlyOut=false,collapsed=new Set(),menu=false,dialog=null,toast='',period='1y',priceScope='product',periodMenu=false;
@@ -1214,14 +1222,19 @@ function listHelpView(){
 }
 function listView(){
  if(liveMode)return liveListView();
- const copy='<button type="button" class="iconbtn" disabled aria-label="在庫なしをコピー">'+miniIcon('copy')+'</button>';
- const add='<button type="button" class="iconbtn" disabled aria-label="日用品を追加">'+miniIcon('plus')+'</button>';
+ // Same original list shell before the first authenticated read. Do not show
+ // demo inventory or require a manual "read Sheets" button.
  const signedIn=window.KurashiAuth?.status?.()?.signedIn===true;
+ const copy='<button type="button" class="iconbtn" disabled aria-label="在庫なしをコピー">'+miniIcon('copy')+'</button>';
+ const add='<button type="button" class="iconbtn" data-act="addLive" aria-label="日用品を追加" title="日用品を追加">'+miniIcon('plus')+'</button>';
+ const failed=liveStatus.startsWith('取得失敗：');
+ const status=failed?liveStatus:signedIn?'家庭の日用品を読み込み中…':'設定からGoogleログインしてください。';
  return `${head('日用品','くらしストック',false,add,copy)}<main>
-  ${UI.searchField({id:'search',label:'日用品を検索',placeholder:'日用品を検索',value:'',extra:'disabled'})}
-  <div class="filterrow"><label class="switchlabel"><input type="checkbox" disabled>在庫なしのみ表示</label></div>
-  <p class="hint" role="status">${signedIn?'Google Sheetsから日用品を読み込んでください。':'設定からGoogleアカウントでログインしてください。'}</p>
-  <button type="button" class="secondary" data-act="refreshLive" ${signedIn&&!liveBusy?'':'disabled'}>${liveBusy?'読み込み中…':'再読み込み'}</button>
+  ${UI.searchField({id:'search',label:'日用品を検索',placeholder:'日用品を検索',value:query,extra:'autocomplete="off"'})}
+  <div class="filterrow"><label class="switchlabel"><input type="checkbox" id="onlyOut" ${onlyOut?'checked':''}>在庫なしのみ表示</label></div>
+  ${status?'<p class="hint" role="status">'+esc(status)+'</p>':''}
+  ${failed&&signedIn?'<button type="button" class="secondary" data-act="refreshLive">接続を再試行</button>':''}
+  <div id="item-results">${liveListResults()}</div>${listHelpView()}
  </main>${nav()}`;
 }
 function priceCompareView(){
@@ -1401,9 +1414,8 @@ function settingsView(){
  <p class="hint">${auth.signedIn?'家庭共通のGoogle Sheetsに接続できます。':'Googleアカウントでログインしてください。'}</p>
  ${auth.signedIn?'<button type="button" class="secondary" data-act="googleSignOut">ログアウト</button>':auth.configured?'<div id="google-login-button"></div>':'<p>ログインを設定できませんでした。</p>'}</section>`;
  return `${head('設定','くらしストック')}<main>${loginPanel}
- <section class="panel"><h2>Google Sheets</h2><p class="hint" role="status">状態：${esc(liveStatus)}</p>
- <button class="secondary" data-act="refreshLive" style="width:100%" ${auth.signedIn&&!liveBusy?'':'disabled'}>${liveBusy?'読み取り中…':'日用品・商品・店舗を読み取る'}</button>
- <p class="hint">保存は既存の家庭用Google Sheetsに行います。通信が不明な場合は同じ操作IDで確認・再送します。</p></section>
+ <section class="panel"><h2>Google Sheets</h2><p class="hint" role="status">${esc(auth.signedIn?(liveStatus==='取得成功'?'家庭データに接続済み':liveBusy?'家庭データを同期中…':liveStatus):'ログイン後に自動接続します')}</p>
+ ${auth.signedIn&&liveStatus.startsWith('取得失敗：')?'<button type="button" class="secondary" data-act="refreshLive">接続を再試行</button>':''}</section>
  ${householdCheckView(auth)}</main>${nav()}`;
 }
 // All confirmation dialogs share one DOM and CSS. A Japanese full stop ends a paragraph line.
@@ -1684,7 +1696,11 @@ if(el.dataset.uiChoice!==undefined){
 }
 if(el.dataset.listEdit){duplicateItemId=null;selected=el.dataset.listEdit;editReturnPage='list';openSwipeId=null;page='edit';render();return}if(el.dataset.listHide){selected=el.dataset.listHide;setOpenSwipe(null);dialog={title:'日用品を削除',message:'日用品リストから削除します。',buttons:[{id:'cancel',label:'キャンセル'},{id:'confirmHide',label:'削除',critical:true}]};render();return}
 if(el.dataset.act==='retryLive'){retryLive();return}
-if(el.dataset.act==='addLive'){openLiveEditor(null);return}
+if(el.dataset.act==='addLive'){
+ if(!window.KurashiAuth?.status?.()?.signedIn){tab='settings';page='list';render();return}
+ if(!liveSnapshot){if(!liveBusy)maybeLoadHousehold();say(liveStatus.startsWith('取得失敗：')?'設定から接続を再試行してください':'家庭データを読み込み中です');return}
+ openLiveEditor(null);return
+}
  if(el.dataset.act==='copyLiveList'){
   const contents=CATS.map((cat,i)=>{
    const rows=(liveSnapshot?.item_groups||[]).filter(x=>
@@ -2097,6 +2113,7 @@ app.addEventListener('touchcancel',e=>{
 
 // A Google account change must clear private remote data immediately.
 window.KurashiAuth?.subscribe?.(onLiveAuthChange);
+maybeLoadHousehold();
 window.addEventListener?.('focus',()=>onLiveAuthChange(window.KurashiAuth?.status?.()));
 document.addEventListener?.('visibilitychange',()=>{
  if(!document.hidden)onLiveAuthChange(window.KurashiAuth?.status?.());
