@@ -103,6 +103,61 @@ assert.equal(request('household.status').error.code,'HOUSEHOLD_MEMBERSHIP_INVALI
  'A user ID must be unique across households');
 books.users.pop();
 
+
+// Read-only save preflight: correct household/catalog, no mutation, no
+// provisional "write permitted" status and no untrusted household ID.
+books.processed_operations=[
+ ['household_id','operation_id','request_hash','result','processed_at']
+];
+const preflightPayload={
+ version:'receipt-create-1',record_type:'receipt',chain_id:'s-a',
+ record_date:'2026-10-14',branch_name:null,raw_store_name:'A chain',
+ items:[{line_order:1,raw_name:'牛乳',product_id:'p-a',quantity:1,
+  amount_tax_included:198,category_id:0,price_eligible:false},
+ {line_order:2,raw_name:'卵',product_id:null,quantity:2,
+  amount_tax_included:398,category_id:0,price_eligible:false}]
+};
+let preflight=request('record.preflight',preflightPayload);
+assert.equal(preflight.ok,true);
+assert.equal(preflight.data.household_id,'h-a');
+assert.equal(preflight.data.total_tax_included,596);
+assert.equal(preflight.data.item_count,2);
+assert.equal(preflight.data.member_count,2);
+assert.equal(preflight.data.blocked_by_pending_operation,false);
+assert.equal(preflight.data.write_enabled,false);
+assert.equal(writeCalls,0,'Preflight cannot mutate Sheets');
+claims.sub='subject-a2';
+const spousePreflight=request('record.preflight',preflightPayload);
+assert.equal(spousePreflight.ok,true);
+assert.equal(spousePreflight.data.household_id,preflight.data.household_id);
+assert.equal(spousePreflight.data.total_tax_included,preflight.data.total_tax_included);
+assert.equal(spousePreflight.data.member_count,preflight.data.member_count);
+claims.sub='subject-b';
+assert.equal(request('record.preflight',preflightPayload).error.code,'NOT_FOUND');
+claims.sub='subject-a';
+assert.equal(request('record.preflight',{...preflightPayload,household_id:'h-b'}).error.code,'BAD_REQUEST');
+assert.equal(request('record.preflight',{...preflightPayload,chain_id:'s-b'}).error.code,'NOT_FOUND');
+assert.equal(request('record.preflight',{...preflightPayload,items:[
+ {...preflightPayload.items[0],product_id:'p-b'}]}).error.code,'NOT_FOUND');
+assert.equal(request('record.preflight',{...preflightPayload,items:[
+ {...preflightPayload.items[0],amount_tax_included:-1}]}).error.code,'BAD_REQUEST');
+// Existing completed item and alias journals have no status field.
+books.processed_operations.push(['h-a','item-completed','digest',
+ JSON.stringify({entity:{item_group_id:'i-a'},sequence_no:2}),'']);
+preflight=request('record.preflight',preflightPayload);
+assert.equal(preflight.ok,true,'Past successful item mutation must not block receipts');
+books.processed_operations.push(['h-a','receipt-incomplete','digest',
+ JSON.stringify({status:'prepared',action:'record.create'}),'']);
+preflight=request('record.preflight',preflightPayload);
+assert.equal(preflight.ok,true);
+assert.equal(preflight.data.blocked_by_pending_operation,true);
+books.processed_operations.pop();
+books.processed_operations.push(['h-a','bad-journal','digest','{bad json','']);
+assert.equal(request('record.preflight',preflightPayload).error.code,'RECOVERY_CONFLICT');
+books.processed_operations.pop();
+books.processed_operations.pop();
+assert.equal(writeCalls,0,'No test preflight may write');
+
 const catalogReadStart=spreadsheetOpens;
 let catalog=request('product.catalog',{householdId:'h-b'});
 assert.equal(spreadsheetOpens-catalogReadStart,1);
