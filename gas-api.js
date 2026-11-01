@@ -30,7 +30,7 @@
       typeof payload!=='object'||Array.isArray(payload)||
       Object.keys(payload).length||options.operationId!==undefined)
     throw new Error('TRIAL_REPLAY_NOT_CONFIRMED');
-  }else if(!['bootstrap','sync','product.catalog','product.alias.check','record.list','household.status','record.preflight'].includes(action)){
+  }else if(!['bootstrap','sync','product.catalog','product.alias.check','record.list','household.status','record.preflight','record.trial.preflight'].includes(action)){
      if(!MUTATIONS.has(action))throw new Error('UNSUPPORTED');
      if(action==='record.create'?!RECEIPT_BATCH_WRITE_ENABLED:!LIVE_WRITE_ENABLED)
        throw new Error(action==='record.create'?'RECEIPT_WRITES_DISABLED':'WRITES_DISABLED');
