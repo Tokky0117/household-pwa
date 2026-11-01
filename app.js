@@ -142,6 +142,11 @@ async function loadReceiptCatalog(){
 }
 async function saveConfirmedReceiptToSheets(approvals){
  if(!receiptRemoteWritable()||receiptSaveBusy)return;
+ const existing=window.KurashiReceiptJournal?.read?.();
+ if(existing){
+  receiptScan.status='結果不明の保存操作があります。同じ操作を再送して確認してください。';
+  render();return;
+ }
  const auth=window.KurashiAuth?.status?.(),catalog=currentReceiptCatalog();
  if(!catalog){
   receiptScan.status='家庭の店舗・商品を読み取れていません。再読み込み後に確認してください。';
@@ -670,6 +675,9 @@ function onLiveAuthChange(auth){
  const receiptMismatch=remoteReceiptSubject!==null&&
   (auth?.signedIn!==true||auth.subject!==remoteReceiptSubject);
  const wasShowingRemote=!!liveSnapshot||liveMode||!!liveEditor;
+ if(receiptCatalogSubject!==null&&
+    (auth?.signedIn!==true||auth.subject!==receiptCatalogSubject))
+  invalidateReceiptCatalog();
  const hadHousehold=householdMismatch&&(!!householdCheck||householdCheckBusy);
  const hadReceipts=receiptMismatch&&(!!remoteReceipts||remoteReceiptBusy);
  if(householdMismatch)clearHouseholdCheck('Googleログインが必要です');
@@ -1113,7 +1121,7 @@ function receiptView(){
  }).join('');
  return `<details class="panel preview-record-row"><summary><strong>${esc(r.record_type==='receipt'?'レシート':'値札')} · ${esc(r.record_date)}</strong><span>${esc(chainLabel(r.chain_id))} ／ ${lines.length}明細 ／ ${yen(sum)}</span></summary><ul class="receipt-record-lines">${details}</ul><button type="button" class="secondary danger" data-act="deletePreviewReceipt" data-record-id="${esc(r.record_id)}">この試作記録を削除</button></details>`;
  }).join('')||'<div class="empty">この端末の記録はまだありません</div>';
- return `${head('レシート','くらしストック')}<main class="preview-record-page"><p class="sample-price-notice">レシート確認期間中、開発版のGoogleログインは一時停止しています。読み取り結果は端末内の試作データのみです。GAS・Sheets・夫婦間同期は未接続です。</p><section class="panel receipt-scan-start"><h2>レシート写真を読み込む</h2><p class="hint">OCR実行時のみ無料の認識ライブラリ・日本語データをネットから取得します。写真そのものは送信・保存しません。通信がない場合は手入力できます。</p><div class="record-entry-actions"><button type="button" class="secondary" data-act="scanReceiptCamera">カメラで撮影</button><button type="button" class="secondary" data-act="scanReceiptPhoto">写真を選択</button></div><input id="receipt-camera" type="file" accept="image/jpeg,image/png,image/webp" capture="environment" hidden><input id="receipt-photo" type="file" accept="image/jpeg,image/png,image/webp" hidden></section>
+ return `${head('レシート','くらしストック')}<main class="preview-record-page"><p class="sample-price-notice">${receiptRemoteWritable()?'Google Sheetsへの保存を準備しています。家庭の登録済み店舗・商品を確認し、明細の確認後に保存します。':'現在のレシート保存先はこのSafari内の試作記録です。開発プレビューはGoogleログインを使用しません。'}</p><section class="panel receipt-scan-start"><h2>レシート写真を読み込む</h2><p class="hint">OCR実行時のみ無料の認識ライブラリ・日本語データをネットから取得します。写真そのものは送信・保存しません。通信がない場合は手入力できます。</p><div class="record-entry-actions"><button type="button" class="secondary" data-act="scanReceiptCamera">カメラで撮影</button><button type="button" class="secondary" data-act="scanReceiptPhoto">写真を選択</button></div><input id="receipt-camera" type="file" accept="image/jpeg,image/png,image/webp" capture="environment" hidden><input id="receipt-photo" type="file" accept="image/jpeg,image/png,image/webp" hidden></section>
  <section class="panel receipt-chatgpt-import"><h2>ChatGPTの読取結果を貼り付け</h2>
  <p class="hint">普段は夫婦共通のChatGPTプロジェクトに写真だけ送信し、返されたJSONをここへ貼り付けます。画像の送信はご自身で行ってください。指示文のコピーは予備です。</p>
  <button type="button" class="secondary" data-act="copyChatGptPrompt">読取指示文をコピー（予備）</button>
@@ -1168,6 +1176,9 @@ function pageView(){
 }
 function render(){
  const authForCheck=window.KurashiAuth?.status?.();
+ if(receiptCatalogSubject!==null&&
+    (authForCheck?.signedIn!==true||authForCheck.subject!==receiptCatalogSubject))
+  invalidateReceiptCatalog();
  if(householdCheckSubject!==null&&
     (authForCheck?.signedIn!==true||authForCheck.subject!==householdCheckSubject))
   clearHouseholdCheck('Googleログインが必要です');
@@ -1372,6 +1383,14 @@ if(form.id==='receiptScanForm'){
   fieldNotice(form,'税込・税別・値引きと支払合計を確認してチェックしてください','scan-chain');return;
  }
  receiptScanFormValues();
+ if(receiptRemoteWritable()){
+  saveConfirmedReceiptToSheets({
+   receiptReviewed:true,
+   totalsReviewed:d.get('totalsChecked')==='yes',
+   taxResolved:d.get('taxResolved')==='yes'
+  });
+  return;
+ }
  if(!savePreviewReceiptScan(receiptScan)){fieldNotice(form,'チェーン・日付・各明細の品名・数量・税込金額を確認してください','scan-chain');return}
  discardReceiptScan();page='list';tab='receipt';render();say('このSafariに試作保存しました。Google Sheetsには保存していません。');return;
 }
@@ -1431,9 +1450,12 @@ if(liveMode&&tab==='items'&&page==='list'&&!el.dataset.tab){return}
 if(el.dataset.tab){if(el.dataset.tab!==tab||page!=='list')abandonLiveReadOnNavigation();if(el.dataset.tab!=='receipt'&&tab==='receipt'){
  discardReceiptScan();receiptChatGptText='';receiptChatGptNotice='';
  clearRemoteReceipts();
+ invalidateReceiptCatalog();
 }
 if(el.dataset.tab!=='settings'&&tab==='settings')clearHouseholdCheck();
-tab=el.dataset.tab;page='list';openSwipeId=null;menu=false;render();return}if(el.dataset.cat!==undefined){if(onlyOut)return;const c=Number(el.dataset.cat);collapsed.has(c)?collapsed.delete(c):collapsed.add(c);render();return}if(el.dataset.stock){const i=items.find(x=>x.id===el.dataset.stock);i.inStock=!i.inStock;i.version++;persist();render();return}if(el.dataset.open){if(openSwipeId){setOpenSwipe(null);return}listScrollPosition=window.scrollY;selected=el.dataset.open;page='compare';period='1y';priceScope='product';initializeCompare();periodMenu=false;menu=false;openSwipeId=null;render();return}if(el.dataset.pedit){openSwipeId=null;const p=catalogue.products.find(x=>x.id===el.dataset.pedit);if(p&&p.itemGroupId===selected){editingProductId=p.id;page='productEdit';render()}return}
+tab=el.dataset.tab;page='list';openSwipeId=null;menu=false;render();
+if(tab==='receipt'&&receiptRemoteWritable())loadReceiptCatalog();
+return}if(el.dataset.cat!==undefined){if(onlyOut)return;const c=Number(el.dataset.cat);collapsed.has(c)?collapsed.delete(c):collapsed.add(c);render();return}if(el.dataset.stock){const i=items.find(x=>x.id===el.dataset.stock);i.inStock=!i.inStock;i.version++;persist();render();return}if(el.dataset.open){if(openSwipeId){setOpenSwipe(null);return}listScrollPosition=window.scrollY;selected=el.dataset.open;page='compare';period='1y';priceScope='product';initializeCompare();periodMenu=false;menu=false;openSwipeId=null;render();return}if(el.dataset.pedit){openSwipeId=null;const p=catalogue.products.find(x=>x.id===el.dataset.pedit);if(p&&p.itemGroupId===selected){editingProductId=p.id;page='productEdit';render()}return}
 if(el.dataset.premove){openSwipeId=null;
  const p=catalogue.products.find(x=>x.id===el.dataset.premove);
  if(p&&p.itemGroupId===selected){dialog={title:'商品の登録解除',message:`「${productTitle(p)}」の登録を解除します。過去の最安値集計対象からも外れます。`,buttons:[{id:'cancel',label:'キャンセル'},{id:'confirmProductUnlink',label:'解除する',critical:true}],pending:{productId:p.id}};renderDialogOnly()}return;
