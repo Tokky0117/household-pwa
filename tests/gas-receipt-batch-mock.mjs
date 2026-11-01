@@ -709,7 +709,7 @@ for(const phase of ['journal.prepare','stores','change','journal.complete']){
   const journal=t.rowObjects('processed_operations').find(x=>x.operation_id===id);
   if(journal&&JSON.parse(journal.result).status==='prepared')
    assert.throws(()=>t.mock.mutateReceiptSafely_(t.homeA,mainCandidate,
-    'receipt-after-store-fault'),e=>e.code==='RECOVERY_REQUIRED');
+    'receipt-after-store-fault',true),e=>e.code==='RECOVERY_REQUIRED');
   const done=t.mock.mutateStoreSafely_(t.homeA,data,id);
   assert.equal(done.status,'completed');
   const count=t.writes;
