@@ -6,6 +6,14 @@
 
 
 
+## 2026-11-01：1回限りの2件目・固定架空レシート保存API（試験用）
+
+- `record.trial.second.save` は既存の試験家庭だけの**例外的な認証付きPOST**。本文 `payload={}` かつ `operation_id` なしに限定し、試験の2件目458円・2明細と同じ操作IDをGAS側で固定する。 `receiptTrialGuard_` の固定されたSheet・完成した1件目・合法なジャーナル以外では実行拒否。
+- 応答は `{status:"completed",replayed:boolean,records:2,items:4,amount:458}` のみ。完了応答が消えた場合は**自動再送せず**、画面の⑥で認証付き読み取りをやり直し、⑨を明示再操作した時だけ同じIDで再送。再起動・通信失敗によって新しい操作IDは発行されない。
+- 既存の `record.trial.preflight` は任意候補の**読み取り専用検査**、`record.trial.replay` は最初の1件の完了済み再送、`record.trial.second.save` は2件目の固定1回保存のみ。これらを通常の `record.create` や夫婦共有家庭の書き込み許可と混同しない。
+- 今回の変更はGitHub開発ブランチのコードとオフラインテストのみ。試験GAS反映・Webアプリ再デプロイ・実シートの2件目保存は未実施。
+
+
 ## 2026-11-01：試験限定の任意レシート明細・保存前照合
 
 - `record.trial.preflight` は既存の試験用GAS・同一の固定シートに限る**認証付き・読み取り専用POST**。Google認証した試験ユーザー・ピン留め済みSheet・既存固定レシートの完了記録を確認後、1〜30件の `receipt-create-1` 候補を既存 `receiptPreflight_` へ渡して家庭の店舗・商品・カテゴリ・数量・税込合計・未完了の操作記録を照合する。
