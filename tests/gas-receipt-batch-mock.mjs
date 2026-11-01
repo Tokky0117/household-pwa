@@ -39,6 +39,8 @@ function harness(editorTrial=false){
   ['p-B','house-B','','別商品','別商品','','',1,1,'','','']);
  if(editorTrial){
   // Model the already known prototype fixture; no real Sheet is accessed.
+  data.categories.splice(1,data.categories.length-1,
+   ...['飲食','キッチン','洗面・風呂','洗濯・掃除','その他'].map((name,i)=>[i,name,i+1]));
   data.households.splice(2);
   data.users.splice(2);
   data.stores.splice(1,data.stores.length-1,
