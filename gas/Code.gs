@@ -268,6 +268,9 @@ function doPost(e){
    if(action==='product.catalog')return jsonReply({ok:true,data:productCatalog_(user,readContext.book)});
    if(action==='product.alias.check')return jsonReply({ok:true,data:productAliasCheck_(user,payload,readContext.book)});
   if(action==='sync')return jsonReply({ok:true,data:changes(user,payload,readContext.book)});
+  // Deliberate hard gate: receipt parent+child writes have no recovery journal yet.
+  // Even enabling ENABLE_EXPERIMENTAL_WRITES must never enable this endpoint.
+  if(action==='record.create')fail('RECEIPT_WRITES_DISABLED','レシート一括保存は安全検証中です');
   if(!['item.create','item.update','product.create','product.update','product.move','product.alias.create'].includes(action))fail('UNSUPPORTED','未対応の操作です');
   return jsonReply({ok:true,data:mutate_(user,action,payload,input.operation_id)});
  }catch(err){
