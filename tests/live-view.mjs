@@ -40,7 +40,7 @@ const context={window:{
  crypto:{randomUUID:()=> 'mock-uuid'},setTimeout(){return 1},clearTimeout(){},
  Date,Intl,URL,console};
 const ctx=vm.createContext(context);
-const api=vm.runInContext(source+'\n({listView,liveListView,settingsView,render,'+
+const api=vm.runInContext(source+'\n({listView,listView,settingsView,render,'+
  'refreshLive,onLiveAuthChange,maybeLoadHousehold,'+
  'state:()=>({liveMode,liveSnapshot,liveBusy,liveStatus,tab,page,liveEditor})})',ctx);
 // A logged-in user receives one automatic bootstrap without tapping "read".
@@ -54,10 +54,11 @@ assert.match(view,/日用品を検索/);
 assert.match(view,/在庫なしのみ表示/);
 assert.match(view,/class="category"/);
 assert.match(view,/家庭の牛乳/);
-assert.match(view,/家庭商品home-A/);
+assert.match(view,/価格記録なし/);
 assert.match(view,/data-act="addLive"/);
-assert.match(view,/data-act="stockLive"/);
-assert.match(view,/data-act="editLive"/);
+assert.match(view,/data-stock="group-home-A"/);
+assert.match(view,/data-list-edit="group-home-A"/);
+assert.match(view,/data-open="group-home-A"/);
 assert.doesNotMatch(view,/ローカル牛乳/);
 assert.doesNotMatch(view,/Google Sheetsから読み取る|Google Sheetsから日用品を読み取る/);
 assert.doesNotMatch(view,/data-act="refreshLive"/,'Normal list has no manual read control');
@@ -127,8 +128,9 @@ many.products.push({product_id:'deleted',household_id:'home-C',
 fetch=async()=>many;
 await api.refreshLive({background:true});
 const before=associationReads;
-const largeView=api.liveListView();
-assert.equal(associationReads-before,400);
-assert.match(largeView,/商品0、商品80、商品160、商品240、商品320/);
+const largeView=api.listView();
+assert.equal(associationReads-before,0,'Inventory summary must not repeatedly read product mappings');
+assert.match(largeView,/日用品0/);
+assert.match(largeView,/価格記録なし/);
 assert.doesNotMatch(largeView,/削除済み商品/);
 console.log('Household daily UI PASS: auto-read, original + and stock UI, no fake data, auth isolation, failure recovery and linear rendering');
