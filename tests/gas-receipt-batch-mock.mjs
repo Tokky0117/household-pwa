@@ -735,6 +735,7 @@ for(const phase of ['journal.prepare','stores','change','journal.complete']){
 // stock update must not require any fixed receipt test button or extra Sheet.
 {
  const t=fullTrial();
+ t.data.users.push(['u-A2','house-A','Spouse','1234567891']);
  t.mock.ContentService={MimeType:{JSON:'application/json'},
   createTextOutput(content){return {setMimeType(){return this},
    getContent(){return content}}}};
