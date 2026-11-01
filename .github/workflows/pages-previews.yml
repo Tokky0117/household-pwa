@@ -67,6 +67,14 @@ jobs:
             [[ -n "$slug" ]] || continue
             dest="_site/previews/$slug"
             if copy_site "refs/remotes/$remote_ref" "$dest"; then
+              # The daily-use staging PWA must not ship the former trial,
+              # connection-diagnostic or GAS-source URLs.
+              if [[ "$branch" == "stage-a-ui-handoff-review" ]]; then
+                rm -f "$dest/gas-setup.html" "$dest/gas-trial-setup.html" \
+                  "$dest/gas-trial-connection.html" "$dest/gas-connection-test.html" \
+                  "$dest/gas/Code.gs"
+              fi
+
               # Scope the Service Worker cache per preview to avoid cross-branch conflicts.
               if [[ -f "$dest/sw.js" ]]; then
                 # Keep the branch's own cache version, but namespace its preview.
