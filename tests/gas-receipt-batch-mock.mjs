@@ -55,12 +55,13 @@ function harness(editorTrial=false){
   data.change_log.push(['alias-trial-create-00000001',1,'house-A',
    'product_aliases','test-alias-01','product.alias.create','']);
  }
- let count=0,fault=null,locked=false,uuidCounter=0,enableReceipt=!editorTrial,writes=[];
+ let count=0,readCount=0,fault=null,locked=false,uuidCounter=0,
+  enableReceipt=!editorTrial,writes=[];
  const workbook={getSheetByName(name){
   const table=data[name];if(!table)throw Error('missing '+name);
   return {
    getLastRow(){return table.length},
-   getDataRange(){return {getValues(){return table.map(row=>row.slice())}}},
+   getDataRange(){readCount++;return {getValues(){return table.map(row=>row.slice())}}},
    getRange(row,col,height,width){return {
     getValues(){return Array.from({length:height},(_,i)=>table[row-1+i].slice(col-1,col-1+width))},
     setValues(values){
@@ -124,6 +125,7 @@ function harness(editorTrial=false){
   read(user=homeA){return JSON.parse(JSON.stringify(mock.receiptList_(user,workbook)))},
   stop(phase,when){fault={phase,when}},
   get writes(){return count},
+  get reads(){return readCount},
   get locked(){return locked},
   get phases(){return writes.slice()},
   setWriteGate(allow){enableReceipt=allow}
@@ -566,6 +568,9 @@ const laterPayload=i=>({
 }
 {
  const t=fullTrial();
+ const readAt2=t.reads;
+ t.mock.receiptTrialGuard_(t.mock.spreadsheet());
+ const readsForTwo=t.reads-readAt2;
  for(let i=1;i<=20;i++){
   const id=laterId(i),p=laterPayload(i);
   const saved=t.mock.receiptTrialMainCreate_(t.homeA,p,id);
@@ -573,7 +578,11 @@ const laterPayload=i=>({
  }
  assert.equal(t.rowObjects('records').length,22);
  assert.equal(t.rowObjects('record_items').length,44);
+ const beforeFullGuard=t.reads;
  assert.equal(t.mock.receiptTrialGuard_(t.mock.spreadsheet()).generalCount,20);
+ const readsForTwentyTwo=t.reads-beforeFullGuard;
+ assert.ok(readsForTwentyTwo<=readsForTwo+3,
+  'Guard verifies 22 receipts without re-reading Sheets per receipt');
  assert.equal(t.read(t.spouse).records.length,22);
  assert.equal(t.read(t.other).records.length,0);
  const count=t.writes;
