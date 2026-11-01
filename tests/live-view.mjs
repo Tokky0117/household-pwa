@@ -163,7 +163,7 @@ assert.match(largeView,/日用品0/);
 assert.match(largeView,/価格記録なし/);
 assert.doesNotMatch(largeView,/削除済み商品/);
 // Same original long-press UI now creates a full-sibling, versioned batch.
-window.KurashiGasApi.writeEnabled=()=>true;
+ctx.window.KurashiGasApi.writeEnabled=()=>true;
 const ordering=snapshot('home-C','分類0');
 ordering.item_groups=[
  {item_group_id:'a',household_id:'home-C',category_id:0,name:'A',sort_order:1,version:4,in_stock:true},
