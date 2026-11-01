@@ -62,6 +62,27 @@ assert.match(view,/data-open="group-home-A"/);
 assert.doesNotMatch(view,/ローカル牛乳/);
 assert.doesNotMatch(view,/Google Sheetsから読み取る|Google Sheetsから日用品を読み取る/);
 assert.doesNotMatch(view,/data-act="refreshLive"/,'Normal list has no manual read control');
+const detail=vm.runInContext("selected='group-home-A';page='compare';priceCompareView()",ctx);
+assert.match(detail,/価格情報/);
+assert.match(detail,/家庭商品home-A/);
+assert.doesNotMatch(detail,/おいしい牛乳|スーパー青空/,'Demo catalogue must never be shown');
+const pickerClick={dataset:{act:'productPick'},hasAttribute:()=>false};
+listeners.click[0]({target:{classList:{contains(){return false}},closest(selector){
+ return selector.includes('[data-act]')?pickerClick:null
+ }},preventDefault(){},stopPropagation(){}});
+assert.equal(api.state().page,'productPick');
+assert.match(app.innerHTML,/商品を検索/);
+assert.match(app.innerHTML,/家庭商品home-A/);
+assert.doesNotMatch(app.innerHTML,/スーパー青空/);
+const createClick={dataset:{act:'productCreate'},hasAttribute:()=>false};
+listeners.click[0]({target:{classList:{contains(){return false}},closest(selector){
+ return selector.includes('[data-act]')?createClick:null
+ }},preventDefault(){},stopPropagation(){}});
+assert.equal(api.state().page,'productCreate');
+assert.match(app.innerHTML,/id="productCreateForm"/);
+vm.runInContext("selected=null;page='list';",ctx);
+api.render();
+
 assert.doesNotMatch(api.settingsView(),/日用品・商品・店舗を読み取る/);
 assert.equal(storage.get('household_pwa_ui_v3').includes('ローカル牛乳'),true,
  'Existing local data remain untouched but inaccessible in daily view');
