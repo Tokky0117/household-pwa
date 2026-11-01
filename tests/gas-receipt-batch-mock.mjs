@@ -311,4 +311,53 @@ for(const phase of faults)for(const when of ['before','after']){
   e=>e.code==='RECOVERY_CONFLICT',
   'Different receipt data must never be accepted as a test fixture');
 }
-console.log('GAS receipt batch 12 fault cases, editor trial, replay and scope PASS');
+// Twelve failure boundaries for SECOND fixed receipt, after the known first
+// fixture has been completed. The same ID must recover partial Sheet writes.
+for(const phase of ['journal.prepare','parent','child-3','child-4','change','journal.complete']){
+ for(const when of ['before','after']){
+  const t=harness(true);
+  const first=t.mock.runReceiptWriteTrialOnce();
+  assert.equal(first.ok,true);
+  const second=t.mock.receiptTrialSecondPayload_(),secondId='receipt-trial-create-00000002';
+  t.stop(phase,when);
+  assert.throws(()=>t.mock.mutateReceiptSafely_(t.homeA,second,secondId,true),
+   new RegExp('INJECTED_'+phase+'_'+when));
+  assert.equal(t.locked,false,'Second trial failure releases script lock');
+  assert.equal(t.read(t.spouse).records.length,
+   phase==='journal.complete'&&when==='after'?2:1,
+   'Only completed second journal can be visible to spouse');
+  assert.equal(t.read(t.other).records.length,0);
+  const completed=t.mock.mutateReceiptSafely_(t.homeA,second,secondId,true);
+  assert.equal(completed.status,'completed');
+  const writeCount=t.writes;
+  assert.equal(t.mock.mutateReceiptSafely_(t.homeA,second,secondId,true).entity.record_id,
+   completed.entity.record_id);
+  assert.equal(t.writes,writeCount,'Second replay must never write twice');
+  assert.equal(t.rowObjects('records').length,2);
+  assert.equal(t.rowObjects('record_items').length,4);
+  assert.equal(t.rowObjects('change_log').length,3);
+  assert.equal(t.rowObjects('processed_operations').length,3);
+  assert.equal(t.mock.receiptTrialGuard_(t.mock.spreadsheet()).secondCompleted,true);
+  assert.equal(t.read(t.spouse).records.length,2);
+  assert.equal(t.read(t.other).records.length,0);
+  assert.equal(t.mock.runReceiptWriteTrialOnce().ok,true,
+   'Existing first receipt replay survives second recovery');
+  assert.equal(t.writes,writeCount,'First trial replay remains read-only');
+ }
+}
+{
+ const t=harness(true);t.mock.runReceiptWriteTrialOnce();
+ const second=t.mock.receiptTrialSecondPayload_(),id='receipt-trial-create-00000002';
+ t.stop('parent','after');
+ assert.throws(()=>t.mock.mutateReceiptSafely_(t.homeA,second,id,true),/INJECTED_parent_after/);
+ const op=t.rowObjects('processed_operations').find(x=>x.operation_id===id);
+ assert.ok(op);
+ const altered=JSON.parse(op.result);altered.items[0].amount_tax_included=123;
+ t.data.processed_operations[3][t.columns.processed_operations.indexOf('result')]=JSON.stringify(altered);
+ assert.throws(()=>t.mock.mutateReceiptSafely_(t.homeA,second,id,true),
+  e=>['RECOVERY_CONFLICT','TRIAL_NOT_ISOLATED'].includes(e.code),
+  'A corrupted second prepared plan must block every retry');
+ assert.equal(t.rowObjects('records').length,2);
+ assert.equal(t.rowObjects('record_items').length,2);
+}
+console.log('GAS receipt batch: first fixture, second fixture and 24 interruption cases PASS');
