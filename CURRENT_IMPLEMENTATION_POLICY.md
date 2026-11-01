@@ -7,6 +7,16 @@
 - 主要な根拠：`household_pwa_requirements_basic_design(1).md`、`SCREEN_UI_SPEC.md`、`UI_GUIDELINES.md`、`DATA_MODEL.md`、`gas/README.md`、現行ソース。
 - 本書は上記のUI・業務仕様を置換しない。食い違いは**設計を修正してから実装**する。
 
+## 2026-11-01：元の長押し並び替えを既存GAS・Sheetsへ接続（実機受入前）
+
+- 日用品の同じカテゴリ内・商品の同じ日用品内の**元の長押しドラッグUI**を使い、`item.reorder`／`product.reorder`を送信する。常設同期ボタンや新規画面は追加しない。
+- **全対象件数／ID／versionを照合**し、固定の家庭Sheetに対して1つの操作IDで複数行の並び順を更新する。実際に変更された行だけversion・orderを更新し、各行ごとに`change_log`を残す。操作計画を先に`processed_operations`に保存する。
+- 途中で1行だけ保存、履歴の途中失敗、最終応答消失があっても**同じ操作ID・同じ内容でだけ復旧**。別IDの新規書き込みをブロックし、`bootstrap`は排他制御の下で未完了の集合更新を検知したら部分的な一覧を返さない。
+- **再起動・別端末のエラー時**：認証済みの`household.status`で家庭IDを確認し、端末に残る操作記録が同じGoogle subject・家庭IDのときだけ元の画面に確認・再送導線を出す。勝手に送信せず、復旧成功後に自動再読込。元の端末の記録がない場合は他端末での復旧を促す。
+- GASとWebアプリの既存版を更新済み：`41311901075`。ソース照合、旧ソースのバックアップ、同一スクリプト更新、**既存デプロイIDの維持**を確認。新GAS・新Sheet・新デプロイ・Sheetデータの試験書込みなし。一度だけ使う実行経路は撤去し、保守用は手動専用に戻した。
+- `tests/gas-reorder-transaction.mjs`、`tests/live-view.mjs`、`tests/live-reorder-restart.mjs`で**部分書込み・家庭外アクセス・version競合・再実行・再起動後復旧**を含むオフライン回帰成功。
+- **未受入**：iPhone Safariでの長押し操作、実際のSheetsへの並び順保存、夫婦2端末間の反映。UI・コード・GAS公開成功と実保存成功を混同しない。次工程は実機での通常日用品登録・在庫切替・商品関連付け・並び替えの一括受入と、他端末変更の平時同期設計。
+
 ## 2026-11-01 実装進捗：P0で旧UI再利用に着手
 
 - **日用品の二重一覧描画を解消。** 旧`liveListView()`／`liveListResults()`は廃止し、元の`listView()`＋`listResults()`で家庭の`item_groups`を表示。ログイン前・取得中・正常取得時に別の画面を作らない。
