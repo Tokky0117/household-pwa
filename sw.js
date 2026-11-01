@@ -1,7 +1,7 @@
 /* CacheStorage is shared across main and all previews on the same origin.
  * This service worker may only remove its own older cache generations.
  */
-const CACHE='household-ui-v69';
+const CACHE='household-ui-v70';
 const ASSETS=[
  './','./index.html',
  './styles.css?v=69','./app.js?v=69','./auth.js?v=69',
