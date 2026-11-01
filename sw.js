@@ -4,12 +4,12 @@
 const CACHE='household-ui-v70';
 const ASSETS=[
  './','./index.html',
- './styles.css?v=69','./app.js?v=69','./auth.js?v=69',
- './gas-api.js?v=69','./live-operation-journal.js?v=69',
- './receipt-ocr.js?v=69',
- './receipt-chatgpt-import.js?v=69',
- './receipt-save-contract.js?v=69','./receipt-operation-journal.js?v=69',
- './receipt-save-session.js?v=69',
+ './styles.css?v=70','./app.js?v=70','./auth.js?v=70',
+ './gas-api.js?v=70','./live-operation-journal.js?v=70',
+ './receipt-ocr.js?v=70',
+ './receipt-chatgpt-import.js?v=70',
+ './receipt-save-contract.js?v=70','./receipt-operation-journal.js?v=70',
+ './receipt-save-session.js?v=70',
  './manifest.webmanifest','./icon.svg'
 ];
 const CACHE_FAMILY=CACHE.replace(/v[0-9]+$/,'v');
