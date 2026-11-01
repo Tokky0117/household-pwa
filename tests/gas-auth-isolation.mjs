@@ -98,6 +98,10 @@ books.users.push(['duplicate-id','h-a','Duplicate','subject-a']);
 assert.equal(request('household.status').error.code,'FORBIDDEN',
  'Duplicated current subject must be refused in authenticate before diagnostic');
 books.users.pop();
+books.users.push(['u-a2','h-b','Cross-home ID collision','distinct-subject']);
+assert.equal(request('household.status').error.code,'HOUSEHOLD_MEMBERSHIP_INVALID',
+ 'A user ID must be unique across households');
+books.users.pop();
 
 const catalogReadStart=spreadsheetOpens;
 let catalog=request('product.catalog',{householdId:'h-b'});
