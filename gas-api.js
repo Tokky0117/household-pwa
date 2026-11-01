@@ -23,7 +23,7 @@
    if(action==='record.create'&&!RECEIPT_BATCH_WRITE_ENABLED)
      throw new Error('RECEIPT_WRITES_DISABLED');
    if(!endpoint)throw new Error('GAS_NOT_CONFIGURED');
-   if(!['bootstrap','sync','product.catalog','product.alias.check','record.list','household.status'].includes(action)){
+   if(!['bootstrap','sync','product.catalog','product.alias.check','record.list','household.status','record.preflight'].includes(action)){
      if(!MUTATIONS.has(action))throw new Error('UNSUPPORTED');
      if(action==='record.create'?!RECEIPT_BATCH_WRITE_ENABLED:!LIVE_WRITE_ENABLED)
        throw new Error(action==='record.create'?'RECEIPT_WRITES_DISABLED':'WRITES_DISABLED');
