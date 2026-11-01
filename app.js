@@ -334,7 +334,8 @@ function receiptPendingView(){
  if(!hasPending)return '';
  const auth=window.KurashiAuth?.status?.();
  const subject=auth?.signedIn===true?auth.subject:null;
- const household=remoteReceiptSubject===subject?remoteReceipts?.household_id:null;
+ const household=currentReceiptCatalog()?.household_id||
+  (remoteReceiptSubject===subject?remoteReceipts?.household_id:null);
  let safe;
  try{safe=window.KurashiReceiptSaveSession?.pending?.(subject,household)}
  catch{safe={status:'invalid'}}
@@ -355,7 +356,8 @@ async function retryReceiptSave(){
  if(window.KURASHI_RECEIPT_TEST_MODE===true||
     window.KurashiReceiptSaveSession?.writeEnabled?.()!==true)return;
  const auth=window.KurashiAuth?.status?.();
- const hid=remoteReceiptSubject===auth?.subject?remoteReceipts?.household_id:null;
+ const hid=currentReceiptCatalog()?.household_id||
+  (remoteReceiptSubject===auth?.subject?remoteReceipts?.household_id:null);
  if(!auth?.signedIn||!hid)return;
  const previous=auth.subject;
  receiptRecoveryNotice='同じ操作IDで保存状況を確認しています';render();
@@ -405,7 +407,7 @@ function readChatGptReceiptIntoPreview(){
   if(parsed.items.length>30)throw Error('PREVIEW_ITEM_LIMIT');
   // A printed store name is a candidate. Never create a new chain or
   // use fuzzy matches; users explicitly confirm it in the shared review.
-  const names=catalogue.chains.filter(c=>norm(c.name)===norm(parsed.storeName||''));
+  const names=receiptStoreChoices().filter(c=>norm(c.name)===norm(parsed.storeName||''));
   discardReceiptScan();
   receiptScan={
    source:'chatgpt_paste',taxBasis:parsed.taxBasis,taxTotal:parsed.taxTotal,
@@ -1052,8 +1054,8 @@ function recordAddView(){
 }
 function receiptScanReview(){
  if(!receiptScan)return '';
- const scan=receiptScan,options=[{value:'',label:'チェーンを選択'},...catalogue.chains.map(c=>({value:c.id,label:c.name}))];
- const products=[{value:'',label:'商品未照合（価格比較に使用しない）'},...catalogue.products.map(p=>({value:p.id,label:productTitle(p)}))];
+ const scan=receiptScan,options=[{value:'',label:'チェーンを選択'},...receiptStoreChoices().map(c=>({value:c.id,label:c.name}))];
+ const products=[{value:'',label:'商品未照合（価格比較に使用しない）'},...receiptProductChoices().map(p=>({value:p.id,label:p.name}))];
  const categories=[{value:'',label:'未分類'},...CATS.map((c,i)=>({value:String(i),label:c}))];
  const chat=scan.source==='chatgpt_paste';
  const items=scan.items.map((item,i)=>`<section class="receipt-review-line">
@@ -1095,8 +1097,8 @@ function receiptScanReview(){
  ${chat&&scan.taxBasis!=='included'?'<label class="receipt-scan-confirm"><input type="checkbox" name="taxResolved" value="yes" required><span>各明細の税込金額を原本・税額と照合して入力しました</span></label>':''}
  <label class="receipt-scan-confirm"><input type="checkbox" name="confirmed" value="yes" required><span>レシート原本と明細・購入日・チェーン・金額を確認しました</span></label>
  ${total!==null?'<label class="receipt-scan-confirm"><input type="checkbox" name="totalsChecked" value="yes" required><span>支払合計と、税・値引きを含む明細金額の差を確認しました</span></label>':''}
- <button type="submit" class="primary receipt-scan-save" ${scan.items.length?'':'disabled'}>確認した${scan.items.length}明細をこのSafariに試作保存</button>
- <p class="sample-price-notice">保存先：このSafariのWebサイトデータのみ。Google Sheets・Google Drive・ファイルには保存しません。OCR誤読、合計金額、税・割引、数量を必ず確認してください。</p></form>`:''}
+ <button type="submit" class="primary receipt-scan-save" ${scan.items.length&&(!receiptRemoteWritable()||currentReceiptCatalog())&&!receiptSaveBusy?'':'disabled'}>確認した${scan.items.length}明細を${receiptRemoteWritable()?'Google Sheetsに保存':'このSafariに試作保存'}</button>
+ <p class="sample-price-notice">${receiptRemoteWritable()?'保存先：認証済みの家庭のGoogle Sheets。'+esc(receiptCatalogStatus)+'。金額・税・数量を原本で確認してください。':'保存先：このSafariのWebサイトデータのみ。Google Sheetsには保存しません。OCR誤読、合計金額、税・割引、数量を必ず確認してください。'}</p></form>`:''}
  <button type="button" class="secondary" data-act="discardReceiptScan">確認を終了して下書きを破棄</button>
  </section>`;
 }
