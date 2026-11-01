@@ -103,11 +103,11 @@ jobs:
           // Refuse any source/manifest drift since the final read-only audit.
           const crypto=require('node:crypto');
           const digest=text=>crypto.createHash('sha256').update(text).digest('hex');
-          const approvedSource='d283b16c5097fc42eb3d2e7086ec866538d353dd53d9e4dc71046845aa878953';
+          const approvedSource='e19c15425960f78ee23f10d766ece458b03df7881c54c1bf067f4cb1fdacd76e';
           // Verify the remote source is byte-identical to an already-reviewed
           // historical GitHub GAS source, not just a guessed replacement hash.
           const git=require('node:child_process');
-          const baseline='2cd4dde4fa474e33961a1040409aaaec44375be2';
+          const baseline='d5ec44c99e56bbf793a4f8cb3042e5ea6a741fec';
           const history=git.execFileSync('git',['show',baseline+':gas/Code.gs'],{encoding:'utf8'});
           if(digest(history)!==approvedSource)
             throw Error('KNOWN_GITHUB_SOURCE_FINGERPRINT_MISMATCH');
