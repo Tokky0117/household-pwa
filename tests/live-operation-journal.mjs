@@ -63,7 +63,7 @@ await second.app.refreshLive();
 assert.equal(mutationCalls.length,1);
 assert.equal(second.app.livePending().status,'pending');
 assert.match(second.app.liveListView(),/同じ操作を確認・再送/);
-assert.match(second.app.liveListView(),/data-act="addLive" disabled/);
+assert.match(second.app.liveListView(),/data-act="addLive"[^>]*disabled/);
 subject='9999999999';
 assert.equal(second.app.livePending().status,'different-account');
 await second.app.retryLive();
