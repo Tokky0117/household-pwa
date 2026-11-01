@@ -27,6 +27,13 @@ const UNITS=['個','本','枚','g','kg','mL','L'];
 function fail(code,message){throw {code:code,message:message}}
 function jsonReply(obj){return ContentService.createTextOutput(JSON.stringify(obj)).setMimeType(ContentService.MimeType.JSON)}
 function doGet(e){
+ if(e&&e.parameter&&e.parameter.trial_receipt==='1'){
+  // The exact existing test Sheet, known demo catalog and owner-only GAS.
+  // No data values or secrets are accepted from the browser page.
+  receiptTrialGuard_(spreadsheet());
+  return HtmlService.createHtmlOutput(receiptTrialPage_())
+   .setTitle('くらしストック・試験レシート保存');
+ }
  if(e&&e.parameter&&e.parameter.trial_stock==='1'){
   trialGuard_();
   return HtmlService.createHtmlOutput(trialPage_()).setTitle('くらしストック・試験在庫保存');
@@ -1371,6 +1378,48 @@ function runReceiptWriteTrialOnce(){
  return {ok:true,records:1,items:2,amount:496,replay:true};
 }
 /** Same assertions as above, no write: safe to run repeatedly in editor. */
+function receiptTrialPage_(){
+ return `<!doctype html><html lang="ja"><head><base target="_top">
+ <meta name="viewport" content="width=device-width,initial-scale=1">
+ <style>body{font:16px/1.6 system-ui,-apple-system,sans-serif;max-width:520px;margin:24px auto;padding:0 16px;background:#f6f8f7;color:#233b32}section{background:white;padding:18px;border:1px solid #dbe6de;border-radius:12px}button{display:block;width:100%;min-height:48px;margin-top:12px;padding:12px;border:0;border-radius:9px;font:inherit;color:white;background:#28664c}button:disabled{opacity:.6}#status{min-height:2em;white-space:pre-wrap}small{color:#566a61}</style>
+ </head><body><section><h2>既存の試験用レシート保存</h2>
+ <p>試験専用の架空レシート（2明細・税込合計496円）の保存・再送を確認します。通常のレシートや本番データは使いません。</p>
+ <button type="button" id="save">試験レシートを保存・同じ操作を確認</button>
+ <button type="button" id="read">保存件数を読み取る</button>
+ <p id="status" role="status" aria-live="polite">準備完了。必要な操作を押してください。</p>
+ <small>同じ操作IDのため、保存ボタンを繰り返しても新しいレシートは作りません。途中失敗でも同じボタンで復旧します。公開レシートAPIと本番書き込みは禁止したままです。</small>
+ </section><script>(function(){
+ 'use strict';
+ var busy=false,save=document.getElementById('save'),
+  read=document.getElementById('read'),status=document.getElementById('status');
+ function disable(v){busy=v;save.disabled=v;read.disabled=v}
+ function done(kind,result){
+  disable(false);
+  if(kind==='save'&&result&&result.ok===true&&result.items===2&&result.amount===496){
+   status.textContent='保存・再送の確認成功：レシート1件、明細2件、合計496円。';return;
+  }
+  if(kind==='read'&&result){
+   status.textContent='読み取り：レシート '+result.records+'件、明細 '+result.items+
+    '件、完了 '+(result.completed?'はい':'いいえ');return;
+  }
+  status.textContent='応答が想定と異なります。試験用GASのログを確認してください。';
+ }
+ function failure(error){
+  disable(false);status.textContent='試験停止：'+String(error&&error.message||'通信エラー')+
+   '。接続状態を確認してから同じ操作を再実行してください。';
+ }
+ save.addEventListener('click',function(){
+  if(busy)return;disable(true);status.textContent='保存・確認中';
+  google.script.run.withSuccessHandler(function(x){done('save',x)})
+   .withFailureHandler(failure).runReceiptWriteTrialOnce();
+ });
+ read.addEventListener('click',function(){
+  if(busy)return;disable(true);status.textContent='読み取り中';
+  google.script.run.withSuccessHandler(function(x){done('read',x)})
+   .withFailureHandler(failure).checkReceiptTrialReadOnly();
+ });
+})();</script></body></html>`;
+}
 function checkReceiptTrialReadOnly(){
  const state=receiptTrialGuard_(spreadsheet());
  const result={completed:state.completed,records:state.records,items:state.items};
