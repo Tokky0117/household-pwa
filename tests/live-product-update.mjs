@@ -90,7 +90,7 @@ await screen.updateLiveProductGroup(data.products[0],'group-B');
 assert.equal(physical,2);
 assert.equal(screen.state().liveSnapshot.products[0].item_group_id,'group-B');
 assert.equal(screen.state().liveSnapshot.products[0].version,3);
-vm.runInContext("selected='group-B';page='compare';editingProductId='product-A'",context);
+vm.runInContext("selected='group-B';page='productEdit';editingProductId='product-A'",context);
 assert.match(screen.productCreateView(),/元の牛乳/);
 assert.match(screen.pickerView(),/商品を検索/);
 assert.doesNotMatch(screen.pickerView(),/スーパー青空/);
