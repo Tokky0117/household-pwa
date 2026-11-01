@@ -72,7 +72,13 @@ function harness(editorTrial=false){
      table[row-1]=values[0].slice();count++;writes.push(phase);
      if(fault?.phase===phase&&fault.when==='after'){fault=null;throw Error('INJECTED_'+phase+'_after')}
     },
-    setNumberFormat(){throw Error('unexpected formatting')}
+    setNumberFormat(fmt){
+     if(name==='records'){
+      assert.equal(col,columns.records.indexOf('record_date')+1);
+      assert.equal(fmt,'@');return;
+     }
+     throw Error('unexpected formatting')
+    }
    }}
   };
  }};
