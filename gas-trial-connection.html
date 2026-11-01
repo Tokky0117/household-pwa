@@ -417,8 +417,8 @@ button:disabled{background:#a1aaba}.secondary{background:#eef2f8;color:#20508c}
    // second fixture; never accept an arbitrary row from another household.
    if(!data||data.household_id!==fixture.householdId||
       !Array.isArray(data.records)||!Array.isArray(data.record_items)||
-      ![1,2,3].includes(data.records.length)||
-      data.record_items.length<2||data.record_items.length>34)
+      data.records.length<1||data.records.length>22||
+      data.record_items.length<2||data.record_items.length>604)
     throw Error('RECEIPT_TRIAL_ROWS_MISMATCH');
    const primary=data.records.filter(x=>
     x.raw_store_name==='[KURASHI_RECEIPT_TRIAL_ONLY]');
@@ -428,7 +428,7 @@ button:disabled{background:#a1aaba}.secondary{background:#eef2f8;color:#20508c}
     x.raw_store_name!=='[KURASHI_RECEIPT_TRIAL_ONLY]'&&
     x.raw_store_name!=='[KURASHI_RECEIPT_TRIAL_SECOND_ONLY]');
    const fixedCount=primary.length+secondary.length;
-   if(primary.length!==1||secondary.length>1||extra.length>1||
+   if(primary.length!==1||secondary.length>1||extra.length>20||
       (extra.length&&secondary.length!==1)||
       fixedCount+extra.length!==data.records.length||
       new Set(data.records.map(x=>x.record_id)).size!==data.records.length||
@@ -456,26 +456,26 @@ button:disabled{background:#a1aaba}.secondary{background:#eef2f8;color:#20508c}
     {quantity:1,amount:128,rawName:'試験用・野菜',productId:null,category:0},
     {quantity:2,amount:330,rawName:'試験用・日用品',productId:null,category:1}
    ]);
-   if(extra.length){
-    const head=extra[0],lines=data.record_items.filter(x=>x.record_id===head.record_id);
+   let extraLines=0;
+   for(const head of extra){
+    const lines=data.record_items.filter(x=>x.record_id===head.record_id);
     if(head.record_type!=='receipt'||head.chain_id!==fixture.chainId||
        typeof head.record_date!=='string'||!/^20\d{2}-\d{2}-\d{2}$/.test(head.record_date)||
-       lines.length<1||lines.length>30||lines.some((x,i)=>
+       lines.length<1||lines.length>30||lines.some(x=>
         !Number.isSafeInteger(x.quantity)||x.quantity<1||
         !Number.isSafeInteger(x.amount_tax_included)||x.amount_tax_included<0||
         x.price_eligible!==false||!Number.isSafeInteger(x.line_order)||
         x.line_order<1||x.line_order>lines.length)||
        new Set(lines.map(x=>x.line_order)).size!==lines.length)
      throw Error('RECEIPT_TRIAL_ROWS_MISMATCH');
-    if(data.record_items.length!==fixedCount*2+lines.length)
-     throw Error('RECEIPT_TRIAL_ROWS_MISMATCH');
-   }else if(data.record_items.length!==fixedCount*2)
+    extraLines+=lines.length;
+   }
+   if(data.record_items.length!==fixedCount*2+extraLines)
     throw Error('RECEIPT_TRIAL_ROWS_MISMATCH');
    receiptVerifiedRevision=rev;receiptVerifiedSubject=subject;
    receiptReadResult.textContent=extra.length?
-    '成功：固定レシート2件・4明細と、追加の一般試験レシート1件（'+
-    data.record_items.filter(x=>x.record_id===extra[0].record_id).length+
-    '明細）を認証付きで確認しました。計測 '+elapsed(started)+'。書き込み0件。':
+    '成功：固定レシート2件・4明細と、追加の一般試験レシート'+extra.length+
+    '件（追加明細'+extraLines+'件）を認証付きで確認しました。計測 '+elapsed(started)+'。書き込み0件。':
     secondary.length?
     '成功：試験用家庭の確定レシート2件・明細4件（最初496円・追加458円）を認証付きで読み取り、固定試験の内容と照合しました。計測 '+elapsed(started)+'。書き込み0件。':
     '成功：試験用家庭の確定レシート1件・明細2件・税込496円を認証付きで読み取り、既知の保存結果と照合できました。計測 '+elapsed(started)+'。書き込み0件。';
