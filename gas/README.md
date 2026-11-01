@@ -52,3 +52,34 @@
 新GASに、固定GoogleクライアントIDによる認証、家庭別の自動読込と `item.create`／`item.update` を接続する。UIはv46の一覧とフォームを使い、手動の「シートから読み込み」ボタンや独立の試験画面を作らない。商品管理、レシート保存、家計簿と価格情報は既存の仕様に従い次段階で接続する。
 
 **既存の実装11 GASコードはコピーしない。** 冪等処理、家庭隔離、競合検知などの要件は残すが、試験専用診断や古い履歴互換処理は持ち込まない。
+
+
+## 日用品の読み取り・保存API（実装済み、実環境は未公開）
+
+`gas/Api.gs` は **新GASのみ** に追加するAPIである。旧試験GASのコードや設定をコピーしない。
+
+- `bootstrap`: ログインした家庭の確定カテゴリ・日用品・商品・店舗と変更番号を返す
+- `item.create`: 日用品を作る。初期在庫は「なし」
+- `item.update`: 在庫状態、非表示状態、名前とカテゴリの変更を保存する
+- 認証: Google IDトークンをGoogleへ確認し、発行先クライアントID・発行者・有効期限を検査。許可した2つのGoogleアカウントのみ家庭と紐付ける
+- 保存: `LockService`、`version`、操作ID、`processed_operations` と `change_log`。通信結果が不明なときは**同じ操作IDでのみ**確認・復旧し、別IDで自動再送しない
+- **未実装**: 商品・店舗・レシートの書込みAPI、並び替え、価格・家計簿の実データ反映。未実装APIは `UNSUPPORTED` として拒否する
+
+### 新GASへの追加と公開（GASコードを初めて使うときに1回）
+
+1. Sheetsを作成した**同じ新GASプロジェクト**を開く。左側の「ファイル」→「＋」→「スクリプト」で `Api` を作成する。
+2. [Api.gs](./Api.gs) のコード全文をコピーして `Api.gs` に貼り付け、保存する。元の `Setup.gs`（コード.gs）は削除しない。
+3. 「プロジェクトの設定」→「スクリプト プロパティ」に以下を**自分で**登録する。
+   - `GOOGLE_CLIENT_ID`: Web用 Google Identity Services のクライアントID。従来のGitHub Pages originで使用していた既存のGoogleログイン用クライアントを再利用可能（**旧GASや旧Sheetへの接続ではない**）。
+   - `HOUSEHOLD_MEMBER_EMAILS`: Googleログインを許可する夫婦2人のGoogleメールアドレスを **半角カンマ区切りで2件**。ソースコードやチャットにメールアドレスを書く必要はない。
+   - `SPREADSHEET_ID` と `KURASHI_NEW_WORKBOOK_ID`、`KURASHI_SCHEMA_VERSION` はSetupが登録済み。手動で上書きしない。
+4. 「デプロイ」→「新しいデプロイ」→種類「ウェブアプリ」、**実行ユーザー：自分**、アクセスできるユーザー：**全員**（GAS内部で毎回GoogleのIDトークンを検証するため）。アクセス許可して公開する。
+5. 発行された **`https://script.google.com/macros/s/.../exec` のURLだけ** を次のPWA接続に使う。秘密のトークン、クライアントシークレット、メールアドレス、スプレッドシートIDはチャットへ送らない。
+
+`GOOGLE_CLIENT_ID` は以前のWebログイン設定で使用した公開クライアントID（`290567395833-cdemend3itmapsgsounu8pf72hgvm315.apps.googleusercontent.com`）が利用できる可能性がある。Google Cloud側でGitHub Pages originが許可されていることを確認する。旧GASの `/exec` URLは**絶対に再利用しない**。
+
+### 接続前の注意
+
+- 作成したSheetは、最初のGoogleログインまで `users` が空。最初のログイン時に限り、登録された2メールアドレスとGoogleの確認済みメールが一致すれば、`users` に不変のGoogle `sub` を記録する。登録できるのは最大2名。ログイン用メールはSheetに保存せず、Script Propertiesでのみ使用する。
+- ユーザーがまだGASへ接続していない段階では、復元したv46のPWAは**端末内試作状態のまま**。これをSheetへ保存済みと誤認させない。
+- 初回のWebアプリデプロイとPWA接続は未実施。以後の実機テストで確認する。
