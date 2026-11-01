@@ -373,6 +373,14 @@ function doPost(e){
   if(action==='store.create'){
    return jsonReply({ok:true,data:mutateStoreSafely_(user,payload,input.operation_id)});
   }
+  // Existing pinned trial Sheet: ordinary household item/stock operations.
+  // Reuse the existing locked, crash-recoverable item transaction.
+  if(action==='item.create'||action==='item.update'){
+   if(!approvedPrototypeAliasSheet_())
+    fail('WRITES_DISABLED','対象の保存環境を確認してください');
+   return jsonReply({ok:true,data:mutateItemSafely_(
+    user,action,payload,input.operation_id,'prototype')});
+  }
   if(action==='record.create'){
    if(!approvedPrototypeAliasSheet_())
     fail('RECEIPT_WRITES_DISABLED','対象の保存環境を確認してください');
@@ -843,7 +851,9 @@ function mutateItemSafely_(user,action,payload,operationId,localEditorTrial,tria
  if(profile)profile.lock_wait_ms=Date.now()-waitStarted;
  try{
   const isolationStarted=profile?Date.now():0;
-  const book=requireIsolatedWriteTrial(localEditorTrial);
+  const book=localEditorTrial==='prototype'?
+   spreadsheet():requireIsolatedWriteTrial(localEditorTrial);
+  if(localEditorTrial==='prototype')assertPrototypeReceiptIdentity_(book,user);
   if(profile)profile.isolation_check_ms=Date.now()-isolationStarted;
   const hid=user.householdId;
   const digest=Utilities.base64EncodeWebSafe(Utilities.computeDigest(
