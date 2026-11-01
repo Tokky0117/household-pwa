@@ -23,7 +23,7 @@ function loadCatalogue(){try{const o=JSON.parse(localStorage.getItem(catalogueKe
 let catalogue=loadCatalogue(),pickQuery='',pickKind='product',pickerAll=false,editingProductId=null;
 const persistCatalogue=()=>localStorage.setItem(catalogueKey,JSON.stringify(catalogue));
 const productTitle=p=>p.name+(p.packageQuantity&&p.packageUnit?' '+p.packageQuantity+p.packageUnit:'');
-const linkedItemName=p=>items.find(i=>i.id===p.itemGroupId)?.name||'未登録';
+const linkedItemName=p=>(liveMode?householdItems():items).find(i=>i.id===p.itemGroupId)?.name||'未登録';
 const registeredProducts=itemId=>(liveMode?
  (liveSnapshot?.products||[]).filter(p=>!p.deleted_at&&String(p.item_group_id??'')===String(itemId)).map(p=>({
   id:String(p.product_id),name:String(p.name),itemGroupId:p.item_group_id,
@@ -901,13 +901,21 @@ function verifyLiveWriteResult(entry,result){
     String(e.household_id)!==entry.householdId||
     !Number.isSafeInteger(result.sequence_no)||result.sequence_no<1)invalid();
  if(entry.action==='product.create'){
-  if(result.status!=='completed'||result.action!=='product.create'||
-     !e.product_id||Number(e.version)!==1||
-     String(e.item_group_id??'')!==String(p.item_group_id??'')||
-     String(e.name)!==String(p.name).trim()||
-     String(e.package_quantity??'')!==String(p.package_quantity??'')||
-     String(e.package_unit??'')!==String(p.package_unit??''))invalid();
- }else if(entry.action==='item.create'||entry.action==='item.update'){
+   if(result.status!=='completed'||result.action!=='product.create'||
+      !e.product_id||Number(e.version)!==1||
+      String(e.item_group_id??'')!==String(p.item_group_id??'')||
+      String(e.name)!==String(p.name).trim()||
+      String(e.package_quantity??'')!==String(p.package_quantity??'')||
+      String(e.package_unit??'')!==String(p.package_unit??''))invalid();
+  }else if(entry.action==='product.update'){
+   if(result.status!=='completed'||result.action!=='product.update'||
+      String(e.product_id)!==String(p.product_id)||
+      Number(e.version)!==Number(p.version)+1||
+      String(e.item_group_id??'')!==String(p.item_group_id??'')||
+      String(e.name)!==String(p.name).trim()||
+      String(e.package_quantity??'')!==String(p.package_quantity??'')||
+      String(e.package_unit??'')!==String(p.package_unit??''))invalid();
+  }else if(entry.action==='item.create'||entry.action==='item.update'){
   if(!e.item_group_id||
      (entry.action==='item.create'&&(
       Number(e.version)!==1||String(e.name)!==String(p.name).trim()||
@@ -926,7 +934,7 @@ function verifyLiveWriteResult(entry,result){
 // Render server-confirmed changes immediately, without waiting for bootstrap.
 function applyConfirmedLiveEntity(entry,entity){
  if(!liveSnapshot||liveSnapshot.household_id!==entry.householdId)return;
- const key=entry.action==='product.create'?'products':'item_groups';
+ const key=entry.action.startsWith('product.')?'products':'item_groups';
  const idKey=key==='products'?'product_id':'item_group_id';
  const previous=liveSnapshot[key]||[];
  const index=previous.findIndex(x=>String(x[idKey])===String(entity[idKey]));
@@ -952,7 +960,7 @@ async function sendPendingLive(entry){
   if(!sameLiveSession(subject,epoch)||!liveMode)return;
   applyConfirmedLiveEntity(entry,entity);
   liveEditor=null;liveProductEditor=null;
-  if(entry.action==='product.create'&&page==='productCreate'){
+  if(entry.action.startsWith('product.')&&['productCreate','productEdit','productPick'].includes(page)){
    page='compare';initializeCompare();
   }
   liveWriteStatus='保存が確定しました。最新の一覧を確認しています。';
@@ -980,6 +988,15 @@ async function sendPendingLive(entry){
   liveWriteBusy=false;
   if(sameLiveSession(subject,epoch)&&liveMode)render();
  }
+}
+function updateLiveProductGroup(product,destination){
+ if(!product||!liveWritable()||!liveMode)return;
+ return liveMutate('product.update',{
+  product_id:String(product.product_id),version:Number(product.version),
+  item_group_id:destination===null?null:String(destination),
+  name:String(product.name),package_quantity:product.package_quantity??null,
+  package_unit:product.package_unit??null
+ });
 }
 async function liveMutate(action,payload){
  return withLiveWriteLock(async()=>{
@@ -1266,7 +1283,7 @@ function pickerView(){
 function productCreateView(){
  const i=current();if(!i)return '';
  const editing=page==='productEdit';
- const p=editing?catalogue.products.find(x=>x.id===editingProductId&&x.itemGroupId===selected):null;
+ const p=editing?registeredProducts(selected).find(x=>x.id===editingProductId):null;
  if(editing&&!p)return '';
  const fields=UI.formField({id:'new-product-name',name:'name',label:'商品名',value:p?.name||(editing?'':pickQuery)||'',required:true,maxlength:80,placeholder:'商品名を入力'})+
  UI.quantityUnitFields({quantityId:'new-product-quantity',unitId:'new-product-unit',quantity:p?.packageQuantity??'',unit:p?.packageUnit||'mL',extra:'inputmode="decimal" pattern="[0-9]+([.,][0-9]+)?"'});
