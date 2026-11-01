@@ -29,7 +29,7 @@ const payload={
  ]
 };
 const clone=x=>JSON.parse(JSON.stringify(x));
-function harness(){
+function harness(editorTrial=false){
  const data=Object.fromEntries(Object.entries(columns).map(([name,heads])=>[name,[heads]]));
  data.households.push(['house-A','A',1,''],['house-B','B',1,'']);
  data.users.push(['u-A','house-A','A','1234567890'],['u-A2','house-A','Spouse','1234567891'],['u-B','house-B','B','1234567892']);
@@ -37,7 +37,23 @@ function harness(){
  data.stores.push(['store-A','house-A','コノミヤ','','',1,''],['store-B','house-B','別店舗','','',1,'']);
  data.products.push(['p-A','house-A','','牛乳','牛乳','', '',1,1,'','',''],
   ['p-B','house-B','','別商品','別商品','','',1,1,'','','']);
- let count=0,fault=null,locked=false,uuidCounter=0,enableReceipt=true,writes=[];
+ if(editorTrial){
+  // Model the already known prototype fixture; no real Sheet is accessed.
+  data.households.splice(1,data.households.length-1);
+  data.users.splice(1,data.users.length-1);
+  data.stores.splice(1,data.stores.length-1,
+   ['alias-trial-store-0001','house-A','[KURASHI_ALIAS_TRIAL_ONLY]','','',1,'']);
+  data.products.splice(1,data.products.length-1,
+   ['alias-trial-product-0001','house-A',null,'試験用・商品コード',
+    '試験用・商品コード',null,null,null,1,'','',null]);
+  data.product_aliases.push(['test-alias-01','alias-trial-product-0001',
+   'alias-trial-store-0001','00012345',1,'']);
+  data.processed_operations.push(['house-A','alias-trial-create-00000001',
+   'fakehash',JSON.stringify({entity:{alias_id:'test-alias-01'},sequence_no:1}),'']);
+  data.change_log.push(['alias-trial-create-00000001',1,'house-A',
+   'product_aliases','test-alias-01','product.alias.create','']);
+ }
+ let count=0,fault=null,locked=false,uuidCounter=0,enableReceipt=!editorTrial,writes=[];
  const workbook={getSheetByName(name){
   const table=data[name];if(!table)throw Error('missing '+name);
   return {
@@ -80,6 +96,11 @@ function harness(){
  // offline harness so we can simulate two users in one household and a
  // separate hostile household, without touching a real spreadsheet.
  vm.runInContext('requireIsolatedWriteTrial=function(){return spreadsheet()}',mock);
+ if(editorTrial){
+  // Substitute only the known mock Sheet's digest. Production continues to
+  // require the pinned hash in approvedPrototypeAliasSheet_().
+  vm.runInContext('approvedPrototypeAliasSheet_=function(){return true}',mock);
+ }
  const homeA={householdId:'house-A',userId:'u-A'},spouse={householdId:'house-A',userId:'u-A2'};
  const other={householdId:'house-B',userId:'u-B'};
  const execute=(user=homeA,p=payload,id='receipt-op-001')=>
@@ -165,4 +186,28 @@ for(const phase of faults)for(const when of ['before','after']){
  assert.throws(()=>h.execute(),e=>e.code==='RECOVERY_CONFLICT');
  assert.equal(h.rowObjects('records').length,1);
 }
-console.log('GAS receipt batch 12 fault cases, spouse reads, replay, forbidden scope and gates PASS');
+{
+ const trial=harness(true);
+ assert.equal(trial.mock.PropertiesService.getScriptProperties()
+  .getProperty('RECEIPT_WRITES_ENABLED'),'false');
+ const before=trial.writes;
+ const first=trial.mock.runReceiptWriteTrialOnce();
+ assert.equal(first.ok,true);
+ assert.equal(first.items,2);
+ assert.equal(first.amount,496);
+ assert.equal(trial.rowObjects('records').length,1);
+ assert.equal(trial.rowObjects('record_items').length,2);
+ assert.equal(trial.rowObjects('change_log').length,2);
+ assert.equal(trial.rowObjects('processed_operations').length,2);
+ const after=trial.writes;
+ const replay=trial.mock.runReceiptWriteTrialOnce();
+ assert.equal(replay.replay,true);
+ assert.equal(trial.writes,after,'Editor trial must be idempotent');
+ assert.ok(after>before);
+ assert.equal(trial.mock.checkReceiptTrialReadOnly().completed,true);
+ trial.data.record_items[1][trial.columns.record_items.indexOf('amount_tax_included')]=999;
+ assert.throws(()=>trial.mock.runReceiptWriteTrialOnce(),
+  e=>e.code==='TRIAL_NOT_ISOLATED',
+  'Different receipt data must never be accepted as a test fixture');
+}
+console.log('GAS receipt batch 12 fault cases, editor trial, replay and scope PASS');
