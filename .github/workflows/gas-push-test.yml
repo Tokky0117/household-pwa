@@ -1,7 +1,11 @@
 name: Push GAS to test project (manual)
-# Manual-only. Normal receipt and store APIs were synced to verified test GAS.
-# Re-review source fingerprints before any later update.
+# ONE-TIME source-only sync of ordinary item/product writes to the EXISTING pinned test GAS.
+# Strict pre-source checksum, pinned target ID, manifest preservation, backup,
+# source-hash post-check; remove this temporary push trigger immediately after.
 on:
+  push:
+    branches: [stage-a-ui-handoff-review]
+    paths: ['.github/workflows/gas-push-test.yml']
   workflow_dispatch:
     inputs:
       confirm_target_backup:
@@ -22,7 +26,7 @@ concurrency:
 
 jobs:
   push-test:
-    if: github.ref == 'refs/heads/stage-a-ui-handoff-review' && inputs.confirm_target_backup == 'BACKUP_DONE' && inputs.confirm_test_source == 'TEST_GAS_UPDATE'
+    if: github.ref == 'refs/heads/stage-a-ui-handoff-review' && (github.event_name == 'push' || (inputs.confirm_target_backup == 'BACKUP_DONE' && inputs.confirm_test_source == 'TEST_GAS_UPDATE'))
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -44,7 +48,7 @@ jobs:
           cp gas/Code.gs "$RUNNER_TEMP/kurashi-gas-syntax.js"
           node --check "$RUNNER_TEMP/kurashi-gas-syntax.js"
           # One-time source-only update: fail if any reviewed GAS bytes changed.
-          test "$(git hash-object gas/Code.gs)" = "39cda51a96806049497e0067b628dc38a43440e7"
+          test "$(git hash-object gas/Code.gs)" = "88384b352bb3da9f6f35fd165849bfc0057eced4"
           node tests/gas-receipt-batch-mock.mjs
           node tests/receipt-save-parity.mjs
           node tests/gas-auth-isolation.mjs
@@ -103,10 +107,10 @@ jobs:
           // Reconfirm that remote GAS equals the exact source from the last
           // successful source-only update, not a manually edited revision.
           const git=require('node:child_process');
-          const baseline='6f22d6c6a171f39c7be2ed525cd9bd4b48489f15';
+          const baseline='f719da65aeac1ec766918a3f16391847624590c0';
           const history=git.execFileSync('git',['show',baseline+':gas/Code.gs'],{encoding:'utf8'});
           const baselineBlob=git.execFileSync('git',['rev-parse',baseline+':gas/Code.gs'],{encoding:'utf8'}).trim();
-          if(baselineBlob!=='1bcf44653f703030fb8b7859f829a65275e1675c')
+          if(baselineBlob!=='39cda51a96806049497e0067b628dc38a43440e7')
             throw Error('KNOWN_GITHUB_SOURCE_FINGERPRINT_MISMATCH');
           const approvedSource=digest(history);
           const approvedManifest='0952d47f73508eb256f1cf50f0368fe77434f8c05ea0d6defc7cf9b4e227e935';
@@ -186,13 +190,16 @@ jobs:
             'runAliasTrialWriteOnce','testAliasCatalogReadOnly','verifyAliasFixtureCommitted_',
             'runReceiptWriteTrialOnce','checkReceiptTrialReadOnly','receiptTrialGuard_',
             'receiptTrialSecondPayload_','receiptTrialMainCreate_',
-            'mutateReceiptSafely_','mutateStoreSafely_','receiptList_','receiptTrialPage_'];
+            'mutateReceiptSafely_','mutateStoreSafely_','mutateItemSafely_',
+            'mutateProductSafely_','receiptList_','receiptTrialPage_'];
           if(!required.every(name=>src.includes('function '+name+'(')))
             throw Error('TEST_GAS_SOURCE_VERIFY_FAILED');
           if(!src.includes("if(action==='record.trial.main.create')")||
             !src.includes("if(action==='record.trial.second.save')")||
             !src.includes("if(action==='record.trial.preflight')")||
             !src.includes("if(action==='store.create'){")||
+            !src.includes("if(action==='item.create'||action==='item.update'){")||
+            !src.includes("if(action==='product.create'){")||
             !src.includes("if(action==='record.create'){")||
             !src.includes("const result=mutateReceiptSafely_(user,payload,input.operation_id,true);")||
             !src.includes("function assertPrototypeReceiptIdentity_(book,user){")||
