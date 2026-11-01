@@ -492,7 +492,8 @@ function householdStatus_(user,book){
  for(const member of members){
   const sub=String(member.obj.auth_subject),id=String(member.obj.user_id);
   if(subjects.has(sub)||userIds.has(id)||
-     allUsers.filter(x=>String(x.obj.auth_subject)===sub).length!==1)
+     allUsers.filter(x=>String(x.obj.auth_subject)===sub).length!==1||
+     allUsers.filter(x=>String(x.obj.user_id)===id).length!==1)
    fail('HOUSEHOLD_MEMBERSHIP_INVALID','家庭の利用者登録が重複しています');
   subjects.add(sub);userIds.add(id);
  }
