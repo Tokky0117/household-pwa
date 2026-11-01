@@ -1706,8 +1706,8 @@ if(el.dataset.act==='addLive'){
    const rows=(liveSnapshot?.item_groups||[]).filter(x=>
     Number(x.category_id)===i&&!x.deleted_at&&!x.is_hidden&&
     !(x.in_stock===true||String(x.in_stock).toLowerCase()==='true'));
-   return rows.length?cat+'\\n'+rows.map(x=>'- '+x.name).join('\\n'):'';
-  }).filter(Boolean).join('\\n\\n');
+   return rows.length?cat+'\n'+rows.map(x=>'- '+x.name).join('\n'):'';
+  }).filter(Boolean).join('\n\n');
   if(!contents){say('在庫なしの日用品はありません');return}
   if(!navigator.clipboard?.writeText){say('コピーできませんでした');return}
   navigator.clipboard.writeText(contents).then(()=>say('在庫なしをコピーしました')).catch(()=>say('コピーできませんでした'));
@@ -1754,7 +1754,7 @@ if(el.dataset.act==='back'&&(liveEditor||liveProductEditor)){
 }
 if(el.dataset.act==='refreshLive'){refreshLive();return}
 if(el.dataset.act==='leaveLive'){leaveRemoteView('試作データ表示');tab='items';page='list';render();return}
-if(liveMode&&tab==='items'&&page==='list'&&!el.dataset.tab&&el.dataset.cat===undefined){return}
+if(liveMode&&tab==='items'&&page==='list'&&!el.dataset.tab&&el.dataset.cat===undefined&&el.dataset.act!=='toggleListHelp'){return}
 if(el.dataset.tab){if(el.dataset.tab!==tab||page!=='list')abandonLiveReadOnNavigation();if(el.dataset.tab!=='receipt'&&tab==='receipt'){
  discardReceiptScan();receiptChatGptText='';receiptChatGptNotice='';
  if(el.dataset.tab!=='budget')clearRemoteReceipts();
