@@ -91,3 +91,11 @@
 - 既存の確認チェックと試作保存を使用するため、明細追加・除外・端末内一覧・試作家計簿表示まで既存導線を利用できる。ただしこれは**このSafariのlocalStorageに限る試作記録**。GAS・Google Sheets・家庭同期・正式履歴は未接続であり、日常利用完成の宣言ではない。
 - 実装後に静的・JavaScript模擬試験で、入力拒否・数量null・税別のブロック・税込への適切な手動修正・既存写真OCRの回帰・SWキャッシュ世代を確認。iPhone Safari実機／GitHub Actionsの全ジョブ完了は別途確認する。
 - Webアプリを更新しても過去の端末内試作データを勝手にGoogle Sheetsに移行しない。試験用GASとSheet、main、本番環境、ENABLE_EXPERIMENTAL_WRITESは変更しない。今後正式保存を実装する際には、夫婦の家庭認証・冪等性・競合防止・部分失敗復旧の承認と受入を必須とする。
+
+## 2026-11-01 正式保存の安全な事前契約（本体は未実装）
+
+- レシート親1行＋明細N行の正式保存に向け、`receipt-save-contract.js` へ `receipt-create-1` の厳格な要求生成・事前検査を追加。家庭別チェーン・商品・カテゴリの照合、明細順序、正の数量、確定済み税込額、合計一致、未承認／家庭ID等の混入拒否をチェック。商品選択だけで `price_eligible` をtrueにしない。
+- `receipt-write-recovery-plan.js` に、処理済み操作ジャーナルの prepared → 親レシート → 子明細 → change_log → completed の復旧判定を純粋関数で記述。実シートを使わず、途中失敗・同一ID再送・家庭違い・重複・改ざんを模擬テスト。**GAS実書込・処理済み操作の永続化・認証付き正式読み取りはこれから実装**。
+- `record.create` はクライアント `gas-api.js` で送信前に拒否、GAS `Code.gs` にも専用の明示拒否を追加。`ENABLE_EXPERIMENTAL_WRITES` の値だけで有効化されない。日用品の `LIVE_WRITE_ENABLED=false` は維持。
+- [GAS向け保存・復旧設計](./gas/RECEIPT_BATCH_WRITE_PLAN.md) に、実装順、事故時復旧、家庭別アクセスと夫婦同期、実Sheetでの故障注入、正式保存有効化前の受入条件を記録した。
+- 次工程はGASの安全なレシート親子書込・家庭別読取・クライアント側の未完了記録を接続して独立試験。main／試験GAS／シート／本番環境の書込・デプロイをこの工程では変更しない。
