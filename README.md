@@ -1,4 +1,6 @@
 # くらしストック｜Preview v46（v1.8試作・UI暫定基準）
+
+> **2026-11-01 現行実装の正本（先に確認）：** [既存UIを維持する開発方針と設計・実装の差分](./CURRENT_IMPLEMENTATION_POLICY.md)、[現在のGAS接続状況](./gas/README.md)。このREADMEのPreview v46などの記述は**UIの履歴**で、現在のGoogle Sheets接続可否・実機の保存受入を表すものではない。現行の開発プレビューは認証付きで既存試験GASを使用し、日用品と既存レシートのiPhone読取に成功済み。通常登録・編集・夫婦2人での実機受入は未完了。
  
 > **2026-10-18 時点の現行基準：** [基本設計 v1.8](./household_pwa_requirements_basic_design%281%29.md)／[データモデル v1.8](./DATA_MODEL.md)／[共通UIガイドライン v2.0](./UI_GUIDELINES.md)／[画面別UI仕様](./SCREEN_UI_SPEC.md)。[UI変更・検証履歴](./UI_CHANGELOG.md)は過去の経緯であり、現行の共通UI規則ではありません。以下の古い試作履歴は参考情報であり、現行設計と矛盾する旧記述は適用しません。
 
