@@ -95,6 +95,7 @@ button:disabled{background:#a1aaba}.secondary{background:#eef2f8;color:#20508c}
 </section>
 <section class="panel" id="receipt-candidate-preflight">
 <h2>⑧ 別のレシート明細を保存前検査（保存なし）</h2>
+<details><summary>架空の明細を入力して検査する（開発用・任意）</summary>
 <p class="muted">既存の試験家庭と店舗だけを使い、2明細の書式・数量・税込金額を検査します。実際の購入内容や個人情報は入力せず、架空の品名を利用してください。Google Sheetsへの追加・変更はありません。日常利用の操作には追加しません。</p>
 <label for="candidate-date">試験用の購入日</label>
 <input type="date" id="candidate-date" value="2026-11-01">
@@ -112,6 +113,7 @@ button:disabled{background:#a1aaba}.secondary{background:#eef2f8;color:#20508c}
 <input id="candidate-amount-b" type="number" min="0" max="1000000" step="1" value="330">
 <button id="receipt-candidate-check" type="button" disabled>確認した架空明細を保存前検査（保存しない）</button>
 <p id="receipt-candidate-result" role="status" aria-live="polite">⑥の認証付き読み取り成功後に使用できます。</p>
+</details>
 </section>
 <section class="panel">
 <h2>失敗した場合</h2>
