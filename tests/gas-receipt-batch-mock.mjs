@@ -255,13 +255,13 @@ for(const phase of faults)for(const when of ['before','after']){
   'TRIAL_RECEIPT_NOT_READY','Need BOTH original fixed receipts before new candidates');
  assert.equal(trial.writes,after,'Premature candidate preflight cannot write');
  assert.equal(trialPost('record.create',proposed).error.code,
-  'RECEIPT_WRITES_DISABLED');
+  'BAD_REQUEST','Normal receipt API requires a valid operation ID');
  const confirmed=trialPost('record.trial.replay');
  assert.equal(confirmed.ok,true);
  assert.equal(confirmed.data.replayed,true);
  assert.equal(confirmed.data.amount,496);
  assert.equal(trial.writes,after,'Completed replay must not write any row');
- assert.equal(trialPost('record.create').error.code,'RECEIPT_WRITES_DISABLED');
+ assert.equal(trialPost('record.create').error.code,'BAD_REQUEST');
  assert.equal(trialPost('record.trial.replay',{items:[]}).error.code,'BAD_REQUEST');
  assert.equal(trialPost('record.trial.replay',{},'new-op-123456').error.code,'BAD_REQUEST');
  assert.equal(trialPost('record.trial.second.save',{items:[]}).error.code,'BAD_REQUEST');
@@ -416,8 +416,8 @@ const fullTrial=()=>{
   JSON.parse(t.mock.doPost({postData:{contents:JSON.stringify({
    id_token:'test-token',action,operation_id,payload
   })}}).getContent());
- assert.equal(doPost({action:'record.create'}).error.code,
-  'RECEIPT_WRITES_DISABLED','Normal receipt writes remain blocked');
+ assert.equal(doPost({action:'record.create',operation_id:'bad'}).error.code,
+  'BAD_REQUEST','Normal receipt API must validate operation IDs');
  assert.equal(doPost({action:'record.trial.main.create',
   operation_id:'other-operation-01'}).error.code,'BAD_REQUEST');
  assert.equal(doPost({action:'record.trial.main.create',
@@ -595,4 +595,31 @@ const laterPayload=i=>({
  assert.equal(t.mock.runReceiptWriteTrialOnce().ok,true,'Original fixed fixture still replays');
  assert.equal(t.writes,count);
 }
-console.log('GAS receipt batch: fixed receipts and 20 candidate receipts, same-ID recovery, limits PASS');
+// Real user-facing route: the already pinned prototype Sheet accepts ordinary
+// record.create without the legacy fixed-fixture/counter API.
+{
+ const t=fullTrial();
+ t.mock.ContentService={MimeType:{JSON:'application/json'},
+  createTextOutput(content){return{setMimeType(){return this},getContent(){return content}}}};
+ t.mock.authenticate=()=>t.homeA;
+ const post=(action,id,p)=>JSON.parse(t.mock.doPost({postData:{contents:JSON.stringify({
+  id_token:'test-token',action,operation_id:id,payload:p
+ })}}).getContent());
+ const id='receipt-normal-001';
+ const first=post('record.create',id,mainCandidate);
+ assert.equal(first.ok,true,'Ordinary receipt.create succeeds on existing prototype');
+ const before=t.writes;
+ const retry=post('record.create',id,mainCandidate);
+ assert.equal(retry.ok,true);
+ assert.equal(retry.data.entity.record_id,first.data.entity.record_id);
+ assert.equal(t.writes,before,'Same ID never writes a duplicate');
+ const second=post('record.create','receipt-normal-002',
+  {...mainCandidate,record_date:'2026-11-02'});
+ assert.equal(second.ok,true,'Subsequent normal receipts are accepted');
+ assert.equal(t.read().records.length,4);
+ assert.equal(t.read().record_items.length,8);
+ t.mock.authenticate=()=>t.other;
+ assert.equal(post('record.create','receipt-normal-003',mainCandidate).error.code,
+  'TRIAL_NOT_ISOLATED','Other household is rejected');
+}
+console.log('GAS receipt batch: normal record.create, same-ID recovery, legacy fixtures PASS');
