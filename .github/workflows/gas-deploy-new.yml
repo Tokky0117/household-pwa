@@ -19,7 +19,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
-      GAS_SCRIPT_ID_NEW: \${{ vars.GAS_SCRIPT_ID_NEW }}
+      GAS_SCRIPT_ID_NEW: ${{ vars.GAS_SCRIPT_ID_NEW }}
       TARGET_DEPLOYMENT_ID: AKfycbwn-SfXqRBIjJWVUUIKEsJuaUR6DLAEWbMVR-_rEB3iVZy2zi0ZNSA7JjNmyykvKjvdoQ
     steps:
       - uses: actions/checkout@v4
@@ -36,7 +36,7 @@ jobs:
           node --check "$RUNNER_TEMP/Setup.js"
       - name: Prepare temporary credentials and target
         env:
-          CLASPRC_JSON: \${{ secrets.CLASPRC_JSON }}
+          CLASPRC_JSON: ${{ secrets.CLASPRC_JSON }}
         shell: bash
         run: |
           set -euo pipefail
@@ -103,8 +103,8 @@ jobs:
       - name: Back up existing NEW script before updating
         uses: actions/upload-artifact@v4
         with:
-          name: kurashi-new-gas-before-\${{ github.run_id }}
-          path: \${{ runner.temp }}/new-gas/remote/
+          name: kurashi-new-gas-before-${{ github.run_id }}
+          path: ${{ runner.temp }}/new-gas/remote/
           if-no-files-found: error
           retention-days: 30
       - name: Push and verify only NEW script code
