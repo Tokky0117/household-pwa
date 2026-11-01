@@ -17,7 +17,7 @@ for(let i=0;i<3;i++)add('products',{product_id:'p'+i,household_id:'home',
  updated_at:'2026-11-01T00:00:00Z',deleted_at:null});
 add('products',{product_id:'p-foreign',household_id:'other',
  item_group_id:'foreign',item_group_order:1,name:'秘密',version:1,deleted_at:null});
-let fault=null,lockHeld=false,changes=0,releaseCount=0;
+let fault=null,lockHeld=false,changes=0,releaseCount=0,faultWrites=0;
 const cx=vm.createContext({Date,JSON,Utilities:{
  DigestAlgorithm:{SHA_256:'sha256'},computeDigest(_algo,input){return [...Buffer.from(input)]},
  base64EncodeWebSafe(bytes){return Buffer.from(bytes).toString('base64url')}
@@ -38,6 +38,9 @@ cx.append_=(name,obj)=>{
 cx.write_=(name,row,obj)=>{
  if(name==='item_groups'&&fault==='item'){fault=null;throw Error('FAIL_ITEM')}
  if(name==='products'&&fault==='product'){fault=null;throw Error('FAIL_PRODUCT')}
+ if(fault===name+'-second'&&++faultWrites===2){
+  fault=null;throw Error('FAIL_SECOND_ROW')
+ }
  if(name==='processed_operations'&&fault==='final'){fault=null;throw Error('FAIL_FINAL')}
  db[name][row-2]=copy(obj);changes++;
 };
@@ -66,9 +69,12 @@ expects(()=>order('item',input('item',['i1','i2','foreign'],[2,2,1]),'item-reord
 expects(()=>order('item',{category_id:0,rows:[{id:'i0',version:2},{id:'i0',version:2}]},'item-reorder-test004'),'BAD_REQUEST');
 // Partial item update must block all further writes until exact-ID recovery.
 const newer=input('item',['i1','i2','i0'],[2,2,2]);
-fault='item';
-assert.throws(()=>order('item',newer,'item-reorder-test005'),/FAIL_ITEM/);
+fault='item_groups-second';faultWrites=0;
+assert.throws(()=>order('item',newer,'item-reorder-test005'),/FAIL_SECOND_ROW/);
+assert.equal(db.item_groups[1].sort_order,1,'First item row is durable before the fault');
+assert.equal(db.item_groups[2].sort_order,1,'Second item row was not written');
 assert.equal(JSON.parse(db.processed_operations.at(-1).result).status,'prepared');
+expects(()=>cx.bootstrap(user,{}),'RECOVERY_REQUIRED');
 expects(()=>order('item',newer,'item-reorder-test006'),'RECOVERY_REQUIRED');
 saved=order('item',newer,'item-reorder-test005');
 assert.equal(saved.status,'completed');
@@ -77,8 +83,9 @@ assert.equal(db.item_groups[1].sort_order,1);
 // Product batch: fail while writing later row, preserve partial prepared
 // state and only finish with the identical ID.
 const product=input('product',['p2','p0','p1']);
-fault='product';
-assert.throws(()=>order('product',product,'product-reorder-test001'),/FAIL_PRODUCT/);
+fault='products-second';faultWrites=0;
+assert.throws(()=>order('product',product,'product-reorder-test001'),/FAIL_SECOND_ROW/);
+assert.equal(db.products[2].item_group_order,1,'First product row is durable');
 assert.equal(JSON.parse(db.processed_operations.at(-1).result).status,'prepared');
 saved=order('product',product,'product-reorder-test001');
 assert.equal(saved.status,'completed');
