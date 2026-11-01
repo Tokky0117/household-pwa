@@ -993,9 +993,29 @@ async function retryLive(){
  });
 }
 function validateLiveSnapshot(data){
- return !!data&&Array.isArray(data.categories)&&Array.isArray(data.item_groups)&&
-  Array.isArray(data.products)&&Array.isArray(data.stores)&&typeof data.household_id==='string'&&
-  data.categories.length===CATS.length&&data.categories.every((c,i)=>String(c.name)===CATS[i]);
+ if(!data||typeof data.household_id!=='string'||!data.household_id||
+    !Array.isArray(data.categories)||!Array.isArray(data.item_groups)||
+    !Array.isArray(data.products)||!Array.isArray(data.stores)||
+    data.categories.length!==CATS.length||
+    !data.categories.every((c,i)=>c&&String(c.name)===CATS[i]))return false;
+ const hid=data.household_id;
+ // Reject leaked or duplicated cross-household rows at the UI boundary,
+ // even if the endpoint accidentally returned a valid-looking bootstrap.
+ const scopedUnique=(collection,idKey)=>{
+  const seen=new Set();
+  return collection.every(row=>{
+   const id=row?.[idKey];
+   if(typeof id!=='string'||!id||row.household_id!==hid||seen.has(id))return false;
+   seen.add(id);
+   return true;
+  });
+ };
+ if(!scopedUnique(data.item_groups,'item_group_id')||
+    !scopedUnique(data.products,'product_id')||
+    !scopedUnique(data.stores,'chain_id'))return false;
+ const groups=new Set(data.item_groups.map(row=>row.item_group_id));
+ return data.products.every(p=>p.item_group_id==null||p.item_group_id===''||
+  groups.has(String(p.item_group_id)));
 }
 
 // Only display bounded, user-actionable errors; a thrown message might contain
