@@ -267,6 +267,7 @@ function doPost(e){
   if(action==='bootstrap')return jsonReply({ok:true,data:bootstrap(user,readContext.book)});
    if(action==='product.catalog')return jsonReply({ok:true,data:productCatalog_(user,readContext.book)});
    if(action==='product.alias.check')return jsonReply({ok:true,data:productAliasCheck_(user,payload,readContext.book)});
+  if(action==='record.list')return jsonReply({ok:true,data:receiptList_(user,readContext.book)});
   if(action==='sync')return jsonReply({ok:true,data:changes(user,payload,readContext.book)});
   // Deliberate hard gate: receipt parent+child writes have no recovery journal yet.
   // Even enabling ENABLE_EXPERIMENTAL_WRITES must never enable this endpoint.
@@ -991,6 +992,252 @@ function mutateAliasSafely_(user,payload,operationId,localEditorTrial){
    tab('processed_operations',book));
   return result;
  }finally{lock.releaseLock()}
+}
+
+
+/**
+ * Record batch transaction: built but NOT routed from doPost.
+ * Requires the dedicated opt-in property as well as the existing isolated
+ * trial gate. No editor test/real write should be executed without approval.
+ * Under recovery, all IDs and line prices come from a prepared journal.
+ */
+function receiptPayload_(p){
+ const rootKeys=['version','record_type','chain_id','record_date',
+  'branch_name','raw_store_name','items'];
+ const itemKeys=['line_order','raw_name','product_id','quantity',
+  'amount_tax_included','category_id','price_eligible'];
+ const exact=(x,fields)=>x&&typeof x==='object'&&!Array.isArray(x)&&
+  Object.keys(x).length===fields.length&&
+  fields.every(k=>Object.prototype.hasOwnProperty.call(x,k));
+ const validId=v=>typeof v==='string'&&/^[a-zA-Z0-9_-]{1,128}$/.test(v);
+ const optionalText=(v,n)=>v===null||typeof v==='string'&&v.length<=n&&
+  v.trim()!==''&&!/^[=+@-]|[\x00-\x1f\x7f<>]/.test(v.trim())&&
+  !/\d{4}[- ]?\d{4}[- ]?\d{4}[- ]?\d{4}/.test(v);
+ if(!exact(p,rootKeys)||p.version!=='receipt-create-1'||
+    p.record_type!=='receipt'||!validId(p.chain_id)||
+    typeof p.record_date!=='string'||!/^20\d{2}-\d{2}-\d{2}$/.test(p.record_date)||
+    !optionalText(p.branch_name,80)||!optionalText(p.raw_store_name,120)||
+    !Array.isArray(p.items)||p.items.length<1||p.items.length>30)
+   fail('BAD_REQUEST','レシート形式が不正です');
+ const d=new Date(p.record_date+'T00:00:00Z');
+ if(Number.isNaN(d.valueOf())||d.toISOString().slice(0,10)!==p.record_date)
+  fail('BAD_REQUEST','購入日が不正です');
+ let sum=0;
+ for(let i=0;i<p.items.length;i++){
+  const item=p.items[i];
+  if(!exact(item,itemKeys)||item.line_order!==i+1||
+     !optionalText(item.raw_name,120)||
+     item.product_id!==null&&!validId(item.product_id)||
+     (item.product_id===null&&item.raw_name===null)||
+     !Number.isSafeInteger(item.quantity)||item.quantity<1||item.quantity>999||
+     !Number.isSafeInteger(item.amount_tax_included)||
+     item.amount_tax_included<0||item.amount_tax_included>1000000||
+     item.category_id!==null&&
+       (!Number.isSafeInteger(item.category_id)||item.category_id<0||item.category_id>4)||
+     item.price_eligible!==false)
+    fail('BAD_REQUEST','レシート明細が不正です');
+  sum+=item.amount_tax_included;
+ }
+ if(sum>30000000)fail('BAD_REQUEST','金額が大きすぎます');
+ return p;
+}
+/** All catalog references MUST be unique and belong to the verified home. */
+function receiptOwnership_(hid,payload,book){
+ const stores=rows('stores',book);
+ if(stores.filter(r=>String(r.obj.chain_id)===payload.chain_id&&
+   String(r.obj.household_id)===hid).length!==1||
+   stores.filter(r=>String(r.obj.chain_id)===payload.chain_id).length!==1)
+  fail('NOT_FOUND','チェーンの所有家庭が確認できません');
+ const products=rows('products',book),cats=rows('categories',book);
+ for(const line of payload.items){
+  if(line.product_id!==null&&
+     (products.filter(r=>String(r.obj.product_id)===line.product_id&&
+       String(r.obj.household_id)===hid&&!r.obj.deleted_at).length!==1||
+      products.filter(r=>String(r.obj.product_id)===line.product_id).length!==1))
+   fail('NOT_FOUND','商品の所有家庭が確認できません');
+  if(line.category_id!==null&&
+     cats.filter(r=>Number(r.obj.category_id)===line.category_id).length!==1)
+   fail('NOT_FOUND','家計簿カテゴリが確認できません');
+ }
+}
+function receiptDigest_(payload){
+ return Utilities.base64EncodeWebSafe(Utilities.computeDigest(
+  Utilities.DigestAlgorithm.SHA_256,
+  JSON.stringify({action:'record.create',payload})));
+}
+function receiptSameRow_(actual,expected,name){
+ const fields=TABLES[name];
+ return fields.every(k=>{
+  const a=actual[k]==null?'':actual[k],e=expected[k]==null?'':expected[k];
+  if(typeof e==='boolean')return a===e||String(a)===String(e);
+  return String(a)===String(e);
+ });
+}
+/** Called only from reviewed isolated tests; NOT from the public dispatcher. */
+function mutateReceiptSafely_(user,payload,operationId){
+ if(typeof operationId!=='string'||!/^[A-Za-z0-9_-]{8,128}$/.test(operationId))
+  fail('BAD_REQUEST','操作IDが不正です');
+ // Explicit independent gate: doPost still rejects this action unconditionally.
+ if(PropertiesService.getScriptProperties().getProperty('RECEIPT_WRITES_ENABLED')!=='true')
+  fail('RECEIPT_WRITES_DISABLED','レシート保存は許可されていません');
+ const lock=LockService.getScriptLock();
+ if(!lock.tryLock(20000))fail('BUSY','保存が混み合っています');
+ try{
+  const book=requireIsolatedWriteTrial(false),hid=String(user.householdId);
+  const valid=receiptPayload_(payload),digest=receiptDigest_(valid);
+  const allOps=rows('processed_operations',book),matching=allOps.filter(
+   x=>String(x.obj.operation_id)===operationId);
+  if(matching.length>1||matching.some(x=>String(x.obj.household_id)!==hid))
+   fail('RECOVERY_CONFLICT','別家庭の操作IDと競合しています');
+  const homeOps=allOps.filter(x=>String(x.obj.household_id)===hid);
+  const existing=matching[0]||null;
+  if(existing&&String(existing.obj.request_hash)!==digest)
+   fail('OPERATION_REUSED','操作IDが別の内容で再利用されています');
+  // Invalid stored state blocks new operations, not just another prepared op.
+  for(const op of homeOps){
+   let state;
+   try{state=JSON.parse(String(op.obj.result))}
+   catch(_){fail('RECOVERY_CONFLICT','保存履歴が破損しています')}
+   if(state&&state.status==='prepared'&&
+      String(op.obj.operation_id)!==operationId)
+    fail('RECOVERY_REQUIRED','未完了のレシートを先に復旧してください');
+  }
+  let plan,opRow=existing?.row;
+  if(existing){
+   try{plan=JSON.parse(String(existing.obj.result))}
+   catch(_){fail('RECOVERY_CONFLICT','保存履歴が破損しています')}
+   if(plan.status==='completed'){
+    if(!plan.entity||!Array.isArray(plan.item_ids))
+     fail('RECOVERY_CONFLICT','確定済みの記録が不正です');
+    return plan;
+   }
+   if(plan.status!=='prepared'||plan.action!=='record.create'||
+      !plan.entity||!Array.isArray(plan.items)||!plan.log||
+      String(plan.entity.household_id)!==hid||plan.items.length!==valid.items.length||
+      String(plan.log.change_id)!==operationId)
+    fail('RECOVERY_CONFLICT','復旧する計画が不正です');
+  }else{
+   receiptOwnership_(hid,valid,book);
+   const now=new Date().toISOString(),recordId=Utilities.getUuid();
+   const childIds=valid.items.map(()=>Utilities.getUuid());
+   const globalRecordIds=rows('records',book).map(x=>String(x.obj.record_id));
+   const globalLineIds=rows('record_items',book).map(x=>String(x.obj.record_item_id));
+   if(globalRecordIds.includes(recordId)||childIds.some(x=>globalLineIds.includes(x))||
+      new Set([recordId,...childIds]).size!==childIds.length+1)
+    fail('RECOVERY_CONFLICT','レシートIDが重複しています');
+   const homeLogs=scopedPrefix_('change_log',hid,3,book);
+   if(homeLogs.some(x=>String(x.obj.change_id)===operationId))
+    fail('RECOVERY_CONFLICT','操作履歴が重複しています');
+   const seq=homeLogs.reduce((n,x)=>Math.max(n,Number(x.obj.sequence_no)||0),0)+1;
+   const entity={
+    record_id:recordId,household_id:hid,record_type:'receipt',
+    chain_id:valid.chain_id,branch_name:valid.branch_name,
+    raw_store_name:valid.raw_store_name,record_date:valid.record_date,
+    created_at:now,updated_at:now,version:1,deleted_at:null
+   };
+   const lines=valid.items.map((item,i)=>({
+    record_item_id:childIds[i],record_id:recordId,line_order:i+1,
+    raw_name:item.raw_name,product_id:item.product_id,
+    quantity:item.quantity,amount_tax_included:item.amount_tax_included,
+    category_id:item.category_id,price_eligible:false,
+    created_at:now,updated_at:now,version:1,deleted_at:null
+   }));
+   const log={change_id:operationId,sequence_no:seq,household_id:hid,
+    entity_type:'records',entity_id:recordId,action:'record.create',occurred_at:now};
+   plan={status:'prepared',action:'record.create',entity,items:lines,log};
+   opRow=append_('processed_operations',{household_id:hid,
+    operation_id:operationId,request_hash:digest,result:JSON.stringify(plan),
+    processed_at:now},book);
+   // A prepared journal must exist and be parseable BEFORE any parent write.
+   const prepared=rows('processed_operations',book).filter(x=>
+    String(x.obj.household_id)===hid&&String(x.obj.operation_id)===operationId);
+   if(prepared.length!==1||prepared[0].row!==opRow||
+      String(prepared[0].obj.request_hash)!==digest||
+      String(prepared[0].obj.result)!==JSON.stringify(plan))
+    fail('RECOVERY_CONFLICT','事前ジャーナルが保存されていません');
+  }
+  // Every proposed row ID is checked globally; foreign/duplicate IDs abort.
+  function reconcile(name,idField,expected){
+   const all=rows(name,book).filter(x=>String(x.obj[idField])===String(expected[idField]));
+   if(all.length>1||all.length===1&&!receiptSameRow_(all[0].obj,expected,name))
+    fail('RECOVERY_CONFLICT','既存のレシート保存行が競合しています');
+   if(all.length===0)append_(name,expected,book);
+  }
+  reconcile('records','record_id',plan.entity);
+  for(const line of plan.items)reconcile('record_items','record_item_id',line);
+  // Missing lines are not allowed after a completed log.
+  const logs=rows('change_log',book),existingLog=logs.filter(x=>
+   String(x.obj.change_id)===operationId);
+  if(existingLog.length>1||existingLog.length===1&&
+     !receiptSameRow_(existingLog[0].obj,plan.log,'change_log'))
+   fail('RECOVERY_CONFLICT','変更履歴が一致しません');
+  if(existingLog.length===0){
+   if(logs.some(x=>String(x.obj.household_id)===hid&&
+       Number(x.obj.sequence_no)>=Number(plan.log.sequence_no)))
+    fail('RECOVERY_CONFLICT','変更履歴の連番が競合しています');
+   append_('change_log',plan.log,book);
+  }
+  // Recheck all planned rows after writes; never finalize a partial receipt.
+  const headerRows=rows('records',book).filter(x=>String(x.obj.record_id)===
+   String(plan.entity.record_id));
+  const lineRows=rows('record_items',book);
+  const logRows=rows('change_log',book).filter(x=>
+   String(x.obj.change_id)===operationId);
+  if(headerRows.length!==1||!receiptSameRow_(headerRows[0].obj,plan.entity,'records')||
+     logRows.length!==1||!receiptSameRow_(logRows[0].obj,plan.log,'change_log')||
+     plan.items.some(line=>lineRows.filter(x=>
+       String(x.obj.record_item_id)===String(line.record_item_id)&&
+       receiptSameRow_(x.obj,line,'record_items')).length!==1))
+   fail('RECOVERY_CONFLICT','保存されたレシート明細に不整合があります');
+  const result={status:'completed',action:'record.create',
+   entity:publicRow(plan.entity),
+   item_ids:plan.items.map(x=>x.record_item_id),
+   sequence_no:plan.log.sequence_no};
+  write_('processed_operations',opRow,{household_id:hid,
+   operation_id:operationId,request_hash:digest,result:JSON.stringify(result),
+   processed_at:plan.entity.updated_at},tab('processed_operations',book));
+  return result;
+ }finally{lock.releaseLock()}
+}
+/** Opt-in read-only: expose only completed, journal-verified household rows. */
+function receiptList_(user,book){
+ const hid=String(user.householdId),b=book||spreadsheet();
+ const records=scoped('records',hid,b);
+ const allItems=rows('record_items',b),logs=rows('change_log',b);
+ const operations=operationRowsForHousehold_(hid,b);
+ // Limit return payload; never truncate purchase history silently.
+ if(records.length>200||allItems.length>10000||operations.length>5000)
+  fail('RESULT_TOO_LARGE','レシート履歴が大きいため分割読取が必要です');
+ const completed=[];
+ for(const operation of operations){
+  let state;
+  try{state=JSON.parse(String(operation.obj.result))}
+  catch(_){continue}
+  if(state?.status!=='completed'||state.action!=='record.create'||!state.entity||
+     !Array.isArray(state.item_ids))continue;
+  const id=String(state.entity.record_id||'');
+  const parents=records.filter(x=>String(x.obj.record_id)===id);
+  if(parents.length!==1)continue;
+  if(String(parents[0].obj.household_id)!==hid)continue;
+  const changes=logs.filter(x=>String(x.obj.change_id)===String(operation.obj.operation_id));
+  if(changes.length!==1||String(changes[0].obj.household_id)!==hid||
+     String(changes[0].obj.entity_id)!==id||
+     Number(changes[0].obj.sequence_no)!==Number(state.sequence_no))continue;
+  const ids=new Set(state.item_ids);
+  if(ids.size!==state.item_ids.length||!ids.size||ids.size>30)continue;
+  const lineItems=allItems.filter(x=>ids.has(String(x.obj.record_item_id))&&
+    String(x.obj.record_id)===id&&!x.obj.deleted_at);
+  if(lineItems.length!==ids.size||lineItems.some(x=>
+     lineItems.filter(z=>String(z.obj.record_item_id)===String(x.obj.record_item_id)).length!==1))
+    continue;
+  lineItems.sort((a,c)=>Number(a.obj.line_order)-Number(c.obj.line_order));
+  if(lineItems.some((x,i)=>Number(x.obj.line_order)!==i+1))continue;
+  completed.push({record:publicRow(parents[0].obj),
+   items:lineItems.map(x=>publicRow(x.obj))});
+ }
+ completed.sort((a,b)=>String(b.record.record_date).localeCompare(String(a.record.record_date))||
+  String(a.record.record_id).localeCompare(String(b.record.record_id)));
+ return {records:completed.map(x=>x.record),record_items:completed.flatMap(x=>x.items)};
 }
 
 function mutate_(user,action,payload,operationId){
