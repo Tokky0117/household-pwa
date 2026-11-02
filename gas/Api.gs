@@ -1,8 +1,9 @@
 /**
  * くらしストック - 新しい家庭データ用の最小API（初期段階）
  * 新規GASの Setup.gs と同じプロジェクトに配置する。
- * 対応: bootstrap / item.create / item.update / item.reorder / product.create / product.update / product.reorder
- * 未実装のレシート・店舗保存は成功扱いにしない。
+ * 対応: bootstrap / item.* / product.* / product.reorder / store.create
+ *       record.create / record.update / record.delete / alias.upsert
+ * レシート親・明細の複数行更新と商品別名は既存操作ジャーナルで保存・再送復旧する。
  * 商品の並び替えは、関連商品の更新前に全行を処理履歴へ記録してから実行する。
  */
 // Temporary shared household mode. To restore sign-in, change to 'google'.
