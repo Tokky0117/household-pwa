@@ -973,3 +973,53 @@ await resumedScan.window.KurashiLive.saveReceiptDraft(null);
 resumedScan.window.close();
 
 console.log('v59: PaddleOCR main entry, original queue, budget placeholder: OK');
+
+
+/* Real UI path: open history → edit all details → offline queue → restart
+ * recovery → delete, without touching the existing inventory buttons. */
+let historyUI=appSession();
+await waitFor(()=>historyUI.window.KurashiLive.state().loaded,'history UI bootstrap');
+historyUI.window.document.querySelector('[data-tab="receipt"]').click();
+const historyEntry=historyUI.window.document.querySelector(
+  '[data-act="recordDetail"][data-record-id="'+storedReceipt.record_id+'"]');
+assert.ok(historyEntry,'confirmed receipt opens from existing history');
+historyEntry.click();
+assert.match(historyUI.window.document.body.textContent,/税込合計/);
+historyUI.window.document.querySelector('[data-act="recordEdit"]').click();
+const editForm=historyUI.window.document.getElementById('scanConfirmForm');
+assert.ok(editForm,'history edit reuses shared multi-line confirmation form');
+editForm.querySelector('[name="amount-0"]').value='345';
+editForm.querySelector('[name="confirmed"]').checked=true;
+online=false;
+editForm.dispatchEvent(new historyUI.window.Event('submit',{bubbles:true,cancelable:true}));
+await waitFor(()=>historyUI.window.KurashiLive.state().queued===1,
+ 'editing is committed locally before background GAS write');
+historyUI.window.close();online=true;
+let historyRecovery=appSession();
+await waitFor(()=>historyRecovery.window.KurashiLive.state().loaded&&
+ historyRecovery.window.KurashiLive.state().queued===0&&
+ temp.call('bootstrap').data.record_items.some(x=>
+  x.record_id===storedReceipt.record_id&&Number(x.amount_tax_included)===345),
+ 'history edit resumes after offline iPhone restart');
+assert.equal(temp.call('bootstrap').data.record_items.filter(x=>
+ x.record_id===storedReceipt.record_id).length,1,
+ 'replaced receipt line does not appear twice');
+historyRecovery.window.document.querySelector('[data-tab="receipt"]').click();
+historyRecovery.window.document.querySelector(
+ '[data-act="recordDetail"][data-record-id="'+storedReceipt.record_id+'"]').click();
+historyRecovery.window.document.querySelector('[data-act="recordDelete"]').click();
+assert.ok(historyRecovery.window.document.querySelector('[data-dialog="confirmRecordDelete"]'));
+historyRecovery.window.document.querySelector('[data-dialog="confirmRecordDelete"]').click();
+await waitFor(()=>historyRecovery.window.KurashiLive.state().queued===0&&
+ !temp.call('bootstrap').data.records.some(x=>x.record_id===storedReceipt.record_id),
+ 'delete removes the receipt from active history and price candidate rows');
+const chainForAlias=temp.call('bootstrap').data.stores[0].chain_id;
+const productForAlias=temp.call('bootstrap').data.products[0].product_id;
+await historyRecovery.window.KurashiLive.learnAliases({chain_id:chainForAlias,
+ items:[{raw_name:'アルファベット商品略称',product_id:productForAlias}]});
+await waitFor(()=>historyRecovery.window.KurashiLive.state().queued===0&&
+ temp.call('bootstrap').data.product_aliases.some(x=>
+  x.normalized_alias==='アルファベット商品略称'&&x.product_id===productForAlias),
+ 'chain-specific learned alias is sent through the offline-safe queue');
+historyRecovery.window.close();
+console.log('v59: record editing, offline restart, deletion, alias training: OK');
