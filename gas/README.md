@@ -121,3 +121,10 @@
 - `item.reorder` を実装。`category_id`、`item_group_ids`、`versions` で、同カテゴリ内の表示中の日用品全件の順序を一操作として送信する。
 - `processed_operations` にbefore/afterを記録してから行を更新。途中で処理が停止しても同じ操作IDで再開可能。
 - 商品の並び替えとレシート保存は未接続。
+
+## 2026-11-02：試作 v0.54.0 商品管理の正式保存
+
+- 新GASに `product.create` / `product.update` を追加。商品名・内容量・単位・登録先の検証、家庭境界、重複、version競合、操作ID冪等性、prepared journal復旧、change_logを実装。
+- 既存の「商品を登録」「新しい商品を作成」「編集」「解除」「登録先変更」をIndexedDBキューから非同期送信。UI構造はPreview v46のまま。
+- 商品を解除してもproductsから削除しない。画面で表示するのは正本＋キューの投影。仮商品ID／仮日用品IDは確定後に置換。
+- 未実装：商品の長押し並び替え、別名、レシート／値札、価格集計。古い手順や「商品管理は未接続」の説明は当時の履歴。

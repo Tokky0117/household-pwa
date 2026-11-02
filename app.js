@@ -1,4 +1,4 @@
-const APP_VERSION='0.53.0';
+const APP_VERSION='0.54.0';
 const CATS=['飲食','キッチン','洗面・風呂','洗濯・掃除','その他'];
 const liveMode=!!window.KurashiLive; // Data source only; original Preview v46 UI components remain.
 const SEED=[['牛乳',0,true],['麦茶',0,false],['コーヒー',0,true],['卵',0,false],['キッチンペーパー',1,false],['ラップ',1,true],['食器用洗剤',1,true],['シャンプー',2,false],['歯磨き粉',2,true],['ハンドソープ',2,false],['洗濯洗剤',3,false],['柔軟剤',3,true],['トイレットペーパー',3,false],['乾電池',4,true],['ティッシュ',4,true]];
@@ -612,7 +612,7 @@ function updateComparisonPrices(){
 }
 app.addEventListener('change',e=>{if(e.target.id==='onlyOut'){const wasOut=onlyOut;onlyOut=e.target.checked;if(wasOut&&!onlyOut)collapsed.clear();render()}});
 app.addEventListener('submit',e=>{e.preventDefault();const form=e.target;const d=new FormData(form);
- if(liveMode&&['recordForm','productCreateForm'].includes(form.id)){
+ if(liveMode&&form.id==='recordForm'){
   fieldNotice(form,'この機能のGoogle Sheets保存はまだ接続していません');return
  }if(form.id==='recordForm'){
  const input={type:newRecordType,chainId:String(d.get('chain')||''),date:String(d.get('date')||''),productId:String(d.get('product')||''),rawName:String(d.get('raw')||''),quantity:String(d.get('quantity')||''),amount:String(d.get('amount')||''),category:String(d.get('category')||'')};
@@ -623,7 +623,27 @@ if(form.id==='productCreateForm'){
  const name=String(d.get('name')||'').trim(),quantity=Number(String(d.get('quantity')||'').replace(',','.')),unit=String(d.get('unit')||'');
  if(!name||(String(d.get('quantity')||'').trim()!==''&&(!Number.isFinite(quantity)||quantity<=0))||!UNIT_OPTIONS.includes(unit)){fieldNotice(form,'商品名・内容量・単位を確認してください',!name?'new-product-name':'new-product-quantity');return}
  if(catalogue.products.some(p=>(page!=='productEdit'||p.id!==editingProductId)&&norm(p.name)===norm(name)&&p.packageQuantity===(String(d.get('quantity')||'').trim()?quantity:null)&&p.packageUnit===(String(d.get('quantity')||'').trim()?unit:null))){fieldNotice(form,'同じ名前・内容量の商品が既にあります。検索して選んでください','new-product-name');return}
- if(page==='productEdit'){const p=catalogue.products.find(x=>x.id===editingProductId&&x.itemGroupId===selected);if(!p){fieldNotice(form,'商品が見つかりません','new-product-name');return}Object.assign(p,{name,packageQuantity:String(d.get('quantity')||'').trim()?quantity:null,packageUnit:String(d.get('quantity')||'').trim()?unit:null})}else{catalogue.products.push({id:id(),name,packageQuantity:String(d.get('quantity')||'').trim()?quantity:null,packageUnit:String(d.get('quantity')||'').trim()?unit:null,itemGroupId:selected,itemGroupOrder:registeredProducts(selected).length+1,aliases:[]})}
+ const productQty=String(d.get('quantity')||'').trim()?quantity:null;
+ const productUnit=productQty===null?null:unit;
+ if(liveMode){
+  const p=page==='productEdit'?catalogue.products.find(x=>x.id===editingProductId&&x.itemGroupId===selected):null;
+  if(page==='productEdit'&&!p){fieldNotice(form,'商品が見つかりません','new-product-name');return}
+  const submit=form.querySelector('[type="submit"]');
+  if(submit?.disabled)return;
+  if(submit)submit.disabled=true;
+  const action=p?'product.update':'product.create';
+  const payload=p?
+   {product_id:p.id,version:p.version,name,package_quantity:productQty,package_unit:productUnit}:
+   {item_group_id:selected,name,package_quantity:productQty,package_unit:productUnit};
+  window.KurashiLive.save(action,payload).then(()=>{
+   page='compare';initializeCompare();render();
+  }).catch(err=>{
+   if(submit)submit.disabled=false;
+   fieldNotice(form,err.message||'商品を保存できませんでした','new-product-name');
+  });
+  return;
+ }
+ if(page==='productEdit'){const p=catalogue.products.find(x=>x.id===editingProductId&&x.itemGroupId===selected);if(!p){fieldNotice(form,'商品が見つかりません','new-product-name');return}Object.assign(p,{name,packageQuantity:productQty,packageUnit:productUnit})}else{catalogue.products.push({id:id(),name,packageQuantity:productQty,packageUnit:productUnit,itemGroupId:selected,itemGroupOrder:registeredProducts(selected).length+1,aliases:[]})}
  persistCatalogue();page='compare';initializeCompare();render();
 }});
 app.addEventListener('click',e=>{if(e.target.classList?.contains('sheet-back')&&['add','edit','productEdit','productPick'].includes(page)){back();return}if(suppressClick){e.preventDefault();e.stopPropagation();suppressClick=false;return}const clear=e.target.closest('[data-search-clear]');if(clear){const input=document.getElementById(clear.dataset.searchClear);if(input){input.value='';syncSearch(input);input.focus()}return}const el=e.target.closest('[data-tab],[data-cat],[data-stock],[data-open],[data-act],[data-ui-toggle],[data-ui-choice],[data-dialog],[data-premove],[data-pedit],[data-pick],[data-product-menu],[data-list-edit],[data-list-hide]');if(!el)return;if(el.hasAttribute('data-ui-toggle')){
@@ -642,8 +662,7 @@ if(el.dataset.uiChoice!==undefined){
  wrapper.querySelectorAll('[data-ui-choice]').forEach(b=>{const selected=b===el;b.classList.toggle('selected',selected);b.setAttribute('aria-pressed',String(selected));const tick=b.querySelector('.ui-menu-selected');if(tick)tick.textContent=selected?'✓':''});
  closeAllDropdowns();wrapper.querySelector('.ui-select-trigger')?.focus();return;
 }
-if(liveMode && (el.matches('[data-pedit],[data-premove],[data-pick]')||
-  ['productPick','productCreate','newReceipt','newShelf'].includes(el.dataset.act))){
+if(liveMode && ['newReceipt','newShelf'].includes(el.dataset.act)){
   inlineActionNotice(el,'この機能のGoogle Sheets保存はまだ接続していません');return;
  }
 if(el.dataset.listEdit){duplicateItemId=null;selected=el.dataset.listEdit;editReturnPage='list';openSwipeId=null;page='edit';render();return}if(el.dataset.listHide){selected=el.dataset.listHide;setOpenSwipe(null);dialog={title:'日用品を削除',message:'日用品リストから削除します。',buttons:[{id:'cancel',label:'キャンセル'},{id:'confirmHide',label:'削除',critical:true}]};render();return}
@@ -668,18 +687,39 @@ if(el.dataset.pick){
   dialog={title:'商品の登録先変更',message:'過去の最安値の集計先も変わります。',buttons:[{id:'cancel',label:'キャンセル'},{id:'confirmProductMove',label:'変更する',primary:true}],pending:{productId:p.id,fromId:p.itemGroupId}};
   renderDialogOnly();return;
  }
- setProductGroup(p,selected);page='compare';initializeCompare();render();return;
+ if(liveMode){
+  window.KurashiLive.save('product.update',{product_id:p.id,version:p.version,item_group_id:selected})
+   .then(()=>{page='compare';initializeCompare();render()})
+   .catch(err=>inlineActionNotice(el,err.message||'登録先を保存できませんでした'));
+ }else{setProductGroup(p,selected);page='compare';initializeCompare();render()}
+ return;
 }
 if(el.dataset.dialog){if(el.dataset.dialog==='cancel'&&(dialog?.title==='変更を破棄しますか？'||dialog?.title==='比較単位について')){dialog=null;document.querySelector('.dialog-back')?.remove();return}const action=el.dataset.dialog,p=dialog?.pending;dialog=null;
 
 if(action==='confirmProductUnlink'&&p){
  const product=catalogue.products.find(x=>x.id===p.productId);
- if(product&&product.itemGroupId===selected)setProductGroup(product,null);
+ if(product&&product.itemGroupId===selected){
+  if(liveMode){
+   window.KurashiLive.save('product.update',{product_id:product.id,version:product.version,item_group_id:null})
+    .then(()=>{openSwipeId=null;render()})
+    .catch(err=>inlineActionNotice(document.querySelector('.comparison-list'),err.message||'解除できませんでした'));
+   return;
+  }
+  setProductGroup(product,null);
+ }
  openSwipeId=null;render();return;
 }
 if(action==='confirmProductMove'&&p){
  const product=catalogue.products.find(x=>x.id===p.productId);
- if(product&&product.itemGroupId===p.fromId)setProductGroup(product,selected);
+ if(product&&product.itemGroupId===p.fromId){
+  if(liveMode){
+   window.KurashiLive.save('product.update',{product_id:product.id,version:product.version,item_group_id:selected})
+    .then(()=>{page='compare';initializeCompare();render()})
+    .catch(err=>inlineActionNotice(document.querySelector('.comparison-list'),err.message||'登録先を変更できませんでした'));
+   return;
+  }
+  setProductGroup(product,selected);
+ }
  page='compare';initializeCompare();render();return;
 }
 if(action==='discardChanges'){goBack();return}if(action==='confirmHide'){if(liveMode){const i=current();if(i)

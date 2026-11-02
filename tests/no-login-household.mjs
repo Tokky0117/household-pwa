@@ -181,7 +181,7 @@ assert.equal(temp.db.processed_operations.length,afterCommit,
  'GAS did not create an extra processed operation');
 assert.equal(pill(c),'なし');
 c.window.document.querySelector('[data-tab="settings"]').click();
-assert.match(c.window.document.body.textContent,/試作 v0\.53\.0/);
+assert.match(c.window.document.body.textContent,/試作 v0\.54\.0/);
 
 // New item IDs can be referenced by edits/hides before the first GAS save.
 online=false;
@@ -414,3 +414,84 @@ freshApp.window.close();
 console.log('v46 UI forms + IndexedDB reorder + queued create/reorder + crash recovery: OK');
 
 
+
+// Product master: server-side validation, replay, optimistic offline queue,
+// temporary product-ID substitution, linkage, edit, and conflict recovery.
+const productFixture=fixture(api);
+const itA=productFixture.call('item.create',{name:'飲料',category_id:0},
+ 'op-product-item-a-abcdefghijklmnop').data.entity;
+const itB=productFixture.call('item.create',{name:'食品',category_id:0},
+ 'op-product-item-b-abcdefghijklmnop').data.entity;
+const createProductPayload={name:'無糖茶',package_quantity:500,
+ package_unit:'mL',item_group_id:itA.item_group_id};
+const productCreated=productFixture.call('product.create',createProductPayload,
+ 'op-product-create-abcdefghijklmnop');
+assert.equal(productCreated.ok,true,'product master create');
+assert.equal(productCreated.data.entity.item_group_id,itA.item_group_id);
+const productId=productCreated.data.entity.product_id;
+assert.equal(productFixture.call('product.create',createProductPayload,
+ 'op-product-create-abcdefghijklmnop').data.entity.product_id,productId,
+ 'product create reply loss is idempotent');
+assert.equal(productFixture.call('product.create',createProductPayload,
+ 'op-product-duplicate-abcdefghijklmnop').error.code,'DUPLICATE',
+ 'same product name, size and unit cannot be duplicated');
+const updatedProduct=productFixture.call('product.update',{product_id:productId,
+ version:1,name:'無糖緑茶',package_quantity:550,package_unit:'mL'},
+ 'op-product-edit-abcdefghijklmnop');
+assert.equal(updatedProduct.ok,true,'product edit');
+assert.equal(productFixture.call('product.update',{product_id:productId,
+ version:1,item_group_id:itB.item_group_id},
+ 'op-product-stale-abcdefghijklmnop').error.code,'VERSION_CONFLICT',
+ 'product version conflict');
+const movedProduct=productFixture.call('product.update',{product_id:productId,
+ version:2,item_group_id:itB.item_group_id},
+ 'op-product-link-abcdefghijklmnop');
+assert.equal(movedProduct.ok,true,'product linked to different item group');
+assert.equal(movedProduct.data.entity.item_group_id,itB.item_group_id);
+const unlinkedProduct=productFixture.call('product.update',{product_id:productId,
+ version:3,item_group_id:null},'op-product-unlink-abcdefghijklmnop');
+assert.equal(unlinkedProduct.ok,true);
+assert.equal(unlinkedProduct.data.entity.item_group_id,'','unlink retains the master');
+assert.equal(productFixture.call('product.update',{product_id:productId,
+ version:4,item_group_id:'item-unknown'},'op-product-invalid-abcdefghijklmnop')
+ .error.code,'NOT_FOUND','product cannot link to missing item');
+assert.equal(productFixture.call('bootstrap').data.products.length,1,
+ 'product master shared on bootstrap');
+
+// Offline create/edit/unlink/relink includes a queued item whose server ID
+// is still unknown. Restart sends actions in original order with exact IDs.
+let productSession=appSession();
+await waitFor(()=>productSession.window.KurashiLive.state().loaded,
+ 'product queue ready');
+online=false;
+const localItem=await productSession.window.KurashiLive.save('item.create',
+ {name:'仮ID商品用日用品',category_id:4});
+const localProduct=await productSession.window.KurashiLive.save('product.create',
+ {name:'テスト商品',package_quantity:3,package_unit:'本',
+ item_group_id:localItem.item_group_id});
+assert.match(localProduct.product_id,/^local-/);
+const localEdited=await productSession.window.KurashiLive.save('product.update',
+ {product_id:localProduct.product_id,name:'テスト商品改',
+ package_quantity:4,package_unit:'本',version:1});
+assert.equal(localEdited.name,'テスト商品改');
+await productSession.window.KurashiLive.save('product.update',
+ {product_id:localProduct.product_id,version:1,item_group_id:null});
+await productSession.window.KurashiLive.save('product.update',
+ {product_id:localProduct.product_id,version:1,
+ item_group_id:localItem.item_group_id});
+assert.equal(productSession.window.KurashiLive.state().queued,5);
+assert.equal(productSession.window.KurashiLive.catalogueOf(
+  {products:[],stores:[]}).products.length,0);
+productSession.window.close();online=true;
+let productRestart=appSession();
+await waitFor(()=>productRestart.window.KurashiLive.state().queued===0&&
+ temp.call('bootstrap').data.products.some(x=>x.name==='テスト商品改'),
+ 'queued product and parent both obtain permanent IDs on restart');
+const savedProduct=temp.call('bootstrap').data.products.find(x=>x.name==='テスト商品改');
+const savedItem=temp.call('bootstrap').data.item_groups.find(x=>x.name==='仮ID商品用日用品');
+assert.equal(savedProduct.item_group_id,savedItem.item_group_id,
+ 'product relink to freshly created parent succeeded');
+assert.equal(Number(savedProduct.version),4,'create, edit, unlink, relink all persisted');
+assert.equal(productRestart.window.KurashiLive.catalogueOf(
+ temp.call('bootstrap').data).products.find(x=>x.id===savedProduct.product_id).version,4);
+productRestart.window.close();

@@ -42,6 +42,13 @@
   if(data.categories.length!==5||data.categories.some((c,i)=>
     Number(c.category_id)!==i||c.name!==cats[i]))throw Error('CATEGORY_MISMATCH');
   const seen=new Set();
+  const productIds=new Set();
+  for(const p of data.products){
+   if(typeof p.product_id!=='string'||!p.product_id||
+      p.household_id!==data.household_id||productIds.has(p.product_id)||
+      typeof p.name!=='string'||!positiveVersion(p.version))throw Error('DATA_INVALID');
+   productIds.add(p.product_id);
+  }
   for(const i of data.item_groups){
    if(typeof i.item_group_id!=='string'||!i.item_group_id||
       i.household_id!==data.household_id||seen.has(i.item_group_id)||
@@ -59,8 +66,33 @@
  };
  function project(doc=workspace){
   if(!doc.base)return null;
-  const snap={...doc.base,item_groups:doc.base.item_groups.map(i=>({...i}))};
+  const snap={...doc.base,item_groups:doc.base.item_groups.map(i=>({...i})),
+   products:doc.base.products.map(p=>({...p}))};
   for(const op of doc.queue){
+   if(op.kind==='product-create'){
+    const order=Math.max(0,...snap.products.filter(p=>
+     p.item_group_id===op.groupId).map(p=>Number(p.item_group_order)||0))+1;
+    snap.products.push({product_id:op.clientId,household_id:snap.household_id,
+     item_group_id:op.groupId,name:op.name,
+     normalized_name:op.name.normalize('NFKC').toLocaleLowerCase('ja'),
+     package_quantity:op.quantity??'',package_unit:op.unit||'',
+     item_group_order:order,version:1,deleted_at:''});
+    continue;
+   }
+   if(op.kind==='product-edit'||op.kind==='product-link'){
+    const p=snap.products.find(x=>x.product_id===op.targetId);
+    if(!p)continue;
+    if(op.kind==='product-edit'){
+     p.name=op.name;p.package_quantity=op.quantity??'';
+     p.package_unit=op.unit||'';
+    }else if(p.item_group_id!==op.groupId){
+     p.item_group_id=op.groupId||'';
+     p.item_group_order=op.groupId?
+      Math.max(0,...snap.products.filter(x=>x.product_id!==p.product_id&&
+       x.item_group_id===op.groupId).map(x=>Number(x.item_group_order)||0))+1:'';
+    }
+    continue;
+   }
    if(op.kind==='reorder'){
     const list=snap.item_groups.filter(i=>
      Number(i.category_id)===op.category_id&&!i.deleted_at&&!toBoolean(i.is_hidden));
@@ -257,6 +289,47 @@
   try{return await task}
   finally{if(refreshPromise===task)refreshPromise=null;notify()}
  }
+ function productFields(payload){
+  const name=String(payload.name||'').trim(),qty=payload.package_quantity,
+   unit=payload.package_unit;
+  if(!name||name.length>80||/^[=+@\-]/.test(name)||
+     (qty===null)!==(unit===null)||
+     (qty!==null&&(!Number.isFinite(qty)||typeof qty!=='number'||qty<=0))||
+     (unit!==null&&!['個','本','枚','g','kg','mL','L'].includes(unit)))
+   throw Error('商品名・内容量・単位を確認してください');
+  return {name,quantity:qty,unit};
+ }
+ function makeProductOperation(action,payload,doc){
+  const snap=project(doc),products=snap?.products||[];
+  if(action==='product.create'){
+   const fields=productFields(payload),groupId=String(payload.item_group_id||'');
+   if(!snap.item_groups.some(i=>i.item_group_id===groupId&&!i.deleted_at))
+    throw Error('登録先の日用品が見つかりません');
+   if(products.some(p=>p.name.normalize('NFKC')===fields.name.normalize('NFKC')&&
+     Number(p.package_quantity||0)===Number(fields.quantity||0)&&
+     (p.package_unit||null)===fields.unit))
+    throw Error('同じ商品・内容量が既にあります');
+   return {id:operationId(),kind:'product-create',clientId:'local-'+uid(),
+    groupId,...fields,retries:0};
+  }
+  if(action!=='product.update')throw Error('UNSUPPORTED');
+  const targetId=String(payload.product_id||''),
+   product=products.find(p=>p.product_id===targetId);
+  if(!product)throw Error('商品が見つかりません');
+  if(Object.prototype.hasOwnProperty.call(payload,'item_group_id')){
+   const groupId=payload.item_group_id===null?null:String(payload.item_group_id);
+   if(groupId!==null&&!snap.item_groups.some(i=>i.item_group_id===groupId&&!i.deleted_at))
+    throw Error('登録先の日用品が見つかりません');
+   return {id:operationId(),kind:'product-link',targetId,groupId,retries:0};
+  }
+  const fields=productFields(payload);
+  if(products.some(p=>p.product_id!==targetId&&
+    p.name.normalize('NFKC')===fields.name.normalize('NFKC')&&
+    Number(p.package_quantity||0)===Number(fields.quantity||0)&&
+    (p.package_unit||null)===fields.unit))
+   throw Error('同じ商品・内容量が既にあります');
+  return {id:operationId(),kind:'product-edit',targetId,...fields,retries:0};
+ }
  function makeOperation(action,payload,doc){
   if(action==='item.create'){
    const name=String(payload.name||'').trim(),category_id=Number(payload.category_id);
@@ -300,12 +373,15 @@
    return doc;
   });
   const current=ws.queue[ws.queue.length-1];
-  const visible=project()?.item_groups.find(i=>i.item_group_id===(current.clientId||current.targetId));
+  const snap=project(),visible=current.kind.startsWith('product-')
+   ?snap?.products.find(p=>p.product_id===(current.clientId||current.targetId))
+   :snap?.item_groups.find(i=>i.item_group_id===(current.clientId||current.targetId));
   void flush();
   return visible||null;
  }
  async function save(action,payload){
-  return enqueue(doc=>makeOperation(action,payload,doc));
+  return enqueue(doc=>action.startsWith('product.')?
+   makeProductOperation(action,payload,doc):makeOperation(action,payload,doc));
  }
  async function reorderItems(categoryId,orderedIds){
   return enqueue(doc=>{
@@ -333,6 +409,23 @@
  }
  function resolveOperation(op,base){
   if(op.request)return op.request; // preserve exact payload for interrupted requests.
+  if(op.kind==='product-create'){
+   if(!base?.item_groups.some(i=>i.item_group_id===op.groupId&&!i.deleted_at))
+    throw Error('登録先の日用品が見つかりません');
+   return {operationId:op.id,action:'product.create',payload:{
+    name:op.name,package_quantity:op.quantity,package_unit:op.unit,
+    item_group_id:op.groupId}};
+  }
+  if(op.kind==='product-edit'||op.kind==='product-link'){
+   const p=base?.products.find(x=>x.product_id===op.targetId);
+   if(!p||p.deleted_at)throw Error('商品が見つかりません');
+   const payload={product_id:p.product_id,version:Number(p.version)};
+   if(op.kind==='product-edit'){
+    payload.name=op.name;payload.package_quantity=op.quantity;
+    payload.package_unit=op.unit;
+   }else payload.item_group_id=op.groupId;
+   return {operationId:op.id,action:'product.update',payload};
+  }
   if(op.kind==='create')return {operationId:op.id,action:'item.create',
    payload:{name:op.name,category_id:op.category_id}};
   if(op.kind==='reorder'){
@@ -384,7 +477,8 @@
       result.entities.some((e,i)=>e?.item_group_id!==plan.payload.item_group_ids[i]||
        Number(e.sort_order)!==i+1||!positiveVersion(e.version)))
     throw Error('RESPONSE_INVALID');
-  }else if(!result.entity||typeof result.entity.item_group_id!=='string'){
+  }else if(!result.entity||typeof (plan.action.startsWith('product.')?
+      result.entity.product_id:result.entity.item_group_id)!=='string'){
    throw Error('RESPONSE_INVALID');
   }
   await modify(ws=>{
@@ -395,17 +489,26 @@
    const entities=plan.action==='item.reorder'?result.entities:[result.entity];
    if(entities.some(e=>e.household_id!==ws.base.household_id))
     throw Error('HOUSEHOLD_CHANGED');
-   const ids=new Set(entities.map(e=>e.item_group_id));
-   ws.base={...ws.base,item_groups:[
-    ...ws.base.item_groups.filter(i=>!ids.has(i.item_group_id)),...entities],
+   const productAction=plan.action.startsWith('product.');
+   const ids=new Set(entities.map(e=>productAction?e.product_id:e.item_group_id));
+   ws.base={...ws.base,
+    ...(productAction?{products:[
+      ...ws.base.products.filter(p=>!ids.has(p.product_id)),...entities]}
+     :{item_groups:[
+      ...ws.base.item_groups.filter(i=>!ids.has(i.item_group_id)),...entities]}),
     sequence_no:Math.max(Number(ws.base.sequence_no),Number(result.sequence_no))};
    ws.queue.shift();
    if(op.kind==='create'){
     for(const rest of ws.queue){
      if(rest.targetId===op.clientId)rest.targetId=result.entity.item_group_id;
+     if(rest.groupId===op.clientId)rest.groupId=result.entity.item_group_id;
      if(rest.kind==='reorder')rest.item_group_ids=rest.item_group_ids.map(id=>
       id===op.clientId?result.entity.item_group_id:id);
     }
+   }
+   if(op.kind==='product-create'){
+    for(const rest of ws.queue)
+     if(rest.targetId===op.clientId)rest.targetId=result.entity.product_id;
    }
    ws.blocked=null;return ws;
   });
@@ -478,6 +581,8 @@
         if(rejected?.id===op.id){
          ws.queue.shift();
          if(rejected.kind==='create')ws.queue=ws.queue.filter(q=>
+          q.targetId!==rejected.clientId&&q.groupId!==rejected.clientId);
+         if(rejected.kind==='product-create')ws.queue=ws.queue.filter(q=>
           q.targetId!==rejected.clientId);
         }
         return ws;
@@ -521,7 +626,8 @@
   return {products:(data?.products||[]).map(p=>({
    id:p.product_id,name:p.name,packageQuantity:p.package_quantity===''?null:p.package_quantity,
    packageUnit:p.package_unit||null,itemGroupId:p.item_group_id||null,
-   itemGroupOrder:p.item_group_order===''?null:Number(p.item_group_order),aliases:[]
+   itemGroupOrder:p.item_group_order===''?null:Number(p.item_group_order),
+   version:Number(p.version),aliases:[]
   })),chains:(data?.stores||[]).map(s=>({id:s.chain_id,name:s.canonical_name})),branches:[]};
  }
  const kick=()=>{
