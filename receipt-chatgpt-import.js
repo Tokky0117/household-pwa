@@ -119,11 +119,54 @@ function makeReceipt(raw){
   }
  };
 }
+/**
+ * Normalize only presentation glitches seen in pasted ChatGPT output. Never
+ * infer missing prices/quantities and never use eval or executable repair.
+ * The sample "items": {row},{row} is repaired only when its braces are
+ * balanced and JSON.parse of the single changed shape succeeds.
+ */
+function extractJson(source){
+ let text=source.trim().replace(/^\`\`\`(?:json)?\s*/i,'').replace(/\s*\`\`\`$/,'');
+ const begin=text.indexOf('{'),end=text.lastIndexOf('}');
+ if(begin<0||end<=begin)throw Error('JSON_OBJECT_MISSING');
+ text=text.slice(begin,end+1).replace(/[“”]/g,'"');
+ try{return JSON.parse(text)}catch(_){}
+ // Repair only the specific missing-array-brackets pattern:
+ // "items": {row1}, {row2}, ... {rowN} }
+ const marker=/"items"\s*:\s*\{/g,found=[...text.matchAll(marker)];
+ if(found.length!==1)throw Error('INVALID_JSON_SYNTAX');
+ const i=found[0].index+found[0][0].length-1;
+ const left=text.slice(0,i),right=text.slice(i);
+ // The final brace closes the root object; the preceding one closes last row.
+ if(!/\}\s*\}\s*$/.test(right))throw Error('INVALID_JSON_SYNTAX');
+ const fixed=left+'['+right.replace(/\}(\s*\})\s*$/,'}]$1');
+ try{
+  const result=JSON.parse(fixed);
+  if(!Array.isArray(result.items)||result.items.length<2)
+   throw Error('INVALID_JSON_SYNTAX');
+  return result;
+ }catch(_){throw Error('INVALID_JSON_SYNTAX')}
+}
+function normalizeImport(raw){
+ if(!isObject(raw))throw Error('INVALID_RECEIPT_FORMAT');
+ const fields=['version','purchaseDate','storeName','taxBasis','taxTotal','receiptTotal','printedCount','items'];
+ const result=Object.fromEntries(fields.map(k=>[k,raw[k]??null]));
+ result.version=IMPORT_VERSION;
+ result.taxBasis=result.taxBasis??'unknown';
+ if(!Array.isArray(result.items)){
+  if(isObject(result.items))result.items=[result.items];
+  else throw Error('ITEMS_ARRAY_REQUIRED');
+ }
+ const keys=['name','code','quantity','unitPrice','grossAmount','discount','netAmount'];
+ result.items=result.items.map((line,index)=>{
+  if(!isObject(line))throw Error('ITEM_INVALID_'+(index+1));
+  return Object.fromEntries(keys.map(k=>[k,line[k]??null]));
+ });
+ return result;
+}
 function parseChatGptReceiptJson(source){
  if(typeof source!=='string'||source.length>30000||!source.trim())throw Error('JSON_SIZE_OR_EMPTY');
- let value;
- try{value=JSON.parse(source)}catch{throw Error('INVALID_JSON')}
- return makeReceipt(value);
+ return makeReceipt(normalizeImport(extractJson(source)));
 }
 // Adjustments are local only. Every change is revalidated and recomputed;
 // no actor can mutate source IDs or inject unlisted fields.
@@ -159,10 +202,13 @@ function draftQuality(receipt){
 }
 
 
-function makeChatGptReceiptPrompt(){
+function makeChatGptReceiptPrompt(ocrReference=''){
  return [
-  '次のレシート画像から、印字された購入明細だけを読み取ってください。',
-  '出力はJSONオブジェクトのみ。説明文やMarkdownのコードフェンスは付けないでください。',
+  '添付レシート画像を最優先に、印字された購入明細だけを読み取ってください。',
+  '下に「参考OCR結果」がある場合は位置・文字の手掛かりとして利用してください。ただしOCRが誤っている可能性があるため、画像と矛盾すれば画像を優先してください。',
+  'OCRに記載のない商品を推測で作ったり、対応が不明なOCR行を勝手に他商品へ統合しないでください。',
+  '出力は標準JSONオブジェクトのみ。キー・文字列は半角ダブルクォーテーション(")で囲み、説明文やMarkdownのコードフェンスは付けないでください。',
+  'itemsは必ず[ と ]で囲んだ配列にし、各商品を{ と }で囲んでカンマで区切ってください。',
   '会員・決済・取引・カード・電話番号などの個人情報を出力しないでください。',
   '画像から確認できない商品名・数量・税率・商品コード・値引きやメーカーを推測で補わず、nullにしてください。',
   '商品名は原本表記。商品名中の「20個入」は購入数量ではありません。quantityは購入数量です。',
@@ -179,7 +225,7 @@ function makeChatGptReceiptPrompt(){
     grossAmount:null,discount:null,netAmount:null
    }]
   },null,2)
- ].join('\n');
+ ].concat(ocrReference?['','参考OCR結果（原本より優先しない）:',String(ocrReference).slice(0,18000)]:[]).join('\n');
 }
 
 root.KurashiReceiptImport={

@@ -8,7 +8,7 @@
  const ENDPOINT='https://script.google.com/macros/s/AKfycbwn-SfXqRBIjJWVUUIKEsJuaUR6DLAEWbMVR-_rEB3iVZy2zi0ZNSA7JjNmyykvKjvdoQ/exec';
  const CLIENT_ID='290567395833-cdemend3itmapsgsounu8pf72hgvm315.apps.googleusercontent.com';
  const DB_NAME='kurashi-stock-operations-v1',STORE='workspace',KEY='primary';
- const RECEIPT_DRAFT_KEY='receipt-draft-1';
+ const RECEIPT_DRAFT_KEY='receipt-draft-1',OCR_CORRECTIONS_KEY='ocr-corrections-1';
  const OLD_SNAPSHOT='kurashi-new-confirmed-snapshot-v1';
  const OLD_OPERATION='kurashi-new-write-v1-temporary-household';
  const listeners=new Set();
@@ -254,6 +254,64 @@
      row.draft||null:null);
    };
    req.onerror=()=>reject(req.error||Error('下書きを読み込めません'));
+  });
+ }
+// Local verified OCR corrections; product aliases are separately synced to Sheets.
+ // Images and full OCR transcripts are never stored in this dictionary.
+ async function loadOcrCorrections(){
+  await boot();
+  if(!workspace.base)await load();
+  if(!workspace.base)return [];
+  const db=await openDatabase();
+  return new Promise((resolve,reject)=>{
+   const tx=db.transaction(STORE,'readonly'),r=tx.objectStore(STORE).get(OCR_CORRECTIONS_KEY);
+   r.onsuccess=()=>{
+    const saved=r.result;
+    resolve(saved?.household_id===workspace.base?.household_id&&
+      Array.isArray(saved.rows)?saved.rows:[]);
+   };
+   r.onerror=()=>reject(r.error||Error('OCR補正候補を読み込めません'));
+  });
+ }
+ async function saveOcrCorrections(corrections){
+  await boot();if(!workspace.base)await load();
+  if(!workspace.base)throw Error('OCR補正の保存には同期が必要です');
+  const household=workspace.base.household_id;
+  const norm=v=>String(v||'').normalize('NFKC').trim().replace(/\s+/g,' ').toLocaleLowerCase('ja');
+  const clean=[];
+  for(const c of corrections||[]){
+   if(!c||typeof c.chainId!=='string'||!c.chainId||
+      c.chainId.startsWith('local-')||typeof c.ocrName!=='string'||
+      typeof c.correctedName!=='string')continue;
+   const ocrName=c.ocrName.trim(),correctedName=c.correctedName.trim();
+   if(!ocrName||!correctedName||ocrName.length>120||correctedName.length>120||
+      /^[=+@\-]/.test(ocrName)||/^[=+@\-]/.test(correctedName)||
+      /[\x00-\x1f\x7f<>]/.test(ocrName+correctedName)||
+      norm(ocrName)===norm(correctedName))continue;
+   clean.push({chainId:c.chainId,ocrName,correctedName,
+    productId:typeof c.productId==='string'?c.productId:'',confirmedAt:Date.now()});
+  }
+  if(!clean.length)return true;
+  const db=await openDatabase();
+  return new Promise((resolve,reject)=>{
+   const tx=db.transaction(STORE,'readwrite'),st=tx.objectStore(STORE),
+    req=st.get(OCR_CORRECTIONS_KEY);
+   req.onsuccess=()=>{
+    const prior=req.result?.household_id===household&&Array.isArray(req.result?.rows)?
+      req.result.rows:[];
+    const rows=prior.slice();
+    for(const correction of clean){
+     const ix=rows.findIndex(x=>x.chainId===correction.chainId&&
+      norm(x.ocrName)===norm(correction.ocrName));
+     // Last explicit confirmed correction overrides an older candidate.
+     if(ix>=0)rows.splice(ix,1);
+     rows.push(correction);
+    }
+    st.put({household_id:household,rows:rows.slice(-400)},OCR_CORRECTIONS_KEY);
+   };
+   tx.oncomplete=()=>resolve(true);
+   tx.onerror=()=>reject(tx.error||Error('OCR補正候補を保存できません'));
+   tx.onabort=()=>reject(tx.error||Error('OCR補正候補を保存できません'));
   });
  }
  // One atomic IndexedDB transaction per change. No UI update before disk commit.
@@ -1008,7 +1066,8 @@
    else void load();
   }).catch(e=>{error=e.message||'端末内の保存領域を開けません';notify()});
  };
- window.KurashiLive={state,load,save,saveRecord,updateRecord,deleteRecord,learnAliases,saveReceiptDraft,loadReceiptDraft,toggleStock,reorderItems,reorderProducts,retry,logout,renderLogin,
+ window.KurashiLive={state,load,save,saveRecord,updateRecord,deleteRecord,learnAliases,
+  saveReceiptDraft,loadReceiptDraft,saveOcrCorrections,loadOcrCorrections,toggleStock,reorderItems,reorderProducts,retry,logout,renderLogin,
   subscribe:fn=>{listeners.add(fn);return()=>listeners.delete(fn)},itemsOf,catalogueOf};
  window.addEventListener('kurashi-gis-ready',initialize);
  window.addEventListener('online',kick);

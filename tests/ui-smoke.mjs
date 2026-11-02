@@ -17,13 +17,14 @@ const doc={
 const ctx={document:doc,localStorage:{getItem:k=>storage.get(k)??null,setItem:(k,v)=>storage.set(k,v),removeItem:k=>storage.delete(k)},
  navigator:{},window:{scrollTo(){},scrollY:0},crypto:{randomUUID:()=> 'test-id'},setTimeout:()=>0};
 const ui=vm.runInNewContext(source+`
-({listView,priceCompareView,pickerView,pickerResults,receiptView,budgetView,receiptScanView,receiptChatGptView,recordDetailView,scanDuplicates,render,initializeCompare,
+({listView,priceCompareView,pickerView,pickerResults,receiptView,budgetView,receiptScanView,receiptChatGptView,recordDetailView,scanDuplicates,compareOcrAndChatGpt,receiptOcrReference,correctionFor,render,initializeCompare,
  setProductGroup,reorderProducts,registeredProducts,convertQuantity,setOpenSwipe,
  chainMinima,priceCandidates,budgetTotals,savePreviewRecord,periodStart,
  demoRecords,demoRecordItems,allPreviewRecords,allPreviewItems,
  setSelected(v){selected=v},setPage(v){page=v},setMode(v){priceScope=v},setDock(v){shopExpanded=v},
  setPeriod(v){period=v},setQty(v){compareQuantity=v},setUnit(v){compareUnit=v},
  setNewRecordType(v){newRecordType=v},recordAddView,
+ setScanDraft(v){scanDraft=v},setOcrLearning(v){ocrLearning=v},getScanDraft(){return scanDraft},
  getCompare(){return [compareQuantity,compareUnit]},getSwipe(){return openSwipeId},
  getPeriod(){return period},getListHelpOpen(){return listHelpOpen},listHelpView,readListHelpOpen,catalogue:()=>catalogue})
 `,ctx,{filename:'app.js'});
@@ -235,3 +236,50 @@ assert.ok(!ui.budgetView().includes('budget-total'),
  'Budget tab has only implementation-plan notice, not sample figures');
 assert.ok(source.includes("import('./ocr-engine/engine.js')"),
  'PaddleOCR runtime loads lazily, after explicit scan');
+
+const importer=readFileSync(new URL('../receipt-chatgpt-import.js',import.meta.url),'utf8');
+const imports=vm.runInNewContext(importer+';KurashiReceiptImport');
+// COSTCO excerpt: typographic quotation marks and missing items array brackets.
+const malformed=`{ “version”: “kurashi-receipt-import-1”, “purchaseDate”: null,
+ “storeName”: “COSTCO WHOLESALE”, “taxBasis”: “included”, “taxTotal”: 1138,
+ “receiptTotal”: 5018, “printedCount”: 2, “items”:
+ {"name":"TORRIDEN SERUM","code":"72587","quantity":1,"unitPrice":3298,
+ "grossAmount":3298,"discount":660,"netAmount":2638},
+ {"name":"リンツリンドールピンク450G","code":"84471","quantity":1,
+ "unitPrice":2980,"grossAmount":2980,"discount":600,"netAmount":2380} }`;
+const parsed=imports.parseChatGptReceiptJson(malformed);
+assert.equal(parsed.items.length,2,'malformed ChatGPT JSON is repaired without changing figures');
+assert.equal(parsed.reconciliation.netSum,5018);
+assert.equal(parsed.reconciliation.totalMatches,true);
+assert.equal(parsed.items[0].taxIncludedAmount,2638);
+assert.match(imports.makeChatGptReceiptPrompt('{"row":1,"name":"リンド一ル"}'),
+ /参考OCR結果/,'prompt includes structured OCR reference');
+assert.match(imports.makeChatGptReceiptPrompt(),/itemsは必ず/);
+assert.throws(()=>imports.parseChatGptReceiptJson('{"items":"impossible"}'),
+ /ITEMS_ARRAY_REQUIRED/,'unsafe repairs fail explicitly');
+const ocrDraft={source:'ocr',date:'2026-10-14',chainId:'chain-A',total:5018,
+ items:[{name:'TORRIDEN SERUM',ocrRawName:'TORRIDEN SERUM',amount:2638,quantity:1,productId:'p1',issues:[]},
+ {name:'リンド一ルピンク450G',ocrRawName:'リンド一ルピンク450G',amount:2380,quantity:1,productId:'',issues:[]}]};
+const chatDraft={source:'chatgpt',date:'2026-10-14',chainId:'chain-A',total:5018,
+ items:parsed.items.map(x=>({name:x.name,amount:x.taxIncludedAmount,
+ quantity:x.quantity,productId:'',issues:[]}))};
+const combined=ui.compareOcrAndChatGpt(ocrDraft,chatDraft);
+assert.equal(combined.matchedCount,2,'unique amount and quantity pair both rows');
+assert.equal(combined.unmatchedCount,0);
+assert.equal(combined.items[0].productId,'p1','preserves existing known product ID');
+assert.equal(combined.items[1].ocrRawName,'リンド一ルピンク450G');
+assert.ok(combined.items[1].issues.some(x=>x.includes('補正')));
+const ambiguous=ui.compareOcrAndChatGpt(
+ {...ocrDraft,items:ocrDraft.items.map(x=>({...x,amount:500}))},
+ {...chatDraft,items:chatDraft.items.map(x=>({...x,amount:500}))});
+assert.equal(ambiguous.matchedCount,0,'duplicate prices are never silently paired');
+assert.equal(ambiguous.unmatchedCount,2);
+ui.setOcrLearning([{chainId:'chain-A',ocrName:'リンド一ルピンク450G',correctedName:'リンドールピンク450G'}]);
+assert.equal(ui.correctionFor('リンド一ルピンク450G','chain-A'),'リンドールピンク450G');
+assert.equal(ui.correctionFor('リンド一ルピンク450G','chain-B'),null,'no cross-chain correction leakage');
+ui.setScanDraft(ocrDraft);
+assert.ok(ui.receiptScanView().includes('chatGptAssist'),'OCR review has optional ChatGPT assist');
+assert.ok(ui.receiptOcrReference(ocrDraft).includes('TORRIDEN SERUM'));
+assert.ok(!ui.receiptOcrReference(ocrDraft).includes('カード番号'),'no private payment data in prompt');
+console.log('v60: ChatGPT malformed JSON repair, OCR dual-reading, unique pairing and confirmed corrections OK');
+

@@ -181,7 +181,7 @@ assert.equal(temp.db.processed_operations.length,afterCommit,
  'GAS did not create an extra processed operation');
 assert.equal(pill(c),'なし');
 c.window.document.querySelector('[data-tab="settings"]').click();
-assert.match(c.window.document.body.textContent,/試作 v0\.59\.0/);
+assert.match(c.window.document.body.textContent,/試作 v0\.60\.0/);
 
 // New item IDs can be referenced by edits/hides before the first GAS save.
 online=false;
@@ -1023,3 +1023,24 @@ await waitFor(()=>historyRecovery.window.KurashiLive.state().queued===0&&
  'chain-specific learned alias is sent through the offline-safe queue');
 historyRecovery.window.close();
 console.log('v59: record editing, offline restart, deletion, alias training: OK');
+
+/* Confirmed OCR corrections survive a full PWA reload in the existing IndexedDB;
+ * they are scoped per household and chain, never the source image. */
+let correctUI=appSession();
+await waitFor(()=>correctUI.window.KurashiLive.state().loaded,'correction bootstrap');
+const chainForCorrection=temp.call('bootstrap').data.stores[0].chain_id;
+await correctUI.window.KurashiLive.saveOcrCorrections([{
+ chainId:chainForCorrection,ocrName:'リンド一ル ピンク',
+ correctedName:'リンドール ピンク',productId:''
+}]);
+const originalCorrection=await correctUI.window.KurashiLive.loadOcrCorrections();
+assert.ok(originalCorrection.some(x=>x.correctedName==='リンドール ピンク'));
+correctUI.window.close();
+let correctReopened=appSession();
+await waitFor(()=>correctReopened.window.KurashiLive.state().loaded,
+ 'corrections session reopened');
+const learned=await correctReopened.window.KurashiLive.loadOcrCorrections();
+assert.ok(learned.some(x=>x.chainId===chainForCorrection&&
+ x.ocrName==='リンド一ル ピンク'),'local correction survives a restart');
+correctReopened.window.close();
+console.log('v60: persistent OCR corrections with previous offline queue: OK');
