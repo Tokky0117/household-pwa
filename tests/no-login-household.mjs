@@ -950,10 +950,14 @@ assert.ok(scanSession.window.document.getElementById('scanConfirmForm'),
  'ChatGPT JSON uses the same edit and confirmation form as OCR');
 assert.ok(scanSession.window.document.querySelector('[name="name-0"]').value==='新しいレシート品');
 await waitFor(()=>scanSession.window.KurashiLive.state().loaded,'receipt draft saved');
+await pause(100); // Let the prior UI draft write finish before this test override.
 await scanSession.window.KurashiLive.saveReceiptDraft({
  source:'chatgpt',date:'2026-10-14',chainId:confirmedStore,total:440,
  items:[{name:'下書きで残る商品',quantity:2,amount:440,productId:'',issues:[]}]
 });
+const savedDraft=await scanSession.window.KurashiLive.loadReceiptDraft();
+assert.equal(savedDraft?.items?.[0]?.name,'下書きで残る商品',
+ 'the structured draft is committed in IndexedDB before app exit');
 scanSession.window.close();
 let resumedScan=appSession();
 await waitFor(()=>resumedScan.window.KurashiLive.state().loaded,'after reload');

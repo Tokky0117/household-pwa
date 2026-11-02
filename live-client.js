@@ -240,7 +240,12 @@
   });
  }
  async function loadReceiptDraft(){
-  await boot();const db=await openDatabase();
+  await boot();
+  // A new session may read the draft before its first bootstrap completes.
+  // Never interpret an unknown household as an empty or foreign draft.
+  if(!workspace.base)await load();
+  if(!workspace.base)return null;
+  const db=await openDatabase();
   return new Promise((resolve,reject)=>{
    const tx=db.transaction(STORE,'readonly'),req=tx.objectStore(STORE).get(RECEIPT_DRAFT_KEY);
    req.onsuccess=()=>{

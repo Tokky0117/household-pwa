@@ -649,6 +649,7 @@ function pageView(){
  }
 }
 function render(){
+ if(!window.document)return; // A closed iOS page/session must not re-render.
  const currentModal=page==='add'||page==='edit'||page==='productEdit'||page==='productPick'||page==='recordAdd'||page==='scanProduct';
  const wasModal=previousPage==='add'||previousPage==='edit'||previousPage==='productEdit'||previousPage==='productPick'||previousPage==='recordAdd'||previousPage==='recordSource';
  // The product-creation page replaces an open search sheet. It is a full
@@ -1245,6 +1246,7 @@ function dismissMenusOutside(target){
 app.addEventListener('click',e=>dismissMenusOutside(e.target));
 render();
 if(liveMode)window.KurashiLive.subscribe((state,data)=>{
+ if(!window.document)return;
  const nextItems=data?window.KurashiLive.itemsOf(data):null;
  if(!nextItems){if(tab==='settings'||page==='list'&&!items.length)render();return}
  const structureSame=items.length===nextItems.length&&items.every((old,i)=>{
