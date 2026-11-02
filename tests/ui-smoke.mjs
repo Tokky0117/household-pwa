@@ -202,3 +202,8 @@ assert.ok(source.includes("say('在庫なしをコピーしました'"),'Clipboa
 assert.ok(!source.includes("say('表示順を保存しました'")&&!source.includes("say('商品を登録しました'"),'Redundant success toasts removed');
 assert.ok(source.includes("inlineActionNotice(el,'この商品は登録済みです')"),'Duplicate product notice by candidate');
 assert.ok(css.includes('.ui-action-notice-floating'),'Header feedback stays separate from layout');
+
+assert.ok(css.includes('.shell.focus main.manage-main #productCreateForm>.formactions') &&
+ css.includes('margin-top:18px;'),'Full-page product create action clears quantity row');
+assert.ok(source.includes('window.KurashiLive.reorderProducts(selected,ids)'),
+ 'Live product ordering reuses existing v46 long-press UI');

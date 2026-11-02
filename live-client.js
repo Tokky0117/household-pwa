@@ -69,6 +69,16 @@
   const snap={...doc.base,item_groups:doc.base.item_groups.map(i=>({...i})),
    products:doc.base.products.map(p=>({...p}))};
   for(const op of doc.queue){
+   if(op.kind==='product-reorder'){
+    const active=snap.products.filter(p=>p.item_group_id===op.groupId&&!p.deleted_at);
+    const byId=new Map(active.map(p=>[p.product_id,p]));
+    const ids=op.product_ids.filter(id=>byId.has(id));
+    const extras=active.filter(p=>!ids.includes(p.product_id))
+     .sort((a,b)=>(Number(a.item_group_order)||0)-(Number(b.item_group_order)||0))
+     .map(p=>p.product_id);
+    [...ids,...extras].forEach((id,n)=>{byId.get(id).item_group_order=n+1});
+    continue;
+   }
    if(op.kind==='product-create'){
     const order=Math.max(0,...snap.products.filter(p=>
      p.item_group_id===op.groupId).map(p=>Number(p.item_group_order)||0))+1;
@@ -397,6 +407,22 @@
     item_group_ids:ids,retries:0};
   });
  }
+ async function reorderProducts(itemId,orderedIds){
+  return enqueue(doc=>{
+   const groupId=String(itemId||''),
+    ids=Array.isArray(orderedIds)?[...orderedIds]:[];
+   const snap=project(doc);
+   const group=snap?.item_groups.find(x=>x.item_group_id===groupId&&!x.deleted_at);
+   const active=snap?.products.filter(p=>p.item_group_id===groupId&&!p.deleted_at)||[];
+   const available=new Set(active.map(p=>p.product_id));
+   if(!group||active.length<2||ids.length!==active.length||
+      new Set(ids).size!==ids.length||
+      ids.some(id=>typeof id!=='string'||!available.has(id)))
+    throw Error('商品の並び順を確認できません。画面を更新してください');
+   return {id:operationId(),kind:'product-reorder',
+    groupId,product_ids:ids,retries:0};
+  });
+ }
  async function toggleStock(itemId){
   return enqueue(doc=>{
    const item=project(doc)?.item_groups.find(i=>i.item_group_id===itemId&&!i.deleted_at);
@@ -409,6 +435,24 @@
  }
  function resolveOperation(op,base){
   if(op.request)return op.request; // preserve exact payload for interrupted requests.
+  if(op.kind==='product-reorder'){
+   const active=(base?.products||[]).filter(p=>
+    p.item_group_id===op.groupId&&!p.deleted_at);
+   const byId=new Map(active.map(p=>[p.product_id,p]));
+   const ids=op.product_ids.filter(id=>byId.has(id));
+   const extras=active.filter(p=>!ids.includes(p.product_id))
+    .sort((a,b)=>(Number(a.item_group_order)||0)-(Number(b.item_group_order)||0))
+    .map(p=>p.product_id);
+   const merged=[...ids,...extras];
+   if(merged.length<2||new Set(merged).size!==merged.length){
+    const e=Error('並び替え対象の商品が足りません');
+    e.code='NOT_FOUND';throw e;
+   }
+   return {operationId:op.id,action:'product.reorder',payload:{
+    item_group_id:op.groupId,product_ids:merged,
+    versions:merged.map(id=>Number(byId.get(id).version))
+   }};
+  }
   if(op.kind==='product-create'){
    if(!base?.item_groups.some(i=>i.item_group_id===op.groupId&&!i.deleted_at))
     throw Error('登録先の日用品が見つかりません');
@@ -471,7 +515,14 @@
   if(!result||result.status!=='completed'||result.action!==plan.action||
      !Number.isSafeInteger(Number(result.sequence_no)))
    throw Error('RESPONSE_INVALID');
-  if(plan.action==='item.reorder'){
+  if(plan.action==='product.reorder'){
+   if(!Array.isArray(result.entities)||
+      result.entities.length!==plan.payload.product_ids.length||
+      result.entities.some((p,i)=>p?.product_id!==plan.payload.product_ids[i]||
+       p.item_group_id!==plan.payload.item_group_id||
+       Number(p.item_group_order)!==i+1||!positiveVersion(p.version)))
+    throw Error('RESPONSE_INVALID');
+  }else if(plan.action==='item.reorder'){
    if(!Array.isArray(result.entities)||
       result.entities.length!==plan.payload.item_group_ids.length||
       result.entities.some((e,i)=>e?.item_group_id!==plan.payload.item_group_ids[i]||
@@ -486,7 +537,8 @@
    if(!front||front.id!==op.id||!planEquals(front.request,plan))
     throw Error('QUEUE_CHANGED');
    if(!ws.base)throw Error('HOUSEHOLD_CHANGED');
-   const entities=plan.action==='item.reorder'?result.entities:[result.entity];
+   const entities=['item.reorder','product.reorder'].includes(plan.action)?
+    result.entities:[result.entity];
    if(entities.some(e=>e.household_id!==ws.base.household_id))
     throw Error('HOUSEHOLD_CHANGED');
    const productAction=plan.action.startsWith('product.');
@@ -507,8 +559,12 @@
     }
    }
    if(op.kind==='product-create'){
-    for(const rest of ws.queue)
+    for(const rest of ws.queue){
      if(rest.targetId===op.clientId)rest.targetId=result.entity.product_id;
+     if(rest.kind==='product-reorder')
+      rest.product_ids=rest.product_ids.map(id=>
+       id===op.clientId?result.entity.product_id:id);
+    }
    }
    ws.blocked=null;return ws;
   });
@@ -636,7 +692,7 @@
    else void load();
   }).catch(e=>{error=e.message||'端末内の保存領域を開けません';notify()});
  };
- window.KurashiLive={state,load,save,toggleStock,reorderItems,retry,logout,renderLogin,
+ window.KurashiLive={state,load,save,toggleStock,reorderItems,reorderProducts,retry,logout,renderLogin,
   subscribe:fn=>{listeners.add(fn);return()=>listeners.delete(fn)},itemsOf,catalogueOf};
  window.addEventListener('kurashi-gis-ready',initialize);
  window.addEventListener('online',kick);

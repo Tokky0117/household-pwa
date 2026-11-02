@@ -14,14 +14,14 @@ function fixture(code) {
   const db=Object.fromEntries(Object.entries(schema).map(([name,heads])=>[name,[Array.from(heads)]]));
   db.households.push(['household-one','くらしストック',1,'']);
   db.categories.push([0,'飲食',1],[1,'キッチン',2],[2,'洗面・風呂',3],[3,'洗濯・掃除',4],[4,'その他',5]);
-  let uuid=0,locked=false,failAfterWrites=null;
+  let uuid=0,locked=false,failAfterWrites=null,failAfterSheet='item_groups';
   const sheet=name=>({
     getLastRow:()=>db[name].length,
     getRange:(start,col,count,width)=>({
       getValues:()=>Array.from({length:count},(_,i)=>Array.from(
         {length:width},(_,j)=>db[name][start+i-1]?.[col+j-1]??'')),
       setValues:matrix=>matrix.forEach((row,i)=>{
-        if(name==='item_groups'&&failAfterWrites!==null){
+        if(name===failAfterSheet&&failAfterWrites!==null){
           if(failAfterWrites===0){
             failAfterWrites=null;
             throw Error('SIMULATED_PARTIAL_SHEET_FAILURE');
@@ -63,7 +63,7 @@ function fixture(code) {
       createTextOutput:text=>({setMimeType:()=>({text})})}
   });
   vm.runInContext(setup+'\n'+code,context);
-  return {db,failItemWriteAfter(n){failAfterWrites=n},call:(action,payload={},operation_id=null,id_token='')=>{
+  return {db,failItemWriteAfter(n){failAfterSheet='item_groups';failAfterWrites=n},failProductWriteAfter(n){failAfterSheet='products';failAfterWrites=n},call:(action,payload={},operation_id=null,id_token='')=>{
     const req={action,payload,id_token,...(operation_id?{operation_id}:{})};
     return JSON.parse(context.doPost({postData:{contents:JSON.stringify(req)}}).text);
   }};
@@ -111,7 +111,7 @@ const mockFetch=async(url,options)=>{
  const req=JSON.parse(options.body);sent.push(req);
  if(!online)throw Error('SIMULATED_OFFLINE');
  const response=temp.call(req.action,req.payload,req.operation_id,req.id_token);
- if(loseOneWriteResponse&&['item.update','item.reorder'].includes(req.action)){
+ if(loseOneWriteResponse&&['item.update','item.reorder','product.reorder'].includes(req.action)){
   loseOneWriteResponse=false;
   throw Error('SIMULATED_RESPONSE_LOST_AFTER_COMMIT');
  }
@@ -181,7 +181,7 @@ assert.equal(temp.db.processed_operations.length,afterCommit,
  'GAS did not create an extra processed operation');
 assert.equal(pill(c),'なし');
 c.window.document.querySelector('[data-tab="settings"]').click();
-assert.match(c.window.document.body.textContent,/試作 v0\.54\.1/);
+assert.match(c.window.document.body.textContent,/試作 v0\.55\.0/);
 
 // New item IDs can be referenced by edits/hides before the first GAS save.
 online=false;
@@ -557,3 +557,133 @@ await waitFor(()=>productUI.window.KurashiLive.state().queued===0 &&
  'v46 picker relink persists to Sheets');
 productUI.window.close();
 console.log('v54: product API + durable offline queue + actual v46 create/edit/unlink/relink UI: OK');
+
+// Product ordering uses the same transaction queue and idempotent GAS journal.
+const orderServer=fixture(api);
+const orderGroup=orderServer.call('item.create',{name:'商品並び替え',category_id:0},
+ 'op-product-order-group-abcdef12345').data.entity.item_group_id;
+const productCreate=(label)=>orderServer.call('product.create',{
+ item_group_id:orderGroup,name:label,package_quantity:null,package_unit:null},
+ 'op-product-order-create-'+label+'-abcd').data.entity;
+const ordA=productCreate('A'),ordB=productCreate('B'),ordC=productCreate('C');
+const ordIds=[ordC.product_id,ordA.product_id,ordB.product_id];
+const ordPayload={item_group_id:orderGroup,product_ids:ordIds,versions:[1,1,1]};
+const ordResult=orderServer.call('product.reorder',ordPayload,'op-product-order-save-abcdef12345');
+assert.equal(ordResult.ok,true,'GAS accepts whole-category product order');
+assert.deepEqual(ordResult.data.entities.map(p=>Number(p.item_group_order)),[1,2,3]);
+const journalBefore=orderServer.db.processed_operations.length;
+const logBefore=orderServer.db.change_log.length;
+assert.equal(orderServer.call('product.reorder',ordPayload,
+ 'op-product-order-save-abcdef12345').ok,true,'identical operation ID is idempotent');
+assert.equal(orderServer.db.processed_operations.length,journalBefore);
+assert.equal(orderServer.db.change_log.length,logBefore);
+assert.equal(orderServer.call('product.reorder',ordPayload,
+ 'op-product-order-stale-abcdef12345').error.code,'VERSION_CONFLICT');
+assert.equal(orderServer.call('product.reorder',{...ordPayload,
+ product_ids:[ordA.product_id,ordA.product_id,ordB.product_id]},
+ 'op-product-order-invalid-abcdef12345').error.code,'BAD_REQUEST');
+const ordSnapshot=orderServer.call('bootstrap').data.products;
+const ordLookup=new Map(ordSnapshot.map(p=>[p.product_id,p]));
+const afterReverse=[ordB.product_id,ordA.product_id,ordC.product_id];
+const secondPayload={item_group_id:orderGroup,product_ids:afterReverse,
+ versions:afterReverse.map(id=>Number(ordLookup.get(id).version))};
+orderServer.failProductWriteAfter(1);
+assert.equal(orderServer.call('product.reorder',secondPayload,
+ 'op-product-order-partial-abcdef12345').ok,false,'GAS partially updates products');
+assert.equal(orderServer.call('bootstrap').error.code,'RECOVERY_REQUIRED',
+ 'a prepared multi-product operation prevents inconsistent reads');
+assert.equal(orderServer.call('product.reorder',secondPayload,
+ 'op-product-order-partial-abcdef12345').ok,true,'same-ID replay recovers partial update');
+assert.equal(orderServer.call('bootstrap').ok,true);
+
+// Browser v46 price info: actual long press, offline optimistic reordering,
+// app restart, lost HTTP response recovery, unconfirmed IDs, and version rebase.
+const newForDrag=name=>temp.call('product.create',{
+ item_group_id:id,name,package_quantity:null,package_unit:null},
+ 'op-client-product-order-'+name+'-abcde').data.entity;
+const dragA=newForDrag('順序A'),dragB=newForDrag('順序B');
+const shown=dom=>[...dom.window.document.querySelectorAll(
+ '.comparison-product[data-product-id]')].map(e=>e.dataset.productId);
+let prodApp=appSession();
+await waitFor(()=>prodApp.window.KurashiLive.state().loaded,'product reorder UI bootstrap');
+prodApp.window.document.querySelector('[data-open="'+id+'"]').click();
+const oldOrder=shown(prodApp);
+assert.ok(oldOrder.length>=3);
+online=false;
+const target=prodApp.window.document.querySelector(
+ '.comparison-product[data-product-id="'+dragA.product_id+'"]');
+prodApp.window.eval(`startPending(
+ document.querySelector('.comparison-product[data-product-id="${dragB.product_id}"]'),
+ {pointerId:606,clientX:10,clientY:10},'mouse');`);
+await pause(460);
+prodApp.window.document.elementFromPoint=()=>target;
+target.getBoundingClientRect=()=>({top:100,height:100});
+prodApp.window.eval(`moveDrag({pointerId:606,clientX:15,clientY:20,preventDefault(){}});
+ endDrag({pointerId:606});`);
+await waitFor(()=>prodApp.window.KurashiLive.state().queued===1,
+ 'v46 product long press stores a durable reorder');
+const newOrder=[...oldOrder];
+newOrder.splice(newOrder.indexOf(dragB.product_id),1);
+newOrder.splice(newOrder.indexOf(dragA.product_id),0,dragB.product_id);
+assert.deepEqual(shown(prodApp),newOrder,'product order instantly visible offline');
+prodApp.window.close();online=true;
+let restartedProd=appSession();
+await waitFor(()=>restartedProd.window.KurashiLive.state().queued===0&&
+ temp.call('bootstrap').data.products.find(x=>x.product_id===dragB.product_id)
+ .item_group_order===newOrder.indexOf(dragB.product_id)+1,
+ 'product reorder reaches Sheets on PWA restart');
+restartedProd.window.document.querySelector('[data-open="'+id+'"]').click();
+assert.deepEqual(shown(restartedProd),newOrder);
+loseOneWriteResponse=true;
+const opposite=[...newOrder].reverse();
+await restartedProd.window.KurashiLive.reorderProducts(id,opposite);
+await waitFor(()=>restartedProd.window.KurashiLive.state().queued===1 &&
+ temp.call('bootstrap').data.products.find(x=>x.product_id===opposite[0])
+ .item_group_order===1,'server saved but reorder response lost');
+const beforeReplay=temp.db.processed_operations.length;
+restartedProd.window.close();
+let recoveredProd=appSession();
+await waitFor(()=>recoveredProd.window.KurashiLive.state().queued===0,
+ 'product reorder response loss replayed after restart');
+assert.equal(temp.db.processed_operations.length,beforeReplay,
+ 'same-ID product retry avoids duplicate history');
+recoveredProd.window.close();
+let localProd=appSession();
+await waitFor(()=>localProd.window.KurashiLive.state().loaded,'local product test bootstrapped');
+localProd.window.document.querySelector('[data-open="'+id+'"]').click();
+online=false;
+const draftProduct=await localProd.window.KurashiLive.save('product.create',{
+ item_group_id:id,name:'順序未確定商品',package_quantity:1,package_unit:'個'});
+assert.match(draftProduct.product_id,/^local-/);
+const localOrder=[draftProduct.product_id,...shown(localProd).filter(x=>x!==draftProduct.product_id)];
+await localProd.window.KurashiLive.reorderProducts(id,localOrder);
+assert.equal(localProd.window.KurashiLive.state().queued,2);
+assert.deepEqual(shown(localProd),localOrder);
+localProd.window.close();online=true;
+let localReplayed=appSession();
+await waitFor(()=>localReplayed.window.KurashiLive.state().queued===0 &&
+ temp.call('bootstrap').data.products.some(p=>
+ p.name==='順序未確定商品'&&Number(p.item_group_order)===1),
+ 'unconfirmed product ID replaced before reorder request');
+const permanent=temp.call('bootstrap').data.products.find(p=>p.name==='順序未確定商品');
+assert.match(permanent.product_id,/^product-/);
+localReplayed.window.close();
+let staleProd=appSession();
+await waitFor(()=>staleProd.window.KurashiLive.state().loaded,'conflict test loaded');
+staleProd.window.document.querySelector('[data-open="'+id+'"]').click();
+const staleIds=shown(staleProd);
+const lastId=staleIds[staleIds.length-1];
+online=false;
+await staleProd.window.KurashiLive.reorderProducts(id,[lastId,...staleIds.filter(x=>x!==lastId)]);
+const external=temp.call('bootstrap').data.products.find(p=>p.product_id===lastId);
+assert.equal(temp.call('product.update',{product_id:lastId,version:Number(external.version),
+ name:external.name+'更新',package_quantity:external.package_quantity||null,
+ package_unit:external.package_unit||null},
+ 'op-product-order-spouse-abcdef12345').ok,true,'another device edits product');
+staleProd.window.close();online=true;
+let rebasedProd=appSession();
+await waitFor(()=>rebasedProd.window.KurashiLive.state().queued===0&&
+ temp.call('bootstrap').data.products.find(p=>p.product_id===lastId)
+ .item_group_order===1,'VERSION_CONFLICT rebases product reorder');
+rebasedProd.window.close();
+console.log('v55 product reorder (UI drag / offline / crash / response loss / rebase): OK');
