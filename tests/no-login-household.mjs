@@ -643,7 +643,10 @@ await waitFor(()=>restartedProd.window.KurashiLive.state().queued===1 &&
 const beforeReplay=temp.db.processed_operations.length;
 restartedProd.window.close();
 let recoveredProd=appSession();
-await waitFor(()=>recoveredProd.window.KurashiLive.state().queued===0,
+await waitFor(()=>recoveredProd.window.KurashiLive.state().loaded&&
+ recoveredProd.window.KurashiLive.state().queued===0&&
+ temp.call('bootstrap').data.products.find(x=>x.product_id===opposite[0])
+ .item_group_order===1,
  'product reorder response loss replayed after restart');
 assert.equal(temp.db.processed_operations.length,beforeReplay,
  'same-ID product retry avoids duplicate history');
