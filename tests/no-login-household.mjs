@@ -181,7 +181,7 @@ assert.equal(temp.db.processed_operations.length,afterCommit,
  'GAS did not create an extra processed operation');
 assert.equal(pill(c),'なし');
 c.window.document.querySelector('[data-tab="settings"]').click();
-assert.match(c.window.document.body.textContent,/試作 v0\.54\.0/);
+assert.match(c.window.document.body.textContent,/試作 v0\.54\.1/);
 
 // New item IDs can be referenced by edits/hides before the first GAS save.
 online=false;
@@ -506,7 +506,22 @@ assert.ok(productUI.window.document.querySelector('[data-act="productPick"]'),
 productUI.window.document.querySelector('[data-act="productPick"]').click();
 assert.ok(productUI.window.document.querySelector('[data-act="productCreate"]'),
  'original product picker remains usable in live mode');
+// Search may have the software keyboard open while the comparison page behind
+// the picker is scrolled. New full-page form must start from the top.
+const searchInsidePicker=productUI.window.document.querySelector('#catalogue-search');
+searchInsidePicker.focus();
+assert.equal(productUI.window.document.activeElement,searchInsidePicker);
+const scrollCalls=[];
+productUI.window.scrollTo=(x,y)=>scrollCalls.push([x,y]);
 productUI.window.document.querySelector('[data-act="productCreate"]').click();
+assert.ok(scrollCalls.some(([x,y])=>x===0&&y===0),
+ 'new product full-page resets inherited scroll from open search modal');
+assert.notEqual(productUI.window.document.activeElement,searchInsidePicker,
+ 'product picker search loses focus before new form');
+assert.equal(productUI.window.document.querySelector('.half-sheet'),null,
+ 'picker modal removed when opening full-page product form');
+assert.ok(productUI.window.document.querySelector('.shell.focus main.manage-main #productCreateForm'),
+ 'product form remains in canonical v46 full-page layout');
 let productForm=productUI.window.document.getElementById('productCreateForm');
 assert.ok(productForm,'original new product form is reachable');
 productForm.querySelector('#new-product-name').value='UI連携商品';
