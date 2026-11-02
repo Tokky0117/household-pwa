@@ -2233,3 +2233,22 @@ main>.ui-search + .filterrow{margin-bottom:5px}
 .shell.focus main.manage-main #productCreateForm+.hint{
  margin-top:10px;
 }
+
+/* The OCR scanner is a normal screen in the existing receipt tab (not a test UI). */
+.receipt-scan-page{padding-bottom:calc(28px + env(safe-area-inset-bottom,0px))}
+.receipt-scan-page .record-entry-actions{display:flex;gap:10px;flex-wrap:wrap}
+.receipt-scan-page .record-entry-actions>*{flex:1;min-width:125px}
+.scan-file-input{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}
+.scan-file-button{display:flex;justify-content:center;align-items:center;min-height:44px;cursor:pointer;text-align:center}
+.receipt-scan-page .panel{margin-top:12px}
+.scan-photo-list{display:flex;gap:7px;flex-wrap:wrap;margin:12px 0}
+.scan-photo-list button{min-height:44px}
+#scan-crop-canvas{display:block;max-width:100%;height:auto;margin:12px auto;border:1px solid var(--line,#ddd);border-radius:8px;touch-action:none}
+.scan-field{display:flex;flex-direction:column;gap:6px;font-size:14px;margin:12px 0}
+.scan-field input,.scan-field select{box-sizing:border-box;width:100%;min-height:44px;border:1px solid var(--line,#ccc);border-radius:10px;padding:9px 11px;font-size:16px;color:inherit;background:var(--card,#fff)}
+.scan-input-pair{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.4fr);gap:10px}
+.scan-review-item{margin:12px 0}
+.scan-warning{font-size:13px;color:var(--text-secondary,#666);line-height:1.5}
+.scan-check{display:flex;align-items:center;gap:8px;min-height:44px;font-size:14px}
+.scan-check input{width:20px;height:20px;flex-shrink:0}
+.scan-review>.primary{width:100%;min-height:48px;margin-top:12px}

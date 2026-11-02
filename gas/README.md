@@ -143,3 +143,9 @@
 - `processed_operations` に親recordsと全record_itemsの確定前画像を保存。GASの部分停止では再送時に既存行との完全一致を確認し、不足行のみ挿入して`change_log`を1回確定する。
 - UIのレシート・家計簿・商品別価格は新Sheetで共有する記録へ切替。旧サンプル・旧端末localStorageの記録は新Sheetへ自動移行しない。
 - 現状認証 `temporary-household` のため機密データの投入は禁止。Googleログインを再有効化してから個人用レシート運用へ進む。
+
+## 2026-11-02：v0.57.0 レシート本流OCRと家計簿画面簡素化
+
+- 検証済み旧ラボのPaddleOCR PP-OCRv6_smallをGitHub Pages配信の本流レシート画面へ接続。OCRの写真／全文はSheetsへ送信せず、ユーザー確認済み商品行のみ `record.create` へ渡す。
+- 家計簿タブUIは「今後実装予定」の案内に変更。既存のrecord_itemsや集計関数を削除・移行しない。
+- Googleログイン復旧はユーザーの指示により実施しない。 `temporary-household` 公開アクセス上のリスクは残る。

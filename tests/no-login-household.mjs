@@ -799,8 +799,8 @@ assert.equal(Number(storedDetail.amount_tax_included),340);
 assert.equal(Number(storedDetail.quantity),2);
 assert.equal(Number(storedDetail.category_id),0);
 recordReopened.window.document.querySelector('[data-tab="budget"]').click();
-assert.match(recordReopened.window.document.body.textContent,/340/,
- 'budget uses live receipt data, not sample fixtures');
+assert.match(recordReopened.window.document.body.textContent,/今後実装予定/,
+ 'budget tab shows planned implementation only; purchase data remains intact');
 recordReopened.window.document.querySelector('[data-tab="receipt"]').click();
 assert.ok(recordReopened.window.document.body.textContent.includes('アプリ実機試験用チェーン'));
 recordReopened.window.document.querySelector('[data-act="newShelf"]').click();
@@ -817,8 +817,8 @@ await waitFor(()=>recordReopened.window.KurashiLive.state().queued===0&&
  temp.call('bootstrap').data.records.some(r=>r.record_type==='shelf'),
  'shelf form writes to same records/record_items schema');
 recordReopened.window.document.querySelector('[data-tab="budget"]').click();
-assert.match(recordReopened.window.document.body.textContent,/340/,
- 'shelf amount is excluded from budget total');
+assert.match(recordReopened.window.document.body.textContent,/今後実装予定/,
+ 'budget placeholder stays stable after receipt and shelf are stored');
 recordReopened.window.close();
 
 // Server committed a receipt, but HTTP response was lost. On restarting,
@@ -844,3 +844,22 @@ assert.equal(temp.db.processed_operations.length,opsBeforeReceiptRetry,
  'no second journal entry for response-loss record');
 retryRecord.window.close();
 console.log('v56 records: chain, multi-line journal, DOM UI, offline restart, price/budget, lost reply OK');
+
+let scanSession=appSession();
+await waitFor(()=>scanSession.window.KurashiLive.state().loaded,'receipt OCR page can open');
+scanSession.window.document.querySelector('[data-tab="receipt"]').click();
+const newScan=scanSession.window.document.querySelector('[data-act="receiptScan"]');
+assert.ok(newScan,'live receipt tab provides primary OCR entry');
+newScan.click();
+assert.ok(scanSession.window.document.querySelector('#scan-camera[capture="environment"]'));
+assert.ok(scanSession.window.document.querySelector('#scan-library[multiple]'));
+assert.match(scanSession.window.document.body.textContent,/PaddleOCR PP-OCRv6 small/);
+assert.equal(scanSession.window.document.querySelector('#scan-mode'),null,
+ 'OCR correction controls appear only after choosing photos');
+scanSession.window.document.querySelector('[data-act="back"]').click();
+assert.ok(scanSession.window.document.querySelector('[data-act="receiptScan"]'),
+ 'scanner exits to original receipt tab without touching queue');
+scanSession.window.document.querySelector('[data-tab="budget"]').click();
+assert.match(scanSession.window.document.body.textContent,/今後実装予定/);
+scanSession.window.close();
+console.log('v57: PaddleOCR main entry, original queue, budget placeholder: OK');

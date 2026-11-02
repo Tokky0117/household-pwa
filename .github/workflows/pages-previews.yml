@@ -35,6 +35,17 @@ jobs:
           node tests/ui-smoke.mjs
           node tests/no-login-household.mjs
 
+      - name: Build verified prior PaddleOCR for the main receipt screen
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm ci --prefix ocr-lab --ignore-scripts
+          (cd ocr-lab && npx vite build --config vite.app.config.mjs && OCR_LAB_OUT="$PWD/dist-app" node prepare-assets.mjs)
+          test -s ocr-lab/dist-app/engine.js
+          test -s ocr-lab/dist-app/models/det.tar
+          test -s ocr-lab/dist-app/models/rec.tar
+          test -s ocr-lab/dist-app/runtime/ort-wasm-simd-threaded.wasm
+
       - name: Build isolated static previews
         shell: bash
         run: |
@@ -69,6 +80,10 @@ jobs:
               # Scope the Service Worker cache per preview to avoid cross-branch conflicts.
               if [[ -f "$dest/sw.js" ]]; then
                 sed -i "s/^const CACHE=[^;]*;/const CACHE='household-preview-$slug';/" "$dest/sw.js"
+              fi
+              if [[ "$branch" == "preview-v46-clean-base" ]]; then
+                mkdir -p "$dest/ocr-engine"
+                cp -a ocr-lab/dist-app/. "$dest/ocr-engine/"
               fi
               echo "Preview: /previews/$slug/"
             else

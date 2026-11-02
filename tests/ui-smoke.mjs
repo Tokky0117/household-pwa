@@ -17,7 +17,7 @@ const doc={
 const ctx={document:doc,localStorage:{getItem:k=>storage.get(k)??null,setItem:(k,v)=>storage.set(k,v),removeItem:k=>storage.delete(k)},
  navigator:{},window:{scrollTo(){},scrollY:0},crypto:{randomUUID:()=> 'test-id'},setTimeout:()=>0};
 const ui=vm.runInNewContext(source+`
-({listView,priceCompareView,pickerView,pickerResults,receiptView,budgetView,render,initializeCompare,
+({listView,priceCompareView,pickerView,pickerResults,receiptView,budgetView,receiptScanView,render,initializeCompare,
  setProductGroup,reorderProducts,registeredProducts,convertQuantity,setOpenSwipe,
  chainMinima,priceCandidates,budgetTotals,savePreviewRecord,periodStart,
  demoRecords,demoRecordItems,allPreviewRecords,allPreviewItems,
@@ -160,8 +160,8 @@ assert.ok(!ui.savePreviewRecord({type:'receipt',chainId:'c-life',date:month+'-01
 assert.ok(ui.savePreviewRecord({type:'receipt',chainId:'c-life',date:ui.demoRecords[0].record_date,quantity:2,amount:476,productId:'',category:''}),'Unmatched receipt can be stored locally');
 assert.equal(ui.allPreviewRecords().length,ui.demoRecords.length+1,'Saved header in preview storage');
 assert.equal(ui.allPreviewItems().length,ui.demoRecordItems.length+1,'Saved child with same record');
-assert.ok(ui.receiptView().includes('この端末の記録')&&ui.budgetView().includes('未分類'));
-assert.ok(ui.budgetView().includes('値札は集計対象外'));
+assert.ok(ui.receiptView().includes('この端末の記録'));
+assert.ok(ui.budgetView().includes('今後実装予定'));
 const cls=(id)=>{const c=new Set();return {dataset:{productId:id},classList:{toggle(k,b){b?c.add(k):c.delete(k)}},querySelectorAll(){return [{tabIndex:-1}]},state:c}};
 const a=cls('p-milk-1'),b=cls('p-milk-2');mockSwipeRows=[a,b];
 ui.setOpenSwipe('p-milk-1');assert.ok(a.state.has('swipe-open')&&!b.state.has('swipe-open'));
@@ -212,3 +212,14 @@ assert.ok(source.includes('window.KurashiLive.saveRecord('),
  'Live record modal routes saves through durable client');
 assert.ok(source.includes('liveRecords={records:'),
  'Live price and budget use the shared record snapshot');
+
+assert.ok(ui.receiptScanView().includes('scan-library')&&
+ ui.receiptScanView().includes('scan-camera'),'OCR input offers camera and photo library');
+assert.ok(ui.receiptScanView().includes('写真を撮影')&&
+ ui.receiptScanView().includes('写真から選択'),'OCR is the main receipt path');
+assert.ok(!ui.budgetView().includes('budget-total'),
+ 'Budget tab has only implementation-plan notice, not sample figures');
+assert.ok(source.includes("import('./ocr-engine/engine.js')"),
+ 'PaddleOCR runtime loads lazily, after explicit scan');
+assert.ok(source.includes('scanMode=\'gray\''),
+ 'Restore validated two-times grayscale OCR condition by default');
