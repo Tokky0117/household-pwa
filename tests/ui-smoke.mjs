@@ -217,8 +217,9 @@ assert.ok(source.includes('liveRecords={records:'),
 assert.ok(ui.receiptScanView().includes('id="scan-status"')&&
  !ui.receiptScanView().includes('scan-crop-canvas')&&
  !ui.receiptScanView().includes('scan-mode'),'No crop and preprocessing selector');
-assert.ok(ui.receiptView().includes('data-act="receiptScan"'),
- 'Direct native source chooser on receipt tab');
+assert.ok(source.includes('data-act="receiptScan"')&&
+ source.includes('id="receipt-source-picker"'),
+ 'Native chooser is available in the live receipt tab; offline preview remains unchanged');
 assert.ok(source.includes("document.getElementById('receipt-source-picker')?.click()"),
  'Source chooser is opened synchronously on user tap');
 assert.ok(source.includes('type="file" accept="image/*" multiple'),
