@@ -257,16 +257,19 @@ await waitFor(()=>e.window.KurashiLive.state().loaded&&
  'reorder session bootstrapped');
 online=false;
 const order2=[extraA.data.entity.item_group_id,extraB.data.entity.item_group_id,id];
-// Emulate the existing v46 long-press drag completion with the actual
-// moved DOM row, so the app.js endDrag integration is exercised.
+// Drive v46's actual startPending -> 420ms long press -> moveDrag ->
+// endDrag pipeline; assignments from a separate eval cannot change its
+// lexical activeDrag binding.
 const dragged=e.window.document.querySelector('[data-item-id="'+order2[0]+'"]');
-const firstRow=[...dragged.parentElement.querySelectorAll('.swipe-item')]
- .find(row=>row.dataset.categoryId==='0');
-dragged.parentElement.insertBefore(dragged,firstRow);
-e.window.eval(`activeDrag={
- row:document.querySelector('[data-item-id="${order2[0]}"]'),
- ghost:{remove(){}},pointerId:999,kind:'item',category:'0',moved:true
-};endDrag({pointerId:999});`);
+const target=e.window.document.querySelector('[data-item-id="'+order2[1]+'"]');
+e.window.eval(`startPending(
+ document.querySelector('[data-item-id="${order2[0]}"]'),
+ {pointerId:999,clientX:10,clientY:10},'mouse');`);
+await pause(460);
+e.window.document.elementFromPoint=()=>target;
+target.getBoundingClientRect=()=>({top:100,height:100});
+e.window.eval(`moveDrag({pointerId:999,clientX:15,clientY:20,preventDefault(){}});
+ endDrag({pointerId:999});`);
 try{
  await waitFor(()=>e.window.KurashiLive.state().queued===1,
   'v46 drag handler records reorder in IndexedDB');
