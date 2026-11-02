@@ -607,8 +607,11 @@ const shown=dom=>[...dom.window.document.querySelectorAll(
 let prodApp=appSession();
 await waitFor(()=>prodApp.window.KurashiLive.state().loaded,'product reorder UI bootstrap');
 prodApp.window.document.querySelector('[data-open="'+id+'"]').click();
+// Cached boot can finish before the latest Sheets bootstrap returns; observe
+// the real product rows before attempting to drag.
+await prodApp.window.KurashiLive.load();
+await waitFor(()=>shown(prodApp).length>=3,'latest product rows shown in price view');
 const oldOrder=shown(prodApp);
-assert.ok(oldOrder.length>=3);
 online=false;
 const productTarget=prodApp.window.document.querySelector(
  '.comparison-product[data-product-id="'+dragA.product_id+'"]');
