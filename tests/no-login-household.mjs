@@ -382,6 +382,35 @@ await waitFor(()=>afterUI.window.KurashiLive.state().queued===0 &&
  i.name==='実機動作テスト品・編集'&&i.is_hidden===false&&Number(i.version)===4),
  'restart syncs create/edit/hide/restore to Sheets');
 afterUI.window.close();
-console.log('Real v46 UI forms, hide/restore, drag reorder, restart and crash recovery: OK');
+
+// A new item can be moved before it has received its permanent Sheets ID.
+let pendingCreate=appSession();
+await waitFor(()=>pendingCreate.window.KurashiLive.state().loaded,
+ 'pending-create reorder session bootstrapped');
+online=false;
+const fresh=await pendingCreate.window.KurashiLive.save('item.create',{
+ name:'作成前並び替えテスト',category_id:0
+});
+assert.match(fresh.item_group_id,/^local-/);
+const remaining=[...pendingCreate.window.document.querySelectorAll('.swipe-item[data-item-id]')]
+ .filter(row=>row.dataset.categoryId==='0'&&row.dataset.itemId!==fresh.item_group_id)
+ .map(row=>row.dataset.itemId);
+const wanted=[fresh.item_group_id,...remaining];
+await pendingCreate.window.KurashiLive.reorderItems(0,wanted);
+assert.equal(pendingCreate.window.KurashiLive.state().queued,2,
+ 'unsynced creation and reorder are two separately durable commands');
+assert.deepEqual(displayed(pendingCreate),wanted,
+ 'new temporary-ID item moves immediately');
+pendingCreate.window.close();online=true;
+let freshApp=appSession();
+await waitFor(()=>freshApp.window.KurashiLive.state().queued===0&&
+ temp.call('bootstrap').data.item_groups.some(i=>
+  i.name==='作成前並び替えテスト'&&Number(i.sort_order)===1),
+ 'relaunch resolves temporary ID, saves item creation then its reorder');
+const itemCreated=temp.call('bootstrap').data.item_groups.find(i=>i.name==='作成前並び替えテスト');
+assert.ok(itemCreated.item_group_id.startsWith('item-'),'server generated permanent ID');
+assert.equal(displayed(freshApp)[0],itemCreated.item_group_id,'rendered list uses permanent first item ID');
+freshApp.window.close();
+console.log('v46 UI forms + IndexedDB reorder + queued create/reorder + crash recovery: OK');
 
 
