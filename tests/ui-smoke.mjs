@@ -207,3 +207,8 @@ assert.ok(css.includes('.shell.focus main.manage-main #productCreateForm>.formac
  css.includes('margin-top:18px;'),'Full-page product create action clears quantity row');
 assert.ok(source.includes('window.KurashiLive.reorderProducts(selected,ids)'),
  'Live product ordering reuses existing v46 long-press UI');
+
+assert.ok(source.includes('window.KurashiLive.saveRecord('),
+ 'Live record modal routes saves through durable client');
+assert.ok(source.includes('liveRecords={records:'),
+ 'Live price and budget use the shared record snapshot');

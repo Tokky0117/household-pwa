@@ -63,7 +63,7 @@ function fixture(code) {
       createTextOutput:text=>({setMimeType:()=>({text})})}
   });
   vm.runInContext(setup+'\n'+code,context);
-  return {db,failItemWriteAfter(n){failAfterSheet='item_groups';failAfterWrites=n},failProductWriteAfter(n){failAfterSheet='products';failAfterWrites=n},call:(action,payload={},operation_id=null,id_token='')=>{
+  return {db,failItemWriteAfter(n){failAfterSheet='item_groups';failAfterWrites=n},failProductWriteAfter(n){failAfterSheet='products';failAfterWrites=n},failRecordItemWriteAfter(n){failAfterSheet='record_items';failAfterWrites=n},call:(action,payload={},operation_id=null,id_token='')=>{
     const req={action,payload,id_token,...(operation_id?{operation_id}:{})};
     return JSON.parse(context.doPost({postData:{contents:JSON.stringify(req)}}).text);
   }};
@@ -111,7 +111,7 @@ const mockFetch=async(url,options)=>{
  const req=JSON.parse(options.body);sent.push(req);
  if(!online)throw Error('SIMULATED_OFFLINE');
  const response=temp.call(req.action,req.payload,req.operation_id,req.id_token);
- if(loseOneWriteResponse&&['item.update','item.reorder','product.reorder'].includes(req.action)){
+ if(loseOneWriteResponse&&['item.update','item.reorder','product.reorder','record.create'].includes(req.action)){
   loseOneWriteResponse=false;
   throw Error('SIMULATED_RESPONSE_LOST_AFTER_COMMIT');
  }
@@ -181,7 +181,7 @@ assert.equal(temp.db.processed_operations.length,afterCommit,
  'GAS did not create an extra processed operation');
 assert.equal(pill(c),'なし');
 c.window.document.querySelector('[data-tab="settings"]').click();
-assert.match(c.window.document.body.textContent,/試作 v0\.55\.0/);
+assert.match(c.window.document.body.textContent,/試作 v0\.56\.0/);
 
 // New item IDs can be referenced by edits/hides before the first GAS save.
 online=false;
@@ -693,3 +693,154 @@ await waitFor(()=>rebasedProd.window.KurashiLive.state().queued===0&&
  .item_group_order===1,'VERSION_CONFLICT rebases product reorder');
 rebasedProd.window.close();
 console.log('v55 product reorder (UI drag / offline / crash / response loss / rebase): OK');
+
+/* Records and stores are validated as a single household transaction;
+ * parent and children are journaled before Sheets writes. */
+const recordFixture=fixture(api);
+const newChain=recordFixture.call('store.create',{name:'テストチェーン'},
+ 'op-record-store-create-abcdef12345');
+assert.equal(newChain.ok,true,'store master created explicitly');
+const newChainId=newChain.data.entity.chain_id;
+assert.equal(recordFixture.call('store.create',{name:'テストチェーン'},
+ 'op-record-store-create-abcdef12345').data.entity.chain_id,newChainId,
+ 'same store operation id is idempotent');
+assert.equal(recordFixture.call('store.create',{name:'テストチェーン'},
+ 'op-record-store-duplicate-abcdef12345').error.code,'DUPLICATE',
+ 'a duplicate chain is not silently added');
+const receiptLine={raw_name:'未照合のお菓子',product_id:null,quantity:2,
+ amount_tax_included:340,category_id:null};
+const receiptPayload={record_type:'receipt',chain_id:newChainId,
+ record_date:'2026-10-14',items:[receiptLine,{...receiptLine,
+ raw_name:'日用品',quantity:1,amount_tax_included:130,category_id:1}]};
+const receiptSaved=recordFixture.call('record.create',receiptPayload,
+ 'op-record-receipt-create-abcdef12345');
+assert.equal(receiptSaved.ok,true,'receipt parent plus two items saved');
+assert.equal(receiptSaved.data.items.length,2);
+assert.equal(receiptSaved.data.items[0].amount_tax_included,340,
+ 'two units for 340 yen never multiply amount again');
+assert.equal(receiptSaved.data.items[0].price_eligible,false,
+ 'unlinked receipt is budget-only');
+assert.equal(receiptSaved.data.items[0].category_id,'',
+ 'null category is saved as uncategorized');
+assert.equal(recordFixture.call('record.create',receiptPayload,
+ 'op-record-receipt-create-abcdef12345').data.record.record_id,
+ receiptSaved.data.record.record_id,'receipt retry returns same IDs');
+assert.equal(recordFixture.db.record_items.length,3,'no duplicate receipt rows');
+assert.equal(recordFixture.call('record.create',{...receiptPayload,
+ record_date:'2026-02-31'},'op-record-bad-date-abcdef12345').error.code,
+ 'BAD_REQUEST','invalid calendar dates cannot be saved');
+assert.equal(recordFixture.call('record.create',{...receiptPayload,
+ record_type:'shelf'},'op-record-shelf-no-product-abcdef12345').error.code,
+ 'BAD_REQUEST','shelf requires product identification');
+const itemForPrice=recordFixture.call('item.create',{name:'値札グループ',category_id:0},
+ 'op-record-item-price-abcdef12345').data.entity;
+const productForPrice=recordFixture.call('product.create',{
+ name:'値札商品',package_quantity:500,package_unit:'mL',
+ item_group_id:itemForPrice.item_group_id},
+ 'op-record-product-price-abcdef12345').data.entity;
+const shelfLine={raw_name:'値札商品',product_id:productForPrice.product_id,quantity:2,
+ amount_tax_included:300,category_id:null};
+const shelfSaved=recordFixture.call('record.create',{record_type:'shelf',
+ chain_id:newChainId,record_date:'2026-10-14',items:[shelfLine]},
+ 'op-record-shelf-create-abcdef12345');
+assert.equal(shelfSaved.ok,true);
+assert.equal(shelfSaved.data.items[0].price_eligible,true);
+assert.equal(recordFixture.call('bootstrap').data.records.length,2);
+assert.equal(recordFixture.call('bootstrap').data.record_items.length,3);
+
+const interruptedRecord=fixture(api);
+const interruptedChain=interruptedRecord.call('store.create',{name:'別チェーン'},
+ 'op-record-crash-store-abcdef12345').data.entity.chain_id;
+const crashPayload={record_type:'receipt',chain_id:interruptedChain,
+ record_date:'2026-10-14',items:[receiptLine,{...receiptLine,raw_name:'2行目'}]};
+interruptedRecord.failRecordItemWriteAfter(1);
+assert.equal(interruptedRecord.call('record.create',crashPayload,
+ 'op-record-crash-parts-abcdef12345').ok,false,
+ 'simulate failure after parent and first child');
+assert.equal(interruptedRecord.call('bootstrap').error.code,'RECOVERY_REQUIRED',
+ 'pending record journal prevents reading partly written rows');
+const repaired=interruptedRecord.call('record.create',crashPayload,
+ 'op-record-crash-parts-abcdef12345');
+assert.equal(repaired.ok,true,'exact request safely resumes incomplete record');
+assert.equal(interruptedRecord.db.records.length,2);
+assert.equal(interruptedRecord.db.record_items.length,3);
+assert.equal(interruptedRecord.call('bootstrap').ok,true);
+
+// The live original v46 receipt modal now persists an unlinked receipt and
+// its explicitly named chain. Both operations must survive one offline reboot.
+let recordUI=appSession();
+await waitFor(()=>recordUI.window.KurashiLive.state().loaded,'record UI bootstrap');
+recordUI.window.document.querySelector('[data-tab="receipt"]').click();
+recordUI.window.document.querySelector('[data-act="newReceipt"]').click();
+let recordForm=recordUI.window.document.getElementById('recordForm');
+assert.ok(recordForm,'v46 receipt form reachable without test-only buttons');
+assert.equal(recordForm.querySelector('input[name="chain"]').value,'__new__');
+recordForm.querySelector('[name="chain_name"]').value='アプリ実機試験用チェーン';
+recordForm.querySelector('[name="quantity"]').value='2';
+recordForm.querySelector('[name="amount"]').value='340';
+recordForm.querySelector('[name="raw"]').value='未照合商品';
+recordForm.querySelector('[name="category"]').value='0';
+online=false;
+recordForm.dispatchEvent(new recordUI.window.Event('submit',{bubbles:true,cancelable:true}));
+await waitFor(()=>recordUI.window.KurashiLive.state().queued===2,
+ 'store and record queued atomically offline');
+const projectedReceipt=recordUI.window.document.querySelector('.preview-record-row');
+assert.ok(projectedReceipt,'receipt appears immediately in the real UI');
+recordUI.window.close();online=true;
+let recordReopened=appSession();
+await waitFor(()=>recordReopened.window.KurashiLive.state().loaded&&
+ recordReopened.window.KurashiLive.state().queued===0&&
+ temp.call('bootstrap').data.records.some(r=>r.record_type==='receipt'),
+ 'store and receipt replay after PWA restart');
+const storedReceipt=temp.call('bootstrap').data.records.find(r=>r.record_type==='receipt');
+assert.ok(storedReceipt);
+const storedDetail=temp.call('bootstrap').data.record_items.find(x=>x.record_id===storedReceipt.record_id);
+assert.equal(Number(storedDetail.amount_tax_included),340);
+assert.equal(Number(storedDetail.quantity),2);
+assert.equal(Number(storedDetail.category_id),0);
+recordReopened.window.document.querySelector('[data-tab="budget"]').click();
+assert.match(recordReopened.window.document.body.textContent,/340/,
+ 'budget uses live receipt data, not sample fixtures');
+recordReopened.window.document.querySelector('[data-tab="receipt"]').click();
+assert.ok(recordReopened.window.document.body.textContent.includes('アプリ実機試験用チェーン'));
+recordReopened.window.document.querySelector('[data-act="newShelf"]').click();
+recordForm=recordReopened.window.document.getElementById('recordForm');
+assert.ok(recordForm,'shelf form is active in live mode');
+const productToRecord=temp.call('bootstrap').data.products.find(p=>p.household_id==='household-one');
+assert.ok(productToRecord,'product exists for shelf');
+recordForm.querySelector('[name="product"]').value=productToRecord.product_id;
+recordForm.querySelector('[name="quantity"]').value='2';
+recordForm.querySelector('[name="amount"]').value='300';
+recordForm.querySelector('[name="raw"]').value='値札商品';
+recordForm.dispatchEvent(new recordReopened.window.Event('submit',{bubbles:true,cancelable:true}));
+await waitFor(()=>recordReopened.window.KurashiLive.state().queued===0&&
+ temp.call('bootstrap').data.records.some(r=>r.record_type==='shelf'),
+ 'shelf form writes to same records/record_items schema');
+recordReopened.window.document.querySelector('[data-tab="budget"]').click();
+assert.match(recordReopened.window.document.body.textContent,/340/,
+ 'shelf amount is excluded from budget total');
+recordReopened.window.close();
+
+// Server committed a receipt, but HTTP response was lost. On restarting,
+// same operation_id must be resent without duplicating parent or children.
+let loseRecord=appSession();
+await waitFor(()=>loseRecord.window.KurashiLive.state().loaded,'response loss session loaded');
+const confirmedStore=temp.call('bootstrap').data.stores[0].chain_id;
+loseOneWriteResponse=true;
+await loseRecord.window.KurashiLive.saveRecord({record_type:'receipt',
+ chain_id:confirmedStore,record_date:'2026-10-14',
+ items:[{...receiptLine,raw_name:'応答喪失テスト'}]});
+await waitFor(()=>loseRecord.window.KurashiLive.state().queued===1&&
+ temp.call('bootstrap').data.record_items.some(x=>x.raw_name==='応答喪失テスト'),
+ 'receipt server committed before response was lost');
+const opsBeforeReceiptRetry=temp.db.processed_operations.length;
+loseRecord.window.close();
+let retryRecord=appSession();
+await waitFor(()=>retryRecord.window.KurashiLive.state().loaded&&
+ retryRecord.window.KurashiLive.state().queued===0&&
+ temp.call('bootstrap').data.record_items.some(x=>x.raw_name==='応答喪失テスト'),
+ 'response-loss receipt reconciled after restart');
+assert.equal(temp.db.processed_operations.length,opsBeforeReceiptRetry,
+ 'no second journal entry for response-loss record');
+retryRecord.window.close();
+console.log('v56 records: chain, multi-line journal, DOM UI, offline restart, price/budget, lost reply OK');

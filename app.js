@@ -1,4 +1,4 @@
-const APP_VERSION='0.55.0';
+const APP_VERSION='0.56.0';
 const CATS=['飲食','キッチン','洗面・風呂','洗濯・掃除','その他'];
 const liveMode=!!window.KurashiLive; // Data source only; original Preview v46 UI components remain.
 const SEED=[['牛乳',0,true],['麦茶',0,false],['コーヒー',0,true],['卵',0,false],['キッチンペーパー',1,false],['ラップ',1,true],['食器用洗剤',1,true],['シャンプー',2,false],['歯磨き粉',2,true],['ハンドソープ',2,false],['洗濯洗剤',3,false],['柔軟剤',3,true],['トイレットペーパー',3,false],['乾電池',4,true],['ティッシュ',4,true]];
@@ -75,8 +75,9 @@ function loadPreviewRecords(){
  return {records:[],record_items:[]};
 }
 let previewRecords=loadPreviewRecords();
-const allPreviewRecords=()=>liveMode?[]:demoRecords.concat(previewRecords.records);
-const allPreviewItems=()=>liveMode?[]:demoRecordItems.concat(previewRecords.record_items);
+let liveRecords={records:[],record_items:[]};
+const allPreviewRecords=()=>liveMode?liveRecords.records:demoRecords.concat(previewRecords.records);
+const allPreviewItems=()=>liveMode?liveRecords.record_items:demoRecordItems.concat(previewRecords.record_items);
 function savePreviewRecord(input){
  if(liveMode)return false; // Never save locally in the Sheets-connected app.
  const amount=Number(input.amount),quantity=Number(input.quantity);
@@ -362,8 +363,13 @@ function recordAddView(){
  const optsProduct=[{value:'',label:'商品未照合'},...catalogue.products.map(p=>({value:p.id,label:productTitle(p)}))];
  const optsCategory=[{value:'',label:'未分類'},...CATS.map((label,index)=>({label,value:String(index)}))];
  const today=daysFromDate(new Date());
+ const chainOptions=catalogue.chains.map(c=>({value:c.id,label:c.name}));
+ if(liveMode)chainOptions.push({value:'__new__',label:'＋ 新しいチェーンを登録'});
+ const chainValue=catalogue.chains[0]?.id||(liveMode?'__new__':'');
  const fields=[
-  UI.formField({id:'record-chain',name:'chain',label:'チェーン',control:'select',value:catalogue.chains[0]?.id||'',options:catalogue.chains.map(c=>({value:c.id,label:c.name}))}),
+  UI.formField({id:'record-chain',name:'chain',label:'チェーン',control:'select',value:chainValue,options:chainOptions}),
+  ...(liveMode?['<div id="record-new-chain-row"'+(chainValue==='__new__'?'':' hidden')+'>'+
+    UI.formField({id:'record-new-chain',name:'chain_name',label:'新しいチェーン名',maxlength:80,placeholder:'例：スーパー名'})+'</div>']:[]),
   UI.formField({id:'record-date',name:'date',label:type==='receipt'?'購入日':'値札確認日',type:'date',value:today,required:true}),
   UI.formField({id:'record-product',name:'product',label:'商品',control:'select',value:'',options:optsProduct}),
   UI.formField({id:'record-raw',name:'raw',label:'明細の商品名',value:'',placeholder:'例：牛乳'}),
@@ -371,20 +377,21 @@ function recordAddView(){
   UI.formField({id:'record-amount',name:'amount',label:'明細の税込合計（円）',type:'number',value:'',required:true,extra:'min="0" step="1" inputmode="numeric"'}),
   ...(type==='receipt'?[UI.formField({id:'record-category',name:'category',label:'家計簿カテゴリ',control:'select',value:'',options:optsCategory})]:[])
  ].join('');
- return UI.sheet({title:type==='receipt'?'レシート明細を記録':'値札を記録',variant:'product-picker-modal',body:`<form id="recordForm" class="record-entry-form">${fields}<button class="primary" type="submit">この端末に試作保存</button><p class="sample-price-notice">※ OCR・Sheets・夫婦間同期は未接続。1回につき1明細の試作入力です。</p></form>`});
+ return UI.sheet({title:type==='receipt'?'レシート明細を記録':'値札を記録',variant:'product-picker-modal',body:`<form id="recordForm" class="record-entry-form">${fields}<button class="primary" type="submit">${liveMode?'記録する':'この端末に試作保存'}</button><p class="sample-price-notice">${liveMode?'※ 1回1明細。Google Sheetsへ自動保存。ログイン一時停止中は個人情報の入力を控えてください。':'※ OCR・Sheets・夫婦間同期は未接続。1回につき1明細の試作入力です。'}</p></form>`});
 }
 function receiptView(){
- const rows=previewRecords.records.slice().reverse().map(r=>{
- const item=previewRecords.record_items.find(x=>x.record_id===r.record_id);
+ const records=liveMode?liveRecords:previewRecords;
+ const rows=records.records.slice().reverse().map(r=>{
+ const item=records.record_items.find(x=>x.record_id===r.record_id);
  const p=catalogue.products.find(x=>x.id===item?.product_id);
  return `<div class="panel preview-record-row"><strong>${esc(r.record_type==='receipt'?'レシート':'値札')} · ${esc(r.record_date)}</strong><span>${esc(chainLabel(r.chain_id))}／${esc(p?.name||item?.raw_name||'未照合')}</span><span>${yen(item?.amount_tax_included??null)} · ${esc(item?.quantity??'—')}個</span></div>`;
- }).join('')||'<div class="empty">この端末の記録はまだありません</div>';
- return `${head('レシート','くらしストック_試作')}<main class="preview-record-page"><p class="sample-price-notice">※ 手入力の試作機能。OCR・Sheets・夫婦間同期は未接続です。</p><div class="record-entry-actions"><button class="secondary" data-act="newReceipt">${miniIcon('plus')}<span>レシート明細</span></button><button class="secondary" data-act="newShelf">${miniIcon('plus')}<span>値札</span></button></div><h2 class="sectiontitle">この端末の記録</h2>${rows}</main>${nav()}`;
+ }).join('')||'<div class="empty">記録はまだありません</div>';
+ return `${head('レシート','くらしストック_試作')}<main class="preview-record-page"><p class="sample-price-notice">${liveMode?'手入力したレシート・値札をGoogle Sheetsへ保存します。OCRは未接続です。':'※ 手入力の試作機能。OCR・Sheets・夫婦間同期は未接続です。'}</p><div class="record-entry-actions"><button class="secondary" data-act="newReceipt">${miniIcon('plus')}<span>レシート明細</span></button><button class="secondary" data-act="newShelf">${miniIcon('plus')}<span>値札</span></button></div><h2 class="sectiontitle">${liveMode?'保存した記録':'この端末の記録'}</h2>${rows}</main>${nav()}`;
 }
 function budgetView(){
  const {total,byCategory}=budgetTotals(allPreviewRecords(),allPreviewItems(),budgetMonth);
  const categoryRows=[...CATS.map((name,i)=>[name,byCategory.get(i)||0]),['未分類',byCategory.get('uncategorized')||0]];
- return `${head('家計簿','くらしストック_試作')}<main class="preview-budget-page"><p class="sample-price-notice">※ サンプルと端末内の試作記録。値札は集計対象外です。</p><div class="budget-month"><button type="button" class="iconbtn" data-act="prevMonth" aria-label="前月">${chevron('left')}</button><strong>${esc(budgetMonth.replace('-', '年'))}月</strong><button type="button" class="iconbtn" data-act="nextMonth" aria-label="翌月">${chevron('right')}</button></div><div class="budget-total"><span>税込合計</span><strong>${yen(total)}</strong></div><div class="budget-category-list">${categoryRows.map(([name,value])=>`<div class="budget-category-row"><span>${esc(name)}</span><strong>${yen(value)}</strong></div>`).join('')}</div></main>${nav()}`;
+ return `${head('家計簿','くらしストック_試作')}<main class="preview-budget-page"><p class="sample-price-notice">${liveMode?'保存済みレシートの税込合計。値札は集計対象外です。':'※ サンプルと端末内の試作記録。値札は集計対象外です。'}</p><div class="budget-month"><button type="button" class="iconbtn" data-act="prevMonth" aria-label="前月">${chevron('left')}</button><strong>${esc(budgetMonth.replace('-', '年'))}月</strong><button type="button" class="iconbtn" data-act="nextMonth" aria-label="翌月">${chevron('right')}</button></div><div class="budget-total"><span>税込合計</span><strong>${yen(total)}</strong></div><div class="budget-category-list">${categoryRows.map(([name,value])=>`<div class="budget-category-row"><span>${esc(name)}</span><strong>${yen(value)}</strong></div>`).join('')}</div></main>${nav()}`;
 }
 function stub(title,icon,desc){return `${head(title,'くらしストック_試作')}<main><div class="panel placeholder"><div class="bubble">${icon}</div><h2>${title}画面</h2><p>${desc}</p></div><div class="alert">この画面は共通UIの確認用です。データ処理や同期はまだ行いません。</div></main>${nav()}`}
 function settingsView(){
@@ -621,10 +628,28 @@ function updateComparisonPrices(){
 }
 app.addEventListener('change',e=>{if(e.target.id==='onlyOut'){const wasOut=onlyOut;onlyOut=e.target.checked;if(wasOut&&!onlyOut)collapsed.clear();render()}});
 app.addEventListener('submit',e=>{e.preventDefault();const form=e.target;const d=new FormData(form);
- if(liveMode&&form.id==='recordForm'){
-  fieldNotice(form,'この機能のGoogle Sheets保存はまだ接続していません');return
- }if(form.id==='recordForm'){
- const input={type:newRecordType,chainId:String(d.get('chain')||''),date:String(d.get('date')||''),productId:String(d.get('product')||''),rawName:String(d.get('raw')||''),quantity:String(d.get('quantity')||''),amount:String(d.get('amount')||''),category:String(d.get('category')||'')};
+ if(form.id==='recordForm'){
+ const input={type:newRecordType,chainId:String(d.get('chain')||''),chainName:String(d.get('chain_name')||''),date:String(d.get('date')||''),productId:String(d.get('product')||''),rawName:String(d.get('raw')||''),quantity:String(d.get('quantity')||''),amount:String(d.get('amount')||''),category:String(d.get('category')||'')};
+ if(liveMode){
+  const amount=Number(input.amount),quantity=Number(input.quantity);
+  if(!input.amount.trim()||!input.quantity.trim()||
+     !Number.isSafeInteger(amount)||amount<0||!Number.isSafeInteger(quantity)||quantity<=0){
+   fieldNotice(form,'数量と税込明細合計を確認してください','record-amount');return;
+  }
+  const submit=form.querySelector('[type="submit"]');
+  if(submit?.disabled)return;
+  if(submit)submit.disabled=true;
+  window.KurashiLive.saveRecord({
+   record_type:input.type,chain_id:input.chainId,chain_name:input.chainName,
+   record_date:input.date,
+   items:[{raw_name:input.rawName,product_id:input.productId||null,quantity,
+     amount_tax_included:amount,category_id:input.type==='shelf'||input.category===''?null:Number(input.category)}]
+  }).then(()=>{page='list';tab='receipt';render()}).catch(err=>{
+   if(submit)submit.disabled=false;
+   fieldNotice(form,err.message||'記録を保存できませんでした','record-amount');
+  });
+  return;
+ }
  if(!savePreviewRecord(input)){fieldNotice(form,'記録の金額・個数・商品・チェーンを確認してください','record-amount');return}
  page='list';tab='receipt';render();return;
  }if(form.id==='itemForm'){const i=page==='edit'?current():null;saveItem(String(d.get('name')??i?.name??'').trim(),Number(d.get('category')??i?.category??0))}
@@ -664,6 +689,10 @@ app.addEventListener('click',e=>{if(e.target.classList?.contains('sheet-back')&&
 if(el.dataset.uiChoice!==undefined){
  const wrapper=el.closest('.ui-select');if(!wrapper)return;
  const choice=el.dataset.uiChoice;
+ if(wrapper.dataset.uiSelect==='record-chain'){
+  const row=document.getElementById('record-new-chain-row');
+  if(row)row.hidden=choice!=='__new__';
+ }
  if(wrapper.dataset.uiSelect==='price-period'){period=choice;periodMenu=false;render();return}
  const hidden=wrapper.querySelector('input[type="hidden"]');if(hidden){hidden.value=choice;hidden.dispatchEvent(new Event('change',{bubbles:true}))}
  if(wrapper.dataset.uiSelect==='compare-unit'){compareUnit=choice;const label=wrapper.querySelector('.ui-select-label');if(label)label.textContent=el.querySelector('.ui-menu-label')?.textContent||choice;wrapper.querySelectorAll('[data-ui-choice]').forEach(b=>{const chosen=b===el;b.classList.toggle('selected',chosen);b.setAttribute('aria-pressed',String(chosen));const tick=b.querySelector('.ui-menu-selected');if(tick)tick.textContent=chosen?'✓':''});updateComparisonPrices();closeAllDropdowns();return}
@@ -671,9 +700,7 @@ if(el.dataset.uiChoice!==undefined){
  wrapper.querySelectorAll('[data-ui-choice]').forEach(b=>{const selected=b===el;b.classList.toggle('selected',selected);b.setAttribute('aria-pressed',String(selected));const tick=b.querySelector('.ui-menu-selected');if(tick)tick.textContent=selected?'✓':''});
  closeAllDropdowns();wrapper.querySelector('.ui-select-trigger')?.focus();return;
 }
-if(liveMode && ['newReceipt','newShelf'].includes(el.dataset.act)){
-  inlineActionNotice(el,'この機能のGoogle Sheets保存はまだ接続していません');return;
- }
+
 if(el.dataset.listEdit){duplicateItemId=null;selected=el.dataset.listEdit;editReturnPage='list';openSwipeId=null;page='edit';render();return}if(el.dataset.listHide){selected=el.dataset.listHide;setOpenSwipe(null);dialog={title:'日用品を削除',message:'日用品リストから削除します。',buttons:[{id:'cancel',label:'キャンセル'},{id:'confirmHide',label:'削除',critical:true}]};render();return}
 if(el.dataset.tab){tab=el.dataset.tab;page='list';openSwipeId=null;menu=false;render();return}if(el.dataset.cat!==undefined){if(onlyOut)return;const c=Number(el.dataset.cat);collapsed.has(c)?collapsed.delete(c):collapsed.add(c);render();return}if(el.dataset.stock){const i=items.find(x=>x.id===el.dataset.stock);if(!i)return;
  if(liveMode){
@@ -810,6 +837,11 @@ if(liveMode)window.KurashiLive.subscribe((state,data)=>{
  });
  items=nextItems;
  catalogue=window.KurashiLive.catalogueOf(data);
+ liveRecords={records:data.records||[],record_items:(data.record_items||[]).map(line=>({
+  ...line,category_id:line.category_id===''||line.category_id===null?null:Number(line.category_id),
+  quantity:Number(line.quantity),amount_tax_included:Number(line.amount_tax_included),
+  price_eligible:line.price_eligible===true||String(line.price_eligible).toLowerCase()==='true'
+ }))};
  if(['add','edit','recordAdd','productEdit','productPick','productCreate'].includes(page))return;
  // Preserve existing DOM buttons during writes. Recreating the entire DOM while
  // iOS completes a tap can eat the user's next click.
