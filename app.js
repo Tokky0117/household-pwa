@@ -1178,7 +1178,7 @@ if(action==='recordEdit'){
   recordId:r.record_id,source:'edit',date:r.record_date,chainId:r.chain_id,
   chainName:'',branchName:r.branch_name||'',total:null,
   items:allPreviewItems().filter(x=>x.record_id===r.record_id&&!x.deleted_at)
-   .sort((a,b)=>Number(a.line_order)-Number(b.line_order)
+   .sort((a,b)=>Number(a.line_order)-Number(b.line_order))
    .map(x=>({name:x.raw_name||'',quantity:x.quantity,
     amount:x.amount_tax_included,productId:x.product_id||'',issues:[]}))
  };
