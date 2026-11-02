@@ -1437,7 +1437,7 @@ app.addEventListener('touchcancel',e=>{
 },{passive:true});
 
 // Leave the camera hardware and its stream behind when switching apps.
-document.addEventListener('visibilitychange',()=>{
+document.addEventListener?.('visibilitychange',()=>{
  if(document.hidden&&cameraStream){stopReceiptCamera();cameraStatus='カメラを停止しました。再接続してください。';}
 });
-window.addEventListener('pagehide',stopReceiptCamera);
+window.addEventListener?.('pagehide',stopReceiptCamera);
