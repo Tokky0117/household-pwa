@@ -2237,12 +2237,6 @@ main>.ui-search + .filterrow{margin-bottom:5px}
 /* The OCR scanner is a normal screen in the existing receipt tab (not a test UI). */
 .receipt-scan-page{padding-bottom:calc(28px + env(safe-area-inset-bottom,0px))}
 .scan-file-input{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}
-.scan-source-options{display:flex;flex-direction:column;gap:10px;padding:10px 0 16px}
-.scan-source-option{display:flex;align-items:center;justify-content:center;gap:10px;min-height:54px;width:100%;font-size:16px}
-.scan-source-option svg{width:21px;height:21px}
-.receipt-source-sheet .hint{font-size:12px;line-height:1.65}
-.receipt-camera-page video{display:block;width:100%;max-height:62dvh;min-height:180px;aspect-ratio:3/4;object-fit:contain;background:#111;border-radius:14px;margin:14px auto}
-.receipt-camera-page>[data-act]{display:block;width:100%;min-height:48px;margin:12px auto}
 .receipt-scan-page [data-act="scanAddPhotos"],.receipt-scan-page [data-act="scanStart"]{display:block;width:100%;margin:12px auto;min-height:48px}
 .receipt-scan-page .panel{margin-top:12px}
 .scan-photo-list{display:flex;gap:7px;flex-wrap:wrap;margin:12px 0}
@@ -2255,3 +2249,14 @@ main>.ui-search + .filterrow{margin-bottom:5px}
 .scan-check{display:flex;align-items:center;gap:8px;min-height:44px;font-size:14px}
 .scan-check input{width:20px;height:20px;flex-shrink:0}
 .scan-review>.primary{width:100%;min-height:48px;margin-top:12px}
+
+/* Record scan and history: use Preview v46 sizing, without custom camera controls. */
+.receipt-history-row{display:flex;flex-direction:column;align-items:stretch;gap:5px;width:100%;text-align:left;cursor:pointer}
+.receipt-history-row>span{font-weight:400}
+.record-detail-actions{display:flex;gap:10px;margin:18px 0}
+.record-detail-actions>*{flex:1;min-height:44px}
+.receipt-chatgpt-page>[data-act]{display:block;min-height:44px;width:100%;margin:12px auto}
+.receipt-chatgpt-page textarea{min-height:170px}
+.receipt-scan-page [data-act="scanAddPhotos"],.receipt-scan-page [data-act="scanStart"]{width:100%;min-height:44px}
+.scan-review [data-act="scanNewProduct"]{min-height:44px}
+.scan-review [hidden],.receipt-scan-page [hidden]{display:none!important}

@@ -1,4 +1,4 @@
-const APP_VERSION='0.58.0';
+const APP_VERSION='0.59.0';
 const CATS=['飲食','キッチン','洗面・風呂','洗濯・掃除','その他'];
 const liveMode=!!window.KurashiLive; // Data source only; original Preview v46 UI components remain.
 const SEED=[['牛乳',0,true],['麦茶',0,false],['コーヒー',0,true],['卵',0,false],['キッチンペーパー',1,false],['ラップ',1,true],['食器用洗剤',1,true],['シャンプー',2,false],['歯磨き粉',2,true],['ハンドソープ',2,false],['洗濯洗剤',3,false],['柔軟剤',3,true],['トイレットペーパー',3,false],['乾電池',4,true],['ティッシュ',4,true]];
@@ -180,104 +180,103 @@ function load(){if(liveMode)return [];try{const d=JSON.parse(localStorage.getIte
 let items=load(),tab='items',page='list',selected=null,query='',onlyOut=false,collapsed=new Set(),menu=false,dialog=null,toast='',period='1y',priceScope='product',periodMenu=false;
 const app=document.getElementById('app');
 let budgetMonth=daysFromDate(new Date()).slice(0,7);let newRecordType='receipt';
-// Images and OCR text stay memory-only; the browser camera never writes to Photos.
-let scanPhotos=[],scanIndex=0,scanSourceReturn='list';
-let scanBusy=false,scanDraft=null,scanStatus='',scanToken=0;
-let scanRuntime=null,cameraStream=null,cameraRequestToken=0,cameraStatus='';
-function stopReceiptCamera(){
- cameraRequestToken++;
- const stream=cameraStream;cameraStream=null;
- const video=document.getElementById('scan-video');
- if(video)video.srcObject=null;
- stream?.getTracks().forEach(track=>track.stop());
+// Native iPhone chooser: Photo Library, Take Photo, or Files. Photos stay in memory.
+let scanPhotos=[],scanIndex=0,scanBusy=false,scanDraft=null,scanStatus='',scanToken=0;
+let scanRuntime=null,scanDraftAvailable=false,scanDraftWrites=Promise.resolve(),chatGptError='',recordDetailId=null,scanProductRow=null;
+function saveScanDraft(){
+ if(!liveMode||!window.KurashiLive?.saveReceiptDraft)return;
+ const snapshot=scanDraft?JSON.parse(JSON.stringify(scanDraft)):null;
+ scanDraftAvailable=!!snapshot;
+ scanDraftWrites=scanDraftWrites.catch(()=>{}).then(()=>window.KurashiLive.saveReceiptDraft(snapshot));
+ scanDraftWrites.catch(err=>console.warn('レシート下書き保存失敗',err));
 }
-function resetScan(){
- stopReceiptCamera();
- scanToken++;scanPhotos=[];scanIndex=0;scanDraft=null;
- scanBusy=false;scanStatus='';scanSourceReturn='list';cameraStatus='';
+function resetScan({keepDraft=false}={}){
+ scanToken++;scanPhotos=[];scanIndex=0;scanBusy=false;scanStatus='';
+ if(!keepDraft){scanDraft=null;saveScanDraft();}
 }
-function receiptSourceView(){
- return UI.sheet({title:'レシート写真を追加',variant:'receipt-source-sheet',
-  body:`<div class="scan-source-options">
-    <button class="secondary scan-source-option" type="button" data-act="scanFromLibrary">${miniIcon('package')}<span>写真ライブラリ</span></button>
-    <button class="secondary scan-source-option" type="button" data-act="scanFromCamera">${miniIcon('plus')}<span>写真を撮る</span></button>
-   </div><input id="scan-library-picker" class="scan-file-input" type="file" accept="image/*" multiple>
-   <p class="hint">撮影した画像は写真ライブラリに保存せず、このレシートの読み取りにだけ使用します。</p>`});
+function scanDuplicates(draft){
+ if(!draft||!draft.chainId||!draft.date||!draft.items.length)return [];
+ const sig=rows=>JSON.stringify(rows.map(x=>[
+  norm(x.name??x.raw_name??''),
+  Number(x.quantity),
+  x.amount===undefined?Number(x.amount_tax_included):Number(x.amount)
+ ]).sort((a,b)=>JSON.stringify(a).localeCompare(JSON.stringify(b))));
+ const source=draft.items;
+ if(source.some(x=>String(x.amount)===''||
+  !Number.isSafeInteger(Number(x.amount))||!Number.isSafeInteger(Number(x.quantity))))return [];
+ const key=sig(source);
+ return allPreviewRecords().filter(record=>
+  record.record_type==='receipt'&&!record.deleted_at&&record.record_id!==draft.recordId&&
+  record.chain_id===draft.chainId&&record.record_date===draft.date&&
+  key===sig(allPreviewItems().filter(x=>x.record_id===record.record_id&&!x.deleted_at)));
 }
-function receiptCameraView(){
- return `${head('レシートを撮影','写真ライブラリには保存しません',true)}
-  <main class="preview-record-page receipt-camera-page">
-   <p class="hint">カメラの画像をこのアプリ内だけで使用します。撮影写真は写真ライブラリに保存されません。</p>
-   <video id="scan-video" autoplay playsinline muted aria-label="レシート撮影用カメラ映像"></video>
-   <p id="scan-camera-status" role="status" class="hint">${esc(cameraStatus||'カメラを準備しています…')}</p>
-   <button class="primary" type="button" data-act="scanCapture" disabled>撮影する</button>
-   <button class="secondary" type="button" data-act="scanCameraRetry">カメラを再接続</button>
-  </main>`;
+function recordDetailView(){
+ const record=allPreviewRecords().find(r=>r.record_id===recordDetailId);
+ if(!record)return `${head('保存済み記録','見つかりません',true)}<main></main>${nav()}`;
+ const detail=allPreviewItems().filter(x=>x.record_id===recordDetailId&&!x.deleted_at)
+  .sort((a,b)=>Number(a.line_order)-Number(b.line_order));
+ const total=detail.reduce((sum,x)=>sum+Number(x.amount_tax_included||0),0);
+ return `${head(record.record_type==='receipt'?'レシート詳細':'値札詳細',chainLabel(record.chain_id),true)}
+ <main class="preview-record-page receipt-detail">
+  <div class="panel"><p>購入日：${esc(record.record_date)}</p>
+    <p>チェーン：${esc(chainLabel(record.chain_id))}</p>
+    ${record.branch_name?'<p>支店：'+esc(record.branch_name)+'</p>':''}
+    <p>明細数：${detail.length}件</p><strong>税込合計：${yen(total)}</strong></div>
+  ${detail.map((x,i)=>`<div class="panel preview-record-row">
+    <strong>${i+1}. ${esc(x.raw_name||catalogue.products.find(p=>p.id===x.product_id)?.name||'未入力')}</strong>
+    <span>${esc(x.quantity)}個　税込 ${yen(Number(x.amount_tax_included))}</span>
+    <span>${x.product_id?'照合商品：'+esc(catalogue.products.find(p=>p.id===x.product_id)?.name||'登録済み商品'):'商品未照合'}</span></div>`).join('')}
+  ${liveMode?'<div class="record-detail-actions"><button type="button" class="secondary" data-act="recordEdit">編集</button><button type="button" class="tertiary" data-act="recordDelete">削除</button></div>':''}
+ </main>${nav()}`;
 }
-async function startReceiptCamera(){
- if(page!=='recordCamera')return;
- stopReceiptCamera();const token=cameraRequestToken;
- cameraStatus='カメラの使用許可を確認しています…';
- const status=document.getElementById('scan-camera-status');
- if(status)status.textContent=cameraStatus;
- try{
-  if(!navigator.mediaDevices?.getUserMedia)
-   throw Error('このブラウザではカメラの直接撮影を利用できません');
-  const stream=await navigator.mediaDevices.getUserMedia({
-   audio:false,video:{facingMode:{ideal:'environment'}}
-  });
-  if(page!=='recordCamera'||token!==cameraRequestToken){
-   stream.getTracks().forEach(track=>track.stop());return;
-  }
-  cameraStream=stream;
-  const video=document.getElementById('scan-video');
-  if(!video){stopReceiptCamera();return;}
-  video.srcObject=stream;
-  await video.play();
-  if(page!=='recordCamera'||token!==cameraRequestToken)return;
-  cameraStatus='レシート全体が入るように合わせて撮影してください。';
-  document.getElementById('scan-camera-status').textContent=cameraStatus;
-  document.querySelector('[data-act="scanCapture"]').disabled=false;
- }catch(e){
-  if(page!=='recordCamera'||token!==cameraRequestToken)return;
-  stopReceiptCamera();
-  cameraStatus='カメラを利用できませんでした。アクセス権限を確認してください。'+
-   (e?.message?'（'+e.message+'）':'');
-  const status=document.getElementById('scan-camera-status');
-  if(status)status.textContent=cameraStatus;
- }
+function scanProductView(){
+ const item=scanDraft?.items[scanProductRow];
+ const groups=items.filter(i=>!i.hidden).map(i=>({value:i.id,label:i.name}));
+ if(!item||!groups.length)return UI.sheet({title:'商品を登録',body:'<p>登録先の日用品がありません。先に日用品を登録してください。</p>'});
+ const fields=[
+  UI.formField({id:'scan-product-name',name:'name',label:'商品名',value:item.name,maxlength:80,required:true}),
+  UI.formField({id:'scan-product-group',name:'group',label:'登録先の日用品',control:'select',value:groups[0].value,options:groups}),
+  UI.formField({id:'scan-product-quantity',name:'package_quantity',label:'内容量（任意）',type:'number',value:'',extra:'min="0.001" step="any"'}),
+  UI.formField({id:'scan-product-unit',name:'package_unit',label:'単位',control:'select',value:'個',options:UNIT_OPTIONS.map(v=>({label:v,value:v}))})
+ ].join('');
+ return UI.sheet({title:'レシートから商品を登録',variant:'product-picker-modal',
+  body:`<form id="scanProductForm">${fields}<button type="submit" class="primary">商品を登録する</button></form>`});
 }
-async function captureReceiptCamera(){
- if(!cameraStream||page!=='recordCamera'||scanPhotos.length>=6)return;
- const video=document.getElementById('scan-video');
- if(!video||!video.videoWidth||!video.videoHeight){
-  cameraStatus='カメラの準備が完了していません。';
-  const status=document.getElementById('scan-camera-status');
-  if(status)status.textContent=cameraStatus;
-  return;
- }
- const canvas=document.createElement('canvas');
- canvas.width=video.videoWidth;canvas.height=video.videoHeight;
- try{
-  const ctx=canvas.getContext('2d');
-  if(!ctx)throw Error('撮影画像を作れませんでした');
-  ctx.drawImage(video,0,0,canvas.width,canvas.height);
-  const blob=await new Promise((resolve,reject)=>canvas.toBlob(
-   b=>b?resolve(b):reject(Error('撮影画像を作れませんでした')),'image/jpeg',.92));
-  if(page!=='recordCamera'||!cameraStream)return;
-  // A canvas-backed File is NOT saved to the iOS Photos library.
-  scanPhotos.push(new File([blob],'receipt-camera.jpg',{type:'image/jpeg'}));
-  scanIndex=scanPhotos.length-1;
-  stopReceiptCamera();
-  page='recordScan';scanDraft=null;scanToken++;
-  scanStatus='撮影写真を追加しました。写真を追加するか読み取りを開始してください。';
-  render();
- }catch(e){
-  const status=document.getElementById('scan-camera-status');
-  if(status)status.textContent=e.message||'撮影できませんでした';
- }finally{canvas.width=canvas.height=1;}
+function receiptChatGptView(){
+ return `${head('ChatGPTの解析結果','レシート読み取り（補助）',true)}
+ <main class="preview-record-page receipt-chatgpt-page">
+ <p class="hint">レシート写真をChatGPTで読み取り、JSON形式の結果を貼り付けてください。解析後の確認と保存はアプリ内OCRと共通です。</p>
+ <button type="button" class="secondary" data-act="chatGptCopyPrompt">ChatGPT用の読み取り指示文をコピー</button>
+ <label class="scan-field">ChatGPTの結果（JSON）<textarea id="chatgpt-input" rows="9" maxlength="30000" placeholder="解析結果のJSONを貼り付け"></textarea></label>
+ <p id="chatgpt-error" class="scan-warning" role="status">${esc(chatGptError)}</p>
+ <button type="button" class="primary" data-act="chatGptImport">解析結果を確認</button>
+ </main>`;
 }
-
+function scanMatchProduct(raw,chainId=null){
+ const name=norm(raw);
+ if(!name)return '';
+ const exact=catalogue.products.filter(p=>norm(p.name)===name);
+ if(exact.length)return exact.length===1?exact[0].id:'';
+ const matches=(catalogue.productAliases||[]).filter(a=>
+  a.chainId===chainId&&norm(a.normalizedAlias)===name);
+ const ids=[...new Set(matches.map(a=>a.productId))];
+ return ids.length===1?ids[0]:'';
+}
+function chatGptDraft(parsed){
+ const store=String(parsed.storeName||'').trim();
+ const matches=catalogue.chains.filter(c=>store&&(norm(store).includes(norm(c.name))||norm(c.name).includes(norm(store))));
+ return {source:'chatgpt',date:parsed.purchaseDate||daysFromDate(new Date()),
+  chainId:matches.length===1?matches[0].id:null,
+  chainName:matches.length===1?'':store,
+  total:Number.isSafeInteger(parsed.receiptTotal)?parsed.receiptTotal:null,
+  items:parsed.items.map(i=>{
+   const name=String(i.name||i.rawName||'').trim();
+   const amount=Number.isSafeInteger(i.taxIncludedAmount)?i.taxIncludedAmount:'';
+   const issues=[...(i.issues||[])];
+   if(amount==='')issues.push('税込金額を確認');
+   return {name,quantity:i.quantity||1,amount,productId:scanMatchProduct(name,matches.length===1?matches[0].id:null),issues};
+  })};
+}
 const scanDate=text=>{
  const found=String(text).match(/(?:20)?(2[0-9])\s*[\/-年.]\s*(0?[1-9]|1[0-2])\s*[\/-月.]\s*([0-2]?[0-9]|3[01])\s*日?/);
  if(!found)return daysFromDate(new Date());
@@ -299,13 +298,15 @@ function scanFormView(){
   <h2 class="sectiontitle">読み取り結果の確認</h2>
   <p class="hint">OCRの文字・数量・金額には誤認識が残ります。すべて原本と照合し、不確実な項目は修正してください。</p>
   <label class="scan-field">チェーン<select name="chain" id="scan-chain">${chains}</select></label>
-  <label class="scan-field" id="scan-new-chain-wrap" ${scanDraft.chainId?'hidden':''}>新しいチェーン名<input name="chain_name" maxlength="80" placeholder="新しいチェーン名"></label>
+  <label class="scan-field" id="scan-new-chain-wrap" ${scanDraft.chainId?'hidden':''}>新しいチェーン名<input name="chain_name" maxlength="80" placeholder="新しいチェーン名" value="${esc(scanDraft.chainName||'')}"></label>
+  <label class="scan-field">支店名（任意）<input name="branch_name" maxlength="80" placeholder="例：駅前店" value="${esc(scanDraft.branchName||'')}"></label>
   <label class="scan-field">購入日<input name="date" type="date" required value="${esc(scanDraft.date)}"></label>
   ${scanDraft.items.map((item,i)=>`<div class="panel scan-review-item">
     <div class="row" style="justify-content:space-between"><strong>明細 ${i+1}</strong><button type="button" class="tertiary" data-act="scanRemoveItem" data-scan-row="${i}">削除</button></div>
     ${item.issues.length?'<p class="scan-warning">要確認：'+esc(item.issues.join('、'))+'</p>':''}
     <label class="scan-field">商品名<input name="name-${i}" maxlength="120" value="${esc(item.name)}" placeholder="OCR結果を修正"></label>
     <label class="scan-field">既存商品<select name="product-${i}">${scanOptionsProduct(item.productId)}</select></label>
+    <button type="button" class="tertiary" data-act="scanNewProduct" data-scan-row="${i}">＋ この商品を新規登録</button>
     <div class="scan-input-pair"><label class="scan-field">購入数<input name="qty-${i}" type="number" min="1" step="1" required value="${esc(item.quantity)}"></label>
     <label class="scan-field">税込明細合計（円）<input name="amount-${i}" type="number" min="0" step="1" required value="${esc(item.amount)}" placeholder="確認して入力"></label></div>
    </div>`).join('')}
@@ -313,28 +314,29 @@ function scanFormView(){
   <div class="panel">
    <p>印字合計：${scanDraft.total===null?'未検出':yen(scanDraft.total)}</p>
    <p id="scan-sum-text" class="hint">明細合計は入力内容を確認して算出します。</p>
-   <label class="scan-check"><input type="checkbox" name="confirmed" required> 写真と照合し、すべての明細を確認しました</label>
+   <label class="scan-check"><input type="checkbox" name="confirmed" required> 原本と照合し、すべての明細を確認しました</label>
+   <div id="scan-duplicate-warning" ${scanDuplicates(scanDraft).length?'':'hidden'}>
+    <p class="scan-warning">同じ店舗・日付・明細のレシートが登録されています。</p>
+    <label class="scan-check"><input type="checkbox" name="duplicateOk"> 重複登録の可能性を確認しました</label>
+   </div>
    ${scanDraft.total!==null?'<label class="scan-check"><input type="checkbox" name="difference"> 印字合計との差額がある場合も内容を確認しました</label>':''}
   </div>
-  <button class="primary" type="submit">確認したレシートを一括保存</button>
+  <button class="primary" type="submit">${scanDraft.recordId?'修正したレシートを保存':'確認したレシートを一括保存'}</button>
   <p class="hint">写真やOCR全文は保存しません。現在のGASはログインを使わない共有接続のため、個人情報を含む記録の扱いには注意してください。</p>
  </form>`;
 }
 function receiptScanView(){
- return `${head('レシートを読み取る','写真から読み取り',true)}
-  <main class="preview-record-page receipt-scan-page">
-   <p class="hint">PaddleOCR PP-OCRv6 smallで端末内解析。写真は保存・送信しません。</p>
-   ${scanPhotos.length?`<div class="panel">
-    <strong>選択した写真 ${scanPhotos.length}枚</strong>
-    <div class="scan-photo-list">${scanPhotos.map((file,i)=>
-     `<button type="button" class="${i===scanIndex?'primary':'secondary'}" data-act="scanSelectPhoto" data-scan-row="${i}">写真${i+1}</button>`).join('')}</div>
-    <button type="button" class="tertiary" data-act="scanRemovePhoto">選択中の写真を外す</button>
-    ${scanPhotos.length<6?'<button type="button" class="secondary" data-act="scanAddPhotos">＋ 写真を追加</button>':''}
-    <button type="button" class="primary" data-act="scanStart" ${scanBusy?'disabled':''}>${scanBusy?'読み取り中…':'写真を解析する'}</button>
-   </div>`:''}
-   <p id="scan-status" role="status" class="hint">${esc(scanStatus||'写真を選択してください。')}</p>
-   ${scanFormView()}
-  </main>`;
+ return `${head('レシートを読み取る','写真から読み取り',true)}<main class="preview-record-page receipt-scan-page">
+ <p class="hint">PaddleOCR PP-OCRv6 smallで自動解析。画像処理は以前の最良設定を使用します。</p>
+ ${scanPhotos.length?`<div class="panel"><strong>選択した写真 ${scanPhotos.length}枚</strong>
+ <div class="scan-photo-list">${scanPhotos.map((file,i)=>`<button type="button" class="${i===scanIndex?'primary':'secondary'}" data-act="scanSelectPhoto" data-scan-row="${i}">写真${i+1}</button>`).join('')}</div>
+ <button type="button" class="tertiary" data-act="scanRemovePhoto">選択中の写真を外す</button>
+ ${scanPhotos.length<6?'<button type="button" class="secondary" data-act="scanAddPhotos">＋ 写真を追加</button>':''}
+ <input id="scan-add-picker" class="scan-file-input" type="file" accept="image/*" multiple>
+ <button type="button" class="primary" data-act="scanStart" ${scanBusy?'disabled':''}>${scanBusy?'読み取り中…':'写真を解析する'}</button>
+ </div>`:''}
+ <p id="scan-status" role="status" class="hint">${esc(scanStatus||'写真を選択してください。')}</p>${scanFormView()}
+ </main>`;
 }
 async function runReceiptScan(){
  if(scanBusy||!scanPhotos.length)return;
@@ -368,8 +370,12 @@ async function runReceiptScan(){
   if(!allItems.length)throw Error('商品明細を抽出できませんでした。別の写真で読み取りを試してください。');
   const raw=observations.join('\n');
   const chainMatches=catalogue.chains.filter(c=>norm(raw.slice(0,800)).includes(norm(c.name)));
-  scanDraft={items:allItems,total,date:scanDate(raw),
-   chainId:chainMatches.length===1?chainMatches[0].id:null};
+  scanDraft={items:allItems,total,date:scanDate(raw),source:'ocr',
+   chainId:chainMatches.length===1?chainMatches[0].id:null,chainName:''};
+  scanDraft.items.forEach(item=>{
+   if(!item.productId)item.productId=scanMatchProduct(item.name,scanDraft.chainId);
+  });
+  saveScanDraft();
   scanStatus='読み取り完了：'+allItems.length+'明細。原本と照合して修正してください。';
  }catch(e){if(token===scanToken)scanStatus='読み取れませんでした：'+(e.message||String(e));}
  finally{if(token===scanToken){scanBusy=false;render();}}
@@ -577,11 +583,15 @@ function recordAddView(){
 function receiptView(){
  const records=liveMode?liveRecords:previewRecords;
  const rows=records.records.slice().reverse().map(r=>{
- const item=records.record_items.find(x=>x.record_id===r.record_id);
- const p=catalogue.products.find(x=>x.id===item?.product_id);
- return `<div class="panel preview-record-row"><strong>${esc(r.record_type==='receipt'?'レシート':'値札')} · ${esc(r.record_date)}</strong><span>${esc(chainLabel(r.chain_id))}／${esc(p?.name||item?.raw_name||'未照合')}</span><span>${yen(item?.amount_tax_included??null)} · ${esc(item?.quantity??'—')}個</span></div>`;
+ const details=records.record_items.filter(x=>x.record_id===r.record_id&&!x.deleted_at);
+ const total=details.reduce((sum,x)=>sum+Number(x.amount_tax_included||0),0);
+ const first=details[0],p=catalogue.products.find(x=>x.id===first?.product_id);
+ return `<button type="button" class="panel preview-record-row receipt-history-row" data-act="recordDetail" data-record-id="${esc(r.record_id)}">
+ <strong>${esc(r.record_type==='receipt'?'レシート':'値札')} · ${esc(r.record_date)}</strong>
+ <span>${esc(chainLabel(r.chain_id))}／${esc(p?.name||first?.raw_name||'未照合')}${details.length>1?' ほか'+(details.length-1)+'件':''}</span>
+ <span>${yen(total)} · ${details.length}明細</span></button>`;
  }).join('')||'<div class="empty">記録はまだありません</div>';
- return `${head('レシート','くらしストック_試作')}<main class="preview-record-page"><p class="sample-price-notice">${liveMode?'レシート写真から自動解析できます。OCR結果は保存前に必ず確認してください。':'※ 手入力の試作機能。OCR・Sheets・夫婦間同期は未接続です。'}</p><div class="record-entry-actions">${liveMode?'<button class="primary" data-act="receiptScan">'+miniIcon('plus')+'<span>写真からレシートを読み取る</span></button>':''}<button class="secondary" data-act="newReceipt">${miniIcon('plus')}<span>レシート明細</span></button><button class="secondary" data-act="newShelf">${miniIcon('plus')}<span>値札</span></button></div><h2 class="sectiontitle">${liveMode?'保存した記録':'この端末の記録'}</h2>${rows}</main>${nav()}`;
+ return `${head('レシート','くらしストック_試作')}<main class="preview-record-page"><p class="sample-price-notice">${liveMode?'レシート写真から自動解析できます。OCR結果は保存前に必ず確認してください。':'※ 手入力の試作機能。OCR・Sheets・夫婦間同期は未接続です。'}</p><div class="record-entry-actions">${liveMode?'<button class="primary" data-act="receiptScan">'+miniIcon('plus')+'<span>写真からレシートを読み取る</span></button><input id="receipt-source-picker" class="scan-file-input" type="file" accept="image/*" multiple><button class="secondary" data-act="receiptChatGpt">ChatGPTで解析結果を取り込む</button>':''}${scanDraftAvailable?'<button class="secondary" data-act="resumeScanDraft">下書きを再開</button>':''}<button class="secondary" data-act="newReceipt">${miniIcon('plus')}<span>レシート明細</span></button><button class="secondary" data-act="newShelf">${miniIcon('plus')}<span>値札</span></button></div><h2 class="sectiontitle">${liveMode?'保存した記録':'この端末の記録'}</h2>${rows}</main>${nav()}`;
 }
 function budgetView(){
  // UI work is deferred by request. Keep record data and calculation helpers
@@ -630,15 +640,16 @@ function pageView(){
   case 'productPick': return priceCompareView();
   case 'recordAdd': return receiptView();
   case 'recordScan': return receiptScanView();
-  case 'recordSource': return receiptView();
-  case 'recordCamera': return receiptCameraView();
+  case 'recordChatGpt': return receiptChatGptView();
+  case 'recordDetail': return recordDetailView();
+  case 'scanProduct': return receiptScanView();
   case 'productCreate': return productCreateView();
   case 'productEdit': return priceCompareView();
   default: return mainTabView();
  }
 }
 function render(){
- const currentModal=page==='add'||page==='edit'||page==='productEdit'||page==='productPick'||page==='recordAdd'||page==='recordSource';
+ const currentModal=page==='add'||page==='edit'||page==='productEdit'||page==='productPick'||page==='recordAdd'||page==='scanProduct';
  const wasModal=previousPage==='add'||previousPage==='edit'||previousPage==='productEdit'||previousPage==='productPick'||previousPage==='recordAdd'||previousPage==='recordSource';
  // The product-creation page replaces an open search sheet. It is a full
  // page, so it must start at the top even if the underlying comparison page
@@ -646,8 +657,8 @@ function render(){
  const enteringProductCreate=page==='productCreate'&&previousPage==='productPick';
  const scrollReset=enteringProductCreate||
   !currentModal&&!wasModal&&(page!==previousPage||(page==='compare'&&selected!==previousSelected));
- const focus=['add','edit','products','productPick','productCreate','recordScan','recordCamera'].includes(page);
- const modal=page==='recordSource'?receiptSourceView():page==='productPick'?pickerView():page==='productEdit'?productCreateView():page==='recordAdd'?recordAddView():currentModal?formView():'';
+ const focus=['add','edit','products','productPick','productCreate','recordScan','recordChatGpt','recordDetail'].includes(page);
+ const modal=page==='scanProduct'?scanProductView():page==='productPick'?pickerView():page==='productEdit'?productCreateView():page==='recordAdd'?recordAddView():currentModal?formView():'';
  const overlay=dialogView();
  app.innerHTML=`<div class="shell ${focus?'focus':''}">${pageView()}</div>${modal}${overlay}`;
  if(scrollReset)window.scrollTo(0,page==='list'&&previousPage==='compare'?listScrollPosition:0);
@@ -748,13 +759,11 @@ function goBack(){
   render();
 }
 function back(){
-  if(page==='recordSource'){
-   page=scanSourceReturn;render();return;
-  }
-  if(page==='recordCamera'){
-   stopReceiptCamera();page='recordSource';render();return;
-  }
+  if(page==='scanProduct'){page='recordScan';scanProductRow=null;render();return;}
+  if(page==='recordDetail'){page='list';tab='receipt';render();return;}
+  if(page==='recordChatGpt'){page='list';tab='receipt';render();return;}
   if(page==='recordScan'){
+   syncScanReview();if(scanDraft)saveScanDraft();
    if(scanBusy){say('読み取り処理中です');return;}
    if(scanPhotos.length||scanDraft){
     dialog={title:'OCR下書きを破棄しますか？',message:'写真と読み取り結果は保存せず破棄します。',
@@ -844,11 +853,13 @@ function updateComparisonPrices(){
  }
 }
 app.addEventListener('change',e=>{
- if(e.target.id==='scan-library-picker'){
+ if(e.target.id==='receipt-source-picker'||e.target.id==='scan-add-picker'){
   const files=[...(e.target.files||[])].filter(f=>f.type.startsWith('image/'));
   if(scanPhotos.length+files.length>6){
    scanStatus='一度に読み込める写真は最大6枚です。';render();return;
   }
+  if(!files.length)return;
+  if(e.target.id==='receipt-source-picker')resetScan();
   scanPhotos.push(...files);scanIndex=scanPhotos.length-1;
   if(files.length)page='recordScan';
   scanDraft=null;scanToken++;scanStatus=files.length+'枚の写真を追加しました。';
@@ -863,6 +874,8 @@ function syncScanReview(){
  if(!form||!scanDraft)return;
  const d=new FormData(form);
  scanDraft.chainId=String(d.get('chain')||'')==='__new__'?null:String(d.get('chain')||'');
+ scanDraft.chainName=String(d.get('chain_name')||'');
+ scanDraft.branchName=String(d.get('branch_name')||'');
  scanDraft.date=String(d.get('date')||scanDraft.date);
  for(let i=0;i<scanDraft.items.length;i++){
   const it=scanDraft.items[i];
@@ -874,6 +887,25 @@ function syncScanReview(){
 }
 app.addEventListener('change',e=>{if(e.target.id==='onlyOut'){const wasOut=onlyOut;onlyOut=e.target.checked;if(wasOut&&!onlyOut)collapsed.clear();render()}});
 app.addEventListener('submit',e=>{e.preventDefault();const form=e.target;const d=new FormData(form);
+ if(form.id==='scanProductForm'){
+  const name=String(d.get('name')||'').trim(),group=String(d.get('group')||'');
+  const qtyText=String(d.get('package_quantity')||'').trim();
+  const quantity=qtyText===''?null:Number(qtyText);
+  const unit=qtyText===''?null:String(d.get('package_unit')||'');
+  const btn=form.querySelector('[type="submit"]');if(btn?.disabled)return;
+  if(btn)btn.disabled=true;
+  window.KurashiLive.save('product.create',{
+   item_group_id:group,name,package_quantity:quantity,package_unit:unit
+  }).then(product=>{
+   if(!product)throw Error('商品を登録できませんでした');
+   if(scanDraft?.items[scanProductRow])scanDraft.items[scanProductRow].productId=product.product_id;
+   saveScanDraft();scanProductRow=null;page='recordScan';render();
+  }).catch(err=>{
+   if(btn)btn.disabled=false;
+   fieldNotice(form,err.message||'商品を登録できませんでした','scan-product-name');
+  });
+  return;
+ }
  if(form.id==='scanConfirmForm'){
   if(!liveMode){fieldNotice(form,'正式保存はSheets接続時に利用できます');return;}
   if(!scanDraft||!scanDraft.items.length){fieldNotice(form,'保存する明細がありません');return;}
@@ -889,6 +921,15 @@ app.addEventListener('submit',e=>{e.preventDefault();const form=e.target;const d
    fieldNotice(form,'数量・税込明細合計をすべて確認してください');return;
   }
   if(!d.get('confirmed')){fieldNotice(form,'原本を確認したチェックが必要です');return;}
+  const editedDate=String(d.get('date')||'');
+  const editedChain=String(d.get('chain')||'');
+  const dup=scanDuplicates({...scanDraft,date:editedDate,
+    chainId:editedChain==='__new__'?null:editedChain,
+    items:lines.map(x=>({name:x.raw_name,quantity:x.quantity,amount:x.amount_tax_included}))});
+  if(dup.length&&!d.get('duplicateOk')){
+   document.getElementById('scan-duplicate-warning')?.removeAttribute('hidden');
+   fieldNotice(form,'重複の可能性があります。確認してから登録してください');return;
+  }
   const sum=lines.reduce((n,x)=>n+x.amount_tax_included,0);
   if(scanDraft.total!==null&&sum!==scanDraft.total&&!d.get('difference')){
    fieldNotice(form,'明細合計と印字合計が一致しません。差額を確認してください');return;
@@ -897,10 +938,17 @@ app.addEventListener('submit',e=>{e.preventDefault();const form=e.target;const d
   if(!chain_id){fieldNotice(form,'チェーンを選択してください');return;}
   const submit=form.querySelector('[type="submit"]');if(submit?.disabled)return;
   if(submit)submit.disabled=true;
-  window.KurashiLive.saveRecord({
-   record_type:'receipt',chain_id,chain_name:String(d.get('chain_name')||'').trim(),
-   record_date:String(d.get('date')||''),items:lines
-  }).then(()=>{
+  const values={record_type:'receipt',chain_id,chain_name:String(d.get('chain_name')||'').trim(),
+   branch_name:String(d.get('branch_name')||'').trim(),
+   record_date:String(d.get('date')||''),items:lines};
+  const work=scanDraft.recordId?
+    window.KurashiLive.updateRecord({...values,record_id:scanDraft.recordId}):
+    window.KurashiLive.saveRecord(values);
+  work.then(record=>{
+   const learnedChain=record?.chain_id||chain_id;
+   if(window.KurashiLive.learnAliases&&learnedChain&&learnedChain!=='__new__')
+    void window.KurashiLive.learnAliases({chain_id:learnedChain,items:lines})
+     .catch(e=>console.warn('別名学習を保存できませんでした',e));
    resetScan();page='list';tab='receipt';render();
   }).catch(err=>{
    if(submit)submit.disabled=false;
@@ -960,7 +1008,7 @@ if(form.id==='productCreateForm'){
  if(page==='productEdit'){const p=catalogue.products.find(x=>x.id===editingProductId&&x.itemGroupId===selected);if(!p){fieldNotice(form,'商品が見つかりません','new-product-name');return}Object.assign(p,{name,packageQuantity:productQty,packageUnit:productUnit})}else{catalogue.products.push({id:id(),name,packageQuantity:productQty,packageUnit:productUnit,itemGroupId:selected,itemGroupOrder:registeredProducts(selected).length+1,aliases:[]})}
  persistCatalogue();page='compare';initializeCompare();render();
 }});
-app.addEventListener('click',e=>{if(e.target.classList?.contains('sheet-back')&&['add','edit','productEdit','productPick','recordSource'].includes(page)){back();return}if(suppressClick){e.preventDefault();e.stopPropagation();suppressClick=false;return}const clear=e.target.closest('[data-search-clear]');if(clear){const input=document.getElementById(clear.dataset.searchClear);if(input){input.value='';syncSearch(input);input.focus()}return}const el=e.target.closest('[data-tab],[data-cat],[data-stock],[data-open],[data-act],[data-ui-toggle],[data-ui-choice],[data-dialog],[data-premove],[data-pedit],[data-pick],[data-product-menu],[data-list-edit],[data-list-hide]');if(!el)return;if(el.hasAttribute('data-ui-toggle')){
+app.addEventListener('click',e=>{if(e.target.classList?.contains('sheet-back')&&['add','edit','productEdit','productPick','scanProduct'].includes(page)){back();return}if(suppressClick){e.preventDefault();e.stopPropagation();suppressClick=false;return}const clear=e.target.closest('[data-search-clear]');if(clear){const input=document.getElementById(clear.dataset.searchClear);if(input){input.value='';syncSearch(input);input.focus()}return}const el=e.target.closest('[data-tab],[data-cat],[data-stock],[data-open],[data-act],[data-ui-toggle],[data-ui-choice],[data-dialog],[data-premove],[data-pedit],[data-pick],[data-product-menu],[data-list-edit],[data-list-hide]');if(!el)return;if(el.hasAttribute('data-ui-toggle')){
  const wrapper=el.closest('.ui-select'),open=el.getAttribute('aria-expanded')==='true';
  closeAllDropdowns();
  if(!open&&wrapper){const popup=wrapper.querySelector('.ui-menu');if(popup)popup.hidden=false;el.setAttribute('aria-expanded','true');if(wrapper.dataset.uiSelect==='price-period')periodMenu=true}
@@ -1038,6 +1086,12 @@ if(action==='confirmProductMove'&&p){
  }
  page='compare';initializeCompare();render();return;
 }
+if(action==='confirmRecordDelete'&&p?.recordId){
+ window.KurashiLive.deleteRecord(p.recordId).then(()=>{
+  page='list';tab='receipt';recordDetailId=null;render();
+ }).catch(e=>say(e.message||'記録を削除できませんでした'));
+ return;
+}
 if(action==='discardScan'){resetScan();page='list';tab='receipt';render();return}
 if(action==='discardChanges'){goBack();return}if(action==='confirmHide'){if(liveMode){const i=current();if(i)
    window.KurashiLive.save('item.update',{item_group_id:i.id,version:i.version,is_hidden:true})
@@ -1075,25 +1129,73 @@ if(action==='productCreate'){
  page='productCreate';openSwipeId=null;
 }if(action==='shopToggle'){shopExpanded=!shopExpanded;priceScope=shopExpanded?'unit':'product';if(!shopExpanded)compareQuantity=null;render();return}
 if(action==='catalogueList'){pickerAll=!pickerAll;const heading=document.querySelector('.catalogue-list-heading');if(heading)heading.textContent=pickerAll?'登録一覧':'候補（最大3件）';const target=document.getElementById('catalogue-results');if(target)target.innerHTML=pickerResults();el.textContent=pickerAll?'候補に戻る':'登録一覧から選ぶ';return}if(action==='hide'){menu=false;dialog={title:'日用品を削除',message:'日用品リストから削除します',buttons:[{id:'cancel',label:'キャンセル'},{id:'confirmHide',label:'削除',primary:true}]}}if(action==='copyList'){const txt=CATS.map((cat,idx)=>{const rows=visible().filter(i=>i.category===idx&&!i.inStock).sort((a,b)=>a.order-b.order);return rows.length?cat+'\n'+rows.map(i=>'- '+i.name).join('\n'):''}).filter(Boolean).join('\n\n');menu=false;render();if(!txt){inlineActionNotice(document.querySelector('[data-act="copyList"]'),'在庫なしの日用品はありません');return}navigator.clipboard.writeText(txt).then(()=>say('在庫なしをコピーしました',{anchor:'[data-act="copyList"]'})).catch(()=>inlineActionNotice(document.querySelector('[data-act="copyList"]'),'コピーできませんでした'));return}if(action==='receiptScan'){
- resetScan();tab='receipt';scanSourceReturn='list';page='recordSource';render();return;
+ document.getElementById('receipt-source-picker')?.click();return;
 }
-if(action==='scanAddPhotos'){
- if(scanBusy)return;
- scanSourceReturn='recordScan';page='recordSource';render();return;
+if(action==='receiptChatGpt'){chatGptError='';page='recordChatGpt';render();return;}
+if(action==='chatGptCopyPrompt'){
+ const parser=window.KurashiReceiptImport;
+ if(!parser){say('読み取り指示が準備できません');return;}
+ navigator.clipboard.writeText(parser.makeChatGptReceiptPrompt())
+  .then(()=>say('ChatGPT用の指示をコピーしました'))
+  .catch(()=>say('コピーできませんでした'));return;
 }
-if(action==='scanFromLibrary'){
- // Run the file chooser inside this physical tap for iPhone Safari.
- const picker=document.getElementById('scan-library-picker');
- if(picker)picker.click();
+if(action==='chatGptImport'){
+ const parser=window.KurashiReceiptImport;
+ try{
+  if(!parser)throw Error('解析機能が読み込まれていません');
+  const parsed=parser.parseChatGptReceiptJson(document.getElementById('chatgpt-input')?.value||'');
+  scanPhotos=[];scanDraft=chatGptDraft(parsed);
+  if(!scanDraft.items.length)throw Error('明細がありません');
+  saveScanDraft();scanStatus='ChatGPTの解析結果を取り込みました。原本と照合してください。';
+  page='recordScan';render();
+ }catch(e){
+  chatGptError='解析結果を読み込めません：'+String(e?.message||e);
+  const el=document.getElementById('chatgpt-error');if(el)el.textContent=chatGptError;
+ }
  return;
 }
-if(action==='scanFromCamera'){
- if(scanPhotos.length>=6){page='recordScan';render();return;}
- page='recordCamera';cameraStatus='';render();
- void startReceiptCamera();return;
+if(action==='resumeScanDraft'){
+ window.KurashiLive.loadReceiptDraft().then(draft=>{
+  if(!draft)return;
+  resetScan({keepDraft:true});scanDraft=draft;scanDraftAvailable=true;
+  scanStatus='下書きを再開しました。写真の画像は保存されていません。';
+  page='recordScan';render();
+ }).catch(e=>say(e?.message||'下書きを再開できません'));return;
 }
-if(action==='scanCapture'){void captureReceiptCamera();return;}
-if(action==='scanCameraRetry'){void startReceiptCamera();return;}
+if(action==='scanAddPhotos'){
+ if(!scanBusy)document.getElementById('scan-add-picker')?.click();return;
+}
+if(action==='recordDetail'){
+ recordDetailId=el.dataset.recordId;page='recordDetail';render();return;
+}
+if(action==='recordEdit'){
+ const r=allPreviewRecords().find(x=>x.record_id===recordDetailId);
+ if(!r||!liveMode)return;
+ if(r.record_id.startsWith('local-')){
+  say('同期が完了してから編集できます');return;
+ }
+ scanPhotos=[];scanDraft={
+  recordId:r.record_id,source:'edit',date:r.record_date,chainId:r.chain_id,
+  chainName:'',branchName:r.branch_name||'',total:null,
+  items:allPreviewItems().filter(x=>x.record_id===r.record_id&&!x.deleted_at)
+   .sort((a,b)=>Number(a.line_order)-Number(b.line_order)
+   .map(x=>({name:x.raw_name||'',quantity:x.quantity,
+    amount:x.amount_tax_included,productId:x.product_id||'',issues:[]}))
+ };
+ saveScanDraft();scanStatus='保存済みの記録を編集中です';page='recordScan';render();return;
+}
+if(action==='recordDelete'){
+ dialog={title:'記録を削除しますか？',message:'削除すると価格比較と家計簿の集計からも除外されます。',
+  buttons:[{id:'cancel',label:'キャンセル'},{id:'confirmRecordDelete',label:'削除する',critical:true}],
+  pending:{recordId:recordDetailId}};
+ renderDialogOnly();return;
+}
+if(action==='scanNewProduct'){
+ if(!liveMode||!scanDraft)return;
+ syncScanReview();saveScanDraft();
+ scanProductRow=Number(el.dataset.scanRow);
+ page='scanProduct';render();return;
+}
 if(action==='scanStart'){void runReceiptScan();return}
 if(action==='scanSelectPhoto'){scanIndex=Number(el.dataset.scanRow)||0;render();return}
 if(action==='scanRemovePhoto'){
@@ -1436,8 +1538,35 @@ app.addEventListener('touchcancel',e=>{
     detailSwipe=null;
 },{passive:true});
 
-// Leave the camera hardware and its stream behind when switching apps.
-document.addEventListener?.('visibilitychange',()=>{
- if(document.hidden&&cameraStream){stopReceiptCamera();cameraStatus='カメラを停止しました。再接続してください。';}
+
+// Update the possible-duplicate warning as form fields change.
+function refreshScanDuplicateUI(){
+ const form=document.getElementById('scanConfirmForm'),warn=document.getElementById('scan-duplicate-warning');
+ if(!form||!warn||!scanDraft)return;
+ const d=new FormData(form),fields=scanDraft.items.map((x,i)=>({
+  name:String(d.get('name-'+i)||''),quantity:Number(d.get('qty-'+i)),
+  amount:String(d.get('amount-'+i)||'')
+ }));
+ const chain=String(d.get('chain')||'');
+ warn.hidden=!scanDuplicates({...scanDraft,
+   date:String(d.get('date')||''),chainId:chain==='__new__'?null:chain,
+   items:fields}).length;
+ if(warn.hidden)form.querySelector('[name="duplicateOk"]').checked=false;
+}
+app.addEventListener('input',e=>{
+ if(page==='recordScan'&&e.target.closest('#scanConfirmForm')){
+  syncScanReview();saveScanDraft();refreshScanDuplicateUI();
+ }
 });
-window.addEventListener?.('pagehide',stopReceiptCamera);
+// Only structured receipt draft fields are stored, never raw OCR or photos.
+app.addEventListener('change',e=>{
+ if(page==='recordScan'&&e.target.closest('#scanConfirmForm')){
+  syncScanReview();saveScanDraft();refreshScanDuplicateUI();
+ }
+});
+if(liveMode){
+ window.KurashiLive.loadReceiptDraft().then(draft=>{
+  scanDraftAvailable=!!draft;
+  if(page==='list'&&tab==='receipt')render();
+ }).catch(e=>console.warn('下書きを読み込めません',e));
+}

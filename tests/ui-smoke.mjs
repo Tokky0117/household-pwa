@@ -17,7 +17,7 @@ const doc={
 const ctx={document:doc,localStorage:{getItem:k=>storage.get(k)??null,setItem:(k,v)=>storage.set(k,v),removeItem:k=>storage.delete(k)},
  navigator:{},window:{scrollTo(){},scrollY:0},crypto:{randomUUID:()=> 'test-id'},setTimeout:()=>0};
 const ui=vm.runInNewContext(source+`
-({listView,priceCompareView,pickerView,pickerResults,receiptView,budgetView,receiptScanView,receiptSourceView,receiptCameraView,render,initializeCompare,
+({listView,priceCompareView,pickerView,pickerResults,receiptView,budgetView,receiptScanView,receiptChatGptView,recordDetailView,scanDuplicates,render,initializeCompare,
  setProductGroup,reorderProducts,registeredProducts,convertQuantity,setOpenSwipe,
  chainMinima,priceCandidates,budgetTotals,savePreviewRecord,periodStart,
  demoRecords,demoRecordItems,allPreviewRecords,allPreviewItems,
@@ -213,27 +213,24 @@ assert.ok(source.includes('window.KurashiLive.saveRecord('),
 assert.ok(source.includes('liveRecords={records:'),
  'Live price and budget use the shared record snapshot');
 
-assert.ok(ui.receiptSourceView().includes('class="half-sheet receipt-source-sheet"')&&
- ui.receiptSourceView().includes('scanFromLibrary')&&
- ui.receiptSourceView().includes('scanFromCamera'),
- 'Source choice reuses shared half-modal with just Photo Library and Camera');
-assert.ok(ui.receiptCameraView().includes('id="scan-video"')&&
- ui.receiptCameraView().includes('playsinline')&&
- ui.receiptCameraView().includes('写真ライブラリには保存しません'),
- 'Camera is a direct in-browser stream, not the native photo-saving camera');
-assert.ok(!ui.receiptScanView().includes('scan-crop-canvas')&&
- !ui.receiptScanView().includes('scan-mode')&&
- !ui.receiptScanView().includes('画像処理')&&
- !ui.receiptScanView().includes('切り抜き'),
- 'No crop gesture or image-processing selection remains');
-assert.ok(source.includes("getUserMedia({")&&
- source.includes("canvas.toBlob(")&&
- source.includes("mode:'gray',crop:null"),
- 'Camera captures memory-only and validated OCR condition is fixed');
+
+assert.ok(ui.receiptScanView().includes('id="scan-status"')&&
+ !ui.receiptScanView().includes('scan-crop-canvas')&&
+ !ui.receiptScanView().includes('scan-mode'),'No crop and preprocessing selector');
+assert.ok(ui.receiptView().includes('data-act="receiptScan"'),
+ 'Direct native source chooser on receipt tab');
+assert.ok(source.includes("document.getElementById('receipt-source-picker')?.click()"),
+ 'Source chooser is opened synchronously on user tap');
+assert.ok(source.includes('type="file" accept="image/*" multiple'),
+ 'Native picker offers photo library, camera or files');
+assert.ok(!source.includes('getUserMedia(')&&!source.includes('scanFromCamera'),
+ 'Custom camera and custom two-choice UI are gone');
+assert.ok(source.includes("mode:'gray',crop:null"),'Best OCR preprocessing is fixed internally');
+assert.ok(ui.receiptChatGptView().includes('chatgpt-input'),
+ 'ChatGPT JSON import has a normal UI');
+assert.ok(source.includes('updateRecord(')&&source.includes('deleteRecord('),
+ 'Edit/delete connect to durable queue, not a local-only fake');
 assert.ok(!ui.budgetView().includes('budget-total'),
  'Budget tab has only implementation-plan notice, not sample figures');
 assert.ok(source.includes("import('./ocr-engine/engine.js')"),
  'PaddleOCR runtime loads lazily, after explicit scan');
-assert.ok(!source.includes('scanMode=\'gray\'')&&
- source.includes("mode:'gray',crop:null"),
- 'Best validated grayscale setting is applied internally without selection');

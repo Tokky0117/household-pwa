@@ -52,7 +52,7 @@ jobs:
           set -euo pipefail
           git fetch --prune origin '+refs/heads/*:refs/remotes/origin/*'
           mkdir -p _site/previews
-          files=(index.html app.js styles.css manifest.webmanifest icon.svg sw.js live-client.js)
+          files=(index.html app.js styles.css manifest.webmanifest icon.svg sw.js live-client.js receipt-chatgpt-import.js)
 
           copy_site() {
             local ref="$1"

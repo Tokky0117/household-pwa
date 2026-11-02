@@ -748,6 +748,62 @@ assert.equal(shelfSaved.data.items[0].price_eligible,true);
 assert.equal(recordFixture.call('bootstrap').data.records.length,2);
 assert.equal(recordFixture.call('bootstrap').data.record_items.length,3);
 
+
+/* Multi-line record updates/deletes must preserve journal recovery and
+ * remove the replaced rows from the active catalogue, including price data. */
+const editPayload={record_id:receiptSaved.data.record.record_id,version:1,
+ chain_id:newChainId,record_date:'2026-10-15',branch_name:'駅前店',
+ items:[{raw_name:'修正した商品',product_id:productForPrice.product_id,
+   quantity:2,amount_tax_included:440,category_id:null}]};
+recordFixture.failRecordItemWriteAfter(0);
+const partialUpdate=recordFixture.call('record.update',editPayload,
+ 'op-record-update-retry-abcdefghijk');
+assert.equal(partialUpdate.ok,false,'simulate crash after record parent write');
+assert.equal(recordFixture.call('bootstrap').error.code,'RECOVERY_REQUIRED',
+ 'unfinished receipt edit cannot expose partial new state');
+const editRecovered=recordFixture.call('record.update',editPayload,
+ 'op-record-update-retry-abcdefghijk');
+assert.equal(editRecovered.ok,true,'same edit ID completes existing prepared transaction');
+assert.equal(editRecovered.data.items.length,1);
+assert.equal(editRecovered.data.record.branch_name,'駅前店');
+assert.equal(editRecovered.data.record.version,2);
+assert.equal(recordFixture.call('record.update',editPayload,
+ 'op-record-update-retry-abcdefghijk').data.record.version,2,
+ 'edit replay is idempotent');
+const afterEdit=recordFixture.call('bootstrap').data;
+assert.equal(afterEdit.records.find(x=>x.record_id===receiptSaved.data.record.record_id).version,2);
+assert.deepEqual(afterEdit.record_items.filter(x=>x.record_id===receiptSaved.data.record.record_id)
+ .map(x=>x.raw_name),['修正した商品'],'only new line remains visible');
+assert.equal(recordFixture.call('record.update',editPayload,
+ 'op-record-update-stale-abcdefghijk').error.code,'VERSION_CONFLICT',
+ 'stale record version cannot overwrite spouse-side edit');
+const aliasInput={chain_id:newChainId,product_id:productForPrice.product_id,
+ raw_alias:'OCRで読み取った略称'};
+const aliasSaved=recordFixture.call('alias.upsert',aliasInput,
+ 'op-record-alias-create-abcdefghijk');
+assert.equal(aliasSaved.ok,true,'confirmed product alias saved to existing aliases sheet');
+assert.equal(recordFixture.call('alias.upsert',aliasInput,
+ 'op-record-alias-create-abcdefghijk').data.entity.alias_id,
+ aliasSaved.data.entity.alias_id,'replayed alias uses one row');
+assert.ok(recordFixture.call('bootstrap').data.product_aliases.some(x=>
+ x.normalized_alias==='ocrで読み取った略称'&&x.chain_id===newChainId));
+assert.equal(recordFixture.call('alias.upsert',aliasInput,
+ 'op-record-alias-second-abcdefghijk').ok,true,
+ 'repeat alias with a new operation ID is a safe no-op');
+assert.equal(recordFixture.db.product_aliases.length,2,'same alias is not inserted twice');
+const removePayload={record_id:receiptSaved.data.record.record_id,version:2};
+const deletedRecord=recordFixture.call('record.delete',removePayload,
+ 'op-record-delete-abcdefghijk');
+assert.equal(deletedRecord.ok,true);
+assert.ok(deletedRecord.data.record.deleted_at);
+assert.equal(recordFixture.call('record.delete',removePayload,
+ 'op-record-delete-abcdefghijk').data.record.record_id,
+ receiptSaved.data.record.record_id,'delete replay is idempotent');
+assert.ok(!recordFixture.call('bootstrap').data.records.some(x=>
+ x.record_id===receiptSaved.data.record.record_id),'deleted receipt not in history');
+assert.ok(!recordFixture.call('bootstrap').data.record_items.some(x=>
+ x.record_id===receiptSaved.data.record.record_id),'deleted receipt items not in prices');
+
 const interruptedRecord=fixture(api);
 const interruptedChain=interruptedRecord.call('store.create',{name:'別チェーン'},
  'op-record-crash-store-abcdef12345').data.entity.chain_id;
@@ -846,71 +902,70 @@ retryRecord.window.close();
 console.log('v56 records: chain, multi-line journal, DOM UI, offline restart, price/budget, lost reply OK');
 
 
+
 let scanSession=appSession();
-await waitFor(()=>scanSession.window.KurashiLive.state().loaded,'receipt source UI loaded');
+await waitFor(()=>scanSession.window.KurashiLive.state().loaded,'standard photo chooser session loaded');
 scanSession.window.document.querySelector('[data-tab="receipt"]').click();
-const newScan=scanSession.window.document.querySelector('[data-act="receiptScan"]');
-assert.ok(newScan,'live receipt tab offers the primary OCR entry');
-newScan.click();
-let sourceSheet=scanSession.window.document.querySelector('.half-sheet.receipt-source-sheet');
-assert.ok(sourceSheet,'Preview v46 shared half modal is used');
-assert.ok(sourceSheet.querySelector('[data-act="scanFromLibrary"]'));
-assert.ok(sourceSheet.querySelector('[data-act="scanFromCamera"]'));
-assert.equal(sourceSheet.querySelectorAll('.scan-source-option').length,2);
+const picker=scanSession.window.document.getElementById('receipt-source-picker');
+assert.ok(picker,'native photo picker is present on receipt tab');
+assert.equal(picker.type,'file');assert.equal(picker.accept,'image/*');
+assert.equal(picker.multiple,true);assert.equal(picker.hasAttribute('capture'),false);
+let opens=0;picker.click=()=>{opens++};
+scanSession.window.document.querySelector('[data-act="receiptScan"]').click();
+assert.equal(opens,1,'one tap opens iPhone native selector directly');
+assert.equal(scanSession.window.document.querySelector('.receipt-source-sheet'),null,
+ 'extra custom source half-modal has been removed');
 assert.equal(scanSession.window.document.querySelector('#scan-video'),null,
- 'Camera hardware is not accessed when opening the source picker');
-let libraryClicks=0;
-const picker=scanSession.window.document.querySelector('#scan-library-picker');
-picker.click=()=>{libraryClicks++};
-sourceSheet.querySelector('[data-act="scanFromLibrary"]').click();
-assert.equal(libraryClicks,1,'Photo Library picker opens in a direct user gesture');
-assert.equal(picker.hasAttribute('capture'),false,
- 'Photo Library never triggers capture automatically');
-const libraryFile=new scanSession.window.File(['receipt photo'], 'receipt.png',{type:'image/png'});
+ 'extra in-app camera has been removed');
+const libraryFile=new scanSession.window.File(['synthetic receipt pixels'],
+ 'receipt.png',{type:'image/png'});
 Object.defineProperty(picker,'files',{configurable:true,value:[libraryFile]});
 picker.dispatchEvent(new scanSession.window.Event('change',{bubbles:true}));
 assert.match(scanSession.window.document.body.textContent,/選択した写真 1枚/);
 assert.ok(!scanSession.window.document.querySelector('#scan-crop-canvas'),
- 'Finger crop UI was removed');
+ 'manual cropping is gone');
 assert.ok(!scanSession.window.document.querySelector('#scan-mode'),
- 'Image-processing selector was removed');
-assert.match(scanSession.window.document.body.textContent,/PaddleOCR PP-OCRv6 small/);
+ 'image processing settings are hidden and fixed');
+const addPicker=scanSession.window.document.getElementById('scan-add-picker');
+assert.ok(addPicker&&addPicker.multiple);
+let adds=0;addPicker.click=()=>{adds++};
 scanSession.window.document.querySelector('[data-act="scanAddPhotos"]').click();
-sourceSheet=scanSession.window.document.querySelector('.half-sheet.receipt-source-sheet');
-assert.ok(sourceSheet,'Adding an image reuses the SAME source choice sheet');
-let stopped=0,opened=0;
-Object.defineProperty(scanSession.window.navigator,'mediaDevices',{configurable:true,
- value:{getUserMedia:async constraints=>{
-  opened++;assert.equal(constraints.audio,false);
-  assert.equal(constraints.video.facingMode.ideal,'environment');
-  return {getTracks:()=>[{stop(){stopped++}}]};
- }}});
-scanSession.window.HTMLMediaElement.prototype.play=async()=>{};
-sourceSheet.querySelector('[data-act="scanFromCamera"]').click();
-await waitFor(()=>opened===1&&
- !scanSession.window.document.querySelector('[data-act="scanCapture"]').disabled,
- 'Direct camera preview ready without Photos API');
-const video=scanSession.window.document.querySelector('#scan-video');
-Object.defineProperty(video,'videoWidth',{configurable:true,value:640});
-Object.defineProperty(video,'videoHeight',{configurable:true,value:480});
-scanSession.window.HTMLCanvasElement.prototype.getContext=()=>({drawImage(){}});
-scanSession.window.HTMLCanvasElement.prototype.toBlob=fn=>
- fn(new scanSession.window.Blob(['captured pixels'],{type:'image/jpeg'}));
-scanSession.window.document.querySelector('[data-act="scanCapture"]').click();
-await waitFor(()=>scanSession.window.document.body.textContent.includes('選択した写真 2枚'),
- 'Camera capture is added to in-memory photo array');
-assert.equal(stopped,1,'Hardware track stops immediately after capture');
-assert.equal(scanSession.window.document.querySelector('#scan-video'),null);
-assert.ok(!scanSession.window.document.querySelector('[download]'),
- 'Captured photo is not saved to library or downloaded');
+assert.equal(adds,1,'adding a second photo also opens native chooser in one tap');
 scanSession.window.document.querySelector('[data-act="back"]').click();
-const discard=scanSession.window.document.querySelector('[data-dialog="discardScan"]');
-assert.ok(discard,'back action confirms discard of unconfirmed photos');
-discard.click();
-assert.ok(scanSession.window.document.querySelector('[data-act="receiptScan"]'),
- 'source screen exits to original receipt tab');
-scanSession.window.document.querySelector('[data-tab="budget"]').click();
-assert.match(scanSession.window.document.body.textContent,/今後実装予定/);
+assert.ok(scanSession.window.document.querySelector('[data-dialog="discardScan"]'),
+ 'unsaved OCR input is protected');
+scanSession.window.document.querySelector('[data-dialog="discardScan"]').click();
+assert.ok(scanSession.window.document.querySelector('#receipt-source-picker'));
+scanSession.window.document.querySelector('[data-act="receiptChatGpt"]').click();
+assert.ok(scanSession.window.document.querySelector('#chatgpt-input'));
+const importer=readFileSync(new URL('../receipt-chatgpt-import.js',import.meta.url),'utf8');
+scanSession.window.eval(importer);
+const chatJson={version:'kurashi-receipt-import-1',purchaseDate:'2026-10-14',
+ storeName:'アプリ実機試験用チェーン',taxBasis:'included',taxTotal:null,receiptTotal:440,
+ printedCount:2,items:[{name:'新しいレシート品',code:null,quantity:2,
+ unitPrice:220,grossAmount:440,discount:0,netAmount:440}]};
+scanSession.window.document.getElementById('chatgpt-input').value=JSON.stringify(chatJson);
+scanSession.window.document.querySelector('[data-act="chatGptImport"]').click();
+assert.ok(scanSession.window.document.getElementById('scanConfirmForm'),
+ 'ChatGPT JSON uses the same edit and confirmation form as OCR');
+assert.ok(scanSession.window.document.querySelector('[name="name-0"]').value==='新しいレシート品');
+await waitFor(()=>scanSession.window.KurashiLive.state().loaded,'receipt draft saved');
+await scanSession.window.KurashiLive.saveReceiptDraft({
+ source:'chatgpt',date:'2026-10-14',chainId:confirmedStore,total:440,
+ items:[{name:'下書きで残る商品',quantity:2,amount:440,productId:'',issues:[]}]
+});
 scanSession.window.close();
+let resumedScan=appSession();
+await waitFor(()=>resumedScan.window.KurashiLive.state().loaded,'after reload');
+resumedScan.window.document.querySelector('[data-tab="receipt"]').click();
+await waitFor(()=>!!resumedScan.window.document.querySelector('[data-act="resumeScanDraft"]'),
+ 'receipt draft is recovered on app restart');
+resumedScan.window.document.querySelector('[data-act="resumeScanDraft"]').click();
+await waitFor(()=>!!resumedScan.window.document.querySelector('#scanConfirmForm'),
+ 'resumed draft editable');
+assert.equal(resumedScan.window.document.querySelector('[name="name-0"]').value,
+ '下書きで残る商品');
+await resumedScan.window.KurashiLive.saveReceiptDraft(null);
+resumedScan.window.close();
 
-console.log('v58: PaddleOCR main entry, original queue, budget placeholder: OK');
+console.log('v59: PaddleOCR main entry, original queue, budget placeholder: OK');
