@@ -610,14 +610,14 @@ prodApp.window.document.querySelector('[data-open="'+id+'"]').click();
 const oldOrder=shown(prodApp);
 assert.ok(oldOrder.length>=3);
 online=false;
-const target=prodApp.window.document.querySelector(
+const productTarget=prodApp.window.document.querySelector(
  '.comparison-product[data-product-id="'+dragA.product_id+'"]');
 prodApp.window.eval(`startPending(
  document.querySelector('.comparison-product[data-product-id="${dragB.product_id}"]'),
  {pointerId:606,clientX:10,clientY:10},'mouse');`);
 await pause(460);
-prodApp.window.document.elementFromPoint=()=>target;
-target.getBoundingClientRect=()=>({top:100,height:100});
+prodApp.window.document.elementFromPoint=()=>productTarget;
+productTarget.getBoundingClientRect=()=>({top:100,height:100});
 prodApp.window.eval(`moveDrag({pointerId:606,clientX:15,clientY:20,preventDefault(){}});
  endDrag({pointerId:606});`);
 await waitFor(()=>prodApp.window.KurashiLive.state().queued===1,
