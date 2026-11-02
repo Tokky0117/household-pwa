@@ -257,8 +257,18 @@ await waitFor(()=>e.window.KurashiLive.state().loaded&&
  'reorder session bootstrapped');
 online=false;
 const order2=[extraA.data.entity.item_group_id,extraB.data.entity.item_group_id,id];
-await e.window.KurashiLive.reorderItems(0,order2);
-assert.equal(e.window.KurashiLive.state().queued,1);
+// Emulate the existing v46 long-press drag completion with the actual
+// moved DOM row, so the app.js endDrag integration is exercised.
+const dragged=e.window.document.querySelector('[data-item-id="'+order2[0]+'"]');
+const firstRow=[...dragged.parentElement.querySelectorAll('.swipe-item')]
+ .find(row=>row.dataset.categoryId==='0');
+dragged.parentElement.insertBefore(dragged,firstRow);
+e.window.eval(`activeDrag={
+ row:document.querySelector('[data-item-id="${order2[0]}"]'),
+ ghost:{remove(){}},pointerId:999,kind:'item',category:'0',moved:true
+};endDrag({pointerId:999});`);
+await waitFor(()=>e.window.KurashiLive.state().queued===1,
+ 'v46 drag handler records reorder in IndexedDB');
 const displayed=dom=>[...dom.window.document.querySelectorAll('.swipe-item[data-item-id]')]
  .filter(row=>row.dataset.categoryId==='0').map(row=>row.dataset.itemId);
 assert.deepEqual(displayed(e),order2,'optimistic reorder matches rendered list');
@@ -307,6 +317,55 @@ assert.equal(interrupted.call('bootstrap').ok,true,'prepared journal is finalize
 assert.equal(interrupted.call('item.reorder',partialPayload,'op-reorder-partial-abcdef12345').ok,true,
  'repeated completed reorder is idempotent');
 g.window.close();
-console.log('Queue UI create/edit/hide + reorder optimistic/restart/lost response/partial GAS recovery: OK');
+
+// UI form + hide + duplicate recovery all write to the same durable queue.
+let h=appSession();
+await waitFor(()=>h.window.KurashiLive.state().loaded,'UI mutation session loaded');
+online=false;
+h.window.document.querySelector('[data-act="add"]').click();
+let form=h.window.document.getElementById('itemForm');
+assert.ok(form,'v46 item create sheet opens');
+form.querySelector('#name').value='実機動作テスト品';
+form.dispatchEvent(new h.window.Event('submit',{bubbles:true,cancelable:true}));
+await waitFor(()=>h.window.KurashiLive.state().queued===1 &&
+ h.window.document.querySelector('.item-title')?.textContent!==undefined,
+ 'create through item form commits to offline queue');
+const created=[...h.window.document.querySelectorAll('.item.swipe-item')]
+ .find(row=>row.querySelector('.item-title')?.textContent==='実機動作テスト品');
+assert.ok(created);
+const clientId=created.dataset.itemId;
+assert.match(clientId,/^local-/);
+h.window.document.querySelector('[data-list-edit="'+clientId+'"]').click();
+form=h.window.document.getElementById('itemForm');
+assert.ok(form);
+form.querySelector('#name').value='実機動作テスト品・編集';
+form.dispatchEvent(new h.window.Event('submit',{bubbles:true,cancelable:true}));
+await waitFor(()=>h.window.KurashiLive.state().queued===2 &&
+ !!h.window.document.querySelector('[data-list-hide="'+clientId+'"]'),
+ 'edit through item form persists');
+h.window.document.querySelector('[data-list-hide="'+clientId+'"]').click();
+assert.ok(h.window.document.querySelector('[data-dialog="confirmHide"]'));
+h.window.document.querySelector('[data-dialog="confirmHide"]').click();
+await waitFor(()=>h.window.KurashiLive.state().queued===3 &&
+ !h.window.document.querySelector('[data-list-hide="'+clientId+'"]'),
+ 'hide through confirmation is projected immediately');
+h.window.document.querySelector('[data-act="add"]').click();
+form=h.window.document.getElementById('itemForm');
+form.querySelector('#name').value='実機動作テスト品・編集';
+form.dispatchEvent(new h.window.Event('submit',{bubbles:true,cancelable:true}));
+await waitFor(()=>!!h.window.document.querySelector('[data-act="restoreItem"]'),
+ 'duplicate name reveals v46 restore action');
+h.window.document.querySelector('[data-act="restoreItem"]').click();
+await waitFor(()=>h.window.KurashiLive.state().queued===4 &&
+ !!h.window.document.querySelector('[data-list-hide="'+clientId+'"]'),
+ 'restore queued and visible in v46 UI');
+h.window.close();online=true;
+let afterUI=appSession();
+await waitFor(()=>afterUI.window.KurashiLive.state().queued===0 &&
+ temp.call('bootstrap').data.item_groups.some(i=>
+ i.name==='実機動作テスト品・編集'&&i.is_hidden===false&&Number(i.version)===4),
+ 'restart syncs create/edit/hide/restore to Sheets');
+afterUI.window.close();
+console.log('Real v46 UI forms, hide/restore, drag reorder, restart and crash recovery: OK');
 
 
