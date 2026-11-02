@@ -267,8 +267,19 @@ e.window.eval(`activeDrag={
  row:document.querySelector('[data-item-id="${order2[0]}"]'),
  ghost:{remove(){}},pointerId:999,kind:'item',category:'0',moved:true
 };endDrag({pointerId:999});`);
-await waitFor(()=>e.window.KurashiLive.state().queued===1,
- 'v46 drag handler records reorder in IndexedDB');
+try{
+ await waitFor(()=>e.window.KurashiLive.state().queued===1,
+  'v46 drag handler records reorder in IndexedDB');
+}catch(err){
+ console.log('DRAG_INTEGRATION_DIAGNOSTICS',JSON.stringify({
+  status:e.window.KurashiLive.state(),
+  displayed:[...e.window.document.querySelectorAll('.swipe-item[data-item-id]')]
+   .map(x=>({id:x.dataset.itemId,category:x.dataset.categoryId})),
+  notice:[...e.window.document.querySelectorAll('.ui-action-notice')].map(x=>x.textContent),
+  requests:sent.slice(-4).map(x=>({action:x.action,payload:x.payload}))
+ }));
+ throw err;
+}
 const displayed=dom=>[...dom.window.document.querySelectorAll('.swipe-item[data-item-id]')]
  .filter(row=>row.dataset.categoryId==='0').map(row=>row.dataset.itemId);
 assert.deepEqual(displayed(e),order2,'optimistic reorder matches rendered list');
