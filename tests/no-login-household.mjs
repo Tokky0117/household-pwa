@@ -495,3 +495,50 @@ assert.equal(Number(savedProduct.version),4,'create, edit, unlink, relink all pe
 assert.equal(productRestart.window.KurashiLive.catalogueOf(
  temp.call('bootstrap').data).products.find(x=>x.id===savedProduct.product_id).version,4);
 productRestart.window.close();
+
+/* Exercise product management via the original v46 DOM instead of only direct
+ * queue calls: picker -> create form -> edit sheet -> unlink -> picker relink. */
+let productUI=appSession();
+await waitFor(()=>productUI.window.KurashiLive.state().loaded,'product UI bootstrapped');
+productUI.window.document.querySelector('[data-open="'+id+'"]').click();
+assert.ok(productUI.window.document.querySelector('[data-act="productPick"]'),
+ 'existing v46 price comparison exposes product registration');
+productUI.window.document.querySelector('[data-act="productPick"]').click();
+assert.ok(productUI.window.document.querySelector('[data-act="productCreate"]'),
+ 'original product picker remains usable in live mode');
+productUI.window.document.querySelector('[data-act="productCreate"]').click();
+let productForm=productUI.window.document.getElementById('productCreateForm');
+assert.ok(productForm,'original new product form is reachable');
+productForm.querySelector('#new-product-name').value='UI連携商品';
+productForm.querySelector('#new-product-quantity').value='700';
+productForm.dispatchEvent(new productUI.window.Event('submit',{bubbles:true,cancelable:true}));
+await waitFor(()=>productUI.window.KurashiLive.state().queued===0 &&
+ temp.call('bootstrap').data.products.some(p=>p.name==='UI連携商品') &&
+ !!productUI.window.document.querySelector('[data-pedit]'),
+ 'v46 create form saved product via durable queue to Sheets mock');
+const uiSaved=temp.call('bootstrap').data.products.find(p=>p.name==='UI連携商品');
+assert.equal(Number(uiSaved.package_quantity),700,'quantity survives UI submit');
+productUI.window.document.querySelector('[data-pedit="'+uiSaved.product_id+'"]').click();
+productForm=productUI.window.document.getElementById('productCreateForm');
+assert.ok(productForm,'v46 edit half-sheet opens');
+productForm.querySelector('#new-product-name').value='UI連携商品編集';
+productForm.dispatchEvent(new productUI.window.Event('submit',{bubbles:true,cancelable:true}));
+await waitFor(()=>productUI.window.KurashiLive.state().queued===0 &&
+ temp.call('bootstrap').data.products.some(p=>p.name==='UI連携商品編集'),
+ 'v46 edit form saves product name');
+productUI.window.document.querySelector('[data-premove="'+uiSaved.product_id+'"]').click();
+assert.ok(productUI.window.document.querySelector('[data-dialog="confirmProductUnlink"]'),
+ 'v46 product unlink confirmation opens');
+productUI.window.document.querySelector('[data-dialog="confirmProductUnlink"]').click();
+await waitFor(()=>productUI.window.KurashiLive.state().queued===0 &&
+ !temp.call('bootstrap').data.products.find(p=>p.product_id===uiSaved.product_id).item_group_id,
+ 'v46 product unlink saved to shared master');
+productUI.window.document.querySelector('[data-act="productPick"]').click();
+assert.ok(productUI.window.document.querySelector('[data-pick="'+uiSaved.product_id+'"]'),
+ 'unlinked product stays searchable');
+productUI.window.document.querySelector('[data-pick="'+uiSaved.product_id+'"]').click();
+await waitFor(()=>productUI.window.KurashiLive.state().queued===0 &&
+ temp.call('bootstrap').data.products.find(p=>p.product_id===uiSaved.product_id).item_group_id===id,
+ 'v46 picker relink persists to Sheets');
+productUI.window.close();
+console.log('v54: product API + durable offline queue + actual v46 create/edit/unlink/relink UI: OK');
