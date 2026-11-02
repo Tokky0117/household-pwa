@@ -598,10 +598,10 @@ assert.equal(orderServer.call('bootstrap').ok,true);
 
 // Browser v46 price info: actual long press, offline optimistic reordering,
 // app restart, lost HTTP response recovery, unconfirmed IDs, and version rebase.
-const newForDrag=name=>temp.call('product.create',{
+const newForDrag=(name,number)=>temp.call('product.create',{
  item_group_id:id,name,package_quantity:null,package_unit:null},
- 'op-client-product-order-'+name+'-abcde').data.entity;
-const dragA=newForDrag('順序A'),dragB=newForDrag('順序B');
+ 'op-client-product-order-'+number+'-abcdef12345').data.entity;
+const dragA=newForDrag('順序A','a'),dragB=newForDrag('順序B','b');
 const shown=dom=>[...dom.window.document.querySelectorAll(
  '.comparison-product[data-product-id]')].map(e=>e.dataset.productId);
 let prodApp=appSession();
