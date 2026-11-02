@@ -430,12 +430,12 @@ function kurashiReorderItems_(user,payload,operationId){
       try{plan=JSON.parse(String(found[0].value.result))}catch(_){
         kurashiFail_('RECOVERY_CONFLICT','保存履歴が不正です');
       }
-      if(!plan||plan.action!==action||
-         !['prepared','completed'].includes(plan.status)||
-         !Array.isArray(plan.before)||!Array.isArray(plan.entities)||
-         plan.before.length!==ids.length||plan.entities.length!==ids.length)
+      if(!plan||plan.action!==action||!['prepared','completed'].includes(plan.status)||
+         !Array.isArray(plan.entities)||plan.entities.length!==ids.length)
         kurashiFail_('RECOVERY_CONFLICT','並び替えの保存履歴が不正です');
       if(plan.status==='completed')return kurashiPublic_(plan);
+      if(!Array.isArray(plan.before)||plan.before.length!==ids.length)
+        kurashiFail_('RECOVERY_CONFLICT','並び替えの準備履歴が不正です');
     }else{
       const visible=kurashiRows_('item_groups',book).filter(x=>
         String(x.value.household_id)===hid&&Number(x.value.category_id)===cat&&
