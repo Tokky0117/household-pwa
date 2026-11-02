@@ -123,7 +123,9 @@ function appSession(){
   runScripts:'outside-only',pretendToBeVisual:true
  });
  Object.defineProperty(dom.window,'indexedDB',{configurable:true,value:factory});
- dom.window.fetch=mockFetch;dom.window.scrollTo=()=>{};dom.window.console=console;
+ dom.window.fetch=mockFetch;dom.window.scrollTo=()=>{};
+ dom.window.HTMLElement.prototype.scrollIntoView=()=>{}; // supported by iOS Safari, absent in jsdom
+ dom.window.console=console;
  dom.window.eval(client);
  dom.window.eval(app);
  dom.window.document.dispatchEvent(new dom.window.Event('DOMContentLoaded',{bubbles:true}));
