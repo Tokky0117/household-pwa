@@ -61,6 +61,17 @@
   if(!doc.base)return null;
   const snap={...doc.base,item_groups:doc.base.item_groups.map(i=>({...i}))};
   for(const op of doc.queue){
+   if(op.kind==='reorder'){
+    const list=snap.item_groups.filter(i=>
+     Number(i.category_id)===op.category_id&&!i.deleted_at&&!toBoolean(i.is_hidden));
+    const byId=new Map(list.map(i=>[i.item_group_id,i]));
+    const ids=op.item_group_ids.filter(id=>byId.has(id));
+    const extras=list.filter(i=>!ids.includes(i.item_group_id))
+     .sort((a,b)=>(Number(a.sort_order)||0)-(Number(b.sort_order)||0))
+     .map(i=>i.item_group_id);
+    [...ids,...extras].forEach((id,n)=>{byId.get(id).sort_order=n+1});
+    continue;
+   }
    if(op.kind==='create'){
     snap.item_groups.push({item_group_id:op.clientId,
       household_id:snap.household_id,category_id:op.category_id,
@@ -296,6 +307,20 @@
  async function save(action,payload){
   return enqueue(doc=>makeOperation(action,payload,doc));
  }
+ async function reorderItems(categoryId,orderedIds){
+  return enqueue(doc=>{
+   const category=Number(categoryId),ids=Array.isArray(orderedIds)?[...orderedIds]:[];
+   const active=project(doc)?.item_groups.filter(i=>
+    Number(i.category_id)===category&&!i.deleted_at&&!toBoolean(i.is_hidden))||[];
+   const available=new Set(active.map(i=>i.item_group_id));
+   if(!Number.isInteger(category)||category<0||category>4||ids.length<2||
+      ids.length!==active.length||new Set(ids).size!==ids.length||
+      ids.some(id=>typeof id!=='string'||!available.has(id)))
+    throw Error('並び順を確認できません。画面を更新してください');
+   return {id:operationId(),kind:'reorder',category_id:category,
+    item_group_ids:ids,retries:0};
+  });
+ }
  async function toggleStock(itemId){
   return enqueue(doc=>{
    const item=project(doc)?.item_groups.find(i=>i.item_group_id===itemId&&!i.deleted_at);
@@ -310,6 +335,22 @@
   if(op.request)return op.request; // preserve exact payload for interrupted requests.
   if(op.kind==='create')return {operationId:op.id,action:'item.create',
    payload:{name:op.name,category_id:op.category_id}};
+  if(op.kind==='reorder'){
+   const active=(base?.item_groups||[]).filter(i=>
+    Number(i.category_id)===op.category_id&&!i.deleted_at&&!toBoolean(i.is_hidden));
+   const byId=new Map(active.map(i=>[i.item_group_id,i]));
+   const ids=op.item_group_ids.filter(id=>byId.has(id));
+   const extras=active.filter(i=>!ids.includes(i.item_group_id))
+    .sort((a,b)=>(Number(a.sort_order)||0)-(Number(b.sort_order)||0))
+    .map(i=>i.item_group_id);
+   const merged=[...ids,...extras];
+   if(merged.length<2||new Set(merged).size!==merged.length)
+    throw Error('並び替え対象を確認できません');
+   return {operationId:op.id,action:'item.reorder',payload:{
+    category_id:op.category_id,item_group_ids:merged,
+    versions:merged.map(id=>Number(byId.get(id).version))
+   }};
+  }
   const item=base?.item_groups.find(x=>x.item_group_id===op.targetId);
   if(!item||item.deleted_at)throw Error('保存対象の日用品が見つかりません');
   const payload={item_group_id:item.item_group_id,version:Number(item.version)};
@@ -335,23 +376,36 @@
  }
  async function acknowledge(op,plan,result){
   if(!result||result.status!=='completed'||result.action!==plan.action||
-     !result.entity||typeof result.entity.item_group_id!=='string'||
      !Number.isSafeInteger(Number(result.sequence_no)))
    throw Error('RESPONSE_INVALID');
+  if(plan.action==='item.reorder'){
+   if(!Array.isArray(result.entities)||
+      result.entities.length!==plan.payload.item_group_ids.length||
+      result.entities.some((e,i)=>e?.item_group_id!==plan.payload.item_group_ids[i]||
+       Number(e.sort_order)!==i+1||!positiveVersion(e.version)))
+    throw Error('RESPONSE_INVALID');
+  }else if(!result.entity||typeof result.entity.item_group_id!=='string'){
+   throw Error('RESPONSE_INVALID');
+  }
   await modify(ws=>{
    const front=ws.queue[0];
    if(!front||front.id!==op.id||!planEquals(front.request,plan))
     throw Error('QUEUE_CHANGED');
-   if(!ws.base||result.entity.household_id!==ws.base.household_id)
+   if(!ws.base)throw Error('HOUSEHOLD_CHANGED');
+   const entities=plan.action==='item.reorder'?result.entities:[result.entity];
+   if(entities.some(e=>e.household_id!==ws.base.household_id))
     throw Error('HOUSEHOLD_CHANGED');
-   const id=result.entity.item_group_id;
-   const groups=ws.base.item_groups.filter(i=>i.item_group_id!==id);
-   ws.base={...ws.base,item_groups:[...groups,result.entity],
+   const ids=new Set(entities.map(e=>e.item_group_id));
+   ws.base={...ws.base,item_groups:[
+    ...ws.base.item_groups.filter(i=>!ids.has(i.item_group_id)),...entities],
     sequence_no:Math.max(Number(ws.base.sequence_no),Number(result.sequence_no))};
    ws.queue.shift();
    if(op.kind==='create'){
-    for(const rest of ws.queue)if(rest.targetId===op.clientId)
-     rest.targetId=id;
+    for(const rest of ws.queue){
+     if(rest.targetId===op.clientId)rest.targetId=result.entity.item_group_id;
+     if(rest.kind==='reorder')rest.item_group_ids=rest.item_group_ids.map(id=>
+      id===op.clientId?result.entity.item_group_id:id);
+    }
    }
    ws.blocked=null;return ws;
   });
@@ -476,7 +530,7 @@
    else void load();
   }).catch(e=>{error=e.message||'端末内の保存領域を開けません';notify()});
  };
- window.KurashiLive={state,load,save,toggleStock,retry,logout,renderLogin,
+ window.KurashiLive={state,load,save,toggleStock,reorderItems,retry,logout,renderLogin,
   subscribe:fn=>{listeners.add(fn);return()=>listeners.delete(fn)},itemsOf,catalogueOf};
  window.addEventListener('kurashi-gis-ready',initialize);
  window.addEventListener('online',kick);
