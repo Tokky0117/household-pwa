@@ -3,6 +3,7 @@
  * 新規GASの Setup.gs と同じプロジェクトに配置する。
  * 対応: bootstrap / item.create / item.update / item.reorder / product.create / product.update / product.reorder
  * 未実装のレシート・店舗保存は成功扱いにしない。
+ * 商品の並び替えは、関連商品の更新前に全行を処理履歴へ記録してから実行する。
  */
 // Temporary shared household mode. To restore sign-in, change to 'google'.
 // This temporarily allows anyone with the endpoint URL to read/write.
