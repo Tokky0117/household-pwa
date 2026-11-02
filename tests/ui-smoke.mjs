@@ -17,7 +17,7 @@ const doc={
 const ctx={document:doc,localStorage:{getItem:k=>storage.get(k)??null,setItem:(k,v)=>storage.set(k,v),removeItem:k=>storage.delete(k)},
  navigator:{},window:{scrollTo(){},scrollY:0},crypto:{randomUUID:()=> 'test-id'},setTimeout:()=>0};
 const ui=vm.runInNewContext(source+`
-({listView,priceCompareView,pickerView,pickerResults,receiptView,budgetView,receiptScanView,receiptChatGptView,recordDetailView,scanDuplicates,compareOcrAndChatGpt,receiptOcrReference,correctionFor,render,initializeCompare,
+({listView,priceCompareView,pickerView,pickerResults,receiptView,budgetView,receiptScanView,receiptChatGptView,recordDetailView,scanDuplicates,compareOcrAndChatGpt,receiptOcrReference,correctionFor,scanBulkProductsView,render,initializeCompare,
  setProductGroup,reorderProducts,registeredProducts,convertQuantity,setOpenSwipe,
  chainMinima,priceCandidates,budgetTotals,savePreviewRecord,periodStart,
  demoRecords,demoRecordItems,allPreviewRecords,allPreviewItems,
@@ -283,3 +283,12 @@ assert.ok(ui.receiptOcrReference(ocrDraft).includes('TORRIDEN SERUM'));
 assert.ok(!ui.receiptOcrReference(ocrDraft).includes('カード番号'),'no private payment data in prompt');
 console.log('v60: ChatGPT malformed JSON repair, OCR dual-reading, unique pairing and confirmed corrections OK');
 
+
+ui.setScanDraft(ambiguous);
+assert.ok(ui.receiptScanView().includes('元のOCR行'),
+ 'ambiguous ChatGPT match can be explicitly assigned by the user');
+assert.ok(ui.receiptScanView().includes('scanBulkProducts'),
+ 'receipt editor can bulk register unmatched products');
+assert.ok(ui.scanBulkProductsView().includes('scanBulkProductsForm'),
+ 'bulk product registration uses one shared UI confirmation sheet');
+console.log('v60: manual OCR pairing and batch product registration UI OK');

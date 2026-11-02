@@ -1044,3 +1044,33 @@ assert.ok(learned.some(x=>x.chainId===chainForCorrection&&
  x.ocrName==='リンド一ル ピンク'),'local correction survives a restart');
 correctReopened.window.close();
 console.log('v60: persistent OCR corrections with previous offline queue: OK');
+
+/* One screen, multiple unmatched lines: batch registration uses existing
+ * product.create queue and the existing item group master. */
+let bulkUI=appSession();
+await waitFor(()=>bulkUI.window.KurashiLive.state().loaded,'batch registration loaded');
+bulkUI.window.document.querySelector('[data-tab="receipt"]').click();
+bulkUI.window.document.querySelector('[data-act="receiptChatGpt"]').click();
+bulkUI.window.eval(importer);
+const batchJson={...chatJson,receiptTotal:410,printedCount:1,items:[{
+ name:'レシート一括登録テスト固有',code:null,quantity:1,
+ unitPrice:410,grossAmount:410,discount:0,netAmount:410
+}]};
+bulkUI.window.document.querySelector('#chatgpt-input').value=JSON.stringify(batchJson);
+bulkUI.window.document.querySelector('[data-act="chatGptImport"]').click();
+assert.ok(bulkUI.window.document.querySelector('[data-act="scanBulkProducts"]'),
+ 'unmatched product offers batch create');
+bulkUI.window.document.querySelector('[data-act="scanBulkProducts"]').click();
+const bulkForm=bulkUI.window.document.querySelector('#scanBulkProductsForm');
+assert.ok(bulkForm,'one batch sheet without row-by-row modal navigation');
+const firstGroup=temp.call('bootstrap').data.item_groups[0].item_group_id;
+bulkForm.querySelector('[name="group-0"]').value=firstGroup;
+bulkForm.dispatchEvent(new bulkUI.window.Event('submit',{bubbles:true,cancelable:true}));
+await waitFor(()=>!!bulkUI.window.document.querySelector('#scanConfirmForm'),
+ 'returns to the same receipt review after grouped registration');
+await waitFor(()=>temp.call('bootstrap').data.products.some(p=>
+ p.name==='レシート一括登録テスト固有'),'batch product syncs to Sheets');
+await waitFor(()=>!!bulkUI.window.document.querySelector('#scanConfirmForm [name="product-0"]')?.value,
+ 'newly confirmed product remains selected after local ID becomes Sheets ID');
+bulkUI.window.close();
+console.log('v60: unmatched receipt products batch register with durable queue OK');

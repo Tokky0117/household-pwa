@@ -183,7 +183,7 @@ let budgetMonth=daysFromDate(new Date()).slice(0,7);let newRecordType='receipt';
 // Native iPhone chooser: Photo Library, Take Photo, or Files. Photos stay in memory.
 let scanPhotos=[],scanIndex=0,scanBusy=false,scanDraft=null,scanStatus='',scanToken=0;
 let scanRuntime=null,scanDraftAvailable=false,scanDraftWrites=Promise.resolve(),chatGptError='',recordDetailId=null,scanProductRow=null;
-let ocrLearning=[],ocrLearningReady=false,chatGptFromScan=false;
+let ocrLearning=[],ocrLearningReady=false,chatGptFromScan=false,scanBulkBusy=false;
 function saveScanDraft(){
  if(!liveMode||!window.KurashiLive?.saveReceiptDraft)return;
  const snapshot=scanDraft?JSON.parse(JSON.stringify(scanDraft)):null;
@@ -231,12 +231,13 @@ function compareOcrAndChatGpt(ocr,gpt){
   gptCounts.set(key,(gptCounts.get(key)||0)+1);
  }
  let paired=0,unmatched=0;
+ const pairedIndexes=new Set();
  const items=gpt.items.map(item=>{
   const key=String(item.amount)+'|'+String(item.quantity);
   const positionsForKey=positions.get(key)||[];
   if(positionsForKey.length===1&&gptCounts.get(key)===1&&String(item.amount)!==''){
    const original=ocr.items[positionsForKey[0]];
-   paired++;
+   pairedIndexes.add(positionsForKey[0]);paired++;
    const changes=norm(original.ocrRawName||original.name)!==norm(item.name);
    return {...item,ocrRawName:original.ocrRawName||original.name,
     productId:item.productId||original.productId||'',
@@ -245,7 +246,9 @@ function compareOcrAndChatGpt(ocr,gpt){
   unmatched++;
   return {...item,issues:[...(item.issues||[]),'OCRとの行対応は未確定（原本で確認）']};
  });
- return {...gpt,items,source:'chatgpt-ocr',matchedCount:paired,unmatchedCount:unmatched,
+ const ocrCandidates=ocr.items.map((x,i)=>({index:i,name:x.ocrRawName||x.name,
+  amount:x.amount,quantity:x.quantity})).filter(x=>!pairedIndexes.has(x.index));
+ return {...gpt,items,ocrCandidates,source:'chatgpt-ocr',matchedCount:paired,unmatchedCount:unmatched,
   // Preserve existing chain when ChatGPT did not identify one.
   chainId:gpt.chainId||ocr.chainId,chainName:gpt.chainId?'':gpt.chainName||ocr.chainName||'',
   date:gpt.date||ocr.date};
@@ -298,6 +301,26 @@ function scanProductView(){
  return UI.sheet({title:'レシートから商品を登録',variant:'product-picker-modal',
   body:`<form id="scanProductForm">${fields}<button type="submit" class="primary">商品を登録する</button></form>`});
 }
+function scanBulkProductsView(){
+ const groups=items.filter(x=>!x.hidden);
+ const candidates=[],seen=new Set();
+ for(const item of scanDraft?.items||[]){
+  if(item.productId||!item.name.trim()||seen.has(norm(item.name)))continue;
+  seen.add(norm(item.name));candidates.push(item.name.trim());
+ }
+ const body=!candidates.length?'<p>登録対象の商品はありません。</p>':
+  !groups.length?'<p>登録先の日用品がありません。先に日用品を登録してください。</p>':
+  `<form id="scanBulkProductsForm">
+  <p class="hint">登録する商品だけ紐付け先の日用品を選択してください。登録しない明細もレシートには保存できます。</p>
+  ${candidates.map((name,i)=>`<label class="scan-field">
+   ${esc(name)}<select name="group-${i}">
+   <option value="">今回は登録しない</option>
+   ${groups.map(g=>'<option value="'+esc(g.id)+'">'+esc(g.name)+'</option>').join('')}
+   </select></label>`).join('')}
+  <button class="primary" type="submit" ${scanBulkBusy?'disabled':''}>
+  ${scanBulkBusy?'商品を登録中…':'選択した商品をまとめて登録'}</button></form>`;
+ return UI.sheet({title:'未照合商品をまとめて登録',variant:'product-picker-modal',body});
+}
 function receiptChatGptView(){
  return `${head('ChatGPTの解析結果','レシート読み取り（補助）',true)}
  <main class="preview-record-page receipt-chatgpt-page">
@@ -342,7 +365,13 @@ const scanDate=text=>{
  return actual.getFullYear()===y&&actual.getMonth()===m-1&&actual.getDate()===d?
   [y,String(m).padStart(2,'0'),String(d).padStart(2,'0')].join('-'):daysFromDate(new Date());
 };
-function scanOptionsProduct(selected=''){
+function scanOptionsProduct(selected='',rawName=''){
+ // A product created offline first appears under local-id, then receives the
+ // canonical Sheets ID. Resolve only an exact UNIQUE newly-created name.
+ if(selected.startsWith('local-')&&!catalogue.products.some(p=>p.id===selected)){
+  const matches=catalogue.products.filter(p=>norm(p.name)===norm(rawName));
+  if(matches.length===1)selected=matches[0].id;
+ }
  return '<option value="">商品未照合</option>'+catalogue.products.map(p=>
   '<option value="'+esc(p.id)+'"'+(selected===p.id?' selected':'')+'>'+esc(productTitle(p))+'</option>').join('');
 }
@@ -363,13 +392,20 @@ function scanFormView(){
     <div class="row" style="justify-content:space-between"><strong>明細 ${i+1}</strong><button type="button" class="tertiary" data-act="scanRemoveItem" data-scan-row="${i}">削除</button></div>
     ${item.issues.length?'<p class="scan-warning">要確認：'+esc(item.issues.join('、'))+'</p>':''}
     ${item.ocrRawName&&norm(item.ocrRawName)!==norm(item.name)?'<p class="hint">OCR原表記：'+esc(item.ocrRawName)+'</p>':''}
+    ${!item.ocrRawName&&scanDraft.ocrCandidates?.length?
+     '<label class="scan-field">元のOCR行（対応が確実な場合だけ）<select name="ocr-'+i+'">'+
+     '<option value="">対応不明・学習しない</option>'+
+     scanDraft.ocrCandidates.map(c=>'<option value="'+esc(c.index)+'">'+
+     esc(c.name)+'　'+esc(c.amount)+'円 / '+esc(c.quantity)+'個</option>').join('')+
+     '</select></label>':''}
     <label class="scan-field">商品名<input name="name-${i}" maxlength="120" value="${esc(item.name)}" placeholder="OCR結果を修正"></label>
-    <label class="scan-field">既存商品<select name="product-${i}">${scanOptionsProduct(item.productId)}</select></label>
+    <label class="scan-field">既存商品<select name="product-${i}">${scanOptionsProduct(item.productId,item.name)}</select></label>
     <button type="button" class="tertiary" data-act="scanNewProduct" data-scan-row="${i}">＋ この商品を新規登録</button>
     <div class="scan-input-pair"><label class="scan-field">購入数<input name="qty-${i}" type="number" min="1" step="1" required value="${esc(item.quantity)}"></label>
     <label class="scan-field">税込明細合計（円）<input name="amount-${i}" type="number" min="0" step="1" required value="${esc(item.amount)}" placeholder="確認して入力"></label></div>
    </div>`).join('')}
   <button type="button" class="secondary" data-act="scanAddItem">＋ 明細を追加</button>
+  ${scanDraft.items.some(x=>!x.productId&&x.name.trim())?'<button type="button" class="secondary" data-act="scanBulkProducts">未照合商品をまとめて登録</button>':''}
   <div class="panel">
    <p>印字合計：${scanDraft.total===null?'未検出':yen(scanDraft.total)}</p>
    <p id="scan-sum-text" class="hint">明細合計は入力内容を確認して算出します。</p>
@@ -707,6 +743,7 @@ function pageView(){
   case 'recordChatGpt': return receiptChatGptView();
   case 'recordDetail': return recordDetailView();
   case 'scanProduct': return receiptScanView();
+  case 'scanBulkProducts': return receiptScanView();
   case 'productCreate': return productCreateView();
   case 'productEdit': return priceCompareView();
   default: return mainTabView();
@@ -714,7 +751,7 @@ function pageView(){
 }
 function render(){
  if(!window.document)return; // A closed iOS page/session must not re-render.
- const currentModal=page==='add'||page==='edit'||page==='productEdit'||page==='productPick'||page==='recordAdd'||page==='scanProduct';
+ const currentModal=page==='add'||page==='edit'||page==='productEdit'||page==='productPick'||page==='recordAdd'||page==='scanProduct'||page==='scanBulkProducts';
  const wasModal=previousPage==='add'||previousPage==='edit'||previousPage==='productEdit'||previousPage==='productPick'||previousPage==='recordAdd'||previousPage==='recordSource';
  // The product-creation page replaces an open search sheet. It is a full
  // page, so it must start at the top even if the underlying comparison page
@@ -723,7 +760,7 @@ function render(){
  const scrollReset=enteringProductCreate||
   !currentModal&&!wasModal&&(page!==previousPage||(page==='compare'&&selected!==previousSelected));
  const focus=['add','edit','products','productPick','productCreate','recordScan','recordChatGpt','recordDetail'].includes(page);
- const modal=page==='scanProduct'?scanProductView():page==='productPick'?pickerView():page==='productEdit'?productCreateView():page==='recordAdd'?recordAddView():currentModal?formView():'';
+ const modal=page==='scanBulkProducts'?scanBulkProductsView():page==='scanProduct'?scanProductView():page==='productPick'?pickerView():page==='productEdit'?productCreateView():page==='recordAdd'?recordAddView():currentModal?formView():'';
  const overlay=dialogView();
  app.innerHTML=`<div class="shell ${focus?'focus':''}">${pageView()}</div>${modal}${overlay}`;
  if(scrollReset)window.scrollTo(0,page==='list'&&previousPage==='compare'?listScrollPosition:0);
@@ -824,6 +861,7 @@ function goBack(){
   render();
 }
 function back(){
+  if(page==='scanBulkProducts'){if(!scanBulkBusy){page='recordScan';render();}return;}
   if(page==='scanProduct'){page='recordScan';scanProductRow=null;render();return;}
   if(page==='recordDetail'){page='list';tab='receipt';render();return;}
   if(page==='recordChatGpt'){
@@ -950,10 +988,51 @@ function syncScanReview(){
   it.productId=String(d.get('product-'+i)||'');
   it.quantity=String(d.get('qty-'+i)||'');
   it.amount=String(d.get('amount-'+i)||'');
+  const ocrLink=d.get('ocr-'+i);
+  if(ocrLink!==null){
+   const linked=scanDraft.ocrCandidates?.find(x=>String(x.index)===String(ocrLink));
+   it.ocrRawName=linked?.name||'';
+  }
  }
 }
 app.addEventListener('change',e=>{if(e.target.id==='onlyOut'){const wasOut=onlyOut;onlyOut=e.target.checked;if(wasOut&&!onlyOut)collapsed.clear();render()}});
 app.addEventListener('submit',e=>{e.preventDefault();const form=e.target;const d=new FormData(form);
+ if(form.id==='scanBulkProductsForm'){
+  if(scanBulkBusy||!scanDraft)return;
+  const selected=[],seen=new Set();
+  for(const item of scanDraft.items){
+   const key=norm(item.name);
+   if(!item.productId&&item.name.trim()&&!seen.has(key)){
+    seen.add(key);const index=seen.size-1;
+    const group=String(d.get('group-'+index)||'');
+    if(group)selected.push({name:item.name.trim(),group,key});
+   }
+  }
+  if(!selected.length){fieldNotice(form,'登録する商品の紐付け先を選択してください');return;}
+  scanBulkBusy=true;form.querySelector('[type="submit"]').disabled=true;
+  (async()=>{
+   for(const candidate of selected){
+    if(scanDraft.items.some(x=>norm(x.name)===candidate.key&&x.productId))continue;
+    const product=await window.KurashiLive.save('product.create',{
+     item_group_id:candidate.group,name:candidate.name,
+     package_quantity:null,package_unit:null
+    });
+    if(!product?.product_id)throw Error('商品を登録できませんでした');
+    for(const item of scanDraft.items)if(norm(item.name)===candidate.key)
+     item.productId=product.product_id;
+    saveScanDraft();
+   }
+   page='recordScan';render();
+  })().catch(err=>fieldNotice(form,err.message||'商品登録に失敗しました'))
+   .finally(()=>{
+    scanBulkBusy=false;
+    if(page==='scanBulkProducts'){
+     const button=document.querySelector('#scanBulkProductsForm [type="submit"]');
+     if(button)button.disabled=false;
+    }
+   });
+  return;
+ }
  if(form.id==='scanProductForm'){
   const name=String(d.get('name')||'').trim(),group=String(d.get('group')||'');
   const qtyText=String(d.get('package_quantity')||'').trim();
@@ -1092,7 +1171,7 @@ if(form.id==='productCreateForm'){
  if(page==='productEdit'){const p=catalogue.products.find(x=>x.id===editingProductId&&x.itemGroupId===selected);if(!p){fieldNotice(form,'商品が見つかりません','new-product-name');return}Object.assign(p,{name,packageQuantity:productQty,packageUnit:productUnit})}else{catalogue.products.push({id:id(),name,packageQuantity:productQty,packageUnit:productUnit,itemGroupId:selected,itemGroupOrder:registeredProducts(selected).length+1,aliases:[]})}
  persistCatalogue();page='compare';initializeCompare();render();
 }});
-app.addEventListener('click',e=>{if(e.target.classList?.contains('sheet-back')&&['add','edit','productEdit','productPick','scanProduct'].includes(page)){back();return}if(suppressClick){e.preventDefault();e.stopPropagation();suppressClick=false;return}const clear=e.target.closest('[data-search-clear]');if(clear){const input=document.getElementById(clear.dataset.searchClear);if(input){input.value='';syncSearch(input);input.focus()}return}const el=e.target.closest('[data-tab],[data-cat],[data-stock],[data-open],[data-act],[data-ui-toggle],[data-ui-choice],[data-dialog],[data-premove],[data-pedit],[data-pick],[data-product-menu],[data-list-edit],[data-list-hide]');if(!el)return;if(el.hasAttribute('data-ui-toggle')){
+app.addEventListener('click',e=>{if(e.target.classList?.contains('sheet-back')&&['add','edit','productEdit','productPick','scanProduct','scanBulkProducts'].includes(page)){back();return}if(suppressClick){e.preventDefault();e.stopPropagation();suppressClick=false;return}const clear=e.target.closest('[data-search-clear]');if(clear){const input=document.getElementById(clear.dataset.searchClear);if(input){input.value='';syncSearch(input);input.focus()}return}const el=e.target.closest('[data-tab],[data-cat],[data-stock],[data-open],[data-act],[data-ui-toggle],[data-ui-choice],[data-dialog],[data-premove],[data-pedit],[data-pick],[data-product-menu],[data-list-edit],[data-list-hide]');if(!el)return;if(el.hasAttribute('data-ui-toggle')){
  const wrapper=el.closest('.ui-select'),open=el.getAttribute('aria-expanded')==='true';
  closeAllDropdowns();
  if(!open&&wrapper){const popup=wrapper.querySelector('.ui-menu');if(popup)popup.hidden=false;el.setAttribute('aria-expanded','true');if(wrapper.dataset.uiSelect==='price-period')periodMenu=true}
@@ -1285,6 +1364,10 @@ if(action==='recordDelete'){
   buttons:[{id:'cancel',label:'キャンセル'},{id:'confirmRecordDelete',label:'削除する',critical:true}],
   pending:{recordId:recordDetailId}};
  renderDialogOnly();return;
+}
+if(action==='scanBulkProducts'){
+ if(!liveMode||!scanDraft)return;
+ syncScanReview();saveScanDraft();scanBulkBusy=false;page='scanBulkProducts';render();return;
 }
 if(action==='scanNewProduct'){
  if(!liveMode||!scanDraft)return;
