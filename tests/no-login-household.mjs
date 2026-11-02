@@ -845,21 +845,72 @@ assert.equal(temp.db.processed_operations.length,opsBeforeReceiptRetry,
 retryRecord.window.close();
 console.log('v56 records: chain, multi-line journal, DOM UI, offline restart, price/budget, lost reply OK');
 
+
 let scanSession=appSession();
-await waitFor(()=>scanSession.window.KurashiLive.state().loaded,'receipt OCR page can open');
+await waitFor(()=>scanSession.window.KurashiLive.state().loaded,'receipt source UI loaded');
 scanSession.window.document.querySelector('[data-tab="receipt"]').click();
 const newScan=scanSession.window.document.querySelector('[data-act="receiptScan"]');
-assert.ok(newScan,'live receipt tab provides primary OCR entry');
+assert.ok(newScan,'live receipt tab offers the primary OCR entry');
 newScan.click();
-assert.ok(scanSession.window.document.querySelector('#scan-camera[capture="environment"]'));
-assert.ok(scanSession.window.document.querySelector('#scan-library[multiple]'));
+let sourceSheet=scanSession.window.document.querySelector('.half-sheet.receipt-source-sheet');
+assert.ok(sourceSheet,'Preview v46 shared half modal is used');
+assert.ok(sourceSheet.querySelector('[data-act="scanFromLibrary"]'));
+assert.ok(sourceSheet.querySelector('[data-act="scanFromCamera"]'));
+assert.equal(sourceSheet.querySelectorAll('.scan-source-option').length,2);
+assert.equal(scanSession.window.document.querySelector('#scan-video'),null,
+ 'Camera hardware is not accessed when opening the source picker');
+let libraryClicks=0;
+const picker=scanSession.window.document.querySelector('#scan-library-picker');
+picker.click=()=>{libraryClicks++};
+sourceSheet.querySelector('[data-act="scanFromLibrary"]').click();
+assert.equal(libraryClicks,1,'Photo Library picker opens in a direct user gesture');
+assert.equal(picker.hasAttribute('capture'),false,
+ 'Photo Library never triggers capture automatically');
+const libraryFile=new scanSession.window.File(['receipt photo'], 'receipt.png',{type:'image/png'});
+Object.defineProperty(picker,'files',{configurable:true,value:[libraryFile]});
+picker.dispatchEvent(new scanSession.window.Event('change',{bubbles:true}));
+assert.match(scanSession.window.document.body.textContent,/選択した写真 1枚/);
+assert.ok(!scanSession.window.document.querySelector('#scan-crop-canvas'),
+ 'Finger crop UI was removed');
+assert.ok(!scanSession.window.document.querySelector('#scan-mode'),
+ 'Image-processing selector was removed');
 assert.match(scanSession.window.document.body.textContent,/PaddleOCR PP-OCRv6 small/);
-assert.equal(scanSession.window.document.querySelector('#scan-mode'),null,
- 'OCR correction controls appear only after choosing photos');
+scanSession.window.document.querySelector('[data-act="scanAddPhotos"]').click();
+sourceSheet=scanSession.window.document.querySelector('.half-sheet.receipt-source-sheet');
+assert.ok(sourceSheet,'Adding an image reuses the SAME source choice sheet');
+let stopped=0,opened=0;
+Object.defineProperty(scanSession.window.navigator,'mediaDevices',{configurable:true,
+ value:{getUserMedia:async constraints=>{
+  opened++;assert.equal(constraints.audio,false);
+  assert.equal(constraints.video.facingMode.ideal,'environment');
+  return {getTracks:()=>[{stop(){stopped++}}]};
+ }}});
+scanSession.window.HTMLMediaElement.prototype.play=async()=>{};
+sourceSheet.querySelector('[data-act="scanFromCamera"]').click();
+await waitFor(()=>opened===1&&
+ !scanSession.window.document.querySelector('[data-act="scanCapture"]').disabled,
+ 'Direct camera preview ready without Photos API');
+const video=scanSession.window.document.querySelector('#scan-video');
+Object.defineProperty(video,'videoWidth',{configurable:true,value:640});
+Object.defineProperty(video,'videoHeight',{configurable:true,value:480});
+scanSession.window.HTMLCanvasElement.prototype.getContext=()=>({drawImage(){}});
+scanSession.window.HTMLCanvasElement.prototype.toBlob=fn=>
+ fn(new scanSession.window.Blob(['captured pixels'],{type:'image/jpeg'}));
+scanSession.window.document.querySelector('[data-act="scanCapture"]').click();
+await waitFor(()=>scanSession.window.document.body.textContent.includes('選択した写真 2枚'),
+ 'Camera capture is added to in-memory photo array');
+assert.equal(stopped,1,'Hardware track stops immediately after capture');
+assert.equal(scanSession.window.document.querySelector('#scan-video'),null);
+assert.ok(!scanSession.window.document.querySelector('[download]'),
+ 'Captured photo is not saved to library or downloaded');
 scanSession.window.document.querySelector('[data-act="back"]').click();
+const discard=scanSession.window.document.querySelector('[data-dialog="discardScan"]');
+assert.ok(discard,'back action confirms discard of unconfirmed photos');
+discard.click();
 assert.ok(scanSession.window.document.querySelector('[data-act="receiptScan"]'),
- 'scanner exits to original receipt tab without touching queue');
+ 'source screen exits to original receipt tab');
 scanSession.window.document.querySelector('[data-tab="budget"]').click();
 assert.match(scanSession.window.document.body.textContent,/今後実装予定/);
 scanSession.window.close();
-console.log('v57: PaddleOCR main entry, original queue, budget placeholder: OK');
+
+console.log('v58: PaddleOCR main entry, original queue, budget placeholder: OK');

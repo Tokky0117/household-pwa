@@ -17,7 +17,7 @@ const doc={
 const ctx={document:doc,localStorage:{getItem:k=>storage.get(k)??null,setItem:(k,v)=>storage.set(k,v),removeItem:k=>storage.delete(k)},
  navigator:{},window:{scrollTo(){},scrollY:0},crypto:{randomUUID:()=> 'test-id'},setTimeout:()=>0};
 const ui=vm.runInNewContext(source+`
-({listView,priceCompareView,pickerView,pickerResults,receiptView,budgetView,receiptScanView,render,initializeCompare,
+({listView,priceCompareView,pickerView,pickerResults,receiptView,budgetView,receiptScanView,receiptSourceView,receiptCameraView,render,initializeCompare,
  setProductGroup,reorderProducts,registeredProducts,convertQuantity,setOpenSwipe,
  chainMinima,priceCandidates,budgetTotals,savePreviewRecord,periodStart,
  demoRecords,demoRecordItems,allPreviewRecords,allPreviewItems,
@@ -213,13 +213,27 @@ assert.ok(source.includes('window.KurashiLive.saveRecord('),
 assert.ok(source.includes('liveRecords={records:'),
  'Live price and budget use the shared record snapshot');
 
-assert.ok(ui.receiptScanView().includes('scan-library')&&
- ui.receiptScanView().includes('scan-camera'),'OCR input offers camera and photo library');
-assert.ok(ui.receiptScanView().includes('写真を撮影')&&
- ui.receiptScanView().includes('写真から選択'),'OCR is the main receipt path');
+assert.ok(ui.receiptSourceView().includes('class="half-sheet receipt-source-sheet"')&&
+ ui.receiptSourceView().includes('scanFromLibrary')&&
+ ui.receiptSourceView().includes('scanFromCamera'),
+ 'Source choice reuses shared half-modal with just Photo Library and Camera');
+assert.ok(ui.receiptCameraView().includes('id="scan-video"')&&
+ ui.receiptCameraView().includes('playsinline')&&
+ ui.receiptCameraView().includes('写真ライブラリには保存しません'),
+ 'Camera is a direct in-browser stream, not the native photo-saving camera');
+assert.ok(!ui.receiptScanView().includes('scan-crop-canvas')&&
+ !ui.receiptScanView().includes('scan-mode')&&
+ !ui.receiptScanView().includes('画像処理')&&
+ !ui.receiptScanView().includes('切り抜き'),
+ 'No crop gesture or image-processing selection remains');
+assert.ok(source.includes("getUserMedia({")&&
+ source.includes("canvas.toBlob(")&&
+ source.includes("mode:'gray',crop:null"),
+ 'Camera captures memory-only and validated OCR condition is fixed');
 assert.ok(!ui.budgetView().includes('budget-total'),
  'Budget tab has only implementation-plan notice, not sample figures');
 assert.ok(source.includes("import('./ocr-engine/engine.js')"),
  'PaddleOCR runtime loads lazily, after explicit scan');
-assert.ok(source.includes('scanMode=\'gray\''),
- 'Restore validated two-times grayscale OCR condition by default');
+assert.ok(!source.includes('scanMode=\'gray\'')&&
+ source.includes("mode:'gray',crop:null"),
+ 'Best validated grayscale setting is applied internally without selection');

@@ -1,4 +1,4 @@
-const APP_VERSION='0.57.0';
+const APP_VERSION='0.58.0';
 const CATS=['飲食','キッチン','洗面・風呂','洗濯・掃除','その他'];
 const liveMode=!!window.KurashiLive; // Data source only; original Preview v46 UI components remain.
 const SEED=[['牛乳',0,true],['麦茶',0,false],['コーヒー',0,true],['卵',0,false],['キッチンペーパー',1,false],['ラップ',1,true],['食器用洗剤',1,true],['シャンプー',2,false],['歯磨き粉',2,true],['ハンドソープ',2,false],['洗濯洗剤',3,false],['柔軟剤',3,true],['トイレットペーパー',3,false],['乾電池',4,true],['ティッシュ',4,true]];
@@ -180,14 +180,104 @@ function load(){if(liveMode)return [];try{const d=JSON.parse(localStorage.getIte
 let items=load(),tab='items',page='list',selected=null,query='',onlyOut=false,collapsed=new Set(),menu=false,dialog=null,toast='',period='1y',priceScope='product',periodMenu=false;
 const app=document.getElementById('app');
 let budgetMonth=daysFromDate(new Date()).slice(0,7);let newRecordType='receipt';
-// Images, OCR text, and visual crop selection are memory-only, never localStorage/Sheets.
-let scanPhotos=[],scanCrops=[],scanIndex=0,scanMode='gray';
-let scanBusy=false,scanDraft=null,scanStatus='',scanToken=0,scanCropSource=null;
-let scanRuntime=null;
-function resetScan(){
- scanToken++;scanPhotos=[];scanCrops=[];scanIndex=0;scanDraft=null;
- scanBusy=false;scanStatus='';scanMode='gray';scanCropSource=null;
+// Images and OCR text stay memory-only; the browser camera never writes to Photos.
+let scanPhotos=[],scanIndex=0,scanSourceReturn='list';
+let scanBusy=false,scanDraft=null,scanStatus='',scanToken=0;
+let scanRuntime=null,cameraStream=null,cameraRequestToken=0,cameraStatus='';
+function stopReceiptCamera(){
+ cameraRequestToken++;
+ const stream=cameraStream;cameraStream=null;
+ const video=document.getElementById('scan-video');
+ if(video)video.srcObject=null;
+ stream?.getTracks().forEach(track=>track.stop());
 }
+function resetScan(){
+ stopReceiptCamera();
+ scanToken++;scanPhotos=[];scanIndex=0;scanDraft=null;
+ scanBusy=false;scanStatus='';scanSourceReturn='list';cameraStatus='';
+}
+function receiptSourceView(){
+ return UI.sheet({title:'レシート写真を追加',variant:'receipt-source-sheet',
+  body:`<div class="scan-source-options">
+    <button class="secondary scan-source-option" type="button" data-act="scanFromLibrary">${miniIcon('package')}<span>写真ライブラリ</span></button>
+    <button class="secondary scan-source-option" type="button" data-act="scanFromCamera">${miniIcon('plus')}<span>写真を撮る</span></button>
+   </div><input id="scan-library-picker" class="scan-file-input" type="file" accept="image/*" multiple>
+   <p class="hint">撮影した画像は写真ライブラリに保存せず、このレシートの読み取りにだけ使用します。</p>`});
+}
+function receiptCameraView(){
+ return `${head('レシートを撮影','写真ライブラリには保存しません',true)}
+  <main class="preview-record-page receipt-camera-page">
+   <p class="hint">カメラの画像をこのアプリ内だけで使用します。撮影写真は写真ライブラリに保存されません。</p>
+   <video id="scan-video" autoplay playsinline muted aria-label="レシート撮影用カメラ映像"></video>
+   <p id="scan-camera-status" role="status" class="hint">${esc(cameraStatus||'カメラを準備しています…')}</p>
+   <button class="primary" type="button" data-act="scanCapture" disabled>撮影する</button>
+   <button class="secondary" type="button" data-act="scanCameraRetry">カメラを再接続</button>
+  </main>`;
+}
+async function startReceiptCamera(){
+ if(page!=='recordCamera')return;
+ stopReceiptCamera();const token=cameraRequestToken;
+ cameraStatus='カメラの使用許可を確認しています…';
+ const status=document.getElementById('scan-camera-status');
+ if(status)status.textContent=cameraStatus;
+ try{
+  if(!navigator.mediaDevices?.getUserMedia)
+   throw Error('このブラウザではカメラの直接撮影を利用できません');
+  const stream=await navigator.mediaDevices.getUserMedia({
+   audio:false,video:{facingMode:{ideal:'environment'}}
+  });
+  if(page!=='recordCamera'||token!==cameraRequestToken){
+   stream.getTracks().forEach(track=>track.stop());return;
+  }
+  cameraStream=stream;
+  const video=document.getElementById('scan-video');
+  if(!video){stopReceiptCamera();return;}
+  video.srcObject=stream;
+  await video.play();
+  if(page!=='recordCamera'||token!==cameraRequestToken)return;
+  cameraStatus='レシート全体が入るように合わせて撮影してください。';
+  document.getElementById('scan-camera-status').textContent=cameraStatus;
+  document.querySelector('[data-act="scanCapture"]').disabled=false;
+ }catch(e){
+  if(page!=='recordCamera'||token!==cameraRequestToken)return;
+  stopReceiptCamera();
+  cameraStatus='カメラを利用できませんでした。アクセス権限を確認してください。'+
+   (e?.message?'（'+e.message+'）':'');
+  const status=document.getElementById('scan-camera-status');
+  if(status)status.textContent=cameraStatus;
+ }
+}
+async function captureReceiptCamera(){
+ if(!cameraStream||page!=='recordCamera'||scanPhotos.length>=6)return;
+ const video=document.getElementById('scan-video');
+ if(!video||!video.videoWidth||!video.videoHeight){
+  cameraStatus='カメラの準備が完了していません。';
+  const status=document.getElementById('scan-camera-status');
+  if(status)status.textContent=cameraStatus;
+  return;
+ }
+ const canvas=document.createElement('canvas');
+ canvas.width=video.videoWidth;canvas.height=video.videoHeight;
+ try{
+  const ctx=canvas.getContext('2d');
+  if(!ctx)throw Error('撮影画像を作れませんでした');
+  ctx.drawImage(video,0,0,canvas.width,canvas.height);
+  const blob=await new Promise((resolve,reject)=>canvas.toBlob(
+   b=>b?resolve(b):reject(Error('撮影画像を作れませんでした')),'image/jpeg',.92));
+  if(page!=='recordCamera'||!cameraStream)return;
+  // A canvas-backed File is NOT saved to the iOS Photos library.
+  scanPhotos.push(new File([blob],'receipt-camera.jpg',{type:'image/jpeg'}));
+  scanIndex=scanPhotos.length-1;
+  stopReceiptCamera();
+  page='recordScan';scanDraft=null;scanToken++;
+  scanStatus='撮影写真を追加しました。写真を追加するか読み取りを開始してください。';
+  render();
+ }catch(e){
+  const status=document.getElementById('scan-camera-status');
+  if(status)status.textContent=e.message||'撮影できませんでした';
+ }finally{canvas.width=canvas.height=1;}
+}
+
 const scanDate=text=>{
  const found=String(text).match(/(?:20)?(2[0-9])\s*[\/-年.]\s*(0?[1-9]|1[0-2])\s*[\/-月.]\s*([0-2]?[0-9]|3[01])\s*日?/);
  if(!found)return daysFromDate(new Date());
@@ -231,65 +321,20 @@ function scanFormView(){
  </form>`;
 }
 function receiptScanView(){
- return `${head('レシートを読み取る','写真から読み取り',true)}<main class="preview-record-page receipt-scan-page">
- <p class="hint">以前の検証で採用したPaddleOCR PP-OCRv6 smallを使用。写真は端末内で認識し、外部OCRサーバーへ送信しません。</p>
- <div class="record-entry-actions">
-  <label class="secondary scan-file-button" for="scan-camera">写真を撮影</label>
-  <label class="secondary scan-file-button" for="scan-library">写真から選択</label>
- </div>
- <input id="scan-camera" class="scan-file-input" type="file" accept="image/*" capture="environment">
- <input id="scan-library" class="scan-file-input" type="file" accept="image/*" multiple>
- ${scanPhotos.length?`<div class="panel">
-   <strong>選択した写真 ${scanPhotos.length}枚</strong>
-   <div class="scan-photo-list">${scanPhotos.map((file,i)=>`<button type="button" class="${i===scanIndex?'primary':'secondary'}" data-act="scanSelectPhoto" data-scan-row="${i}">写真${i+1}</button>`).join('')}</div>
-   <canvas id="scan-crop-canvas" aria-label="必要ならレシート部分を指で囲んで切り抜く"></canvas>
-   <p class="hint" id="scan-crop-help">必要なら指で範囲を囲んでください。指定しなければ写真全体を読み取ります。</p>
-   <button type="button" class="tertiary" data-act="scanClearCrop">切り抜き解除</button>
-   <button type="button" class="tertiary" data-act="scanRemovePhoto">選択中の写真を外す</button>
-   <label class="scan-field">画像処理<select id="scan-mode">
-    ${[['gray','従来の最良設定：2倍グレー（基本）'],['original','原画像'],['contrast','局所コントラスト'],['sharpen','シャープ'],['binary','二値化']].map(([value,label])=>`<option value="${value}" ${scanMode===value?'selected':''}>${label}</option>`).join('')}
-   </select></label>
-   <button type="button" class="primary" data-act="scanStart" ${scanBusy?'disabled':''}>${scanBusy?'読み取り中…':'写真を解析する'}</button>
-  </div>`:''}
- <p id="scan-status" role="status" class="hint">${esc(scanStatus||'写真を撮影するかライブラリから選択してください。')}</p>
- ${scanFormView()}
- </main>`;
-}
-function mountScanCrop(){
- const canvas=document.getElementById('scan-crop-canvas'),file=scanPhotos[scanIndex];
- if(!canvas||!file||!window.createImageBitmap)return;
- const idx=scanIndex,token=scanToken;
- window.createImageBitmap(file).then(bitmap=>{
-  if(token!==scanToken||page!=='recordScan'||scanIndex!==idx){bitmap.close();return;}
-  const factor=Math.min(1,360/bitmap.width,470/bitmap.height);
-  canvas.width=Math.max(1,Math.round(bitmap.width*factor));
-  canvas.height=Math.max(1,Math.round(bitmap.height*factor));
-  const ctx=canvas.getContext('2d');if(!ctx){bitmap.close();return;}
-  ctx.drawImage(bitmap,0,0,canvas.width,canvas.height);bitmap.close();
-  const pixels=ctx.getImageData(0,0,canvas.width,canvas.height);
-  const draw=()=>{
-   ctx.putImageData(pixels,0,0);const c=scanCrops[idx];
-   if(c){ctx.strokeStyle='#168b67';ctx.fillStyle='rgba(22,139,103,.17)';ctx.lineWidth=3;
-    ctx.fillRect(c.x*canvas.width,c.y*canvas.height,c.width*canvas.width,c.height*canvas.height);
-    ctx.strokeRect(c.x*canvas.width,c.y*canvas.height,c.width*canvas.width,c.height*canvas.height);}
-  };
-  const point=e=>{const r=canvas.getBoundingClientRect();return {
-   x:Math.max(0,Math.min(1,(e.clientX-r.left)/r.width)),
-   y:Math.max(0,Math.min(1,(e.clientY-r.top)/r.height))};};
-  let start=null;
-  canvas.addEventListener('pointerdown',e=>{
-   start=point(e);canvas.setPointerCapture?.(e.pointerId);e.preventDefault();
-  });
-  canvas.addEventListener('pointerup',e=>{
-   if(!start)return;const end=point(e),c={x:Math.min(start.x,end.x),
-    y:Math.min(start.y,end.y),width:Math.abs(start.x-end.x),
-    height:Math.abs(start.y-end.y)};start=null;
-   if(c.width>=.05&&c.height>=.05)scanCrops[idx]=c;
-   draw();e.preventDefault();
-  });
-  canvas.addEventListener('pointercancel',()=>{start=null;});
-  draw();
- }).catch(()=>{const hint=document.getElementById('scan-crop-help');if(hint)hint.textContent='切り抜き表示が使えません。元画像からの読み取りは可能です。';});
+ return `${head('レシートを読み取る','写真から読み取り',true)}
+  <main class="preview-record-page receipt-scan-page">
+   <p class="hint">PaddleOCR PP-OCRv6 smallで端末内解析。写真は保存・送信しません。</p>
+   ${scanPhotos.length?`<div class="panel">
+    <strong>選択した写真 ${scanPhotos.length}枚</strong>
+    <div class="scan-photo-list">${scanPhotos.map((file,i)=>
+     `<button type="button" class="${i===scanIndex?'primary':'secondary'}" data-act="scanSelectPhoto" data-scan-row="${i}">写真${i+1}</button>`).join('')}</div>
+    <button type="button" class="tertiary" data-act="scanRemovePhoto">選択中の写真を外す</button>
+    ${scanPhotos.length<6?'<button type="button" class="secondary" data-act="scanAddPhotos">＋ 写真を追加</button>':''}
+    <button type="button" class="primary" data-act="scanStart" ${scanBusy?'disabled':''}>${scanBusy?'読み取り中…':'写真を解析する'}</button>
+   </div>`:''}
+   <p id="scan-status" role="status" class="hint">${esc(scanStatus||'写真を選択してください。')}</p>
+   ${scanFormView()}
+  </main>`;
 }
 async function runReceiptScan(){
  if(scanBusy||!scanPhotos.length)return;
@@ -303,7 +348,7 @@ async function runReceiptScan(){
    if(token!==scanToken)return;
    scanStatus='写真 '+(i+1)+' / '+scanPhotos.length+' を解析しています…';
    const status=document.getElementById('scan-status');if(status)status.textContent=scanStatus;
-   const out=await engine.scanReceiptImage(scanPhotos[i],{mode:scanMode,crop:scanCrops[i]||null});
+   const out=await engine.scanReceiptImage(scanPhotos[i],{mode:'gray',crop:null});
    observations.push(out.text);
    for(const item of out.parsed.items){
     const n=String(item.name||'').trim();
@@ -320,7 +365,7 @@ async function runReceiptScan(){
    if(Number.isSafeInteger(out.parsed.receiptTotal))total=out.parsed.receiptTotal;
   }
   if(token!==scanToken)return;
-  if(!allItems.length)throw Error('商品明細を抽出できませんでした。切り抜きや画像処理を調整してください。');
+  if(!allItems.length)throw Error('商品明細を抽出できませんでした。別の写真で読み取りを試してください。');
   const raw=observations.join('\n');
   const chainMatches=catalogue.chains.filter(c=>norm(raw.slice(0,800)).includes(norm(c.name)));
   scanDraft={items:allItems,total,date:scanDate(raw),
@@ -585,22 +630,24 @@ function pageView(){
   case 'productPick': return priceCompareView();
   case 'recordAdd': return receiptView();
   case 'recordScan': return receiptScanView();
+  case 'recordSource': return receiptView();
+  case 'recordCamera': return receiptCameraView();
   case 'productCreate': return productCreateView();
   case 'productEdit': return priceCompareView();
   default: return mainTabView();
  }
 }
 function render(){
- const currentModal=page==='add'||page==='edit'||page==='productEdit'||page==='productPick'||page==='recordAdd';
- const wasModal=previousPage==='add'||previousPage==='edit'||previousPage==='productEdit'||previousPage==='productPick'||previousPage==='recordAdd';
+ const currentModal=page==='add'||page==='edit'||page==='productEdit'||page==='productPick'||page==='recordAdd'||page==='recordSource';
+ const wasModal=previousPage==='add'||previousPage==='edit'||previousPage==='productEdit'||previousPage==='productPick'||previousPage==='recordAdd'||previousPage==='recordSource';
  // The product-creation page replaces an open search sheet. It is a full
  // page, so it must start at the top even if the underlying comparison page
  // was scrolled. Previously wasModal suppressed the normal scroll reset.
  const enteringProductCreate=page==='productCreate'&&previousPage==='productPick';
  const scrollReset=enteringProductCreate||
   !currentModal&&!wasModal&&(page!==previousPage||(page==='compare'&&selected!==previousSelected));
- const focus=['add','edit','products','productPick','productCreate','recordScan'].includes(page);
- const modal=page==='productPick'?pickerView():page==='productEdit'?productCreateView():page==='recordAdd'?recordAddView():currentModal?formView():'';
+ const focus=['add','edit','products','productPick','productCreate','recordScan','recordCamera'].includes(page);
+ const modal=page==='recordSource'?receiptSourceView():page==='productPick'?pickerView():page==='productEdit'?productCreateView():page==='recordAdd'?recordAddView():currentModal?formView():'';
  const overlay=dialogView();
  app.innerHTML=`<div class="shell ${focus?'focus':''}">${pageView()}</div>${modal}${overlay}`;
  if(scrollReset)window.scrollTo(0,page==='list'&&previousPage==='compare'?listScrollPosition:0);
@@ -609,7 +656,6 @@ function render(){
  if(enteringProductCreate&&window.requestAnimationFrame)
   window.requestAnimationFrame(()=>window.scrollTo(0,0));
  previousPage=page;previousSelected=selected;
- if(page==='recordScan')mountScanCrop();
  if(liveMode&&tab==='settings')window.KurashiLive.renderLogin(document.getElementById('google-login-button'));
 }
 let toastTimer=null,toastSerial=0;
@@ -702,6 +748,12 @@ function goBack(){
   render();
 }
 function back(){
+  if(page==='recordSource'){
+   page=scanSourceReturn;render();return;
+  }
+  if(page==='recordCamera'){
+   stopReceiptCamera();page='recordSource';render();return;
+  }
   if(page==='recordScan'){
    if(scanBusy){say('読み取り処理中です');return;}
    if(scanPhotos.length||scanDraft){
@@ -792,16 +844,16 @@ function updateComparisonPrices(){
  }
 }
 app.addEventListener('change',e=>{
- if(e.target.id==='scan-camera'||e.target.id==='scan-library'){
+ if(e.target.id==='scan-library-picker'){
   const files=[...(e.target.files||[])].filter(f=>f.type.startsWith('image/'));
   if(scanPhotos.length+files.length>6){
    scanStatus='一度に読み込める写真は最大6枚です。';render();return;
   }
-  scanPhotos.push(...files);scanCrops.push(...files.map(()=>null));
+  scanPhotos.push(...files);scanIndex=scanPhotos.length-1;
+  if(files.length)page='recordScan';
   scanDraft=null;scanToken++;scanStatus=files.length+'枚の写真を追加しました。';
   render();return;
  }
- if(e.target.id==='scan-mode'){scanMode=e.target.value;return;}
  if(e.target.id==='scan-chain'){
   document.getElementById('scan-new-chain-wrap').hidden=e.target.value!=='__new__';
  }
@@ -908,7 +960,7 @@ if(form.id==='productCreateForm'){
  if(page==='productEdit'){const p=catalogue.products.find(x=>x.id===editingProductId&&x.itemGroupId===selected);if(!p){fieldNotice(form,'商品が見つかりません','new-product-name');return}Object.assign(p,{name,packageQuantity:productQty,packageUnit:productUnit})}else{catalogue.products.push({id:id(),name,packageQuantity:productQty,packageUnit:productUnit,itemGroupId:selected,itemGroupOrder:registeredProducts(selected).length+1,aliases:[]})}
  persistCatalogue();page='compare';initializeCompare();render();
 }});
-app.addEventListener('click',e=>{if(e.target.classList?.contains('sheet-back')&&['add','edit','productEdit','productPick'].includes(page)){back();return}if(suppressClick){e.preventDefault();e.stopPropagation();suppressClick=false;return}const clear=e.target.closest('[data-search-clear]');if(clear){const input=document.getElementById(clear.dataset.searchClear);if(input){input.value='';syncSearch(input);input.focus()}return}const el=e.target.closest('[data-tab],[data-cat],[data-stock],[data-open],[data-act],[data-ui-toggle],[data-ui-choice],[data-dialog],[data-premove],[data-pedit],[data-pick],[data-product-menu],[data-list-edit],[data-list-hide]');if(!el)return;if(el.hasAttribute('data-ui-toggle')){
+app.addEventListener('click',e=>{if(e.target.classList?.contains('sheet-back')&&['add','edit','productEdit','productPick','recordSource'].includes(page)){back();return}if(suppressClick){e.preventDefault();e.stopPropagation();suppressClick=false;return}const clear=e.target.closest('[data-search-clear]');if(clear){const input=document.getElementById(clear.dataset.searchClear);if(input){input.value='';syncSearch(input);input.focus()}return}const el=e.target.closest('[data-tab],[data-cat],[data-stock],[data-open],[data-act],[data-ui-toggle],[data-ui-choice],[data-dialog],[data-premove],[data-pedit],[data-pick],[data-product-menu],[data-list-edit],[data-list-hide]');if(!el)return;if(el.hasAttribute('data-ui-toggle')){
  const wrapper=el.closest('.ui-select'),open=el.getAttribute('aria-expanded')==='true';
  closeAllDropdowns();
  if(!open&&wrapper){const popup=wrapper.querySelector('.ui-menu');if(popup)popup.hidden=false;el.setAttribute('aria-expanded','true');if(wrapper.dataset.uiSelect==='price-period')periodMenu=true}
@@ -1022,12 +1074,30 @@ if(action==='productCreate'){
  document.activeElement?.blur?.(); // dismiss search keyboard before leaving picker
  page='productCreate';openSwipeId=null;
 }if(action==='shopToggle'){shopExpanded=!shopExpanded;priceScope=shopExpanded?'unit':'product';if(!shopExpanded)compareQuantity=null;render();return}
-if(action==='catalogueList'){pickerAll=!pickerAll;const heading=document.querySelector('.catalogue-list-heading');if(heading)heading.textContent=pickerAll?'登録一覧':'候補（最大3件）';const target=document.getElementById('catalogue-results');if(target)target.innerHTML=pickerResults();el.textContent=pickerAll?'候補に戻る':'登録一覧から選ぶ';return}if(action==='hide'){menu=false;dialog={title:'日用品を削除',message:'日用品リストから削除します',buttons:[{id:'cancel',label:'キャンセル'},{id:'confirmHide',label:'削除',primary:true}]}}if(action==='copyList'){const txt=CATS.map((cat,idx)=>{const rows=visible().filter(i=>i.category===idx&&!i.inStock).sort((a,b)=>a.order-b.order);return rows.length?cat+'\n'+rows.map(i=>'- '+i.name).join('\n'):''}).filter(Boolean).join('\n\n');menu=false;render();if(!txt){inlineActionNotice(document.querySelector('[data-act="copyList"]'),'在庫なしの日用品はありません');return}navigator.clipboard.writeText(txt).then(()=>say('在庫なしをコピーしました',{anchor:'[data-act="copyList"]'})).catch(()=>inlineActionNotice(document.querySelector('[data-act="copyList"]'),'コピーできませんでした'));return}if(action==='receiptScan'){resetScan();tab='receipt';page='recordScan';render();return}
+if(action==='catalogueList'){pickerAll=!pickerAll;const heading=document.querySelector('.catalogue-list-heading');if(heading)heading.textContent=pickerAll?'登録一覧':'候補（最大3件）';const target=document.getElementById('catalogue-results');if(target)target.innerHTML=pickerResults();el.textContent=pickerAll?'候補に戻る':'登録一覧から選ぶ';return}if(action==='hide'){menu=false;dialog={title:'日用品を削除',message:'日用品リストから削除します',buttons:[{id:'cancel',label:'キャンセル'},{id:'confirmHide',label:'削除',primary:true}]}}if(action==='copyList'){const txt=CATS.map((cat,idx)=>{const rows=visible().filter(i=>i.category===idx&&!i.inStock).sort((a,b)=>a.order-b.order);return rows.length?cat+'\n'+rows.map(i=>'- '+i.name).join('\n'):''}).filter(Boolean).join('\n\n');menu=false;render();if(!txt){inlineActionNotice(document.querySelector('[data-act="copyList"]'),'在庫なしの日用品はありません');return}navigator.clipboard.writeText(txt).then(()=>say('在庫なしをコピーしました',{anchor:'[data-act="copyList"]'})).catch(()=>inlineActionNotice(document.querySelector('[data-act="copyList"]'),'コピーできませんでした'));return}if(action==='receiptScan'){
+ resetScan();tab='receipt';scanSourceReturn='list';page='recordSource';render();return;
+}
+if(action==='scanAddPhotos'){
+ if(scanBusy)return;
+ scanSourceReturn='recordScan';page='recordSource';render();return;
+}
+if(action==='scanFromLibrary'){
+ // Run the file chooser inside this physical tap for iPhone Safari.
+ const picker=document.getElementById('scan-library-picker');
+ if(picker)picker.click();
+ return;
+}
+if(action==='scanFromCamera'){
+ if(scanPhotos.length>=6){page='recordScan';render();return;}
+ page='recordCamera';cameraStatus='';render();
+ void startReceiptCamera();return;
+}
+if(action==='scanCapture'){void captureReceiptCamera();return;}
+if(action==='scanCameraRetry'){void startReceiptCamera();return;}
 if(action==='scanStart'){void runReceiptScan();return}
 if(action==='scanSelectPhoto'){scanIndex=Number(el.dataset.scanRow)||0;render();return}
-if(action==='scanClearCrop'){scanCrops[scanIndex]=null;render();return}
 if(action==='scanRemovePhoto'){
- scanPhotos.splice(scanIndex,1);scanCrops.splice(scanIndex,1);
+ scanPhotos.splice(scanIndex,1);
  scanIndex=Math.max(0,Math.min(scanIndex,scanPhotos.length-1));
  scanDraft=null;scanToken++;render();return;
 }
@@ -1365,3 +1435,9 @@ app.addEventListener('touchcancel',e=>{
   if(detailSwipe&&[...e.changedTouches].some(t=>t.identifier===detailSwipe.identifier))
     detailSwipe=null;
 },{passive:true});
+
+// Leave the camera hardware and its stream behind when switching apps.
+document.addEventListener('visibilitychange',()=>{
+ if(document.hidden&&cameraStream){stopReceiptCamera();cameraStatus='カメラを停止しました。再接続してください。';}
+});
+window.addEventListener('pagehide',stopReceiptCamera);
