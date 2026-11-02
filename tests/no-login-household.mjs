@@ -14,13 +14,20 @@ function fixture(code) {
   const db=Object.fromEntries(Object.entries(schema).map(([name,heads])=>[name,[Array.from(heads)]]));
   db.households.push(['household-one','くらしストック',1,'']);
   db.categories.push([0,'飲食',1],[1,'キッチン',2],[2,'洗面・風呂',3],[3,'洗濯・掃除',4],[4,'その他',5]);
-  let uuid=0,locked=false;
+  let uuid=0,locked=false,failAfterWrites=null;
   const sheet=name=>({
     getLastRow:()=>db[name].length,
     getRange:(start,col,count,width)=>({
       getValues:()=>Array.from({length:count},(_,i)=>Array.from(
         {length:width},(_,j)=>db[name][start+i-1]?.[col+j-1]??'')),
       setValues:matrix=>matrix.forEach((row,i)=>{
+        if(name==='item_groups'&&failAfterWrites!==null){
+          if(failAfterWrites===0){
+            failAfterWrites=null;
+            throw Error('SIMULATED_PARTIAL_SHEET_FAILURE');
+          }
+          failAfterWrites--;
+        }
         const position=start+i-1,existing=db[name][position]||Array(db[name][0].length).fill('');
         row.forEach((v,j)=>{existing[col+j-1]=v});db[name][position]=existing;
       })
@@ -56,7 +63,7 @@ function fixture(code) {
       createTextOutput:text=>({setMimeType:()=>({text})})}
   });
   vm.runInContext(setup+'\n'+code,context);
-  return {db,call:(action,payload={},operation_id=null,id_token='')=>{
+  return {db,failItemWriteAfter(n){failAfterWrites=n},call:(action,payload={},operation_id=null,id_token='')=>{
     const req={action,payload,id_token,...(operation_id?{operation_id}:{})};
     return JSON.parse(context.doPost({postData:{contents:JSON.stringify(req)}}).text);
   }};
@@ -104,7 +111,7 @@ const mockFetch=async(url,options)=>{
  const req=JSON.parse(options.body);sent.push(req);
  if(!online)throw Error('SIMULATED_OFFLINE');
  const response=temp.call(req.action,req.payload,req.operation_id,req.id_token);
- if(loseOneWriteResponse&&req.action==='item.update'){
+ if(loseOneWriteResponse&&['item.update','item.reorder'].includes(req.action)){
   loseOneWriteResponse=false;
   throw Error('SIMULATED_RESPONSE_LOST_AFTER_COMMIT');
  }
@@ -172,7 +179,7 @@ assert.equal(temp.db.processed_operations.length,afterCommit,
  'GAS did not create an extra processed operation');
 assert.equal(pill(c),'なし');
 c.window.document.querySelector('[data-tab="settings"]').click();
-assert.match(c.window.document.body.textContent,/試作 v0\.52\.0/);
+assert.match(c.window.document.body.textContent,/試作 v0\.53\.0/);
 
 // New item IDs can be referenced by edits/hides before the first GAS save.
 online=false;
@@ -217,5 +224,89 @@ await waitFor(()=>temp.call('bootstrap').data.item_groups.find(x=>x.item_group_i
  'VERSION_CONFLICT triggers rebase and desired state is preserved');
 assert.equal(temp.call('bootstrap').data.item_groups.find(x=>x.item_group_id===id).in_stock,true);
 d.window.close();
-console.log('IndexedDB queue, DOM double-tap, offline restart, create/edit/hide, idempotent retry, version conflict: OK');
+
+// GAS reorder: validation, version check, canonical order, and idempotency.
+const extraA=temp.call('item.create',{name:'パン',category_id:0},'op-reorder-create-a-abcdef12345');
+const extraB=temp.call('item.create',{name:'米',category_id:0},'op-reorder-create-b-abcdef12345');
+assert.equal(extraA.ok,true);assert.equal(extraB.ok,true);
+const all=temp.call('bootstrap').data;
+const byId=new Map(all.item_groups.map(x=>[x.item_group_id,x]));
+const order1=[extraB.data.entity.item_group_id,id,extraA.data.entity.item_group_id];
+const reorder1={category_id:0,item_group_ids:order1,
+ versions:order1.map(id=>Number(byId.get(id).version))};
+const saved=temp.call('item.reorder',reorder1,'op-reorder-first-abcdef12345');
+assert.equal(saved.ok,true,'batch reorder committed');
+assert.equal(saved.data.entities.map(x=>x.item_group_id).join(','),order1.join(','));
+assert.deepEqual(saved.data.entities.map(x=>Number(x.sort_order)),[1,2,3]);
+const logCount=temp.db.change_log.length;
+const journalCount=temp.db.processed_operations.length;
+const repeat=temp.call('item.reorder',reorder1,'op-reorder-first-abcdef12345');
+assert.equal(repeat.ok,true,'batch retry returns completed operation');
+assert.equal(temp.db.change_log.length,logCount,'replay does not duplicate change history');
+assert.equal(temp.db.processed_operations.length,journalCount,'replay does not duplicate journal');
+assert.equal(temp.call('item.reorder',reorder1,'op-reorder-outdated-abcdef12345').error.code,
+ 'VERSION_CONFLICT','stale rows cannot silently overwrite spouse edits');
+assert.equal(temp.call('item.reorder',{...reorder1,item_group_ids:[id,id,id]},
+ 'op-reorder-duplicate-abcdef12345').error.code,'BAD_REQUEST',
+ 'duplicate IDs in category reorder rejected');
+
+// Real client: offline reorder is optimistic, persists in IndexedDB, and replays.
+let e=appSession();
+await waitFor(()=>e.window.KurashiLive.state().loaded&&
+ e.window.document.querySelectorAll('.swipe-item[data-item-id]').length>=3,
+ 'reorder session bootstrapped');
+online=false;
+const order2=[extraA.data.entity.item_group_id,extraB.data.entity.item_group_id,id];
+await e.window.KurashiLive.reorderItems(0,order2);
+assert.equal(e.window.KurashiLive.state().queued,1);
+const displayed=dom=>[...dom.window.document.querySelectorAll('.swipe-item[data-item-id]')]
+ .filter(row=>row.dataset.categoryId==='0').map(row=>row.dataset.itemId);
+assert.deepEqual(displayed(e),order2,'optimistic reorder matches rendered list');
+e.window.close();online=true;
+let f=appSession();
+await waitFor(()=>f.window.KurashiLive.state().queued===0 &&
+ temp.call('bootstrap').data.item_groups.find(x=>x.item_group_id===order2[0]).sort_order===1,
+ 'reorder replay after PWA restart');
+assert.deepEqual(displayed(f),order2,'server reorder and PWA order agree after restart');
+// Response loss AFTER server completed the entire reorder: exact-ID replay.
+loseOneWriteResponse=true;
+const order3=[id,extraA.data.entity.item_group_id,extraB.data.entity.item_group_id];
+await f.window.KurashiLive.reorderItems(0,order3);
+await waitFor(()=>f.window.KurashiLive.state().queued===1 &&
+ temp.call('bootstrap').data.item_groups.find(x=>x.item_group_id===order3[0]).sort_order===1,
+ 'server committed reorder but response was dropped');
+const beforeRetry=temp.db.processed_operations.length;
+f.window.close();
+let g=appSession();
+await waitFor(()=>g.window.KurashiLive.state().queued===0 &&
+ displayed(g).join(',')===order3.join(','),
+ 'reboot confirms idempotent reorder with same operation ID');
+assert.equal(temp.db.processed_operations.length,beforeRetry,
+ 'lost response retry did not duplicate reorder');
+
+// GAS partial multi-row write: one row applied, next row failed. Exact same
+// operation ID resumes from prepared before/after journal without losing data.
+const interrupted=fixture(api);
+const x=interrupted.call('item.create',{name:'A',category_id:0},'op-partial-create-a-abcdef12345');
+const y=interrupted.call('item.create',{name:'B',category_id:0},'op-partial-create-b-abcdef12345');
+const z=interrupted.call('item.create',{name:'C',category_id:0},'op-partial-create-c-abcdef12345');
+assert.equal(x.ok,true);assert.equal(y.ok,true);assert.equal(z.ok,true);
+const reversed=[z.data.entity,y.data.entity,x.data.entity];
+const partialPayload={category_id:0,
+ item_group_ids:reversed.map(e=>e.item_group_id),
+ versions:reversed.map(e=>Number(e.version))};
+interrupted.failItemWriteAfter(1);
+const broken=interrupted.call('item.reorder',partialPayload,'op-reorder-partial-abcdef12345');
+assert.equal(broken.ok,false,'simulated crash interrupting second row');
+assert.equal(interrupted.call('bootstrap').error.code,'RECOVERY_REQUIRED',
+ 'prepared journal blocks unrelated reads while partially persisted');
+const resumed=interrupted.call('item.reorder',partialPayload,'op-reorder-partial-abcdef12345');
+assert.equal(resumed.ok,true,'same operation ID resumes partial batch');
+assert.deepEqual(resumed.data.entities.map(e=>Number(e.sort_order)),[1,2,3]);
+assert.equal(interrupted.call('bootstrap').ok,true,'prepared journal is finalized');
+assert.equal(interrupted.call('item.reorder',partialPayload,'op-reorder-partial-abcdef12345').ok,true,
+ 'repeated completed reorder is idempotent');
+g.window.close();
+console.log('Queue UI create/edit/hide + reorder optimistic/restart/lost response/partial GAS recovery: OK');
+
 
