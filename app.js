@@ -409,17 +409,18 @@ function learnConfirmedReceiptLine(item,chainId){
  void window.KurashiLive.learnAliases({chain_id:chainId,items:lines})
    .catch(err=>console.warn('確認済みのレシート商品別名を保存できません',err));
 }
-// Saved receipt and shelf rows are exact product-name evidence, even without alias.upsert.
+// Product masters and the OCR-name dictionary are the only automatic evidence.
 let scanMatchCache=null;
 const scanVariantKey=value=>norm(value)
  .replace(/[\u3041-\u3096]/g,c=>String.fromCharCode(c.charCodeAt(0)+96))
  .replace(/[\s\p{P}\p{S}]/gu,'');
+const scanVoicingKey=value=>scanVariantKey(value).normalize('NFD')
+ .replace(/[\u3099\u309a]/g,'').normalize('NFC');
 function scanNameEvidence(){
  if(scanMatchCache?.products===catalogue.products&&
-    scanMatchCache?.aliases===catalogue.productAliases&&
-    scanMatchCache?.records===liveRecords&&
-    scanMatchCache?.itemCount===allPreviewItems().length)return scanMatchCache;
- const exact=new Map(),variants=new Map(),active=new Set(catalogue.products.map(p=>p.id));
+    scanMatchCache?.aliases===catalogue.productAliases)return scanMatchCache;
+ const exact=new Map(),variants=new Map(),voiced=new Map();
+ const active=new Set(catalogue.products.map(p=>p.id));
  const add=(raw,productId,chainId='')=>{
   const name=norm(raw);
   if(!name||!active.has(productId))return;
@@ -427,19 +428,18 @@ function scanNameEvidence(){
   const entries=exact.get(name);
   if(!entries.some(e=>e.productId===productId&&e.chainId===chainId))
    entries.push({productId,chainId});
-  const v=scanVariantKey(raw);
-  if(v){if(!variants.has(v))variants.set(v,new Set());variants.get(v).add(productId)}
+  const v=scanVariantKey(raw),w=scanVoicingKey(raw);
+  for(const [map,key] of [[variants,v],[voiced,w]]){
+   if(key){if(!map.has(key))map.set(key,new Set());map.get(key).add(productId)}
+  }
  };
  for(const p of catalogue.products)add(p.name,p.id);
- for(const a of catalogue.productAliases||[])add(a.normalizedAlias,a.productId,a.chainId||'');
- if(!liveMode)for(const p of catalogue.products)for(const alias of p.aliases||[])add(alias,p.id);
- const records=new Map(allPreviewRecords().filter(r=>!r.deleted_at&&
-  ['receipt','shelf'].includes(r.record_type)).map(r=>[r.record_id,r.chain_id||'']));
- for(const line of allPreviewItems())
-  if(!line.deleted_at&&records.has(line.record_id))
-   add(line.raw_name,line.product_id,records.get(line.record_id));
- return scanMatchCache={exact,variants,products:catalogue.products,
-  aliases:catalogue.productAliases,records:liveRecords,itemCount:allPreviewItems().length};
+ for(const a of catalogue.productAliases||[])
+  if(a.productId)add(a.ocrName||a.normalizedAlias,a.productId,a.chainId||'');
+ if(!liveMode)for(const p of catalogue.products)
+  for(const alias of p.aliases||[])add(alias,p.id);
+ return scanMatchCache={exact,variants,voiced,products:catalogue.products,
+  aliases:catalogue.productAliases};
 }
 function scanMatchProduct(raw,chainId=null){
  const entries=scanNameEvidence().exact.get(norm(raw))||[];
@@ -461,11 +461,12 @@ function scanNearVariant(a,b){
 }
 function scanSimilarProducts(raw,chainId=null){
  const key=scanVariantKey(raw);if(!key)return [];
- const {exact,variants}=scanNameEvidence(),ids=new Set();
+ const {exact,variants,voiced}=scanNameEvidence(),ids=new Set();
  const matched=scanMatchProduct(raw,chainId);
  for(const e of exact.get(norm(raw))||[])ids.add(e.productId);
  for(const id of variants.get(key)||[])ids.add(id);
- if(ids.size<3&&key.length>=6)for(const [v,found] of variants)
+ for(const id of voiced.get(scanVoicingKey(raw))||[])ids.add(id);
+ if(ids.size<3&&key.length>=5)for(const [v,found] of variants)
   if(v!==key&&scanNearVariant(key,v))for(const id of found)ids.add(id);
  return catalogue.products.filter(p=>ids.has(p.id)&&p.id!==matched).slice(0,4);
 }
