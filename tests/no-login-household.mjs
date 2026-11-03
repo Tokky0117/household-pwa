@@ -1208,6 +1208,13 @@ assert.equal(standaloneForm.querySelector('[name="chain"]').value,'__new__',
 standaloneForm.querySelector('[name="chain"]').value=standaloneChainId;
 standaloneForm.querySelector('[name="chain"]').dispatchEvent(
  new standaloneSession.window.Event('change',{bubbles:true}));
+await pause(250);
+console.log('DEBUG v62 store alias',JSON.stringify({
+ selected:standaloneSession.window.document.querySelector('#scanConfirmForm [name="chain"]')?.value,
+ state:standaloneSession.window.KurashiLive.state(),
+ stores:temp.call('bootstrap').data?.stores?.filter(x=>x.chain_id===standaloneChainId),
+ recent:sent.slice(-4).map(x=>({action:x.action,payload:x.payload}))
+}));
 await waitFor(()=>temp.call('bootstrap').data.stores.some(x=>
  x.chain_id===standaloneChainId&&String(x.aliases).includes('COSTCO WHOLESALE')),
  'confirmed retailer spelling is remembered via existing stores.aliases and queue');
