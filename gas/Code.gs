@@ -67,6 +67,10 @@ function doPost(e){
     fail('WRITES_DISABLED','対象の保存環境を確認してください');
    return jsonReply({ok:true,data:mutateProductSafely_(user,payload,input.operation_id)});
   }
+  if(action==='product.alias.create'){
+   if(!approvedPrototypeAliasSheet_())fail('WRITES_DISABLED','対象の保存環境を確認してください');
+   return jsonReply({ok:true,data:mutatePrintedAliasSafely_(user,payload,input.operation_id)});
+  }
   if(action==='product.update'){
    if(!approvedPrototypeAliasSheet_())fail('WRITES_DISABLED','対象の保存環境を確認してください');
    return jsonReply({ok:true,data:mutateProductUpdateSafely_(user,payload,input.operation_id)});
@@ -110,12 +114,10 @@ function rows(name,book){
 function write_(name,row,obj,existingSheet){
  const sh=existingSheet||tab(name),h=TABLES[name];
  if(name==='product_aliases'){
-  // Keep leading zeros of a product code even on newly created Sheet rows.
-  // The journal is written before this call, so a formatting/setValues
-  // exception can be recovered using the exact same operation ID.
+  // Both receipt names and zero-prefixed SKU codes must stay literal text.
   const value=obj.normalized_alias;
-  if(typeof value!=='string'||!/^[0-9]{4,14}$/.test(value))
-   fail('BAD_REQUEST','商品コードの文字列形式が不正です');
+  if(typeof value!=='string'||!value||value.length>120||/^[=+@-]/.test(value))
+   fail('BAD_REQUEST','商品別名の文字列形式が不正です');
   sh.getRange(row,h.indexOf('normalized_alias')+1,1,1).setNumberFormat('@');
  }
  if(name==='records'){
@@ -1070,6 +1072,164 @@ function receiptCompletedReplay_(result,payload,hid,operationId,book,trialSnapsh
     Number(changes[0].obj.sequence_no)!==result.sequence_no)
   fail('RECOVERY_CONFLICT','確定変更履歴が一致しません');
  return result;
+}
+
+
+/**
+ * Save a user-confirmed receipt printing as a chain-scoped product alias.
+ * This is distinct from changing the canonical product name or linking a
+ * product to an optional stock-list item. No API call is made on OCR alone.
+ */
+function mutatePrintedAliasSafely_(user,p,opId){
+ if(typeof opId!=='string'||!/^[A-Za-z0-9_-]{8,128}$/.test(opId))
+  fail('BAD_REQUEST','操作IDが不正です');
+ if(!p||typeof p!=='object'||Array.isArray(p)||
+    Object.keys(p).sort().join(',')!=='chain_id,confirmed,printed_name,product_id'||
+    p.confirmed!==true||typeof p.printed_name!=='string')
+  fail('BAD_REQUEST','商品別名の確定内容が不正です');
+ const productId=requiredId(p.product_id),chainId=requiredId(p.chain_id);
+ const raw=p.printed_name.trim();
+ if(!raw||raw.length>120||/^[=+@-]/.test(raw)||/[\x00-\x1f\x7f]/.test(raw))
+  fail('BAD_REQUEST','印字名を確認してください');
+ const alias=normalized(raw);
+ if(!alias||alias.length>120||/^[=+@-]/.test(alias))
+  fail('BAD_REQUEST','印字名の形式を確認してください');
+ const clean={product_id:productId,chain_id:chainId,printed_name:alias,confirmed:true};
+ const digest=Utilities.base64EncodeWebSafe(Utilities.computeDigest(
+  Utilities.DigestAlgorithm.SHA_256,JSON.stringify({action:'product.alias.create',payload:clean})));
+ const lock=LockService.getScriptLock();
+ if(!lock.tryLock(20000))fail('BUSY','保存が混み合っています');
+ try{
+  const book=spreadsheet(),hid=String(user.householdId);
+  assertPrototypeReceiptIdentity_(book,user);
+  const products=rows('products',book),ownership=new Map();
+  for(const row of products){
+   const id=String(row.obj.product_id||'');
+   if(!id||ownership.has(id))fail('CATALOG_CONFLICT','商品IDが重複しています');
+   ownership.set(id,String(row.obj.household_id||''));
+  }
+  if(products.filter(x=>String(x.obj.product_id)===productId&&
+     String(x.obj.household_id)===hid&&!x.obj.deleted_at).length!==1)
+   fail('NOT_FOUND','登録済みの商品を確認できません');
+  if(rows('stores',book).filter(x=>String(x.obj.chain_id)===chainId&&
+     String(x.obj.household_id)===hid).length!==1)
+   fail('NOT_FOUND','チェーンを確認できません');
+  const operations=rows('processed_operations',book);
+  const homeOps=operations.filter(x=>String(x.obj.household_id)===hid);
+  const matching=operations.filter(x=>String(x.obj.operation_id)===opId);
+  if(matching.length>1||matching.some(x=>String(x.obj.household_id)!==hid)||
+     new Set(homeOps.map(x=>String(x.obj.operation_id))).size!==homeOps.length)
+   fail('RECOVERY_CONFLICT','操作IDの重複を確認してください');
+  const existing=matching[0]||null;
+  if(existing&&String(existing.obj.request_hash)!==digest)
+   fail('OPERATION_REUSED','操作IDの内容が変更されています');
+  for(const operation of homeOps){
+   let state;
+   try{state=JSON.parse(String(operation.obj.result))}
+   catch(_){fail('RECOVERY_CONFLICT','操作履歴を確認できません')}
+   if(state?.status==='prepared'&&String(operation.obj.operation_id)!==opId)
+    fail('RECOVERY_REQUIRED','先に未完了操作を復旧してください');
+  }
+  let plan,opRow=existing?.row;
+  if(existing){
+   try{plan=JSON.parse(String(existing.obj.result))}
+   catch(_){fail('RECOVERY_CONFLICT','操作履歴の内容が不正です')}
+   if(!plan||!['prepared','completed'].includes(plan.status)||
+      plan.action!=='product.alias.create'||!plan.entity||
+      String(plan.entity.household_id)!==hid||
+      String(plan.entity.product_id)!==productId||
+      String(plan.entity.chain_id)!==chainId||
+      String(plan.entity.normalized_alias)!==alias||
+      (plan.status==='prepared'&&(
+       String(plan.log?.change_id)!==opId||
+       String(plan.log?.household_id)!==hid||
+       String(plan.log?.entity_id)!==String(plan.entity.alias_id)||
+       plan.log?.action!=='product.alias.create'))||
+      (plan.status==='completed'&&
+       (!Number.isSafeInteger(plan.sequence_no)||plan.sequence_no<1)))
+    fail('RECOVERY_CONFLICT','別名登録の履歴が一致しません');
+  }else{
+   const aliases=rows('product_aliases',book);
+   // The same printing may be used by unrelated stores, but a shared alias
+   // or the same store must never identify two different household products.
+   for(const row of aliases){
+    const a=row.obj,pid=String(a.product_id||''),ch=a.chain_id==null?null:String(a.chain_id);
+    if(ownership.get(pid)!==hid||normalized(a.normalized_alias)!==alias)continue;
+    if(ch!==null&&ch!==chainId)continue;
+    if(pid===productId)fail('ALREADY_REGISTERED','この印字名は登録済みです');
+    fail('ALIAS_CONFLICT','別の商品で登録されている印字名です');
+   }
+   const now=new Date().toISOString(),aliasId=Utilities.getUuid();
+   if(aliases.some(a=>String(a.obj.alias_id)===aliasId))
+    fail('RECOVERY_CONFLICT','別名IDが重複しています');
+   const entity={alias_id:aliasId,product_id:productId,chain_id:chainId,
+    normalized_alias:alias,version:1,updated_at:now,household_id:hid};
+   const seq=currentSequence(hid,book)+1;
+   const log={change_id:opId,sequence_no:seq,household_id:hid,
+    entity_type:'product_aliases',entity_id:aliasId,
+    action:'product.alias.create',occurred_at:now};
+   plan={status:'prepared',action:'product.alias.create',entity,log};
+   opRow=append_('processed_operations',{household_id:hid,operation_id:opId,
+    request_hash:digest,result:JSON.stringify(plan),processed_at:now},book);
+   const saved=rows('processed_operations',book).filter(x=>
+    String(x.obj.operation_id)===opId);
+   if(saved.length!==1||saved[0].row!==opRow||
+      String(saved[0].obj.result)!==JSON.stringify(plan))
+    fail('RECOVERY_CONFLICT','操作履歴の書き込みを確認できません');
+  }
+  const aliasRows=rows('product_aliases',book),entity=plan.entity;
+  const duplicates=aliasRows.filter(x=>String(x.obj.alias_id)===String(entity.alias_id));
+  if(duplicates.length>1)fail('RECOVERY_CONFLICT','別名IDが重複しています');
+  for(const row of aliasRows){
+   if(String(row.obj.alias_id)===String(entity.alias_id)||
+      ownership.get(String(row.obj.product_id||''))!==hid||
+      normalized(row.obj.normalized_alias)!==alias)continue;
+   const otherChain=row.obj.chain_id==null?null:String(row.obj.chain_id);
+   if(otherChain!==null&&otherChain!==chainId)continue;
+   if(String(row.obj.product_id)!==productId)
+    fail('ALIAS_CONFLICT','別商品の別名と競合しています');
+   fail('ALREADY_REGISTERED','同じ印字名が別の行に登録されています');
+  }
+  if(duplicates.length){
+   if(!receiptSameRow_(duplicates[0].obj,entity,'product_aliases'))
+    fail('RECOVERY_CONFLICT','確定した印字名が変わっています');
+  }else{
+   if(plan.status==='completed')fail('RECOVERY_CONFLICT','確定別名が見つかりません');
+   append_('product_aliases',entity,book);
+  }
+  const logs=rows('change_log',book);
+  const found=logs.filter(x=>String(x.obj.change_id)===opId);
+  if(found.length>1)fail('RECOVERY_CONFLICT','変更履歴が重複しています');
+  if(plan.status==='completed'){
+   if(found.length!==1||!receiptSameRow_(found[0].obj,{
+     change_id:opId,sequence_no:plan.sequence_no,household_id:hid,
+     entity_type:'product_aliases',entity_id:entity.alias_id,
+     action:'product.alias.create',occurred_at:entity.updated_at
+    },'change_log'))fail('RECOVERY_CONFLICT','確定履歴が一致しません');
+   return plan;
+  }
+  if(found.length){
+   if(!receiptSameRow_(found[0].obj,plan.log,'change_log'))
+    fail('RECOVERY_CONFLICT','変更履歴が変わっています');
+  }else{
+   if(logs.some(x=>String(x.obj.household_id)===hid&&
+      Number(x.obj.sequence_no)>=Number(plan.log.sequence_no)))
+    fail('RECOVERY_CONFLICT','変更履歴の番号が競合しています');
+   append_('change_log',plan.log,book);
+  }
+  if(rows('product_aliases',book).filter(x=>
+     String(x.obj.alias_id)===String(entity.alias_id)&&
+     receiptSameRow_(x.obj,entity,'product_aliases')).length!==1||
+     rows('change_log',book).filter(x=>String(x.obj.change_id)===opId&&
+     receiptSameRow_(x.obj,plan.log,'change_log')).length!==1)
+   fail('RECOVERY_CONFLICT','別名登録の確定結果を確認できません');
+  const result={status:'completed',action:'product.alias.create',
+   entity,sequence_no:plan.log.sequence_no};
+  write_('processed_operations',opRow,{household_id:hid,operation_id:opId,
+   request_hash:digest,result:JSON.stringify(result),processed_at:entity.updated_at},
+   tab('processed_operations',book));
+  return result;
+ }finally{lock.releaseLock()}
 }
 
 /** Ordinary product master registration in the already pinned trial Sheet.
