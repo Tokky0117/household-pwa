@@ -84,7 +84,7 @@ let previewRecords=loadPreviewRecords();
 let receiptScan=null,receiptScanBusy=false,receiptScanEpoch=0,receiptPhotoUrl=null;
 let receiptChatGptText='',receiptChatGptNotice='';
 let receiptStoreBusy=false,receiptStoreNotice='',receiptStoreNameDraft='';
-let receiptCatalogAliases=[],receiptProductCreateIndex=null,receiptProductIntent=null,receiptProductNotice='';
+let receiptCatalogAliases=[],receiptAliasWriteSupported=false,receiptProductCreateIndex=null,receiptProductIntent=null,receiptProductNotice='';
 
 // The same review form can target the authenticated family only when BOTH
 // client and GAS write releases are approved. Preview stays browser-local.
@@ -101,7 +101,7 @@ function currentReceiptCatalog(){
   receiptRemoteCatalog:null;
 }
 function invalidateReceiptCatalog(){
- ++receiptCatalogEpoch;receiptRemoteCatalog=null;receiptCatalogAliases=[];receiptCatalogSubject=null;
+ ++receiptCatalogEpoch;receiptRemoteCatalog=null;receiptCatalogAliases=[];receiptAliasWriteSupported=false;receiptCatalogSubject=null;
  receiptCatalogBusy=false;receiptCatalogStatus='未取得';
 }
 function receiptStoreChoices(){
@@ -172,7 +172,7 @@ async function loadReceiptCatalog(){
      new Set(data.stores.map(x=>x.chain_id)).size!==data.stores.length||
      new Set(data.products.map(x=>x.product_id)).size!==data.products.length)
    throw Error('RECEIPT_CATALOG_INVALID');
-  receiptRemoteCatalog=data;receiptCatalogAliases=[];
+  receiptRemoteCatalog=data;receiptCatalogAliases=[];receiptAliasWriteSupported=false;
   try{
    const aliases=await window.KurashiGasApi.request('product.catalog',{});
    if(epoch!==receiptCatalogEpoch||window.KurashiAuth?.status?.()?.subject!==subject)return;
@@ -181,7 +181,10 @@ async function loadReceiptCatalog(){
    if(aliases?.household_id===data.household_id&&Array.isArray(aliases.product_aliases)&&
       aliases.product_aliases.every(a=>productIds.has(String(a.product_id))&&
        (a.chain_id==null||storeIds.has(String(a.chain_id)))))
+   {
     receiptCatalogAliases=aliases.product_aliases;
+    receiptAliasWriteSupported=aliases.alias_write_supported===true;
+   }
   }catch(_){/* Old deployments may lack the optional alias read. */}
   receiptCatalogStatus='家庭の店舗・商品を取得済み';
   if(receiptScan){
@@ -1049,7 +1052,7 @@ async function sendPendingLive(entry){
     receiptScan.items[intent.index].productId=String(entity.product_id);
     if(receiptRemoteCatalog?.household_id===entry.householdId)
      receiptRemoteCatalog.products=[...receiptRemoteCatalog.products,entity];
-    receiptProductNotice='商品マスタに登録し、明細と紐付けました。チェーンが選択されていれば次回照合用の印字名も登録します。';
+    receiptProductNotice=receiptAliasWriteSupported?'商品マスタに登録し、明細と紐付けました。必要な印字名を記憶します。':'商品マスタに登録し、明細と紐付けました。次回の印字名照合にはGASの更新が必要です。';
    }
    receiptProductCreateIndex=null;receiptProductIntent=null;
   }
@@ -1461,9 +1464,11 @@ function receiptScanReview(){
  </div>
  ${UI.formField({id:'scan-product-'+i,name:'product-'+i,label:'登録済み商品との対応（任意）',control:'select',value:item.productId,options:products})}
  ${receiptRemoteWritable()?'<button type="button" class="tertiary" data-act="receiptNewProduct" data-ocr-index="'+i+'">＋ 新しい商品を登録</button>':''}
- ${receiptRemoteWritable()&&item.productId&&!receiptAliasAlreadyKnown(item)?
+ ${receiptRemoteWritable()&&receiptAliasWriteSupported&&item.productId&&!receiptAliasAlreadyKnown(item)?
   '<button type="button" class="tertiary" data-act="saveReceiptAlias" data-ocr-index="'+i+'">この印字名を記憶（次回の照合用）</button>':''}
- ${receiptProductCreateIndex===i?'<div class="receipt-inline-create"><p class="hint">日用品への紐付けは任意です。チェーンを選択済みなら印字名も次回の照合用に記憶します。</p>'+
+ ${receiptProductCreateIndex===i?'<div class="receipt-inline-create"><p class="hint">日用品への紐付けは任意です。'+
+  (receiptAliasWriteSupported?'チェーンを選択済みなら印字名も次回の照合用に記憶します。':'印字名の記憶にはGASの更新が必要です。')+
+  '</p>'+
   UI.formField({id:'receipt-new-product-name',name:'receipt_new_name',label:'正式商品名',value:item.rawName,required:true,maxlength:150})+
   UI.quantityUnitFields({quantityId:'receipt-new-product-quantity',unitId:'receipt-new-product-unit',quantity:'',unit:'個'})+
   UI.formField({id:'receipt-new-product-group',name:'receipt_new_group',label:'日用品リストとの紐付け（任意）',control:'select',value:'',options:groupOptions})+
@@ -2126,7 +2131,7 @@ if(action==='scanReceiptCamera'||action==='scanReceiptPhoto'){
 }
 if(action==='saveReceiptAlias'){
  const index=Number(el.dataset.ocrIndex);
- if(!receiptScan||!Number.isInteger(index)||!receiptScan.items[index]||
+ if(!receiptAliasWriteSupported||!receiptScan||!Number.isInteger(index)||!receiptScan.items[index]||
     !currentReceiptCatalog()||!liveSnapshot||!liveWritable())return;
  receiptScanFormValues();
  const item=receiptScan.items[index],chain=String(receiptScan.chainId||'');
@@ -2167,7 +2172,7 @@ if(action==='saveReceiptNewProduct'){
   await liveMutate('product.create',{item_group_id:group,name,
    package_quantity:quantity,package_unit:unit},index);
   // Separate durable intents: never store an alias for an uncertain product.
-  if(receiptProductIntent||!chainId||!receiptScan?.items[index]||
+  if(receiptProductIntent||!receiptAliasWriteSupported||!chainId||!receiptScan?.items[index]||
      receiptScan.chainId!==chainId||receiptScan.items[index].rawName!==rawName||
      !receiptScan.items[index].productId||receiptAliasAlreadyKnown(receiptScan.items[index]))return;
   await liveMutate('product.alias.create',{product_id:receiptScan.items[index].productId,
