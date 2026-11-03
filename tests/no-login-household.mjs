@@ -1285,8 +1285,8 @@ assert.equal(standaloneDirect.data.entity.item_group_id,'');
 assert.equal(standaloneDirect.data.entity.item_group_order,'');
 console.log('v62: nullable master, store alias learning, next receipt auto-link and checkbox removal OK');
 
-/* v63: A newly selected chain or a corrected OCR name must never retain an
- * automatic link from the old print alias. A manual product choice survives. */
+/* v63: Cross-store exact history is reusable. Text edits still re-evaluate,
+ * while a manually selected product remains selected. */
 let relinkSession=appSession();
 await waitFor(()=>relinkSession.window.KurashiLive.state().loaded,
  'receipt retailer reassignment regression bootstrap');
@@ -1304,10 +1304,8 @@ assert.equal(reviewField('product-0').value,standaloneProduct.product_id,
  'known Costco print alias initially identifies saved product');
 reviewField('chain').value=kitStore.chain_id;
 reviewField('chain').dispatchEvent(new relinkSession.window.Event('change',{bubbles:true}));
-assert.equal(reviewField('product-0').value,'',
- 'switching to another retailer removes the stale automatic product ID');
-assert.match(relinkSession.window.document.querySelector('.scan-product-association').textContent,
- /未照合/,'receipt clearly shows that the item is no longer matched');
+assert.equal(reviewField('product-0').value,standaloneProduct.product_id,
+ 'same uniquely confirmed print name remains linked across retailers');
 reviewField('chain').value=standaloneChainId;
 reviewField('chain').dispatchEvent(new relinkSession.window.Event('change',{bubbles:true}));
 assert.equal(reviewField('product-0').value,standaloneProduct.product_id,
@@ -1337,3 +1335,111 @@ assert.equal(reviewField('product-0').value,standaloneProduct.product_id,
  'an explicit existing-product selection survives printed-name edits');
 relinkSession.window.close();
 console.log('v63: retailer changes, OCR-name corrections and user-confirmed master links OK');
+
+
+/* v64: A saved receipt's raw_name/product_id is itself reusable evidence.
+ * This particular product deliberately has NO product_aliases row. */
+const historyRaw='かたかな・直売X-123',historyCanonical='履歴から再照合する商品A';
+const historyProduct=temp.call('product.create',{
+ item_group_id:null,name:historyCanonical,package_quantity:null,package_unit:null
+},'op-v64-history-product-abcdefghijk');
+assert.equal(historyProduct.ok,true);
+const historyId=historyProduct.data.entity.product_id;
+assert.equal(temp.call('record.create',{
+ record_type:'receipt',chain_id:kitStore.chain_id,record_date:'2026-11-01',
+ items:[{raw_name:historyRaw,product_id:historyId,quantity:1,
+  amount_tax_included:221,category_id:null}]
+},'op-v64-history-receipt-abcdefghijk').ok,true);
+assert.equal(temp.call('bootstrap').data.product_aliases.filter(a=>
+ a.product_id===historyId).length,0,'history test has no alias');
+let historySession=appSession();
+await waitFor(()=>historySession.window.KurashiLive.state().loaded,'history on next session');
+await historySession.window.KurashiLive.load();
+historySession.window.document.querySelector('[data-tab="receipt"]').click();
+historySession.window.document.querySelector('[data-act="receiptChatGpt"]').click();
+historySession.window.eval(importer);
+const historyJson={...kitJson,storeName:'コストコ',purchaseDate:'2026-11-03',
+ receiptTotal:221,items:[{...kitJson.items[0],name:historyRaw,
+  unitPrice:221,grossAmount:221,netAmount:221}]};
+historySession.window.document.querySelector('#chatgpt-input').value=JSON.stringify(historyJson);
+historySession.window.document.querySelector('[data-act="chatGptImport"]').click();
+const hfield=name=>historySession.window.document.querySelector('#scanConfirmForm [name="'+name+'"]');
+assert.equal(hfield('product-0').value,historyId,
+ 'second receipt at a DIFFERENT chain uses saved raw name even without an alias');
+assert.equal(hfield('name-0').value,historyRaw,'printed name remains unchanged');
+hfield('name-0').value='カタカナ 直売X123';
+hfield('name-0').dispatchEvent(new historySession.window.Event('input',{bubbles:true}));
+assert.equal(hfield('product-0').value,'','kana/mark variation is NOT auto-confirmed');
+const hSuggestion=historySession.window.document.querySelector(
+ '[data-act="scanChooseSuggested"][data-product-id="'+historyId+'"]');
+assert.ok(hSuggestion,'kana and punctuation variant appears as master candidate');
+hSuggestion.click();
+assert.equal(hfield('product-0').value,historyId,'choosing a candidate links the master');
+hfield('name-0').value='手動選択した別の表記';
+hfield('name-0').dispatchEvent(new historySession.window.Event('input',{bubbles:true}));
+assert.equal(hfield('product-0').value,historyId,'manual selection survives subsequent editing');
+await waitFor(()=>historySession.window.KurashiLive.state().queued===0,'candidate alias queue drained');
+historySession.window.close();
+
+/* Shelf labels already use the same record_items table, and teach the name. */
+const shelfRaw='値札から再照合する印字名';
+assert.equal(temp.call('record.create',{
+ record_type:'shelf',chain_id:kitStore.chain_id,record_date:'2026-11-02',
+ items:[{raw_name:shelfRaw,product_id:historyId,quantity:1,
+  amount_tax_included:215,category_id:null}]
+},'op-v64-shelf-record-abcdefghijk').ok,true);
+let shelfSession=appSession();
+await waitFor(()=>shelfSession.window.KurashiLive.state().loaded,'shelf history loaded');
+await shelfSession.window.KurashiLive.load();
+shelfSession.window.document.querySelector('[data-tab="receipt"]').click();
+shelfSession.window.document.querySelector('[data-act="receiptChatGpt"]').click();
+shelfSession.window.eval(importer);
+shelfSession.window.document.querySelector('#chatgpt-input').value=JSON.stringify({
+ ...historyJson,receiptTotal:215,
+ items:[{...historyJson.items[0],name:shelfRaw,unitPrice:215,grossAmount:215,netAmount:215}]
+});
+shelfSession.window.document.querySelector('[data-act="chatGptImport"]').click();
+assert.equal(shelfSession.window.document.querySelector('[name="product-0"]').value,historyId,
+ 'value-tag raw_name/product_id also teaches next receipt');
+shelfSession.window.close();
+
+/* Two conflicting confirmed products for the same exact name are NOT guessed. */
+const conflict=temp.call('product.create',{
+ item_group_id:null,name:'別商品B（明細名の競合試験）',package_quantity:null,package_unit:null
+},'op-v64-conflict-product-abcdefghijk');
+assert.equal(conflict.ok,true);
+assert.equal(temp.call('record.create',{
+ record_type:'receipt',chain_id:standaloneChainId,record_date:'2026-11-01',
+ items:[{raw_name:historyRaw,product_id:conflict.data.entity.product_id,
+  quantity:1,amount_tax_included:222,category_id:null}]
+},'op-v64-conflict-record-abcdefghijk').ok,true);
+let conflictSession=appSession();
+await waitFor(()=>conflictSession.window.KurashiLive.state().loaded,'conflicting history loaded');
+await conflictSession.window.KurashiLive.load();
+conflictSession.window.document.querySelector('[data-tab="receipt"]').click();
+conflictSession.window.document.querySelector('[data-act="receiptChatGpt"]').click();
+conflictSession.window.eval(importer);
+conflictSession.window.document.querySelector('#chatgpt-input').value=JSON.stringify({
+ ...historyJson,storeName:'初めての不明チェーンXY'
+});
+conflictSession.window.document.querySelector('[data-act="chatGptImport"]').click();
+assert.equal(conflictSession.window.document.querySelector('[name="product-0"]').value,'',
+ 'without retailer context an ambiguous confirmed name stays unlinked');
+assert.ok(conflictSession.window.document.querySelectorAll(
+ '[data-act="scanChooseSuggested"]').length>=2,
+ 'conflicting exact matches are shown as manual candidate choices');
+conflictSession.window.close();
+
+/* Removing a product from the item group must not delete its product master. */
+const kitCurrent=temp.call('bootstrap').data.products.find(p=>
+ p.product_id===kitSavedProduct.product_id);
+assert.equal(temp.call('product.update',{
+ product_id:kitCurrent.product_id,version:Number(kitCurrent.version),item_group_id:null
+},'op-v64-product-unlink-abcdefghijk').ok,true);
+assert.ok(temp.call('bootstrap').data.products.some(p=>
+ p.product_id===kitSavedProduct.product_id&&!p.item_group_id),
+ 'product still exists after unlink');
+assert.ok(temp.call('bootstrap').data.record_items.some(x=>
+ x.raw_name===kitRaw&&x.product_id===kitSavedProduct.product_id),
+ 'past receipt/product link persists after unlink');
+console.log('v64: receipt/shelf exact history, cross-chain matching, safe kana suggestions, conflicts, master unlink OK');
