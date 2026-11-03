@@ -71,6 +71,9 @@ function fixture(code) {
 }
 
 const temp=fixture(api);
+const aliasText=(f,line)=>f.call('bootstrap').data.product_aliases.find(a=>
+ a.alias_id===line.alias_id)?.ocr_name||line.raw_name||'';
+
 assert.equal(temp.call('bootstrap').ok,true,'initial anonymous read');
 assert.equal(temp.db.users.length,1,'anonymous does not register a fake user');
 const create=temp.call('item.create',{name:'牛乳',category_id:0},'op-create-abcdefghijklmn');
@@ -774,7 +777,7 @@ assert.equal(recordFixture.call('record.update',editPayload,
 const afterEdit=recordFixture.call('bootstrap').data;
 assert.equal(afterEdit.records.find(x=>x.record_id===receiptSaved.data.record.record_id).version,2);
 assert.deepEqual(afterEdit.record_items.filter(x=>x.record_id===receiptSaved.data.record.record_id)
- .map(x=>x.raw_name),['修正した商品'],'only new line remains visible');
+ .map(x=>aliasText(recordFixture,x)),['修正した商品'],'only new line remains visible');
 assert.equal(recordFixture.call('record.update',editPayload,
  'op-record-update-stale-abcdefghijk').error.code,'VERSION_CONFLICT',
  'stale record version cannot overwrite spouse-side edit');
@@ -791,7 +794,9 @@ assert.ok(recordFixture.call('bootstrap').data.product_aliases.some(x=>
 assert.equal(recordFixture.call('alias.upsert',aliasInput,
  'op-record-alias-second-abcdefghijk').ok,true,
  'repeat alias with a new operation ID is a safe no-op');
-assert.equal(recordFixture.db.product_aliases.length,2,'same alias is not inserted twice');
+assert.equal(recordFixture.db.product_aliases.filter(row=>
+ row[2]===aliasInput.chain_id&&row[3]===aliasInput.raw_alias.normalize('NFKC').toLowerCase()).length,1,
+ 'same OCR alias is not inserted twice');
 const removePayload={record_id:receiptSaved.data.record.record_id,version:2};
 const deletedRecord=recordFixture.call('record.delete',removePayload,
  'op-record-delete-abcdefghijk');
@@ -888,7 +893,7 @@ await loseRecord.window.KurashiLive.saveRecord({record_type:'receipt',
  chain_id:confirmedStore,record_date:'2026-10-14',
  items:[{...receiptLine,raw_name:'応答喪失テスト'}]});
 await waitFor(()=>loseRecord.window.KurashiLive.state().queued===1&&
- temp.call('bootstrap').data.record_items.some(x=>x.raw_name==='応答喪失テスト'),
+ temp.call('bootstrap').data.record_items.some(x=>aliasText(temp,x)==='応答喪失テスト'),
  'receipt server committed before response was lost');
 const opsBeforeReceiptRetry=temp.db.processed_operations.length;
 loseRecord.window.close();
@@ -1130,7 +1135,7 @@ assert.match(kitReview.textContent,/日用品：チョコ/,
 kitReview.dispatchEvent(new kitSession.window.Event('submit',{bubbles:true,cancelable:true}));
 await waitFor(()=>kitSession.window.KurashiLive.state().queued===0&&
  temp.call('bootstrap').data.record_items.some(x=>
-  x.raw_name===kitRaw&&x.product_id===kitSavedProduct.product_id),
+  aliasText(temp,x)===kitRaw&&x.product_id===kitSavedProduct.product_id),
  'receipt stores printed raw spelling with linked canonical product ID');
 await waitFor(()=>temp.call('bootstrap').data.product_aliases.some(x=>
  x.product_id===kitSavedProduct.product_id&&x.chain_id===kitStore.chain_id&&
@@ -1262,7 +1267,7 @@ matchedReview.dispatchEvent(new readAgain.window.Event('submit',{
  bubbles:true,cancelable:true
 }));
 await waitFor(()=>temp.call('bootstrap').data.record_items.some(x=>
- x.product_id===standaloneProduct.product_id&&x.raw_name===standaloneRaw),
+ x.product_id===standaloneProduct.product_id&&aliasText(temp,x)===standaloneRaw),
  'auto-linked product stores original printed name and master ID');
 readAgain.window.close();
 const dupStoreAlias=temp.call('store.alias.upsert',{
@@ -1368,7 +1373,7 @@ historySession.window.document.querySelector('#chatgpt-input').value=JSON.string
 historySession.window.document.querySelector('[data-act="chatGptImport"]').click();
 const hfield=name=>historySession.window.document.querySelector('#scanConfirmForm [name="'+name+'"]');
 assert.equal(hfield('product-0').value,historyId,
- 'second receipt at a DIFFERENT chain uses saved raw name even without an alias');
+ 'second receipt at a DIFFERENT chain uses a saved OCR dictionary alias');
 assert.equal(hfield('name-0').value,historyRaw,'printed name remains unchanged');
 hfield('name-0').value='カタカナ 直売X123';
 hfield('name-0').dispatchEvent(new historySession.window.Event('input',{bubbles:true}));
@@ -1406,7 +1411,7 @@ shelfSession.window.document.querySelector('#chatgpt-input').value=JSON.stringif
 });
 shelfSession.window.document.querySelector('[data-act="chatGptImport"]').click();
 assert.equal(shelfSession.window.document.querySelector('[name="product-0"]').value,historyId,
- 'value-tag raw_name/product_id also teaches next receipt');
+ 'shelf OCR aliases also teach next receipt');
 shelfSession.window.close();
 
 /* Two conflicting confirmed products for the same exact name are NOT guessed. */
@@ -1450,7 +1455,7 @@ assert.ok(temp.call('bootstrap').data.products.some(p=>
  'product still exists after unlink');
 assert.ok(temp.call('bootstrap').data.record_items.some(x=>
  x.raw_name===kitRaw&&x.product_id===kitSavedProduct.product_id),
- 'past receipt/product link persists after unlink');
+ 'past receipt/product ID remains stable after product is removed from daily item');
 console.log('v64: receipt/shelf exact history, cross-chain matching, safe kana suggestions, conflicts, master unlink OK');
 
 
