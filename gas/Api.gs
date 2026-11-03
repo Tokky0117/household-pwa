@@ -3,6 +3,7 @@
  * 新規GASの Setup.gs と同じプロジェクトに配置する。
  * 対応: bootstrap / item.* / product.* / product.reorder / store.create
  *       record.create / record.update / record.delete / alias.upsert
+ *       store.alias.upsert (existing stores.aliases), optional product.item_group_id
  * レシート親・明細の複数行更新と商品別名は既存操作ジャーナルで保存・再送復旧する。
  * 商品の並び替えは、関連商品の更新前に全行を処理履歴へ記録してから実行する。
  */
