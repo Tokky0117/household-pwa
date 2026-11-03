@@ -339,8 +339,8 @@ assert.equal(ui.scanChainForStore('COSTCO WHOLESALE')?.id,'c-a',
 assert.equal(ui.scanAutolinkUnmatched(),1,
  'a chain-specific product alias automatically selects the previously linked master');
 assert.equal(ui.getScanDraft().items[0].productId,'p-milk-1');
-assert.equal(ui.scanMatchProduct('マスタとは異なる印字略称','c-b'),'',
- 'other chains cannot inherit the alias');
+assert.equal(ui.scanMatchProduct('マスタとは異なる印字略称','c-b'),'p-milk-1',
+ 'same uniquely confirmed print name matches across chains');
 const receiptReview=ui.receiptScanView();
 assert.ok(!receiptReview.includes('name="confirmed"')&&
  !receiptReview.includes('name="difference"'),

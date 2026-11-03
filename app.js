@@ -424,7 +424,10 @@ const scanVariantKey=value=>norm(value)
  .replace(/[\u3041-\u3096]/g,c=>String.fromCharCode(c.charCodeAt(0)+96))
  .replace(/[\s\p{P}\p{S}]/gu,'');
 function scanNameEvidence(){
- if(scanMatchCache)return scanMatchCache;
+ if(scanMatchCache?.products===catalogue.products&&
+    scanMatchCache?.aliases===catalogue.productAliases&&
+    scanMatchCache?.records===liveRecords&&
+    scanMatchCache?.itemCount===allPreviewItems().length)return scanMatchCache;
  const exact=new Map(),variants=new Map(),active=new Set(catalogue.products.map(p=>p.id));
  const add=(raw,productId,chainId='')=>{
   const name=norm(raw);
@@ -444,7 +447,8 @@ function scanNameEvidence(){
  for(const line of allPreviewItems())
   if(!line.deleted_at&&records.has(line.record_id))
    add(line.raw_name,line.product_id,records.get(line.record_id));
- return scanMatchCache={exact,variants};
+ return scanMatchCache={exact,variants,products:catalogue.products,
+  aliases:catalogue.productAliases,records:liveRecords,itemCount:allPreviewItems().length};
 }
 function scanMatchProduct(raw,chainId=null){
  const entries=scanNameEvidence().exact.get(norm(raw))||[];
