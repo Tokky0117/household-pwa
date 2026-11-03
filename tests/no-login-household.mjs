@@ -169,7 +169,7 @@ function completeOcrImport(session){
   items:items.map((x,i)=>({rowId:x.ocrRowId,ocrName:x.ocrRawName,
    nameCandidate:receipt.items[i].nameCandidate??null}))};
  session.window.document.getElementById('chatgpt-input').value=JSON.stringify(assistant);
- completeOcrImport(session);
+ session.window.document.querySelector('[data-act="chatGptImport"]').click();
  if(!session.window.document.getElementById('scanConfirmForm'))
   throw Error('OCR-bound import did not return to receipt review');
 }
