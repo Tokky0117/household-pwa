@@ -400,7 +400,7 @@ function scanChainForStore(raw){
  return partial.length===1?partial[0]:null;
 }
 function scanAutolinkUnmatched(){
- if(!scanDraft?.chainId)return 0;
+ if(!scanDraft)return 0;
  let added=0;
  for(const item of scanDraft.items){
   if(item.productId||!item.name)continue;
@@ -421,12 +421,13 @@ function learnConfirmedReceiptLine(item,chainId){
 function scanMatchProduct(raw,chainId=null){
  const name=norm(raw);
  if(!name)return '';
- const exact=catalogue.products.filter(p=>norm(p.name)===name);
- if(exact.length)return exact.length===1?exact[0].id:'';
- const matches=(catalogue.productAliases||[]).filter(a=>
-  a.chainId===chainId&&norm(a.normalizedAlias)===name);
+ // Chain-scoped print aliases have priority. Conflicting aliases are ambiguous.
+ const matches=chainId?(catalogue.productAliases||[]).filter(a=>
+  a.chainId===chainId&&norm(a.normalizedAlias)===name):[];
  const ids=[...new Set(matches.map(a=>a.productId))];
- return ids.length===1?ids[0]:'';
+ if(ids.length)return ids.length===1?ids[0]:'';
+ const exact=catalogue.products.filter(p=>norm(p.name)===name);
+ return exact.length===1?exact[0].id:'';
 }
 function chatGptDraft(parsed){
  const store=String(parsed.storeName||'').trim();
@@ -440,7 +441,8 @@ function chatGptDraft(parsed){
    const amount=Number.isSafeInteger(i.taxIncludedAmount)?i.taxIncludedAmount:'';
    const issues=[...(i.issues||[])];
    if(amount==='')issues.push('税込金額を確認');
-   return {name,quantity:i.quantity||1,amount,productId:scanMatchProduct(name,chain?.id||null),issues};
+   const productId=scanMatchProduct(name,chain?.id||null);
+   return {name,quantity:i.quantity||1,amount,productId,autoLinked:!!productId,issues};
   })};
 }
 const scanDate=text=>{
@@ -558,8 +560,9 @@ async function runReceiptScan(){
     if(price==='')issues.push('税込金額を原本で確認');
     if(item.quantitySource==='default'||item.quantitySource==='inferred_candidate')
      issues.push('数量を確認');
+    const productId=matched.length===1?matched[0].id:'';
     allItems.push({name:n,ocrRawName:n,quantity:item.quantity||1,amount:price,
-     productId:matched.length===1?matched[0].id:'',issues});
+     productId,autoLinked:!!productId,issues});
    }
    if(Number.isSafeInteger(out.parsed.receiptTotal))total=out.parsed.receiptTotal;
   }
@@ -575,7 +578,10 @@ async function runReceiptScan(){
     item.issues.push('過去に確認したOCR補正候補（今回も原本確認）');
     item.name=correction;
    }
-   if(!item.productId)item.productId=scanMatchProduct(item.name,scanDraft.chainId);
+   if(!item.productId){
+    item.productId=scanMatchProduct(item.name,scanDraft.chainId);
+    item.autoLinked=!!item.productId;
+   }
   });
   saveScanDraft();
   scanStatus='読み取り完了：'+allItems.length+'明細。原本と照合して修正してください。';
@@ -1078,7 +1084,8 @@ app.addEventListener('change',e=>{
  if(e.target.id==='scan-chain'){
   document.getElementById('scan-new-chain-wrap').hidden=e.target.value!=='__new__';
   if(scanDraft){
-   syncScanReview();
+   const previousChainId=scanDraft.chainId;
+   const changedLinks=syncScanReview();
    const chainId=scanDraft.chainId;
    const learned=scanAutolinkUnmatched();
    saveScanDraft();
@@ -1091,25 +1098,51 @@ app.addEventListener('change',e=>{
     for(const item of scanDraft.items.filter(x=>x.manuallyLinked))
      learnConfirmedReceiptLine(item,chainId);
    }
-   if(learned){
+   if(learned)
     scanStatus=learned+'件の登録済み商品を自動照合しました。内容を確認してください。';
-    render();
-   }
+   // A chain change can remove the previous link without finding another.
+   if(previousChainId!==chainId||changedLinks||learned)render();
   }
  }
 });
 function syncScanReview(){
  const form=document.getElementById('scanConfirmForm');
  if(!form||!scanDraft)return;
- const d=new FormData(form);
- scanDraft.chainId=String(d.get('chain')||'')==='__new__'?null:String(d.get('chain')||'');
+ const d=new FormData(form),previousChainId=scanDraft.chainId;
+ const nextChainId=String(d.get('chain')||'')==='__new__'?null:String(d.get('chain')||'');
+ scanDraft.chainId=nextChainId;
  scanDraft.chainName=String(d.get('chain_name')||'');
  scanDraft.branchName=String(d.get('branch_name')||'');
  scanDraft.date=String(d.get('date')||scanDraft.date);
+ let relinked=false;
  for(let i=0;i<scanDraft.items.length;i++){
-  const it=scanDraft.items[i];
-  it.name=String(d.get('name-'+i)||'');
-  it.productId=String(d.get('product-'+i)||'');
+  const it=scanDraft.items[i],previousName=it.name;
+  const previousId=String(it.productId||'');
+  const nextName=String(d.get('name-'+i)||'');
+  const wasAutomatic=!it.manuallyLinked&&!!previousId&&
+   (it.autoLinked===true||scanMatchProduct(previousName,previousChainId)===previousId);
+  const needsMatch=previousChainId!==nextChainId||norm(previousName)!==norm(nextName);
+  it.name=nextName;
+  // Retailer/printed-name corrections invalidate automatic links only;
+  // explicit user choices must not be overwritten.
+  if(needsMatch&&!it.manuallyLinked&&(wasAutomatic||!previousId)){
+   it.productId=scanMatchProduct(nextName,nextChainId);
+   it.autoLinked=!!it.productId;
+   const hidden=form.querySelector('[name="product-'+i+'"]');
+   if(hidden)hidden.value=it.productId;
+   if(it.productId!==previousId){
+    relinked=true;
+    const label=form.querySelectorAll('.scan-review-item')[i]
+     ?.querySelector('.scan-product-association strong');
+    if(label){
+     const p=catalogue.products.find(x=>x.id===it.productId);
+     label.textContent=p?productTitle(p)+' ／ 日用品：'+linkedItemName(p):
+      '未照合（レシートだけの保存も可能）';
+    }
+   }
+  }else{
+   it.productId=String(d.get('product-'+i)||'');
+  }
   it.quantity=String(d.get('qty-'+i)||'');
   it.amount=String(d.get('amount-'+i)||'');
   const ocrLink=d.get('ocr-'+i);
@@ -1118,6 +1151,7 @@ function syncScanReview(){
    it.ocrRawName=linked?.name||'';
   }
  }
+ return relinked;
 }
 app.addEventListener('change',e=>{if(e.target.id==='onlyOut'){const wasOut=onlyOut;onlyOut=e.target.checked;if(wasOut&&!onlyOut)collapsed.clear();render()}});
 app.addEventListener('submit',e=>{e.preventDefault();const form=e.target;const d=new FormData(form);
@@ -1967,7 +2001,7 @@ app.addEventListener('input',e=>{
   return;
  }
  if(page==='recordScan'&&e.target.closest('#scanConfirmForm')){
-  syncScanReview();saveScanDraft();refreshScanDuplicateUI();refreshScanTotalUI();refreshScanTotalUI();
+  syncScanReview();saveScanDraft();refreshScanDuplicateUI();refreshScanTotalUI();
  }
 });
 // Only structured receipt draft fields are stored, never raw OCR or photos.
