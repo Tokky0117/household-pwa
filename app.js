@@ -1633,20 +1633,15 @@ if(action==='chatGptCopyPrompt'){
 if(action==='chatGptImport'){
  const parser=window.KurashiReceiptImport;
  try{
-  if(!parser)throw Error('解析機能が読み込まれていません');
-  const parsed=parser.parseChatGptReceiptJson(document.getElementById('chatgpt-input')?.value||'');
-  const incoming=chatGptDraft(parsed);
-  if(!incoming.items.length)throw Error('明細がありません');
-  scanDraft=chatGptFromScan&&scanDraft?.source==='ocr'?
-    compareOcrAndChatGpt(scanDraft,incoming):incoming;
-  // Keep selected photos in volatile memory for the user; do not upload.
-  saveScanDraft();scanStatus=scanDraft.source==='chatgpt-ocr'?
-    'OCRとChatGPTを比較しました。一意対応 '+scanDraft.matchedCount+
-    '件、対応未確定 '+scanDraft.unmatchedCount+'件。原本と照合してください。':
-    'ChatGPTの解析結果を取り込みました。原本と照合してください。';
+  if(!scanDraft||scanDraft.source!=='ocr')throw Error('先に写真をOCRで読み取ってください');
+  if(!parser)throw Error('補助解析機能を読み込めません');
+  const response=parser.parseChatGptOcrAssistJson(document.getElementById('chatgpt-input')?.value||'');
+  scanDraft=applyChatGptOcrAssistance(scanDraft,response);
+  saveScanDraft();
+  scanStatus='既存商品の自動照合と商品名候補の取り込みが完了しました。';
   page='recordScan';render();
  }catch(e){
-  chatGptError='解析結果を読み込めません：'+String(e?.message||e);
+  chatGptError='補助解析の結果を取り込めません：'+String(e?.message||e);
   const el=document.getElementById('chatgpt-error');if(el)el.textContent=chatGptError;
  }
  return;
