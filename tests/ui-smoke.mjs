@@ -23,7 +23,7 @@ const ui=vm.runInNewContext(source+`
  demoRecords,demoRecordItems,allPreviewRecords,allPreviewItems,
  setSelected(v){selected=v},setPage(v){page=v},setMode(v){priceScope=v},setDock(v){shopExpanded=v},
  setPeriod(v){period=v},setQty(v){compareQuantity=v},setUnit(v){compareUnit=v},
- setNewRecordType(v){newRecordType=v},recordAddView,
+ setNewRecordType(v){newRecordType=v},recordAddView,scanDate,
  setScanDraft(v){scanDraft=v},setScanProductRow(v){scanProductRow=v},setScanExistingQuery(v){scanExistingQuery=v},setOcrLearning(v){ocrLearning=v},getScanDraft(){return scanDraft},
  getCompare(){return [compareQuantity,compareUnit]},getSwipe(){return openSwipeId},
  getPeriod(){return period},getListHelpOpen(){return listHelpOpen},listHelpView,readListHelpOpen,catalogue:()=>catalogue})
@@ -406,3 +406,21 @@ assert.ok(batchOptional.includes('value="__skip__"')&&
  batchOptional.includes('商品だけ登録（日用品未紐付け）'),
  'batch lets user independently skip a product or create it without an item group');
 console.log('v62: nullable item group, chain+product alias rematch, no unnecessary total checkbox OK');
+
+// Regression: unrelated/invalid OCR dates must not silently become today's date.
+assert.equal(ui.scanDate('ユニクロ 商品 1,290円'),'', 'Missing purchase date requires user input');
+assert.equal(ui.scanDate('2026/02/30'),'', 'Invalid OCR date requires user input');
+assert.equal(ui.scanDate('2026/11/03'),'2026-11-03','Valid printed date is preserved');
+ui.setScanDraft({source:'ocr',date:'',chainId:'c-a',total:11550,printedCount:5,
+ items:[{name:'OCR商品',ocrRawName:'OCR商品',ocrRowId:'ocr-test',quantity:1,
+ amount:1290,productId:'',issues:[]}]});
+const countReview=ui.receiptScanView();
+assert.ok(countReview.includes('印字点数：5点')&&countReview.includes('scan-count-text'),
+ 'Printed item count is shown independently from extracted rows');
+assert.ok(countReview.includes('購入日をOCRで確定できませんでした'),
+ 'Unknown date warns the user before saving');
+assert.ok(source.includes('scanDraft.items.splice(Number(el.dataset.scanRow),1);saveScanDraft();'),
+ 'Deleting a false OCR merchandise row persists the corrected draft');
+assert.ok(source.includes("issues:['追加した明細を確認']});\\n saveScanDraft();render();return;".replace('\\\\n','\\n')),
+ 'Adding a missing merchandise row persists the corrected draft');
+console.log('v66: uncertain date, printed-count review, and draft row persistence OK');
