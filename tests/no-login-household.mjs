@@ -1096,7 +1096,10 @@ const kitJson={version:'kurashi-receipt-import-1',purchaseDate:'2026-11-02',
  }]};
 let kitSession=appSession();
 await waitFor(()=>kitSession.window.KurashiLive.state().loaded,'KitKat receipt bootstrap');
-await kitSession.window.KurashiLive.load(); // Include newly seeded item group, not cached IndexedDB data.
+await waitFor(()=>kitSession.window.KurashiLive.state().queued===0,
+ 'previous queued operations drain before KitKat registration');
+assert.equal(await kitSession.window.KurashiLive.load(),true,
+ 'KitKat form uses fresh Sheets groups rather than an outdated cached snapshot');
 kitSession.window.document.querySelector('[data-tab="receipt"]').click();
 kitSession.window.document.querySelector('[data-act="receiptChatGpt"]').click();
 kitSession.window.eval(importer);
@@ -1112,7 +1115,11 @@ assert.equal(kitForm.querySelector('[name="group"]').value,'',
 assert.equal(kitForm.querySelector('[name="name"]').value,kitRaw,
  'printed raw name only pre-fills editable canonical name');
 kitForm.querySelector('[name="name"]').value=kitCanonical;
+assert.ok([...kitForm.querySelector('[name="group"]').options].some(o=>o.value===chocId),
+ 'newly seeded chocolate item exists in product-group choices');
 kitForm.querySelector('[name="group"]').value=chocId;
+assert.equal(kitForm.querySelector('[name="group"]').value,chocId,
+ 'selected item group is present before creating canonical product');
 kitForm.dispatchEvent(new kitSession.window.Event('submit',{bubbles:true,cancelable:true}));
 await waitFor(()=>!!kitSession.window.document.getElementById('scanConfirmForm'),
  'new product returns directly to the same receipt');
