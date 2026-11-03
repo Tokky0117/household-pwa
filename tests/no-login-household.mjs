@@ -135,6 +135,45 @@ function appSession(idbFactory=factory){
  dom.window.document.dispatchEvent(new dom.window.Event('DOMContentLoaded',{bubbles:true}));
  return dom;
 }
+// Build a simulated *PWA OCR result* for existing integration scenarios.
+// This tests the production OCR -> ChatGPT-assist -> product/Sheets route
+// without requiring real camera pixels in the jsdom runner.
+function prepareOcrImport(session){
+ const field=session.window.document.createElement('textarea');
+ field.id='chatgpt-input';field.setAttribute('data-test-staging','true');
+ session.window.document.body.appendChild(field);
+}
+function completeOcrImport(session){
+ const staged=session.window.document.querySelector('#chatgpt-input[data-test-staging]');
+ if(!staged)throw Error('test OCR staging missing');
+ const receipt=JSON.parse(staged.value);staged.remove();
+ const items=receipt.items.map((line,i)=>({
+  name:String(line.name||''),ocrRawName:String(line.name||''),
+  ocrRowId:'row-'+(i+1),quantity:line.quantity||1,
+  quantityUncertain:line.quantity==null,amount:line.netAmount??'',
+  productId:'',issues:[]
+ }));
+ const draft={source:'ocr',date:receipt.purchaseDate||'2026-10-14',
+  chainId:null,chainName:'',rawStoreName:receipt.storeName||'',
+  total:receipt.receiptTotal??null,items};
+ session.window.eval('scanDraft='+JSON.stringify(draft)+';'+
+  'const matchStore=scanChainForStore(scanDraft.rawStoreName);'+
+  'scanDraft.chainId=matchStore?.id||null;'+
+  'scanDraft.chainName=matchStore?"":scanDraft.rawStoreName;'+
+  'scanDraft.items.forEach(x=>{x.productId=scanMatchProduct(x.ocrRawName,scanDraft.chainId);x.autoLinked=!!x.productId});'+
+  'page="recordScan";tab="receipt";render();');
+ const assist=session.window.document.querySelector('[data-act="chatGptAssist"]');
+ if(!assist)throw Error('OCR assistance action missing');
+ assist.click();
+ const assistant={version:'kurashi-receipt-assist-1',
+  items:items.map((x,i)=>({rowId:x.ocrRowId,ocrName:x.ocrRawName,
+   nameCandidate:receipt.items[i].nameCandidate??null}))};
+ session.window.document.getElementById('chatgpt-input').value=JSON.stringify(assistant);
+ completeOcrImport(session);
+ if(!session.window.document.getElementById('scanConfirmForm'))
+  throw Error('OCR-bound import did not return to receipt review');
+}
+
 const pause=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 async function waitFor(test,description){
  const limit=Date.now()+7000;
@@ -940,7 +979,7 @@ assert.ok(scanSession.window.document.querySelector('[data-dialog="discardScan"]
  'unsaved OCR input is protected');
 scanSession.window.document.querySelector('[data-dialog="discardScan"]').click();
 assert.ok(scanSession.window.document.querySelector('#receipt-source-picker'));
-scanSession.window.document.querySelector('[data-act="receiptChatGpt"]').click();
+prepareOcrImport(scanSession);
 assert.ok(scanSession.window.document.querySelector('#chatgpt-input'));
 const importer=readFileSync(new URL('../receipt-chatgpt-import.js',import.meta.url),'utf8');
 scanSession.window.eval(importer);
@@ -949,7 +988,7 @@ const chatJson={version:'kurashi-receipt-import-1',purchaseDate:'2026-10-14',
  printedCount:2,items:[{name:'新しいレシート品',code:null,quantity:2,
  unitPrice:220,grossAmount:440,discount:0,netAmount:440}]};
 scanSession.window.document.getElementById('chatgpt-input').value=JSON.stringify(chatJson);
-scanSession.window.document.querySelector('[data-act="chatGptImport"]').click();
+completeOcrImport(scanSession);
 assert.ok(scanSession.window.document.getElementById('scanConfirmForm'),
  'ChatGPT JSON uses the same edit and confirmation form as OCR');
 assert.ok(scanSession.window.document.querySelector('[name="name-0"]').value==='新しいレシート品');
@@ -1053,14 +1092,14 @@ console.log('v60: persistent OCR corrections with previous offline queue: OK');
 let bulkUI=appSession();
 await waitFor(()=>bulkUI.window.KurashiLive.state().loaded,'batch registration loaded');
 bulkUI.window.document.querySelector('[data-tab="receipt"]').click();
-bulkUI.window.document.querySelector('[data-act="receiptChatGpt"]').click();
+prepareOcrImport(bulkUI);
 bulkUI.window.eval(importer);
 const batchJson={...chatJson,receiptTotal:410,printedCount:1,items:[{
  name:'レシート一括登録テスト固有',code:null,quantity:1,
  unitPrice:410,grossAmount:410,discount:0,netAmount:410
 }]};
 bulkUI.window.document.querySelector('#chatgpt-input').value=JSON.stringify(batchJson);
-bulkUI.window.document.querySelector('[data-act="chatGptImport"]').click();
+completeOcrImport(bulkUI);
 assert.ok(bulkUI.window.document.querySelector('[data-act="scanBulkProducts"]'),
  'unmatched product offers batch create');
 bulkUI.window.document.querySelector('[data-act="scanBulkProducts"]').click();
@@ -1101,10 +1140,10 @@ await waitFor(()=>kitSession.window.KurashiLive.state().queued===0,
 assert.equal(await kitSession.window.KurashiLive.load(),true,
  'KitKat form uses fresh Sheets groups rather than an outdated cached snapshot');
 kitSession.window.document.querySelector('[data-tab="receipt"]').click();
-kitSession.window.document.querySelector('[data-act="receiptChatGpt"]').click();
+prepareOcrImport(kitSession);
 kitSession.window.eval(importer);
 kitSession.window.document.getElementById('chatgpt-input').value=JSON.stringify(kitJson);
-kitSession.window.document.querySelector('[data-act="chatGptImport"]').click();
+completeOcrImport(kitSession);
 assert.ok(kitSession.window.document.getElementById('scanConfirmForm'),
  'malformed name appears on receipt confirmation page');
 kitSession.window.document.querySelector('[data-act="scanNewProduct"]').click();
@@ -1170,10 +1209,10 @@ await waitFor(()=>!otherPhone.window.KurashiLive.state().cached,
 otherPhone.window.document.querySelector('[data-tab="receipt"]').click();
 assert.match(otherPhone.window.document.body.textContent,/キットカット濃い抹茶10袋/,
  'second iPhone displays the first iPhone purchase history');
-otherPhone.window.document.querySelector('[data-act="receiptChatGpt"]').click();
+prepareOcrImport(otherPhone);
 otherPhone.window.eval(importer);
 otherPhone.window.document.getElementById('chatgpt-input').value=JSON.stringify(kitJson);
-otherPhone.window.document.querySelector('[data-act="chatGptImport"]').click();
+completeOcrImport(otherPhone);
 const duplicateKitReview=otherPhone.window.document.getElementById('scanConfirmForm');
 assert.equal(duplicateKitReview.querySelector('[name="chain"]').value,kitStore.chain_id,
  'registered retailer is recognized on another iPhone');
@@ -1201,13 +1240,13 @@ await waitFor(()=>newPurchasePhone.window.KurashiLive.state().loaded&&
  !newPurchasePhone.window.KurashiLive.state().cached,
  'fresh second-device receipt load from Sheets');
 newPurchasePhone.window.document.querySelector('[data-tab="receipt"]').click();
-newPurchasePhone.window.document.querySelector('[data-act="receiptChatGpt"]').click();
+prepareOcrImport(newPurchasePhone);
 newPurchasePhone.window.eval(importer);
 const newKitPurchase={...kitJson,purchaseDate:'2026-11-03',receiptTotal:340,
  items:[{...kitJson.items[0],quantity:2,unitPrice:170,grossAmount:340,netAmount:340}]};
 newPurchasePhone.window.document.getElementById('chatgpt-input').value=
  JSON.stringify(newKitPurchase);
-newPurchasePhone.window.document.querySelector('[data-act="chatGptImport"]').click();
+completeOcrImport(newPurchasePhone);
 const repeatedKitReview=newPurchasePhone.window.document.getElementById('scanConfirmForm');
 assert.equal(repeatedKitReview.querySelector('[name="product-0"]').value,
  kitSavedProduct.product_id,'new purchase same printed name automatically links without new master');
@@ -1309,13 +1348,13 @@ let existingSession=appSession();
 await waitFor(()=>existingSession.window.KurashiLive.state().loaded,
  'existing-product search session');
 existingSession.window.document.querySelector('[data-tab="receipt"]').click();
-existingSession.window.document.querySelector('[data-act="receiptChatGpt"]').click();
+prepareOcrImport(existingSession);
 existingSession.window.eval(importer);
 const variant={...kitJson,receiptTotal:278,items:[{
  ...kitJson.items[0],name:'キットカット別レシート表記',unitPrice:278,grossAmount:278,netAmount:278
 }]};
 existingSession.window.document.getElementById('chatgpt-input').value=JSON.stringify(variant);
-existingSession.window.document.querySelector('[data-act="chatGptImport"]').click();
+completeOcrImport(existingSession);
 existingSession.window.document.querySelector('[data-act="scanPickExisting"]').click();
 assert.ok(existingSession.window.document.getElementById('scan-existing-search'));
 const existingSearch=existingSession.window.document.getElementById('scan-existing-search');
@@ -1353,10 +1392,10 @@ await waitFor(()=>standaloneSession.window.KurashiLive.state().queued===0,
 assert.equal(await standaloneSession.window.KurashiLive.load(),true,
  'refresh registered chains after pending writes have drained');
 standaloneSession.window.document.querySelector('[data-tab="receipt"]').click();
-standaloneSession.window.document.querySelector('[data-act="receiptChatGpt"]').click();
+prepareOcrImport(standaloneSession);
 standaloneSession.window.eval(importer);
 standaloneSession.window.document.getElementById('chatgpt-input').value=JSON.stringify(standaloneJson);
-standaloneSession.window.document.querySelector('[data-act="chatGptImport"]').click();
+completeOcrImport(standaloneSession);
 const standaloneForm=standaloneSession.window.document.getElementById('scanConfirmForm');
 assert.equal(standaloneForm.querySelector('[name="chain"]').value,'__new__',
  'unrecognized printed retailer initially needs explicit chain selection');
@@ -1397,10 +1436,10 @@ let readAgain=appSession();
 await waitFor(()=>readAgain.window.KurashiLive.state().loaded,
  'second ChatGPT import with persisted product/store aliases');
 readAgain.window.document.querySelector('[data-tab="receipt"]').click();
-readAgain.window.document.querySelector('[data-act="receiptChatGpt"]').click();
+prepareOcrImport(readAgain);
 readAgain.window.eval(importer);
 readAgain.window.document.getElementById('chatgpt-input').value=JSON.stringify(standaloneJson);
-readAgain.window.document.querySelector('[data-act="chatGptImport"]').click();
+completeOcrImport(readAgain);
 const matchedReview=readAgain.window.document.getElementById('scanConfirmForm');
 assert.equal(matchedReview.querySelector('[name="chain"]').value,standaloneChainId,
  're-read recognizes COSTCO WHOLESALE as registered コストコ');
@@ -1446,10 +1485,10 @@ await waitFor(()=>relinkSession.window.KurashiLive.state().queued===0,
  'finish earlier alias operations before chain reassignment');
 await relinkSession.window.KurashiLive.load();
 relinkSession.window.document.querySelector('[data-tab="receipt"]').click();
-relinkSession.window.document.querySelector('[data-act="receiptChatGpt"]').click();
+prepareOcrImport(relinkSession);
 relinkSession.window.eval(importer);
 relinkSession.window.document.getElementById('chatgpt-input').value=JSON.stringify(standaloneJson);
-relinkSession.window.document.querySelector('[data-act="chatGptImport"]').click();
+completeOcrImport(relinkSession);
 const reviewField=(name)=>relinkSession.window.document
  .querySelector('#scanConfirmForm [name="'+name+'"]');
 assert.equal(reviewField('product-0').value,standaloneProduct.product_id,
@@ -1510,13 +1549,13 @@ await waitFor(()=>historySession.window.KurashiLive.state().queued===0,
 assert.equal(await historySession.window.KurashiLive.load(),true,
  'history fresh Sheets snapshot has been fetched');
 historySession.window.document.querySelector('[data-tab="receipt"]').click();
-historySession.window.document.querySelector('[data-act="receiptChatGpt"]').click();
+prepareOcrImport(historySession);
 historySession.window.eval(importer);
 const historyJson={...kitJson,storeName:'コストコ',purchaseDate:'2026-11-03',
  receiptTotal:221,items:[{...kitJson.items[0],name:historyRaw,
   unitPrice:221,grossAmount:221,netAmount:221}]};
 historySession.window.document.querySelector('#chatgpt-input').value=JSON.stringify(historyJson);
-historySession.window.document.querySelector('[data-act="chatGptImport"]').click();
+completeOcrImport(historySession);
 const hfield=name=>historySession.window.document.querySelector('#scanConfirmForm [name="'+name+'"]');
 assert.equal(hfield('product-0').value,historyId,
  'second receipt at a DIFFERENT chain uses a saved OCR dictionary alias');
@@ -1549,13 +1588,13 @@ await waitFor(()=>shelfSession.window.KurashiLive.state().queued===0,
 assert.equal(await shelfSession.window.KurashiLive.load(),true,
  'shelf fresh Sheets snapshot has been fetched');
 shelfSession.window.document.querySelector('[data-tab="receipt"]').click();
-shelfSession.window.document.querySelector('[data-act="receiptChatGpt"]').click();
+prepareOcrImport(shelfSession);
 shelfSession.window.eval(importer);
 shelfSession.window.document.querySelector('#chatgpt-input').value=JSON.stringify({
  ...historyJson,receiptTotal:215,
  items:[{...historyJson.items[0],name:shelfRaw,unitPrice:215,grossAmount:215,netAmount:215}]
 });
-shelfSession.window.document.querySelector('[data-act="chatGptImport"]').click();
+completeOcrImport(shelfSession);
 assert.equal(shelfSession.window.document.querySelector('[name="product-0"]').value,historyId,
  'shelf OCR aliases also teach next receipt');
 shelfSession.window.close();
@@ -1593,12 +1632,12 @@ await waitFor(()=>conflictSession.window.KurashiLive.state().queued===0,
 assert.equal(await conflictSession.window.KurashiLive.load(),true,
  'conflict fresh Sheets snapshot has been fetched');
 conflictSession.window.document.querySelector('[data-tab="receipt"]').click();
-conflictSession.window.document.querySelector('[data-act="receiptChatGpt"]').click();
+prepareOcrImport(conflictSession);
 conflictSession.window.eval(importer);
 conflictSession.window.document.querySelector('#chatgpt-input').value=JSON.stringify({
  ...historyJson,storeName:'初めての不明チェーンXY'
 });
-conflictSession.window.document.querySelector('[data-act="chatGptImport"]').click();
+completeOcrImport(conflictSession);
 assert.equal(conflictSession.window.document.querySelector('[name="product-0"]').value,'',
  'without retailer context an ambiguous confirmed name stays unlinked');
 assert.ok(conflictSession.window.document.querySelectorAll(
