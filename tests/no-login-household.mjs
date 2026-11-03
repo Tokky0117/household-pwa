@@ -182,7 +182,7 @@ assert.equal(temp.db.processed_operations.length,afterCommit,
  'GAS did not create an extra processed operation');
 assert.equal(pill(c),'なし');
 c.window.document.querySelector('[data-tab="settings"]').click();
-assert.match(c.window.document.body.textContent,/試作 v0\.62\.1/);
+assert.match(c.window.document.body.textContent,/試作 v0\.63\.0/);
 
 // New item IDs can be referenced by edits/hides before the first GAS save.
 online=false;
