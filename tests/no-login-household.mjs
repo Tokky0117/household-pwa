@@ -1575,6 +1575,10 @@ assert.equal(hfield('product-0').value,historyId,
 assert.equal(historySession.window.document.querySelector('.scan-ocr-name').textContent,
  historyRaw,'printed name remains unchanged');
 assert.equal(hfield('name-0'),null,'OCR text is not an editable input');
+historySession.window.close();
+historySession=appSession();
+await waitFor(()=>historySession.window.KurashiLive.state().loaded,'new OCR reading session loaded');
+historySession.window.document.querySelector('[data-tab="receipt"]').click();
 prepareOcrImport(historySession);
 historySession.window.document.getElementById('chatgpt-input').value=JSON.stringify({
  ...historyJson,items:[{...historyJson.items[0],name:'カタカナ 直売X123'}]
