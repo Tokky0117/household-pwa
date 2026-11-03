@@ -1029,11 +1029,7 @@ function fieldNotice(form,message,fieldId){
  note.textContent=message;
  field.querySelector('input,textarea,.ui-select-trigger')?.focus();
 }
-app.addEventListener('input',e=>{if(e.target.id==='alias-query'){
- aliasQuery=e.target.value;
- const rows=document.getElementById('alias-results');
- if(rows)rows.innerHTML=aliasManageRows();return;
-}if(e.target.id==='master-product-query'){
+app.addEventListener('input',e=>{if(e.target.id==='master-product-query'){
  masterQuery=e.target.value;
  const rows=document.getElementById('master-product-results');
  if(rows)rows.innerHTML=masterProductRows();return;
@@ -1178,7 +1174,7 @@ function commitItem(name,category){
 // 入力欄自体は再作成しない。日本語IMEの変換中もフォーカスと入力状態を維持する。
 let composing=false;
 function updateSearchResults(){const target=document.getElementById('item-results');if(target)target.innerHTML=listResults()}
-const searchBindings={search:{set:v=>{query=v},update:updateSearchResults},'catalogue-search':{set:v=>{pickQuery=v},update:()=>{const target=document.getElementById('catalogue-results');if(target)target.innerHTML=pickerResults()}}};
+const searchBindings={search:{set:v=>{query=v},update:updateSearchResults},'catalogue-search':{set:v=>{pickQuery=v},update:()=>{const target=document.getElementById('catalogue-results');if(target)target.innerHTML=pickerResults()}},'alias-query':{set:v=>{aliasQuery=v},update:()=>{const rows=document.getElementById('alias-results');if(rows)rows.innerHTML=aliasManageRows()}}};
 function syncSearch(input,refresh=true){const binding=searchBindings[input.id];if(!binding)return;binding.set(input.value);input.closest('.ui-search')?.querySelector('.clear-search')?.toggleAttribute('hidden',!input.value);if(refresh)binding.update()}
 app.addEventListener('compositionstart',e=>{if(searchBindings[e.target.id])composing=true});
 app.addEventListener('compositionend',e=>{if(searchBindings[e.target.id]){composing=false;syncSearch(e.target)}});
