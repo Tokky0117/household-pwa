@@ -1787,7 +1787,7 @@ app.addEventListener('change',e=>{
   receiptScanFormValues();
   const index=Number(e.target.name.slice(8));
   if(Number.isInteger(index)&&receiptScan.items[index])receiptScan.items[index].autoMatched=false;
-  return;
+  render();return;
  }
  if(['receipt-camera','receipt-photo'].includes(e.target.id)){
  const photo=e.target.files?.[0];
