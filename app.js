@@ -475,11 +475,11 @@ function scanSuggestionButtons(item,row){
 }
 const scanDate=text=>{
  const found=String(text).match(/(?:20)?(2[0-9])\s*[\/-年.]\s*(0?[1-9]|1[0-2])\s*[\/-月.]\s*([0-2]?[0-9]|3[01])\s*日?/);
- if(!found)return daysFromDate(new Date());
+ if(!found)return ''; // Unknown date must be explicitly confirmed.
  const y=2000+Number(found[1]),m=Number(found[2]),d=Number(found[3]);
  const actual=new Date(y,m-1,d);
  return actual.getFullYear()===y&&actual.getMonth()===m-1&&actual.getDate()===d?
-  [y,String(m).padStart(2,'0'),String(d).padStart(2,'0')].join('-'):daysFromDate(new Date());
+  [y,String(m).padStart(2,'0'),String(d).padStart(2,'0')].join('-'):'';
 };
 function scanOptionsProduct(selected='',rawName=''){
  // A product created offline first appears under local-id, then receives the
@@ -513,6 +513,7 @@ function scanFormView(){
   <label class="scan-field" id="scan-new-chain-wrap" ${scanDraft.chainId?'hidden':''}>新しいチェーン名<input name="chain_name" maxlength="80" placeholder="新しいチェーン名" value="${esc(scanDraft.chainName||'')}"></label>
   <label class="scan-field">支店名（任意）<input name="branch_name" maxlength="80" placeholder="例：駅前店" value="${esc(scanDraft.branchName||'')}"></label>
   <label class="scan-field">購入日<input name="date" type="date" required value="${esc(scanDraft.date)}"></label>
+   ${!scanDraft.date?'<p class="scan-warning">購入日をOCRで確定できませんでした。レシートを見て入力してください。</p>':''}
   ${scanDraft.items.map((item,i)=>`<div class="panel scan-review-item">
     <div class="row" style="justify-content:space-between"><strong>明細 ${i+1}</strong><button type="button" class="tertiary" data-act="scanRemoveItem" data-scan-row="${i}">削除</button></div>
     ${item.issues.length?'<p class="scan-warning">要確認：'+esc(item.issues.join('、'))+'</p>':''}
@@ -538,6 +539,7 @@ function scanFormView(){
   ${scanDraft.items.some(x=>!x.productId&&x.name.trim())?'<button type="button" class="secondary" data-act="scanBulkProducts">未照合商品をまとめて登録</button>':''}
   <div class="panel">
    <p>印字合計：${scanDraft.total===null?'未検出':yen(scanDraft.total)}</p>
+    ${Number.isSafeInteger(scanDraft.printedCount)?'<p>印字点数：'+scanDraft.printedCount+'点</p><p id="scan-count-text" class="hint"></p>':''}
    <p id="scan-sum-text" class="hint">明細合計を表示します。レシート原本と照合してから保存してください。</p>
    <div id="scan-duplicate-warning" ${scanDuplicates(scanDraft).length?'':'hidden'}>
     <p class="scan-warning">同じ店舗・日付・明細のレシートが登録されています。</p>
@@ -569,7 +571,7 @@ async function runReceiptScan(){
  render();
  try{
   const engine=scanRuntime||(scanRuntime=await import('./ocr-engine/engine.js'));
-  const observations=[],allItems=[];let total=null;
+  const observations=[],allItems=[];let total=null,printedCount=null;
   for(let i=0;i<scanPhotos.length;i++){
    if(token!==scanToken)return;
    scanStatus='写真 '+(i+1)+' / '+scanPhotos.length+' を解析しています…';
@@ -588,12 +590,13 @@ async function runReceiptScan(){
      quantityUncertain,amount:price,productId,autoLinked:!!productId,issues});
    }
    if(Number.isSafeInteger(out.parsed.receiptTotal))total=out.parsed.receiptTotal;
+   if(scanPhotos.length===1&&Number.isSafeInteger(out.parsed.printedCount))printedCount=out.parsed.printedCount;
   }
   if(token!==scanToken)return;
   if(!allItems.length)throw Error('商品明細を抽出できませんでした。別の写真で読み取りを試してください。');
   const raw=observations.join('\n');
   const chain=scanChainForStore(raw.slice(0,800));
-  scanDraft={items:allItems,total,date:scanDate(raw),source:'ocr',
+  scanDraft={items:allItems,total,printedCount,date:scanDate(raw),source:'ocr',
    chainId:chain?.id||null,chainName:''};
   scanDraft.items.forEach(item=>{
    item.productId=scanMatchProduct(item.ocrRawName,scanDraft.chainId);
@@ -1768,11 +1771,11 @@ if(action==='scanRemovePhoto'){
  scanDraft=null;scanToken++;render();return;
 }
 if(action==='scanRemoveItem'&&scanDraft){
- syncScanReview();scanDraft.items.splice(Number(el.dataset.scanRow),1);render();return;
+ syncScanReview();scanDraft.items.splice(Number(el.dataset.scanRow),1);saveScanDraft();render();return;
 }
 if(action==='scanAddItem'&&scanDraft){
  syncScanReview();scanDraft.items.push({name:'',inputOrigin:'manual',quantity:1,quantityUncertain:false,amount:'',productId:'',issues:['追加した明細を確認']});
- render();return;
+ saveScanDraft();render();return;
 }
 if(action==='newReceipt'||action==='newShelf'){newRecordType=action==='newReceipt'?'receipt':'shelf';page='recordAdd';render();return}
 if(action==='prevMonth'||action==='nextMonth'){
@@ -2111,6 +2114,16 @@ function refreshScanTotalUI(){
  const node=document.getElementById('scan-sum-text');
  if(!form||!node||!scanDraft)return;
  const d=new FormData(form);
+ const countNode=document.getElementById('scan-count-text');
+ if(countNode){
+  const quantities=scanDraft.items.map((_,i)=>String(d.get('qty-'+i)||'').trim());
+  const valid=quantities.every(v=>/^\d+$/.test(v)&&Number.isSafeInteger(Number(v))&&Number(v)>0);
+  const count=valid?quantities.reduce((sum,v)=>sum+Number(v),0):null;
+  const mismatch=count!==null&&count!==scanDraft.printedCount;
+  countNode.textContent=count===null?'購入点数：数量未確定の行があります。':
+   '購入点数：'+count+'点'+(mismatch?'／印字点数と一致しません。明細の過不足を確認してください。':'／印字点数と一致');
+  countNode.classList.toggle('scan-warning',mismatch);
+ }
  let sum=0;
  for(let i=0;i<scanDraft.items.length;i++){
   const raw=String(d.get('amount-'+i)||'').trim();
