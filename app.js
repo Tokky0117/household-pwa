@@ -1440,6 +1440,31 @@ app.addEventListener('submit',e=>{e.preventDefault();const form=e.target;const d
  if(!savePreviewRecord(input)){fieldNotice(form,'記録の金額・個数・商品・チェーンを確認してください','record-amount');return}
  page='list';tab='receipt';render();return;
  }if(form.id==='itemForm'){const i=page==='edit'?current():null;saveItem(String(d.get('name')??i?.name??'').trim(),Number(d.get('category')??i?.category??0))}
+if(form.id==='masterProductForm'){
+ const name=String(d.get('name')||'').trim(),qt=String(d.get('quantity')||'').trim();
+ const quantity=qt===''?null:Number(qt.replace(',','.'));
+ const unit=quantity===null?null:String(d.get('unit')||'');
+ const p=masterProductId?catalogue.products.find(x=>x.id===masterProductId):null;
+ if(masterProductId&&!p){fieldNotice(form,'商品が見つかりません','master-product-name');return}
+ if(!name||name.length>80||(quantity!==null&&(!Number.isFinite(quantity)||quantity<=0))||
+    (unit!==null&&!UNIT_OPTIONS.includes(unit))){
+  fieldNotice(form,'商品名・内容量・単位を確認してください','master-product-name');return;
+ }
+ if(catalogue.products.some(x=>x.id!==p?.id&&norm(x.name)===norm(name)&&
+   (x.packageQuantity??null)===quantity&&(x.packageUnit??null)===unit)){
+  fieldNotice(form,'同じ商品名・内容量の商品が登録済みです','master-product-name');return;
+ }
+ const action=p?'product.update':'product.create';
+ const payload=p?{product_id:p.id,version:p.version,name,package_quantity:quantity,package_unit:unit}:
+  {item_group_id:String(d.get('group')||'')||null,name,package_quantity:quantity,package_unit:unit};
+ const submit=form.querySelector('[type="submit"]');if(submit?.disabled)return;
+ if(submit)submit.disabled=true;
+ window.KurashiLive.save(action,payload).then(()=>{
+  masterProductId=null;page='masterProducts';render();
+ }).catch(err=>{if(submit)submit.disabled=false;
+  fieldNotice(form,err.message||'商品マスタを保存できませんでした','master-product-name')});
+ return;
+}
 if(form.id==='productCreateForm'){
  const name=String(d.get('name')||'').trim(),quantity=Number(String(d.get('quantity')||'').replace(',','.')),unit=String(d.get('unit')||'');
  if(!name||(String(d.get('quantity')||'').trim()!==''&&(!Number.isFinite(quantity)||quantity<=0))||!UNIT_OPTIONS.includes(unit)){fieldNotice(form,'商品名・内容量・単位を確認してください',!name?'new-product-name':'new-product-quantity');return}
