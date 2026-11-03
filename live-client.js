@@ -114,10 +114,15 @@
     continue;
    }
    if(op.kind==='alias-create'){
-    snap.product_aliases.push({alias_id:op.clientId,product_id:op.productId,
+    snap.product_aliases.push({alias_id:op.clientId,product_id:op.productId||'',
      chain_id:op.chainId,normalized_alias:op.alias.normalize('NFKC')
       .trim().replace(/\s+/g,' ').toLocaleLowerCase('ja'),
-     version:1});
+     ocr_name:op.alias,version:1});
+    continue;
+   }
+   if(op.kind==='alias-link'){
+    const alias=snap.product_aliases.find(a=>a.alias_id===op.aliasId);
+    if(alias){alias.product_id=op.productId||'';alias.version=Number(alias.version)+1}
     continue;
    }
    if(op.kind==='record-create'){
