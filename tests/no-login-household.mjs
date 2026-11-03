@@ -163,7 +163,7 @@ function completeOcrImport(session){
   'scanDraft.items.forEach(x=>{x.productId=scanMatchProduct(x.ocrRawName,scanDraft.chainId);x.autoLinked=!!x.productId});'+
   'page="recordScan";tab="receipt";render();');
  const assist=session.window.document.querySelector('[data-act="chatGptAssist"]');
- if(!assist)throw Error('OCR assistance action missing: '+JSON.stringify(session.window.eval('({page,tab,source:scanDraft?.source,rows:receiptOcrRows(scanDraft).length,preview:receiptScanView().slice(0,340)})')));
+ if(!assist)throw Error('OCR assistance action missing: '+JSON.stringify(session.window.eval('({page,tab,source:scanDraft?.source,rows:receiptOcrRows(scanDraft).length,viewHasAssist:receiptScanView().includes('chatGptAssist'),domHasAssist:document.body.innerHTML.includes('chatGptAssist'),domHasForm:!!document.getElementById('scanConfirmForm'),bodyEnd:document.body.innerHTML.slice(-500)})')));
  assist.click();
  const assistant={version:'kurashi-receipt-assist-1',
   items:items.map((x,i)=>({rowId:x.ocrRowId,ocrName:x.ocrRawName,
