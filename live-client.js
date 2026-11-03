@@ -989,10 +989,12 @@
       ...ws.base.stores.filter(x=>x.chain_id!==result.entity.chain_id),result.entity]}
      :plan.action==='record.create'?{
        records:[...(ws.base.records||[]),result.record],
-       record_items:[...(ws.base.record_items||[]),...result.items]}
+       record_items:[...(ws.base.record_items||[]),...result.items],
+       product_aliases:[...(ws.base.product_aliases||[]),...(result.aliases||[])]}
      :plan.action==='record.update'?{
        records:[...(ws.base.records||[]).filter(r=>r.record_id!==result.record.record_id),result.record],
-       record_items:[...(ws.base.record_items||[]).filter(i=>i.record_id!==result.record.record_id),...result.items]}
+       record_items:[...(ws.base.record_items||[]).filter(i=>i.record_id!==result.record.record_id),...result.items],
+       product_aliases:[...(ws.base.product_aliases||[]),...(result.aliases||[])]}
      :plan.action==='record.delete'?{
        records:(ws.base.records||[]).filter(r=>r.record_id!==result.record.record_id),
        record_items:(ws.base.record_items||[]).filter(i=>i.record_id!==result.record.record_id)}
