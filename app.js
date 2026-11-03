@@ -827,6 +827,31 @@ function masterProductRows(){
   '<span class="catalogue-candidate-end" aria-hidden="true">'+chevron('right')+
   '</span></button>').join('')||'<div class="panel empty">該当する商品はありません</div>';
 }
+let aliasQuery='';
+function aliasManageRows(){
+ const q=norm(aliasQuery),aliases=(catalogue.productAliases||[]).filter(a=>
+  !q||norm(a.ocrName||a.normalizedAlias).includes(q)||
+  norm(catalogue.products.find(p=>p.id===a.productId)?.name||'').includes(q));
+ const sorted=aliases.slice().sort((a,b)=>Number(!a.productId)-Number(!b.productId)||
+  (a.ocrName||a.normalizedAlias).localeCompare(b.ocrName||b.normalizedAlias,'ja'));
+ return sorted.slice(0,100).map(a=>{
+  const chain=chainLabel(a.chainId);
+  const options=[{value:'',label:'商品未紐付け'},...catalogue.products.map(p=>({
+   value:p.id,label:productTitle(p)}))];
+  return '<form class="panel" data-alias-form="'+esc(a.aliasId)+'">'+
+   '<strong>'+esc(a.ocrName||a.normalizedAlias)+'</strong>'+
+   '<p class="hint">チェーン：'+esc(chain)+'（OCR名は編集不可）</p>'+
+   UI.formField({id:'alias-product-'+a.aliasId,name:'product',label:'紐付け商品',
+    control:'select',value:a.productId||'',options})+
+   '<button type="submit" class="secondary">紐付けを保存</button></form>';
+ }).join('')||'<div class="panel empty">該当するOCR名はありません</div>';
+}
+function aliasManageView(){
+ return head('OCR名辞書','商品との紐付け管理',true)+
+  '<main class="manage-main"><p class="hint">OCR名は変更せず、商品への紐付けだけを変更・解除できます。過去の購入明細の確定商品は変更しません。</p>'+
+  UI.searchField({id:'alias-query',label:'OCR名・登録商品で検索',placeholder:'OCR名を検索',value:aliasQuery})+
+  '<div id="alias-results" class="catalogue-rows">'+aliasManageRows()+'</div></main>';
+}
 function masterProductsView(){
  return head('商品マスタ','登録商品の管理',true)+
   '<main class="manage-main"><p class="hint">日用品に未紐付けの商品も登録・編集できます。商品マスタ自体は削除しません。</p>'+
@@ -898,7 +923,7 @@ function settingsView(){
      s.temporary?(s.loaded?'Google Sheets 接続済み（ログイン一時停止中）':'Google Sheets 自動読み込み中…'):
      !s.signedIn?'Googleログインが必要です':
      s.loaded?'Google Sheets 接続済み':'読み込み中…');
-  return `${head('設定','くらしストック_試作')}<main><div class="panel"><h2>データと同期</h2><div class="info-row row"><div><strong>同期状態</strong><div class="hint">${esc(syncStatus)}</div></div><span class="tag">${s.loaded?'接続済み':s.cached?'再接続中':'未接続'}</span></div>${s.loginRequired?(s.signedIn?'<button type="button" class="secondary" data-act="liveLogout">ログアウト</button>':'<div id="google-login-button"></div>') : ''}${s.error&&s.queued?'<p class="hint" role="alert">通信が回復すると自動で再送します。未反映の操作は端末に残っています。</p>':''}</div><div class="panel"><div class="info-row row"><div><strong>アプリバージョン</strong><div class="hint">試作 v${esc(APP_VERSION)}</div></div></div></div><div class="panel"><h2>商品マスタ</h2><p class="hint">日用品に未紐付けの商品も編集できます。</p><button type="button" class="secondary" data-act="masterProducts">商品マスタを管理</button></div></main>${nav()}`;
+  return `${head('設定','くらしストック_試作')}<main><div class="panel"><h2>データと同期</h2><div class="info-row row"><div><strong>同期状態</strong><div class="hint">${esc(syncStatus)}</div></div><span class="tag">${s.loaded?'接続済み':s.cached?'再接続中':'未接続'}</span></div>${s.loginRequired?(s.signedIn?'<button type="button" class="secondary" data-act="liveLogout">ログアウト</button>':'<div id="google-login-button"></div>') : ''}${s.error&&s.queued?'<p class="hint" role="alert">通信が回復すると自動で再送します。未反映の操作は端末に残っています。</p>':''}</div><div class="panel"><div class="info-row row"><div><strong>アプリバージョン</strong><div class="hint">試作 v${esc(APP_VERSION)}</div></div></div></div><div class="panel"><h2>商品マスタ</h2><p class="hint">日用品に未紐付けの商品も編集できます。</p><button type="button" class="secondary" data-act="masterProducts">商品マスタを管理</button></div><div class="panel"><h2>OCR名辞書</h2><p class="hint">読み取った明細名を登録商品に紐付けます。</p><button type="button" class="secondary" data-act="aliasManage">OCR名の紐付けを管理</button></div></main>${nav()}`;
  }
  return `${head('設定','くらしストック_試作')}<main><div class="panel"><h2>データと同期</h2><div class="info-row row"><div><strong>同期状態</strong><div class="hint">Google Sheets 接続前</div></div><span class="tag">未設定</span></div><button class="secondary" data-act="sync" style="width:100%">手動同期</button></div><div class="panel"><h2>試作版の操作</h2><p class="hint">変更内容はこの端末の localStorage のみに保存され、夫婦間では共有されません。</p><button class="secondary danger" data-act="reset">仮データを初期状態に戻す</button></div><div class="panel"><h2>今後の実装</h2><p class="hint">レシート／値札のチェーン照合、Google Apps Script 接続、認証、オフライン差分同期を追加予定です。</p></div></main>${nav()}`
 }
@@ -931,6 +956,7 @@ function pageView(){
   case 'scanBulkProducts': return receiptScanView();
   case 'scanExistingProduct': return receiptScanView();
   case 'masterProducts': return masterProductsView();
+  case 'aliasManage': return aliasManageView();
   case 'masterProductEdit': case 'masterProductNew': return masterProductEditorView();
   case 'productCreate': return productCreateView();
   case 'productEdit': return priceCompareView();
@@ -1002,7 +1028,11 @@ function fieldNotice(form,message,fieldId){
  note.textContent=message;
  field.querySelector('input,textarea,.ui-select-trigger')?.focus();
 }
-app.addEventListener('input',e=>{if(e.target.id==='master-product-query'){
+app.addEventListener('input',e=>{if(e.target.id==='alias-query'){
+ aliasQuery=e.target.value;
+ const rows=document.getElementById('alias-results');
+ if(rows)rows.innerHTML=aliasManageRows();return;
+}if(e.target.id==='master-product-query'){
  masterQuery=e.target.value;
  const rows=document.getElementById('master-product-results');
  if(rows)rows.innerHTML=masterProductRows();return;
@@ -1065,6 +1095,7 @@ function goBack(){
   render();
 }
 function back(){
+  if(page==='aliasManage'){page='list';tab='settings';render();return;}
   if(page==='scanExistingProduct'){page='recordScan';scanExistingQuery='';render();return;}
   if(page==='scanBulkProducts'){if(!scanBulkBusy){page='recordScan';render();}return;}
   if(page==='scanProduct'){page='recordScan';scanProductRow=null;render();return;}
@@ -1251,6 +1282,19 @@ function syncScanReview(){
 }
 app.addEventListener('change',e=>{if(e.target.id==='onlyOut'){const wasOut=onlyOut;onlyOut=e.target.checked;if(wasOut&&!onlyOut)collapsed.clear();render()}});
 app.addEventListener('submit',e=>{e.preventDefault();const form=e.target;const d=new FormData(form);
+ if(form.dataset.aliasForm){
+  if(!liveMode)return;
+  const aliasId=form.dataset.aliasForm;
+  const button=form.querySelector('[type="submit"]');
+  if(button?.disabled)return;
+  if(button)button.disabled=true;
+  window.KurashiLive.linkAlias(aliasId,String(d.get('product')||'')||null)
+   .then(()=>render()).catch(err=>{
+    if(button)button.disabled=false;
+    fieldNotice(form,err.message||'OCR名の紐付けを保存できませんでした');
+   });
+  return;
+ }
  if(form.id==='scanBulkProductsForm'){
   if(scanBulkBusy||!scanDraft)return;
   const candidates=scanBulkProductCandidates(),selected=[],byCanonical=new Map();
@@ -1711,6 +1755,7 @@ if(action==='scanExistingToNew'){
  if(!scanDraft)return;
  page='scanProduct';render();return;
 }
+if(action==='aliasManage'){aliasQuery='';tab='settings';page='aliasManage';render();return;}
 if(action==='masterProducts'){masterQuery='';masterProductId=null;tab='settings';page='masterProducts';render();return;}
 if(action==='masterProductNew'){masterProductId=null;page='masterProductNew';render();return;}
 if(action==='masterProductEdit'){
