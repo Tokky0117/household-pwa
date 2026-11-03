@@ -421,6 +421,6 @@ assert.ok(countReview.includes('購入日をOCRで確定できませんでした
  'Unknown date warns the user before saving');
 assert.ok(source.includes('scanDraft.items.splice(Number(el.dataset.scanRow),1);saveScanDraft();'),
  'Deleting a false OCR merchandise row persists the corrected draft');
-assert.ok(source.includes("issues:['追加した明細を確認']});\\n saveScanDraft();render();return;".replace('\\\\n','\\n')),
+assert.ok(/issues:\\['追加した明細を確認'\\]\\}\\);\\s*saveScanDraft\\(\\);render\\(\\);return;/.test(source),
  'Adding a missing merchandise row persists the corrected draft');
 console.log('v66: uncertain date, printed-count review, and draft row persistence OK');
