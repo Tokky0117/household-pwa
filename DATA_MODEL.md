@@ -1,5 +1,29 @@
 # くらしストック｜データモデル v1.8（正本契約・旧接続前資料）
 
+## 現行データモデル差分：v0.64.0（2026-11-03）
+
+> この節が現行の実装契約です。以下のv1.8定義・接続前のステータス・家計簿要件は**旧設計履歴**であり、本節や `OPERATION_QUEUE.md` と矛盾する場合は採用しません。本番環境は未構築で、試作GASと試作Sheetsへの反映は未完了です。
+
+| テーブル | 現行の責務 |
+| --- | --- |
+| `products` | 正式商品名・内容量・日用品リストへの任意参照 `item_group_id`。商品自体は削除しない |
+| `product_aliases` | `alias_id`、`chain_id`、`normalized_alias`、元のOCR表記 `ocr_name`、任意の `product_id`。OCR表記文字列は登録後不変で、`alias.link` により商品参照を変更・解除可能 |
+| `records` | レシート／値札共通ヘッダーとチェーン・日付 |
+| `record_items` | `record_id`、`alias_id`、購入時に確定した `product_id`、`quantity`、`amount_tax_included`、従来互換の `raw_name`／`category_id` |
+| `processed_operations`・`change_log` | GAS保存ジャーナル、重複防止・復旧・同期順序の管理。現状の家庭ID参照を維持 |
+
+- `record_items.amount_tax_included` は**購入数量すべての税込明細合計**。価格比較は `amount_tax_included / quantity` を端数丸め前に比較し、内容量換算とは区別します。
+- 新規明細は `record_items.alias_id` を指し、`raw_name` は空欄。既存明細の `raw_name` は変更せず、追加列 `alias_id` のみ補完。旧レシート表示は各行の元の `raw_name` を優先し、履歴上の金額・数量・商品IDは不変とします。
+- `product_aliases.product_id` が空欄でもOCR名を登録可能です。過去の `record_items.product_id` は辞書の新しい紐付けに連動させません。
+- ChatGPTの `nameCandidate` は**端末のレシート下書きに限る任意フィールド**。Sheetsには新たな列を設けません。類似表記は候補のみ、店舗内の正確な確定名は競合なしに限り自動選択します。
+- `record_items.category_id` と固定5カテゴリは旧データ互換目的で残し、家計簿の入力・集計・タブは廃止します。日用品分類の5カテゴリは引き続き現行です。
+- 既存Sheetsは **`product_aliases.ocr_name` と `record_items.alias_id` を末尾に1列ずつ追加**します。旧レシートの移行は非破壊・途中失敗の再実行を想定し、試作GAS反映前にバックアップを推奨します。
+- 家庭は1件ですが、`household_id` は認可・操作ID履歴・同期に依存するため、今回削除しません。将来、依存箇所をまとめて移行する宿題です。
+
+---
+
+## 旧v1.8データモデル（以下は履歴）
+
 > **実装状況更新（2026-11-02）**：旧「接続前」表記は履歴です。新GAS・新Sheetsへの日用品登録・更新は接続済み。試作 v0.52.0 ではIndexedDBに複数操作を永続保存するキュー方式へ変更しました。最新の実装契約は [操作キュー・同期設計](./OPERATION_QUEUE.md) を参照してください。商品作成・編集・日用品紐付けと日用品並び替えはv0.54.0までに接続済み。商品の並び替えもv0.55.0で接続済み。手入力のレシート・値札はv0.56.0で正式保存に接続済み。旧ラボで検証したPaddleOCRはv0.57.0で本流レシート確認画面へ移植。保存済み記録の編集・削除は未接続。家計簿タブの画面は現在「実装予定」の案内のみ（計算関数と保存データは保持）。
 
 更新：2026-10-18 ／ 対象：`stage-a-ui-handoff-review`

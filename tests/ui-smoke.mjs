@@ -244,6 +244,25 @@ const parsed=imports.parseChatGptReceiptJson(malformed);
 assert.equal(parsed.items.length,2,'malformed ChatGPT JSON is repaired without changing figures');
 assert.equal(parsed.reconciliation.netSum,5018);
 assert.equal(parsed.reconciliation.totalMatches,true);
+assert.equal(parsed.items[0].nameCandidate,null,
+ 'old ChatGPT JSON without nameCandidate remains accepted');
+const candidateJson=JSON.stringify({
+ version:'kurashi-receipt-import-1',purchaseDate:'2026-11-03',
+ storeName:'コストコ',taxBasis:'included',taxTotal:null,
+ receiptTotal:268,printedCount:1,items:[{
+  name:'キットカットコイマッチャ10フクロ',
+  nameCandidate:'キットカット濃い抹茶10袋',
+  code:null,quantity:1,unitPrice:268,grossAmount:268,
+  discount:0,netAmount:268
+ }]
+});
+const parsedCandidate=imports.parseChatGptReceiptJson(candidateJson);
+assert.equal(parsedCandidate.items[0].name,'キットカットコイマッチャ10フクロ',
+ 'printed name remains separate from canonical candidate');
+assert.equal(parsedCandidate.items[0].nameCandidate,'キットカット濃い抹茶10袋',
+ 'new ChatGPT JSON retains a noncommittal master-name candidate');
+assert.ok(source.includes('item.canonicalName||item.nameCandidate||item.name'),
+ 'canonical candidate only initializes editable master registration field');
 assert.equal(parsed.items[0].taxIncludedAmount,2638);
 assert.match(imports.makeChatGptReceiptPrompt('{"row":1,"name":"リンド一ル"}'),
  /参考OCR結果/,'prompt includes structured OCR reference');
