@@ -7,6 +7,16 @@
 - 主要な根拠：`household_pwa_requirements_basic_design(1).md`、`SCREEN_UI_SPEC.md`、`UI_GUIDELINES.md`、`DATA_MODEL.md`、`gas/README.md`、現行ソース。
 - 本書は上記のUI・業務仕様を置換しない。食い違いは**設計を修正してから実装**する。
 
+## 2026-11-03：実装14 レシート商品マスタとの紐付け（開発ブランチ）
+
+- **設計の正本を維持**：正式商品名は `products.name`、チェーン別レシート印字名は `product_aliases.normalized_alias`、日用品リストは `item_groups`、購入時の明細原表記は `record_items.raw_name`。新規シートは不要。商品に対する `products.item_group_id` は `null` を許容し、日用品への紐付けは**任意**。
+- **レシートから新商品を登録**：既存の確認画面に正式商品名・内容量・日用品への任意紐付けを追加する。確認済み `product.create` が完了したら、その明細の `product_id` を更新する。印字名が商品名と異なり、チェーンとサーバ機能が確認できる場合は、**別の保存操作** `product.alias.create` でチェーン付き別名を記憶する。各操作は別々の端末操作ジャーナル・操作IDとGAS排他・確認を経由する。未確定応答は自動再送しない。
+- **既存商品との再照合**：`bootstrap` と読取専用 `product.catalog` を家庭ID・Google subject・チェーンで確認してから、レシートの明細確認に候補表示。チェーン固有の印字名／商品コードは別チェーンに流用しない。曖昧な名称や重複候補は自動確定せず、利用者が選択する。購入履歴の確定保存は従来の `record.create` のみ。
+- **GAS互換性ゲート**：新GASの `product.catalog.alias_write_supported === true` を確認した場合に限り、印字名の永続登録ボタンと商品作成直後の自動別名保存を有効化する。旧デプロイで未対応の書込みを発行して操作キューを塞がない。機能ゲートが未確認のときも、通常の `product.create` は従来どおり利用する。
+- **確認UI**：余分な「支払合計」チェックを廃止し、原本・明細・合計・税込・税／値引きの確認を一つにまとめる。アプリ全体のピンチ操作は `touch-action: pan-y` を指定。日用品の元UI、既存の比較・登録導線を改作しない。
+- **品質ゲート**：`tests/gas-product-alias-transaction.mjs` と `tests/receipt-master-link-flow.mjs`、`tests/receipt-master-registration.mjs` を既存のオフラインCIに追加。GASの家庭・チェーン認可、別名衝突、保存中断・同一ID復旧、再読込照合、任意紐付けを模擬検証する。プレビュー用workflowは `receipt-product-matching.js` を配信し、古い壊れた分岐だけプレビュー対象から除外する。
+- **リリース境界**：現時点でGitHub開発ブランチとGitHub Pagesプレビューのみ更新。**既存の実GASデプロイ／Google Sheets実データ／`main` は変更していない。** オフライン回帰、プレビュー成功とiPhone上の保存・同一レシート再読込の実証は別。GAS差分の既存スクリプトへの反映、配信バージョンの一致、Safariでの確認が次の受入条件。
+
 ## 2026-11-01：元の長押し並び替えを既存GAS・Sheetsへ接続（実機受入前）
 
 - 日用品の同じカテゴリ内・商品の同じ日用品内の**元の長押しドラッグUI**を使い、`item.reorder`／`product.reorder`を送信する。常設同期ボタンや新規画面は追加しない。
