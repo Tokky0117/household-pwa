@@ -24,7 +24,7 @@ const form={fields:new Map([
  ['receipt_new_name','キットカット濃い抹茶10袋'],
  ['quantity',''],['unit','個'],['receipt_new_group','']
  ])};
-const appElement={innerHTML:'',addEventListener(type,handler){listeners[type]=handler},insertAdjacentHTML(){}};
+const appElement={innerHTML:'',addEventListener(type,handler){(listeners[type]??=[]).push(handler)},insertAdjacentHTML(){}};
 let counter=0;
 const win={scrollY:0,scrollTo(){},addEventListener(){},
  KurashiAuth:{status:()=>({signedIn:true,subject})},
@@ -92,7 +92,7 @@ const target={closest(selector){
  if(selector.includes('data-tab'))return button;
  return null;
 }};
-listeners.click({target});
+for(const listener of listeners.click)listener({target});
 for(let i=0;i<120&&storedAliases.length===0;i++)await Promise.resolve();
 assert.equal(mutations.length,2,'Product and alias must be separate journaled mutations: '+
  JSON.stringify(api.state()));
