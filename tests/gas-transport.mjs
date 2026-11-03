@@ -20,9 +20,9 @@ assert.equal(api.writeEnabled(),true);
 assert.equal(api.receiptWriteEnabled(),true);
 assert.equal(api.status().configured,true);
 for(const action of ['record.trial.replay','record.trial.main.create','record.trial.second.save',
- 'record.trial.preflight','product.alias.create'])
+ 'record.trial.preflight'])
  await assert.rejects(api.request(action,{}, {operationId:'legacy-op-001'}),/UNSUPPORTED/);
-for(const action of ['item.create','item.update','product.create','store.create','record.create']){
+for(const action of ['item.create','item.update','product.create','store.create','record.create','product.alias.create']){
  await assert.rejects(api.request(action,{}),/OPERATION_ID_REQUIRED/);
  await assert.rejects(api.request(action,{}, {operationId:'unsafe!'}),/OPERATION_ID_REQUIRED/);
 }
@@ -49,12 +49,12 @@ for(const action of ['bootstrap','record.preflight','record.list','household.sta
  assert.equal(seen.at(-1).operation_id,undefined,'Reads must never carry an operation ID');
 }
 const operationId='confirmed-idempotent-00001';
-for(const action of ['item.create','item.update','product.create','store.create','record.create']){
+for(const action of ['item.create','item.update','product.create','store.create','record.create','product.alias.create']){
  await api.request(action,{name:'確認済み'}, {operationId,fetcher});
  assert.equal(seen.at(-1).action,action);
  assert.equal(seen.at(-1).operation_id,operationId);
 }
-assert.equal(seen.length,12);
+assert.equal(seen.length,13);
 let attempts=0;
 await assert.rejects(api.request('record.create',{}, {operationId,fetcher:async()=>{
  attempts++;throw new TypeError('SIMULATED_NETWORK_LOSS');
