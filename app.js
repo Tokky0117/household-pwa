@@ -1624,11 +1624,14 @@ if(action==='chatGptAssist'){
 }
 if(action==='chatGptCopyPrompt'){
  const parser=window.KurashiReceiptImport;
- if(!parser){say('読み取り指示が準備できません');return;}
- navigator.clipboard.writeText(parser.makeChatGptOcrAssistPrompt(
-   receiptOcrReference(scanDraft)))
-  .then(()=>say('ChatGPT用の指示をコピーしました'))
-  .catch(()=>say('コピーできませんでした'));return;
+ try{
+  if(!scanDraft||scanDraft.source!=='ocr'||!parser)throw Error('OCR結果を確認してください');
+  const prompt=parser.makeChatGptOcrAssistPrompt(receiptOcrReference(scanDraft));
+  navigator.clipboard.writeText(prompt)
+   .then(()=>say('OCR結果と指示文をコピーしました'))
+   .catch(()=>say('コピーできませんでした'));
+ }catch(e){say(e.message||'指示文を作成できませんでした');}
+ return;
 }
 if(action==='chatGptImport'){
  const parser=window.KurashiReceiptImport;
