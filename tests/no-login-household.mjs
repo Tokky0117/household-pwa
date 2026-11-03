@@ -1093,6 +1093,7 @@ const kitJson={version:'kurashi-receipt-import-1',purchaseDate:'2026-11-02',
  }]};
 let kitSession=appSession();
 await waitFor(()=>kitSession.window.KurashiLive.state().loaded,'KitKat receipt bootstrap');
+await kitSession.window.KurashiLive.load(); // Include newly seeded item group, not cached IndexedDB data.
 kitSession.window.document.querySelector('[data-tab="receipt"]').click();
 kitSession.window.document.querySelector('[data-act="receiptChatGpt"]').click();
 kitSession.window.eval(importer);
@@ -1110,14 +1111,6 @@ assert.equal(kitForm.querySelector('[name="name"]').value,kitRaw,
 kitForm.querySelector('[name="name"]').value=kitCanonical;
 kitForm.querySelector('[name="group"]').value=chocId;
 kitForm.dispatchEvent(new kitSession.window.Event('submit',{bubbles:true,cancelable:true}));
-await pause(180);
-console.log('v62 diagnostic KitKat',JSON.stringify({
- state:kitSession.window.KurashiLive.state(),
- modal:kitSession.window.document.getElementById('scanProductForm')?.textContent?.slice(-700),
- snapshot:temp.call('bootstrap').data?.products?.slice(-4).map(x=>({
-  name:x.name,item_group_id:x.item_group_id
- }))
-}));
 await waitFor(()=>!!kitSession.window.document.getElementById('scanConfirmForm'),
  'new product returns directly to the same receipt');
 await waitFor(()=>temp.call('bootstrap').data.products.some(x=>
@@ -1203,6 +1196,7 @@ const standaloneJson={...kitJson,storeName:'COSTCO WHOLESALE',
 let standaloneSession=appSession();
 await waitFor(()=>standaloneSession.window.KurashiLive.state().loaded,
  'standalone product and chain bootstrap');
+await standaloneSession.window.KurashiLive.load(); // Include directly seeded chain from server.
 standaloneSession.window.document.querySelector('[data-tab="receipt"]').click();
 standaloneSession.window.document.querySelector('[data-act="receiptChatGpt"]').click();
 standaloneSession.window.eval(importer);
@@ -1214,12 +1208,6 @@ assert.equal(standaloneForm.querySelector('[name="chain"]').value,'__new__',
 standaloneForm.querySelector('[name="chain"]').value=standaloneChainId;
 standaloneForm.querySelector('[name="chain"]').dispatchEvent(
  new standaloneSession.window.Event('change',{bubbles:true}));
-await pause(180);
-console.log('v62 diagnostic store alias',JSON.stringify({
- state:standaloneSession.window.KurashiLive.state(),
- stores:temp.call('bootstrap').data?.stores?.filter(x=>x.chain_id===standaloneChainId),
- op:temp.db.processed_operations.slice(-3).map(x=>x.slice(0,3))
-}));
 await waitFor(()=>temp.call('bootstrap').data.stores.some(x=>
  x.chain_id===standaloneChainId&&String(x.aliases).includes('COSTCO WHOLESALE')),
  'confirmed retailer spelling is remembered via existing stores.aliases and queue');
