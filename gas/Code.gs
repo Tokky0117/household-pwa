@@ -384,7 +384,8 @@ function productCatalog_(user,book){
  }).map(r=>({alias_id:String(r.obj.alias_id||''),product_id:String(r.obj.product_id),
   chain_id:r.obj.chain_id==null||r.obj.chain_id===''?null:String(r.obj.chain_id),
   normalized_alias:String(r.obj.normalized_alias||'')}));
- return {household_id:hid,products,product_aliases:aliases,stores};
+ return {household_id:hid,products,product_aliases:aliases,stores,
+  alias_write_supported:approvedPrototypeAliasSheet_()};
 }
 
 /**
