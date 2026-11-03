@@ -48,6 +48,8 @@ function doPost(e) {
       return kurashiReply_({ok:true,data:kurashiMutateRecord_(user,action,payload,input.operation_id)});
     if (action === 'alias.upsert')
       return kurashiReply_({ok:true,data:kurashiUpsertAlias_(user,payload,input.operation_id)});
+    if (action === 'alias.link')
+      return kurashiReply_({ok:true,data:kurashiLinkAlias_(user,payload,input.operation_id)});
     if (action === 'store.alias.upsert')
       return kurashiReply_({ok:true,data:kurashiUpsertStoreAlias_(user,payload,input.operation_id)});
     kurashiFail_('UNSUPPORTED','未対応の操作です');
@@ -161,8 +163,14 @@ function kurashiSheet_(name,book) {
   const headers = KURASHI_NEW_SCHEMA[name], sheet = book.getSheetByName(name);
   if (!headers || !sheet) kurashiFail_('SCHEMA_ERROR','保存先のシート構成が不正です');
   const actual = sheet.getRange(1,1,1,headers.length).getValues()[0];
-  if (JSON.stringify(actual) !== JSON.stringify(headers))
-    kurashiFail_('SCHEMA_ERROR','保存先の列構成が不正です');
+  if (JSON.stringify(actual) !== JSON.stringify(headers)) {
+    // v2: only an additive, trailing column is allowed; never reorder data.
+    if (!['product_aliases','record_items'].includes(name) ||
+        JSON.stringify(actual.slice(0,-1))!==JSON.stringify(headers.slice(0,-1)) ||
+        actual[headers.length-1] !== '')
+      kurashiFail_('SCHEMA_ERROR','保存先の列構成が不正です');
+    sheet.getRange(1,headers.length,1,1).setValues([[headers[headers.length-1]]]);
+  }
   return sheet;
 }
 function kurashiRows_(name,book) {
@@ -205,6 +213,7 @@ function kurashiBootstrap_(user) {
         return state.status==='prepared';
       });
     if (pending) kurashiFail_('RECOVERY_REQUIRED','前回の保存を先に確認してください');
+    kurashiMigrateLegacyAliasRows_(book,hid);
     // Rename the exact new workbook once, preserving its ID and all rows.
     if (typeof book.getName==='function' && book.getName()==='くらしストック')
       book.setName('くらしストック_試作');
@@ -224,8 +233,11 @@ function kurashiBootstrap_(user) {
         const own=new Set(kurashiRows_('products',book).filter(x=>
           String(x.value.household_id)===hid&&!x.value.deleted_at)
           .map(x=>String(x.value.product_id)));
+        const chainIds=new Set(kurashiRows_('stores',book).filter(x=>
+          String(x.value.household_id)===hid).map(x=>String(x.value.chain_id)));
         return kurashiRows_('product_aliases',book).filter(x=>
-          own.has(String(x.value.product_id)))
+          chainIds.has(String(x.value.chain_id))&&
+          (!x.value.product_id||own.has(String(x.value.product_id))))
           .map(x=>kurashiPublic_(x.value));
       })(),
       records:kurashiRows_('records',book)
