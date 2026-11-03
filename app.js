@@ -276,6 +276,7 @@ function recordDetailView(){
     <p>明細数：${detail.length}件</p><strong>税込合計：${yen(total)}</strong></div>
   ${detail.map((x,i)=>`<div class="panel preview-record-row">
     <strong>${i+1}. ${esc(catalogue.products.find(p=>p.id===x.product_id)?.name||aliasNameFor(x)||'未特定')}</strong>
+    ${x.product_id&&aliasNameFor(x)?'<span>レシートの読み取り名：'+esc(aliasNameFor(x))+'</span>':''}
     <span>${esc(x.quantity)}個　税込 ${yen(Number(x.amount_tax_included))}</span>
     <span>${x.product_id?'照合商品：'+esc(catalogue.products.find(p=>p.id===x.product_id)?.name||'登録済み商品'):'商品未照合'}</span></div>`).join('')}
   ${liveMode?'<div class="record-detail-actions"><button type="button" class="secondary" data-act="recordEdit">編集</button><button type="button" class="tertiary" data-act="recordDelete">削除</button></div>':''}
@@ -524,6 +525,15 @@ function scanResolvedProductId(item){
   (!item.canonicalGroupId||p.itemGroupId===item.canonicalGroupId));
  return matches.length===1?matches[0].id:current;
 }
+// Keep OCR's exact original spelling; only the reviewed lookup correction is learned.
+function scanConfirmedCorrections(chainId,items,formData){
+ return (items||[]).map((item,i)=>({
+  chainId,ocrName:String(item.ocrRawName||'').trim(),
+  correctedName:String(formData.get('name-'+i)||'').trim(),
+  productId:String(formData.get('product-'+i)||'')||null
+ })).filter(x=>x.ocrName&&x.correctedName&&
+  norm(x.ocrName)!==norm(x.correctedName));
+}
 function scanFormView(){
  if(!scanDraft)return '';
  const chains=[...catalogue.chains.map(c=>'<option value="'+esc(c.id)+'"'+
@@ -547,7 +557,8 @@ function scanFormView(){
      scanDraft.ocrCandidates.map(c=>'<option value="'+esc(c.index)+'">'+
      esc(c.name)+'　'+esc(c.amount)+'円 / '+esc(c.quantity)+'個</option>').join('')+
      '</select></label>':''}
-    <label class="scan-field">解析した商品名（登録商品名とは別）<input name="name-${i}" maxlength="120" value="${esc(item.name)}" placeholder="印字名を原本と照合"></label>
+    <label class="scan-field">${scanDraft.recordId?'保存済みの読み取り名（変更不可）':'解析した商品名（登録商品名とは別）'}<input name="name-${i}" maxlength="120" value="${esc(item.name)}" ${scanDraft.recordId?'readonly aria-readonly="true"':''} placeholder="印字名を原本と照合"></label>
+    ${!scanDraft.recordId?'<p class="hint">ここでの修正は商品照合・OCR補正候補に使用します。元のOCR表記は別に保持します。</p>':''}
     <input type="hidden" name="product-${i}" value="${esc(scanResolvedProductId(item))}">
     <div class="scan-product-association">
       <span class="scan-product-association-label">商品マスタとの紐付け</span>
@@ -1420,11 +1431,8 @@ app.addEventListener('submit',e=>{e.preventDefault();const form=e.target;const d
     void window.KurashiLive.learnStoreAlias({
      chain_id:learnedChain,raw_alias:scanDraft.rawStoreName
     }).catch(err=>console.warn('購入店舗の別名を保存できません',err));
-   const verifiedCorrections=scanDraft?.items.map((item,i)=>({
-    chainId:learnedChain,ocrName:String(item.ocrRawName||'').trim(),
-    correctedName:lines[i].raw_name,productId:lines[i].product_id
-   })).filter(x=>x.ocrName&&x.correctedName&&
-    norm(x.ocrName)!==norm(x.correctedName))||[];
+   const verifiedCorrections=scanConfirmedCorrections(
+    learnedChain,scanDraft?.items,d);
    if(verifiedCorrections.length&&window.KurashiLive.saveOcrCorrections){
     void window.KurashiLive.saveOcrCorrections(verifiedCorrections)
       .then(()=>window.KurashiLive.loadOcrCorrections()).then(x=>{ocrLearning=x||[]})

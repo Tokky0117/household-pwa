@@ -17,7 +17,7 @@ const doc={
 const ctx={document:doc,localStorage:{getItem:k=>storage.get(k)??null,setItem:(k,v)=>storage.set(k,v),removeItem:k=>storage.delete(k)},
  navigator:{},window:{scrollTo(){},scrollY:0},crypto:{randomUUID:()=> 'test-id'},setTimeout:()=>0};
 const ui=vm.runInNewContext(source+`
-({listView,priceCompareView,pickerView,pickerResults,receiptView,receiptScanView,receiptChatGptView,recordDetailView,scanDuplicates,compareOcrAndChatGpt,receiptOcrReference,correctionFor,scanBulkProductsView,scanProductView,scanExistingProductView,scanChainForStore,scanAutolinkUnmatched,scanMatchProduct,render,initializeCompare,
+({listView,priceCompareView,pickerView,pickerResults,receiptView,receiptScanView,receiptChatGptView,recordDetailView,scanDuplicates,compareOcrAndChatGpt,receiptOcrReference,correctionFor,scanConfirmedCorrections,scanBulkProductsView,scanProductView,scanExistingProductView,scanChainForStore,scanAutolinkUnmatched,scanMatchProduct,render,initializeCompare,
  setProductGroup,reorderProducts,registeredProducts,convertQuantity,setOpenSwipe,
  chainMinima,priceCandidates,savePreviewRecord,periodStart,
  demoRecords,demoRecordItems,allPreviewRecords,allPreviewItems,
@@ -293,6 +293,27 @@ ui.setScanDraft(ocrDraft);
 assert.ok(ui.receiptScanView().includes('chatGptAssist'),'OCR review has optional ChatGPT assist');
 assert.ok(ui.receiptOcrReference(ocrDraft).includes('TORRIDEN SERUM'));
 assert.ok(!ui.receiptOcrReference(ocrDraft).includes('カード番号'),'no private payment data in prompt');
+const reviewedChanges=new Map([
+ ['name-0','TORRIDEN SERUMを原本で再確認'],['product-0','p1'],
+ ['name-1','リンドールピンク450G'],['product-1','']
+]);
+const corrections=ui.scanConfirmedCorrections('chain-A',ocrDraft.items,{
+ get:key=>reviewedChanges.get(key)??null
+});
+assert.equal(corrections.length,2,'reviewed OCR spelling corrections are actually learned');
+assert.equal(corrections[1].ocrName,'リンド一ルピンク450G',
+ 'original OCR spelling remains unchanged');
+assert.equal(corrections[1].correctedName,'リンドールピンク450G');
+const unchangedCorrections=ui.scanConfirmedCorrections('chain-A',ocrDraft.items,{
+ get:key=>key==='name-0'?'TORRIDEN SERUM':key==='name-1'?'リンド一ルピンク450G':null
+});
+assert.equal(unchangedCorrections.length,0,'unchanged OCR names do not create corrections');
+ui.setScanDraft({...ocrDraft,recordId:'existing-receipt-test'});
+const savedReviewHtml=ui.receiptScanView();
+assert.match(savedReviewHtml,/保存済みの読み取り名（変更不可）/);
+assert.match(savedReviewHtml,/name="name-0"[^>]*readonly aria-readonly="true"/,
+ 'stored OCR name is read-only in receipt edit mode');
+ui.setScanDraft(ocrDraft);
 console.log('v60: ChatGPT malformed JSON repair, OCR dual-reading, unique pairing and confirmed corrections OK');
 
 
