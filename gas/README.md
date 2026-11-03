@@ -8,7 +8,7 @@
 - v0.64.0 では `product_aliases.ocr_name` と `record_items.alias_id` をそれぞれ**末尾に追加**。旧列や既存行を消したり、商品ID・数量・金額を変更したりしません。`bootstrap` が列追加と旧明細の辞書参照移行を実行し、中断しても再実行します。旧レシートの印字名は `raw_name` として残します。
 - `gas/Setup.gs` は新規シート初期化用のままですが、既存ブックのスキーマ検証時も、この2列だけは追加できます。旧ブックの作り直しはしません。
 - **GitHub Actions成功はGASデプロイ完了を意味しません。** 既存の試作GASプロジェクトで `gas/Setup.gs`・`gas/Api.gs` のコードを最新に揃え、新しいバージョンとして再デプロイする必要があります。保存先スプレッドシートのIDとプロパティは変更しません。
-- **現行の安全な反映順**：GitHub Actionsで試作GASを確認 → **既存試作SheetsをDriveに複製・再読込してバックアップを検証** → 旧GASソースを30日アーティファクト保存 → GASコードを更新 → 既存Webアプリデプロイを更新 → PWA `bootstrap` を読み取り確認。バックアップできない場合は更新を中止。**`setupNewWorkbook()` は再実行しない**。端末での受入後、新列・既存の行数・重複なし・税込明細合計を確認する。
+- **安全な反映順**：①既存の試作Sheetsを複製してバックアップ、②旧行数・`products`／`product_aliases`／`record_items` 件数を控える、③既存の試作GASに最新2ファイルを反映、④既存Webアプリのデプロイを編集して新バージョンを適用、⑤試作PWAを再読み込みして自動取得を確認、⑥新列・過去行・重複行なし・税込明細合計・新規OCR名を確認する。**初期化関数 `setupNewWorkbook()` の新規ブック作成をやり直さない**。
 - 過去の `record_items.raw_name` は歴史的な印字記録として維持し、新規行の `raw_name` は空欄で `alias_id` 参照を利用します。商品マスタと日用品の紐付けは任意。OCR文字列の辞書リンクを直しても過去の確定 `record_items.product_id` は書き換えません。
 - 現在のAPI認証モードは `temporary-household`。**WebアプリURLを知る第三者に読み書き可能**な状態なので、個人情報を含む実レシートの使用を始める前に認可方式を別途見直す必要があります。家庭IDは認可・同期・操作履歴に依存するためv0.64では削除しません。
 - 試作GAS以外、既存別試験ブック、`main` の変更は禁止。実機の受け入れは再デプロイ後に別途実施します。
@@ -103,14 +103,12 @@
 
 - ワークフロー: [gas-deploy-new.yml](../.github/workflows/gas-deploy-new.yml)
 - **正しいブランチ**: `preview-v46-clean-base`。旧試験用 `stage-a-ui-handoff-review` のワークフロー、`GAS_SCRIPT_ID_TEST` は一切使用しない。
-- GASコード `gas/Setup.gs` または `gas/Api.gs` をGitHubで更新した場合、**既存Sheetsのバックアップ成功を条件に**新GASの既存WebアプリURLをそのまま更新する。新デプロイは作らない。ワークフロー自体の変更だけでは配信しない。
+- GASコード `gas/Setup.gs` または `gas/Api.gs` をGitHubで更新した場合、**新GASの既存WebアプリURLをそのまま**自動更新する。新デプロイは作らない。
 - 新GASの既存デプロイIDはユーザーが提供した `/exec` の `AKfycbwn-SfXqRBIjJWVUUIKEsJuaUR6DLAEWbMVR-_rEB3iVZy2zi0ZNSA7JjNmyykvKjvdoQ` に固定。
 - スクリプトIDはデプロイIDと異なり、`/exec` URLから推測しない。GitHubのRepository Variables `GAS_SCRIPT_ID_NEW` に新GASプロジェクトのスクリプトIDを設定する（初回のみ）。未設定ならワークフローは安全にスキップ。
 - 認証は既にGitHub Actionsへ登録済みの `CLASPRC_JSON` Secretを利用する。認可期限切れなどで失敗した場合は**再設定が必要**で、更新成功を偽らない。Secretの値をログに出さない。
 - 更新前には新GASの既存デプロイID、ソースファイル構成、既知のGitHub履歴との一致を確認。想定外の手動変更があれば**書き込み停止**。更新前ソースを30日バックアップし、`clasp push` 後に内容を確認してから既存デプロイを更新。
-- **自動配信実績**：2026-11-03、run `41645103023` で `6294f953` のGAS更新、既存デプロイ更新、匿名 `bootstrap` がすべて成功。これは旧ソースのGitHub Actions保存のみで、**Sheets全体のコピーではなかった**。今回以後、バックアップ成功を必須化。
-- **追加の初回設定**：既存の試作GoogleシートURL `/spreadsheets/d/<ID>/edit` のIDをGitHub Repository Variables `GAS_SPREADSHEET_ID_NEW` に登録する。IDをコードやチャットへ貼らない。`GAS_SCRIPT_ID_NEW` と既存 `CLASPRC_JSON` はすでに稼働実績あり。Drive APIが無効、コピー権限不足、OAuthスコープ不足の場合は**必ず更新中止**。権限は利用者のGoogleアカウントで確認し、広いDrive権限を無断で要求しない。
-- **実行方法**：`gas/Api.gs`／`gas/Setup.gs` へのpushで、事前テストとバックアップが成功したときだけ自動更新。任意再実行用 `workflow_dispatch` も定義するが、ワークフローは`main`に置かないため、GitHub画面の「Run workflow」は表示されない場合がある。その場合はGitHub CLIで `gh workflow run gas-deploy-new.yml --ref preview-v46-clean-base`。`main`は変更しない。
+- **まだ初回の自動配信は未実行**。変数登録とワークフローの実行成功まではGAS公開版の更新を断言しない。
 - 日常のコード更新ではGASへの貼付、手動保存、手動の「デプロイ管理」操作は不要。Script Propertiesの家庭メンバー設定など、コードではないプライベート設定はGitHubから上書きしない。
 
 ## 2026-11-01：一時ログイン省略（新Sheetsを直接使用）

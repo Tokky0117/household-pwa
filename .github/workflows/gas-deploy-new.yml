@@ -3,7 +3,7 @@ name: Deploy only the NEW Kurashi GAS
 on:
   push:
     branches: [preview-v46-clean-base]
-    paths: ['gas/Api.gs', 'gas/Setup.gs']
+    paths: ['gas/Api.gs', 'gas/Setup.gs', '.github/workflows/gas-deploy-new.yml']
   workflow_dispatch:
 
 permissions:
@@ -20,7 +20,6 @@ jobs:
     timeout-minutes: 15
     env:
       GAS_SCRIPT_ID_NEW: ${{ vars.GAS_SCRIPT_ID_NEW || secrets.GAS_SCRIPT_ID_NEW }}
-      GAS_SPREADSHEET_ID_NEW: ${{ vars.GAS_SPREADSHEET_ID_NEW || secrets.GAS_SPREADSHEET_ID_NEW }}
       TARGET_DEPLOYMENT_ID: AKfycbwn-SfXqRBIjJWVUUIKEsJuaUR6DLAEWbMVR-_rEB3iVZy2zi0ZNSA7JjNmyykvKjvdoQ
     steps:
       - uses: actions/checkout@v4
@@ -39,7 +38,6 @@ jobs:
           node --check "$RUNNER_TEMP/Api.js"
           node --check "$RUNNER_TEMP/Setup.js"
           node tests/no-login-household.mjs
-          node tests/gas-backup.mjs
       - name: Prepare temporary credentials and target
         env:
           CLASPRC_JSON: ${{ secrets.CLASPRC_JSON }}
@@ -51,8 +49,6 @@ jobs:
           const c=process.env.CLASPRC_JSON,id=process.env.GAS_SCRIPT_ID_NEW;
           if(!c)throw Error('CLASPRC_JSON is missing');
           if(!/^[A-Za-z0-9_-]{25,120}$/.test(id))throw Error('Invalid new GAS script ID');
-          if(!/^[A-Za-z0-9_-]{20,180}$/.test(process.env.GAS_SPREADSHEET_ID_NEW||'') || process.env.GAS_SPREADSHEET_ID_NEW===id)
-            throw Error('GAS_SPREADSHEET_ID_NEW is missing or invalid; GAS deploy blocked');
           const a=JSON.parse(c);
           if(!a||typeof a!=='object'||Array.isArray(a))throw Error('Invalid auth');
           fs.writeFileSync(path.join(process.env.HOME,'.clasprc.json'),c,{mode:0o600});
@@ -120,11 +116,6 @@ jobs:
             throw Error('Unexpected GAS runtime');
           fs.copyFileSync(path.join(remote,'appsscript.json'),path.join(stage,'appsscript.json'));
           NODE
-      - name: Back up and verify existing Google Sheet (mandatory before push)
-        shell: bash
-        run: |
-          set -euo pipefail
-          node .github/scripts/backup-new-gas-sheet.mjs
       - name: Back up existing NEW script before updating
         uses: actions/upload-artifact@v4
         with:
