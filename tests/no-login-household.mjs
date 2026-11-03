@@ -1354,7 +1354,10 @@ assert.equal(temp.call('bootstrap').data.product_aliases.filter(a=>
  a.product_id===historyId).length,0,'history test has no alias');
 let historySession=appSession();
 await waitFor(()=>historySession.window.KurashiLive.state().loaded,'history on next session');
-await historySession.window.KurashiLive.load();
+await waitFor(()=>historySession.window.KurashiLive.state().queued===0,
+ 'history prior durable operations have finished');
+assert.equal(await historySession.window.KurashiLive.load(),true,
+ 'history fresh Sheets snapshot has been fetched');
 historySession.window.document.querySelector('[data-tab="receipt"]').click();
 historySession.window.document.querySelector('[data-act="receiptChatGpt"]').click();
 historySession.window.eval(importer);
@@ -1390,7 +1393,10 @@ assert.equal(temp.call('record.create',{
 },'op-v64-shelf-record-abcdefghijk').ok,true);
 let shelfSession=appSession();
 await waitFor(()=>shelfSession.window.KurashiLive.state().loaded,'shelf history loaded');
-await shelfSession.window.KurashiLive.load();
+await waitFor(()=>shelfSession.window.KurashiLive.state().queued===0,
+ 'shelf prior durable operations have finished');
+assert.equal(await shelfSession.window.KurashiLive.load(),true,
+ 'shelf fresh Sheets snapshot has been fetched');
 shelfSession.window.document.querySelector('[data-tab="receipt"]').click();
 shelfSession.window.document.querySelector('[data-act="receiptChatGpt"]').click();
 shelfSession.window.eval(importer);
@@ -1415,7 +1421,10 @@ assert.equal(temp.call('record.create',{
 },'op-v64-conflict-record-abcdefghijk').ok,true);
 let conflictSession=appSession();
 await waitFor(()=>conflictSession.window.KurashiLive.state().loaded,'conflicting history loaded');
-await conflictSession.window.KurashiLive.load();
+await waitFor(()=>conflictSession.window.KurashiLive.state().queued===0,
+ 'conflict prior durable operations have finished');
+assert.equal(await conflictSession.window.KurashiLive.load(),true,
+ 'conflict fresh Sheets snapshot has been fetched');
 conflictSession.window.document.querySelector('[data-tab="receipt"]').click();
 conflictSession.window.document.querySelector('[data-act="receiptChatGpt"]').click();
 conflictSession.window.eval(importer);
