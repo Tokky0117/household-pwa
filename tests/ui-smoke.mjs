@@ -142,7 +142,7 @@ ui.setProductGroup(p,'demo-1');assert.equal(p.itemGroupOrder,3);
 ui.setProductGroup(p,null);assert.equal(p.itemGroupOrder,null);
 ui.setProductGroup(p,'demo-15');assert.equal(p.itemGroupOrder,1,'First product in empty group begins with order 1');
 ui.setNewRecordType('receipt');
-assert.ok(ui.recordAddView().includes('id="recordForm"')&&ui.recordAddView().includes('id="record-category"'));
+assert.ok(ui.recordAddView().includes('id="recordForm"')&&!ui.recordAddView().includes('id="record-category"'));
 ui.setNewRecordType('shelf');
 assert.ok(ui.recordAddView().includes('id="recordForm"')&&!ui.recordAddView().includes('id="record-category"'));
 const month=ui.demoRecords[0].record_date.slice(0,7);
