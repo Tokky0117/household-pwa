@@ -144,6 +144,7 @@ function prepareOcrImport(session){
  session.window.document.body.appendChild(field);
 }
 async function completeOcrImport(session){
+ if(!session.window.KurashiReceiptImport)session.window.eval(importer);
  const staged=session.window.document.querySelector('#chatgpt-input[data-test-staging]');
  if(!staged)throw Error('test OCR staging missing');
  const receipt=JSON.parse(staged.value);staged.remove();
