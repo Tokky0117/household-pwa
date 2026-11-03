@@ -121,12 +121,12 @@ const mockFetch=async(url,options)=>{
  }
  return {ok:true,text:async()=>JSON.stringify(response)};
 };
-function appSession(){
+function appSession(idbFactory=factory){
  const dom=new JSDOM('<!doctype html><html lang="ja"><head></head><body><div id="app"></div></body></html>',{
   url:'https://tokky0117.github.io/household-pwa/previews/preview-v46-clean-base/',
   runScripts:'outside-only',pretendToBeVisual:true
  });
- Object.defineProperty(dom.window,'indexedDB',{configurable:true,value:factory});
+ Object.defineProperty(dom.window,'indexedDB',{configurable:true,value:idbFactory});
  dom.window.fetch=mockFetch;dom.window.scrollTo=()=>{};
  dom.window.HTMLElement.prototype.scrollIntoView=()=>{}; // supported by iOS Safari, absent in jsdom
  dom.window.console=console;
@@ -1154,6 +1154,100 @@ await waitFor(()=>temp.call('bootstrap').data.product_aliases.some(x=>
  x.normalized_alias===kitRaw.toLocaleLowerCase('ja')),
  'confirmed receipt abbreviation is learned as chain-specific alias');
 kitSession.window.close();
+
+/* Real two-device receipt flow: the second iPhone uses its own IndexedDB
+ * and the same Sheets-backed GAS snapshot, not the first phone's cache. */
+const kitBaseline=temp.call('bootstrap').data;
+const kitRecordCount=kitBaseline.records.length;
+const kitAliasCount=kitBaseline.product_aliases.length;
+let otherPhone=appSession(new IDBFactory());
+await waitFor(()=>otherPhone.window.KurashiLive.state().loaded&&
+ otherPhone.window.KurashiLive.catalogueOf(
+  temp.call('bootstrap').data).products.some(p=>p.name===kitCanonical),
+ 'separate iPhone has loaded the shared KitKat product');
+await waitFor(()=>!otherPhone.window.KurashiLive.state().cached,
+ 'other iPhone finished remote bootstrap');
+otherPhone.window.document.querySelector('[data-tab="receipt"]').click();
+assert.match(otherPhone.window.document.body.textContent,/キットカット濃い抹茶10袋/,
+ 'second iPhone displays the first iPhone purchase history');
+otherPhone.window.document.querySelector('[data-act="receiptChatGpt"]').click();
+otherPhone.window.eval(importer);
+otherPhone.window.document.getElementById('chatgpt-input').value=JSON.stringify(kitJson);
+otherPhone.window.document.querySelector('[data-act="chatGptImport"]').click();
+const duplicateKitReview=otherPhone.window.document.getElementById('scanConfirmForm');
+assert.equal(duplicateKitReview.querySelector('[name="chain"]').value,kitStore.chain_id,
+ 'registered retailer is recognized on another iPhone');
+assert.equal(duplicateKitReview.querySelector('[name="product-0"]').value,
+ kitSavedProduct.product_id,'the exact same receipt OCR alias auto-links across devices');
+assert.equal(duplicateKitReview.querySelector('[name="name-0"]').value,kitRaw,
+ 'reimport does not replace original printed name');
+assert.equal(duplicateKitReview.querySelector('#scan-duplicate-warning').hidden,false,
+ 'importing an identical already-saved receipt shows duplicate warning');
+duplicateKitReview.dispatchEvent(new otherPhone.window.Event('submit',{
+ bubbles:true,cancelable:true
+}));
+assert.match(duplicateKitReview.textContent,/重複の可能性/,
+ 'accidental duplicate save is blocked until explicitly acknowledged');
+assert.equal(temp.call('bootstrap').data.records.length,kitRecordCount,
+ 'unconfirmed duplicate receipt did not create another Sheets record');
+assert.equal(temp.call('bootstrap').data.product_aliases.length,kitAliasCount,
+ 'unconfirmed duplicate did not generate another OCR alias');
+otherPhone.window.close();
+
+// On the other phone, a genuinely new purchase with 2 units / 340 yen
+// must retain the total (340), auto-link and yield a 170-yen unit price.
+let newPurchasePhone=appSession(new IDBFactory());
+await waitFor(()=>newPurchasePhone.window.KurashiLive.state().loaded&&
+ !newPurchasePhone.window.KurashiLive.state().cached,
+ 'fresh second-device receipt load from Sheets');
+newPurchasePhone.window.document.querySelector('[data-tab="receipt"]').click();
+newPurchasePhone.window.document.querySelector('[data-act="receiptChatGpt"]').click();
+newPurchasePhone.window.eval(importer);
+const newKitPurchase={...kitJson,purchaseDate:'2026-11-03',receiptTotal:340,
+ items:[{...kitJson.items[0],quantity:2,unitPrice:170,grossAmount:340,netAmount:340}]};
+newPurchasePhone.window.document.getElementById('chatgpt-input').value=
+ JSON.stringify(newKitPurchase);
+newPurchasePhone.window.document.querySelector('[data-act="chatGptImport"]').click();
+const repeatedKitReview=newPurchasePhone.window.document.getElementById('scanConfirmForm');
+assert.equal(repeatedKitReview.querySelector('[name="product-0"]').value,
+ kitSavedProduct.product_id,'new purchase same printed name automatically links without new master');
+assert.equal(repeatedKitReview.querySelector('[name="qty-0"]').value,'2');
+assert.equal(repeatedKitReview.querySelector('[name="amount-0"]').value,'340');
+assert.equal(repeatedKitReview.querySelector('#scan-duplicate-warning').hidden,true,
+ 'different purchase date and quantity are not treated as duplicate');
+repeatedKitReview.dispatchEvent(new newPurchasePhone.window.Event('submit',{
+ bubbles:true,cancelable:true
+}));
+await waitFor(()=>temp.call('bootstrap').data.record_items.some(x=>
+ x.product_id===kitSavedProduct.product_id&&Number(x.quantity)===2&&
+ Number(x.amount_tax_included)===340),
+ 'second device saved exact tax-inclusive line total without multiplying by quantity');
+await waitFor(()=>newPurchasePhone.window.KurashiLive.state().queued===0,
+ 'new purchase queue fully drained');
+const kitAfterSecondPurchase=temp.call('bootstrap').data;
+assert.equal(kitAfterSecondPurchase.products.filter(x=>x.name===kitCanonical).length,1,
+ 'rereading and buying again never creates duplicate product masters');
+assert.equal(kitAfterSecondPurchase.product_aliases.filter(x=>
+ x.chain_id===kitStore.chain_id&&x.normalized_alias===kitRaw.toLocaleLowerCase('ja')).length,1,
+ 'rereading never creates duplicate OCR alias rows');
+assert.equal(kitAfterSecondPurchase.records.length,kitRecordCount+1,
+ 'only the explicitly saved new receipt is added to Sheets');
+newPurchasePhone.window.close();
+
+// A third independent device sees the new receipt and the correct unit price
+// via the normal UI, not by a direct fake snapshot read alone.
+let thirdPhone=appSession(new IDBFactory());
+await waitFor(()=>thirdPhone.window.KurashiLive.state().loaded&&
+ !thirdPhone.window.KurashiLive.state().cached,
+ 'third independent iPhone loaded fresh shared Sheets snapshot');
+thirdPhone.window.document.querySelector('[data-tab="receipt"]').click();
+assert.match(thirdPhone.window.document.body.textContent,/340円/,
+ 'new receipt appears on a different fresh iPhone');
+thirdPhone.window.document.querySelector('[data-tab="items"]').click();
+assert.match(thirdPhone.window.document.body.textContent,/170円/,
+ 'day-to-day stock screen uses 340/2 = 170-yen minimum for registered KitKat');
+thirdPhone.window.close();
+console.log('v65: two independent iPhones, same receipt reimport, duplicate guard, second purchase and 340/2 unit price OK');
 
 const pinchSession=appSession();
 await waitFor(()=>pinchSession.window.KurashiLive.state().loaded,'pinch UI bootstrap');

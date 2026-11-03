@@ -308,11 +308,21 @@ const unchangedCorrections=ui.scanConfirmedCorrections('chain-A',ocrDraft.items,
  get:key=>key==='name-0'?'TORRIDEN SERUM':key==='name-1'?'リンド一ルピンク450G':null
 });
 assert.equal(unchangedCorrections.length,0,'unchanged OCR names do not create corrections');
-ui.setScanDraft({...ocrDraft,recordId:'existing-receipt-test'});
+ui.setScanDraft({...ocrDraft,recordId:'existing-receipt-test',items:ocrDraft.items.map(x=>({...x,savedOcrName:true}))});
 const savedReviewHtml=ui.receiptScanView();
 assert.match(savedReviewHtml,/保存済みの読み取り名（変更不可）/);
 assert.match(savedReviewHtml,/name="name-0"[^>]*readonly aria-readonly="true"/,
  'stored OCR name is read-only in receipt edit mode');
+ui.setScanDraft({...ocrDraft,recordId:'existing-receipt-test',items:[
+ {...ocrDraft.items[0],savedOcrName:true},
+ {name:'新しく追加する手入力明細',ocrRawName:'',quantity:1,amount:120,productId:'',issues:[]}
+]});
+const historicWithNewLine=ui.receiptScanView();
+assert.match(historicWithNewLine,/name="name-0"[^>]*readonly/);
+assert.match(historicWithNewLine,/name="name-1"[^>]*value="新しく追加する手入力明細"[^>]*placeholder=/,
+ 'only existing OCR names are locked, newly added receipt lines remain editable');
+assert.doesNotMatch(historicWithNewLine,/name="name-1"[^>]*readonly/,
+ 'record editing must not lock newly added line names');
 ui.setScanDraft(ocrDraft);
 console.log('v60: ChatGPT malformed JSON repair, OCR dual-reading, unique pairing and confirmed corrections OK');
 

@@ -557,8 +557,8 @@ function scanFormView(){
      scanDraft.ocrCandidates.map(c=>'<option value="'+esc(c.index)+'">'+
      esc(c.name)+'　'+esc(c.amount)+'円 / '+esc(c.quantity)+'個</option>').join('')+
      '</select></label>':''}
-    <label class="scan-field">${scanDraft.recordId?'保存済みの読み取り名（変更不可）':'解析した商品名（登録商品名とは別）'}<input name="name-${i}" maxlength="120" value="${esc(item.name)}" ${scanDraft.recordId?'readonly aria-readonly="true"':''} placeholder="印字名を原本と照合"></label>
-    ${!scanDraft.recordId?'<p class="hint">ここでの修正は商品照合・OCR補正候補に使用します。元のOCR表記は別に保持します。</p>':''}
+    <label class="scan-field">${item.savedOcrName===true?'保存済みの読み取り名（変更不可）':'解析した商品名（登録商品名とは別）'}<input name="name-${i}" maxlength="120" value="${esc(item.name)}" ${item.savedOcrName===true?'readonly aria-readonly="true"':''} placeholder="印字名を原本と照合"></label>
+    ${item.savedOcrName!==true?'<p class="hint">ここでの修正は商品照合・OCR補正候補に使用します。元のOCR表記は別に保持します。</p>':''}
     <input type="hidden" name="product-${i}" value="${esc(scanResolvedProductId(item))}">
     <div class="scan-product-association">
       <span class="scan-product-association-label">商品マスタとの紐付け</span>
@@ -1732,7 +1732,7 @@ if(action==='recordEdit'){
   chainName:'',branchName:r.branch_name||'',total:null,
   items:allPreviewItems().filter(x=>x.record_id===r.record_id&&!x.deleted_at)
    .sort((a,b)=>Number(a.line_order)-Number(b.line_order))
-   .map(x=>({name:aliasNameFor(x),ocrRawName:aliasNameFor(x),quantity:x.quantity,
+   .map(x=>({name:aliasNameFor(x),ocrRawName:aliasNameFor(x),savedOcrName:true,quantity:x.quantity,
     amount:x.amount_tax_included,productId:x.product_id||'',manuallyLinked:!!x.product_id,issues:[]}))
  };
  saveScanDraft();scanStatus='保存済みの記録を編集中です';page='recordScan';render();return;
