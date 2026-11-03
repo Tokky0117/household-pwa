@@ -304,7 +304,7 @@ function scanProductView(){
  const item=scanDraft?.items[scanProductRow];
  if(!item)return UI.sheet({title:'商品を登録',body:'<p>対象の明細が見つかりません。</p>'});
  const fields=[
-  '<p class="hint">読み取り名（OCR辞書へ保存）：<strong>'+esc(item.name)+'</strong></p>',
+  '<p class="hint">OCR明細名（変更不可）：<strong>'+esc(item.ocrRawName||item.name||'読み取り不可')+'</strong></p>',
   UI.formField({id:'scan-product-name',name:'name',label:'商品マスタに登録する正式商品名',value:item.canonicalName||item.nameCandidate||item.name,maxlength:80,required:true}),
   '<label class="scan-field">日用品リストへの紐付け（任意）<select id="scan-product-group" name="group">'+scanGroupOptions()+'</select></label>',
   UI.formField({id:'scan-product-quantity',name:'package_quantity',label:'内容量（任意）',type:'number',value:'',extra:'min="0.001" step="any"'}),
@@ -550,15 +550,10 @@ function scanFormView(){
   ${scanDraft.items.map((item,i)=>`<div class="panel scan-review-item">
     <div class="row" style="justify-content:space-between"><strong>明細 ${i+1}</strong><button type="button" class="tertiary" data-act="scanRemoveItem" data-scan-row="${i}">削除</button></div>
     ${item.issues.length?'<p class="scan-warning">要確認：'+esc(item.issues.join('、'))+'</p>':''}
-    ${item.ocrRawName&&norm(item.ocrRawName)!==norm(item.name)?'<p class="hint">OCR原表記：'+esc(item.ocrRawName)+'</p>':''}
-    ${!item.ocrRawName&&scanDraft.ocrCandidates?.length?
-     '<label class="scan-field">元のOCR行（対応が確実な場合だけ）<select name="ocr-'+i+'">'+
-     '<option value="">対応不明・学習しない</option>'+
-     scanDraft.ocrCandidates.map(c=>'<option value="'+esc(c.index)+'">'+
-     esc(c.name)+'　'+esc(c.amount)+'円 / '+esc(c.quantity)+'個</option>').join('')+
-     '</select></label>':''}
-    <label class="scan-field">${item.savedOcrName===true?'保存済みの読み取り名（変更不可）':'解析した商品名（登録商品名とは別）'}<input name="name-${i}" maxlength="120" value="${esc(item.name)}" ${item.savedOcrName===true?'readonly aria-readonly="true"':''} placeholder="印字名を原本と照合"></label>
-    ${item.savedOcrName!==true?'<p class="hint">ここでの修正は商品照合・OCR補正候補に使用します。元のOCR表記は別に保持します。</p>':''}
+    ${item.inputOrigin==='manual'||item.ocrRawName===undefined?
+     '<label class="scan-field">追加した明細名<input name="name-'+i+'" maxlength="120" value="'+esc(item.name)+'" placeholder="明細名を入力"></label>':
+     '<div class="scan-field"><span>OCR明細名（変更不可）</span><div class="scan-ocr-name" data-ocr-row="'+i+'">'+esc(item.ocrRawName||'読み取り不可')+'</div></div>'}
+    ${!item.productId&&item.nameCandidate?'<p class="scan-name-candidate">ChatGPTの商品名候補：'+esc(item.nameCandidate)+'（商品登録時に使用）</p>':''}
     <input type="hidden" name="product-${i}" value="${esc(scanResolvedProductId(item))}">
     <div class="scan-product-association">
       <span class="scan-product-association-label">商品マスタとの紐付け</span>
@@ -1251,7 +1246,8 @@ function syncScanReview(){
  for(let i=0;i<scanDraft.items.length;i++){
   const it=scanDraft.items[i],previousName=it.name;
   const previousId=String(it.productId||'');
-  const nextName=String(d.get('name-'+i)||'');
+  const nextName=it.inputOrigin==='manual'||it.ocrRawName===undefined?
+   String(d.get('name-'+i)||''):String(it.ocrRawName||'');
   const wasAutomatic=!it.manuallyLinked&&!!previousId&&
    (it.autoLinked===true||scanMatchProduct(previousName,previousChainId)===previousId);
   const needsMatch=previousChainId!==nextChainId||norm(previousName)!==norm(nextName);
@@ -1395,7 +1391,8 @@ app.addEventListener('submit',e=>{e.preventDefault();const form=e.target;const d
   if(!liveMode){fieldNotice(form,'正式保存はSheets接続時に利用できます');return;}
   if(!scanDraft||!scanDraft.items.length){fieldNotice(form,'保存する明細がありません');return;}
   const lines=scanDraft.items.map((item,i)=>({
-   raw_name:String(item.ocrRawName||d.get('name-'+i)||'').trim(),
+   raw_name:String(item.inputOrigin==='manual'||item.ocrRawName===undefined?
+    d.get('name-'+i)||'':item.ocrRawName||'').trim(),
    product_id:String(d.get('product-'+i)||'')||null,
    quantity:Number(d.get('qty-'+i)),
    amount_tax_included:String(d.get('amount-'+i)||'').trim()===''?NaN:Number(d.get('amount-'+i)),
@@ -1819,7 +1816,7 @@ if(action==='scanRemoveItem'&&scanDraft){
  syncScanReview();scanDraft.items.splice(Number(el.dataset.scanRow),1);render();return;
 }
 if(action==='scanAddItem'&&scanDraft){
- syncScanReview();scanDraft.items.push({name:'',quantity:1,amount:'',productId:'',issues:['追加した明細を確認']});
+ syncScanReview();scanDraft.items.push({name:'',inputOrigin:'manual',quantity:1,quantityUncertain:false,amount:'',productId:'',issues:['追加した明細を確認']});
  render();return;
 }
 if(action==='newReceipt'||action==='newShelf'){newRecordType=action==='newReceipt'?'receipt':'shelf';page='recordAdd';render();return}
