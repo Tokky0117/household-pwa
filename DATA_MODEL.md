@@ -17,8 +17,17 @@
 - `product_aliases.product_id` が空欄でもOCR名を登録可能です。過去の `record_items.product_id` は辞書の新しい紐付けに連動させません。
 - ChatGPTの `nameCandidate` は**端末のレシート下書きに限る任意フィールド**。Sheetsには新たな列を設けません。類似表記は候補のみ、店舗内の正確な確定名は競合なしに限り自動選択します。
 - `record_items.category_id` と固定5カテゴリは旧データ互換目的で残し、家計簿の入力・集計・タブは廃止します。日用品分類の5カテゴリは引き続き現行です。
-- 既存Sheetsは **`product_aliases.ocr_name` と `record_items.alias_id` を末尾に1列ずつ追加**します。旧レシートの移行は非破壊・途中失敗の再実行を想定し、試作GAS反映前にバックアップを推奨します。
+- 既存Sheetsは **`product_aliases.ocr_name` と `record_items.alias_id` を末尾に1列ずつ追加**します。旧レシートの移行は非破壊・途中失敗の再実行を想定します。
 - 家庭は1件ですが、`household_id` は認可・操作ID履歴・同期に依存するため、今回削除しません。将来、依存箇所をまとめて移行する宿題です。
+
+
+## 次期レシートのデータ契約（設計確定・未実装／2026-11-04）
+
+- **保存対象の名称は二層のみ**：(1) 読み取り原表記 `product_aliases.ocr_name`（既存行は `record_items.raw_name`）、(2) ユーザーが確定した正式商品名 `products.name`。新たな「補正済み明細名」マスタ／シート／保存列は追加しない。OCR原表記は登録後不変で、商品IDへのリンクだけ `alias.link` で変更できる。
+- レシート明細 `record_items.alias_id` はOCR名辞書を指し、`record_items.product_id` は購入確定時の商品IDを固定する。商品未照合なら `product_id` は空欄可。OCR原表記に誤認識があっても、その文字列を直接修正しない。利用者が新規追加した手入力行は元OCRがないものとして現行の明細保存契約を使用する。
+- ChatGPTの `nameCandidate` は**正式商品名の提案に限る一時値**。OCR結果の行ID／原表記との照合を経てから下書き（IndexedDB）に保持できるが、`products`、`product_aliases`、`records`、`record_items` に保存しない。商品ID自動照合は**OCR原表記と確定済み辞書・商品マスタに対して先行**し、AI候補のみを根拠に自動紐付けしない。
+- 数量が不明・不確定な行の `quantity=1` は**画面下書きの仮値**であり、黄色の注意状態は一時的なUIメタデータ。ユーザーが値を入力し直せば注意状態を解除し、変更しない場合はレシート保存操作をもって1個と確認したものとする。確定した数値だけ既存 `record_items.quantity` に保存し、黄色・確信度用のSheets列は追加しない。 `amount_tax_included` は数量全体の税込明細合計で、単価は `amount_tax_included / quantity`。
+- 既存12シートの構成、レシート・値札の共通データ構造、非破壊移行、IndexedDB操作キューとGASの操作ID冪等性を維持する。OCRモデルやChatGPT補助の改善で保存スキーマを増やさない。
 
 ---
 
