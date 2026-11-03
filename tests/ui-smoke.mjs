@@ -17,7 +17,7 @@ const doc={
 const ctx={document:doc,localStorage:{getItem:k=>storage.get(k)??null,setItem:(k,v)=>storage.set(k,v),removeItem:k=>storage.delete(k)},
  navigator:{},window:{scrollTo(){},scrollY:0},crypto:{randomUUID:()=> 'test-id'},setTimeout:()=>0};
 const ui=vm.runInNewContext(source+`
-({listView,priceCompareView,pickerView,pickerResults,receiptView,receiptScanView,receiptChatGptView,recordDetailView,scanDuplicates,compareOcrAndChatGpt,receiptOcrReference,correctionFor,scanConfirmedCorrections,scanBulkProductsView,scanProductView,scanExistingProductView,scanChainForStore,scanAutolinkUnmatched,scanMatchProduct,render,initializeCompare,
+({listView,priceCompareView,pickerView,pickerResults,receiptView,receiptScanView,receiptChatGptView,recordDetailView,scanDuplicates,applyChatGptOcrAssistance,receiptOcrReference,scanBulkProductsView,scanProductView,scanExistingProductView,scanChainForStore,scanAutolinkUnmatched,scanMatchProduct,render,initializeCompare,
  setProductGroup,reorderProducts,registeredProducts,convertQuantity,setOpenSwipe,
  chainMinima,priceCandidates,savePreviewRecord,periodStart,
  demoRecords,demoRecordItems,allPreviewRecords,allPreviewItems,
@@ -272,69 +272,52 @@ assert.throws(()=>imports.parseChatGptReceiptJson('{"items":"impossible"}'),
 const ocrDraft={source:'ocr',date:'2026-10-14',chainId:'chain-A',total:5018,
  items:[{name:'TORRIDEN SERUM',ocrRawName:'TORRIDEN SERUM',amount:2638,quantity:1,productId:'p1',issues:[]},
  {name:'リンド一ルピンク450G',ocrRawName:'リンド一ルピンク450G',amount:2380,quantity:1,productId:'',issues:[]}]};
-const chatDraft={source:'chatgpt',date:'2026-10-14',chainId:'chain-A',total:5018,
- items:parsed.items.map(x=>({name:x.name,amount:x.taxIncludedAmount,
- quantity:x.quantity,productId:'',issues:[]}))};
-const combined=ui.compareOcrAndChatGpt(ocrDraft,chatDraft);
-assert.equal(combined.matchedCount,2,'unique amount and quantity pair both rows');
-assert.equal(combined.unmatchedCount,0);
-assert.equal(combined.items[0].productId,'p1','preserves existing known product ID');
-assert.equal(combined.items[1].ocrRawName,'リンド一ルピンク450G');
-assert.ok(combined.items[1].issues.some(x=>x.includes('補正')));
-const ambiguous=ui.compareOcrAndChatGpt(
- {...ocrDraft,items:ocrDraft.items.map(x=>({...x,amount:500}))},
- {...chatDraft,items:chatDraft.items.map(x=>({...x,amount:500}))});
-assert.equal(ambiguous.matchedCount,0,'duplicate prices are never silently paired');
-assert.equal(ambiguous.unmatchedCount,2);
-ui.setOcrLearning([{chainId:'chain-A',ocrName:'リンド一ルピンク450G',correctedName:'リンドールピンク450G'}]);
-assert.equal(ui.correctionFor('リンド一ルピンク450G','chain-A'),'リンドールピンク450G');
-assert.equal(ui.correctionFor('リンド一ルピンク450G','chain-B'),null,'no cross-chain correction leakage');
-ui.setScanDraft(ocrDraft);
-assert.ok(ui.receiptScanView().includes('chatGptAssist'),'OCR review has optional ChatGPT assist');
-assert.ok(ui.receiptOcrReference(ocrDraft).includes('TORRIDEN SERUM'));
-assert.ok(!ui.receiptOcrReference(ocrDraft).includes('カード番号'),'no private payment data in prompt');
-const reviewedChanges=new Map([
- ['name-0','TORRIDEN SERUMを原本で再確認'],['product-0','p1'],
- ['name-1','リンドールピンク450G'],['product-1','']
-]);
-const corrections=ui.scanConfirmedCorrections('chain-A',ocrDraft.items,{
- get:key=>reviewedChanges.get(key)??null
-});
-assert.equal(corrections.length,2,'reviewed OCR spelling corrections are actually learned');
-assert.equal(corrections[1].ocrName,'リンド一ルピンク450G',
- 'original OCR spelling remains unchanged');
-assert.equal(corrections[1].correctedName,'リンドールピンク450G');
-const unchangedCorrections=ui.scanConfirmedCorrections('chain-A',ocrDraft.items,{
- get:key=>key==='name-0'?'TORRIDEN SERUM':key==='name-1'?'リンド一ルピンク450G':null
-});
-assert.equal(unchangedCorrections.length,0,'unchanged OCR names do not create corrections');
-ui.setScanDraft({...ocrDraft,recordId:'existing-receipt-test',items:ocrDraft.items.map(x=>({...x,savedOcrName:true}))});
-const savedReviewHtml=ui.receiptScanView();
-assert.match(savedReviewHtml,/保存済みの読み取り名（変更不可）/);
-assert.match(savedReviewHtml,/name="name-0"[^>]*readonly aria-readonly="true"/,
- 'stored OCR name is read-only in receipt edit mode');
-ui.setScanDraft({...ocrDraft,recordId:'existing-receipt-test',items:[
- {...ocrDraft.items[0],savedOcrName:true},
- {name:'新しく追加する手入力明細',ocrRawName:'',quantity:1,amount:120,productId:'',issues:[]}
+const rowOcr={...ocrDraft,items:ocrDraft.items.map((x,i)=>({...x,ocrRowId:'row-'+(i+1)}))};
+ui.setScanDraft(rowOcr);
+const ocrReview=ui.receiptScanView();
+assert.ok(ocrReview.includes('chatGptAssist'),'ChatGPT helper is available only after OCR');
+assert.match(ocrReview,/data-ocr-row="0"/,'OCR name is plain text');
+assert.ok(!ocrReview.includes('name="name-0"'),'OCR print name is never editable');
+assert.ok(!ui.receiptView().includes('receiptChatGpt'),'no standalone ChatGPT import button');
+assert.ok(!ui.receiptChatGptView().includes('ChatGPTで解析結果を取り込む'));
+const ocrRef=ui.receiptOcrReference(rowOcr);
+assert.ok(ocrRef.includes('TORRIDEN SERUM'));
+assert.ok(!ocrRef.includes('カード番号'));
+const suggestionJson=JSON.stringify({version:'kurashi-receipt-assist-1',items:[
+ {rowId:'row-1',ocrName:'TORRIDEN SERUM',nameCandidate:'トリデン 美容液'},
+ {rowId:'row-2',ocrName:'リンド一ルピンク450G',nameCandidate:'リンドールピンク450G'}
 ]});
-const historicWithNewLine=ui.receiptScanView();
-assert.match(historicWithNewLine,/name="name-0"[^>]*readonly/);
-assert.match(historicWithNewLine,/name="name-1"[^>]*value="新しく追加する手入力明細"[^>]*placeholder=/,
- 'only existing OCR names are locked, newly added receipt lines remain editable');
-assert.doesNotMatch(historicWithNewLine,/name="name-1"[^>]*readonly/,
- 'record editing must not lock newly added line names');
-ui.setScanDraft(ocrDraft);
-console.log('v60: ChatGPT malformed JSON repair, OCR dual-reading, unique pairing and confirmed corrections OK');
-
-
-ui.setScanDraft(ambiguous);
-assert.ok(ui.receiptScanView().includes('元のOCR行'),
- 'ambiguous ChatGPT match can be explicitly assigned by the user');
-assert.ok(ui.receiptScanView().includes('scanBulkProducts'),
- 'receipt editor can bulk register unmatched products');
-assert.ok(ui.scanBulkProductsView().includes('scanBulkProductsForm'),
- 'bulk product registration uses one shared UI confirmation sheet');
-console.log('v60: manual OCR pairing and batch product registration UI OK');
+const suggested=imports.parseChatGptOcrAssistJson(suggestionJson);
+const merged=ui.applyChatGptOcrAssistance(rowOcr,suggested);
+assert.equal(merged.items[0].productId,'p1','existing product remains linked');
+assert.equal(merged.items[0].nameCandidate,'','AI cannot replace known product');
+assert.equal(merged.items[1].name,'リンド一ルピンク450G');
+assert.equal(merged.items[1].ocrRawName,'リンド一ルピンク450G','OCR spelling is immutable');
+assert.equal(merged.items[1].nameCandidate,'リンドールピンク450G',
+ 'unmatched product only gets a noncommittal candidate');
+assert.equal(merged.items[1].amount,2380);
+assert.equal(merged.items[1].quantity,1);
+assert.throws(()=>ui.applyChatGptOcrAssistance(rowOcr,{
+ items:[{...suggested.items[0],ocrName:'別のOCR名'},suggested.items[1]]
+}),/OCR行IDまたは原表記/,'refuse an altered OCR spelling');
+assert.throws(()=>imports.parseChatGptOcrAssistJson(JSON.stringify({
+ version:'kurashi-receipt-assist-1',
+ items:[{rowId:'row-1',ocrName:'TORRIDEN SERUM',nameCandidate:'テスト',quantity:4}]
+})),/INVALID_OCR_ASSIST_ITEM/,'assistant cannot change quantity');
+assert.match(imports.makeChatGptOcrAssistPrompt(ocrRef),/参考OCR結果/,
+ 'OCR-bound prompt includes current OCR rows');
+ui.setScanDraft({...rowOcr,items:[{...rowOcr.items[0],quantityUncertain:true}]});
+const uncertainHtml=ui.receiptScanView();
+assert.ok(uncertainHtml.includes('scan-quantity-uncertain'));
+assert.ok(uncertainHtml.includes('数量要確認'));
+ui.setScanDraft({...rowOcr,recordId:'saved-receipt',items:[
+ {...rowOcr.items[0],savedOcrName:true},
+ {name:'手入力の追加明細',inputOrigin:'manual',quantity:1,amount:120,productId:'',issues:[]}
+]});
+const manualAdd=ui.receiptScanView();
+assert.ok(manualAdd.includes('name="name-1"'),'manual line stays editable');
+assert.ok(!manualAdd.includes('name="name-0"'),'saved OCR name stays plain text');
+console.log('v65: OCR immutability, uncertain quantity, candidate only, and exact row ID OK');
 
 const pageHtml=readFileSync(new URL('../index.html',import.meta.url),'utf8');
 assert.ok(/maximum-scale=1,user-scalable=no/.test(pageHtml),
@@ -356,7 +339,7 @@ assert.match(newProductHtml,/紐付けしない（商品だけ登録）/,'new pr
 assert.ok(!newProductHtml.includes('name="group" required'),
  'item group selection is optional, not forced');
 const listingHtml=ui.receiptScanView();
-assert.ok(listingHtml.includes('解析した商品名（登録商品名とは別）')&&
+assert.ok(listingHtml.includes('OCR明細名（変更不可）')&&
  listingHtml.includes('既存商品と照合')&&listingHtml.includes('新しい商品を登録'),
  'scan review clearly distinguishes printed text and master product actions');
 const bulkHtml=ui.scanBulkProductsView();
