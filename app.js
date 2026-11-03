@@ -366,15 +366,13 @@ function scanExistingProductView(){
   </div>`});
 }
 function receiptChatGptView(){
- return `${head('ChatGPTの解析結果','レシート読み取り（補助）',true)}
- <main class="preview-record-page receipt-chatgpt-page">
- <p class="hint">${chatGptFromScan?'OCR結果とレシート写真をChatGPTで照合する補助解析です。下の指示文にはOCRの商品名・数量・税込金額候補を含みます。写真は手動で添付してください。':'レシート写真をChatGPTで読み取り、JSON結果を貼り付けてください。'}原本画像を優先し、結果は保存前に確認してください。</p>
- <button type="button" class="secondary" data-act="chatGptCopyPrompt">${chatGptFromScan?'OCR結果と指示文をまとめてコピー':'ChatGPT用の読み取り指示文をコピー'}</button>
- ${chatGptFromScan?'<p class="hint">OCR下書きは保持されます。ChatGPTへレシート画像を添付してから、コピーした指示文を送ってください。</p>':''}
- <label class="scan-field">ChatGPTの結果（JSON）<textarea id="chatgpt-input" rows="9" maxlength="30000" placeholder="解析結果のJSONを貼り付け"></textarea></label>
- <p id="chatgpt-error" class="scan-warning" role="status">${esc(chatGptError)}</p>
- <button type="button" class="primary" data-act="chatGptImport">解析結果を確認</button>
- </main>`;
+ return head('ChatGPTの補助解析','OCR後の商品名候補',true)+
+ '<main class="preview-record-page receipt-chatgpt-page">'+
+ '<p class="hint">アプリのOCR明細名は変更せず、正式商品名の候補だけを取り込みます。写真はChatGPTへ手動添付してください。</p>'+
+ '<button type="button" class="secondary" data-act="chatGptCopyPrompt">OCR結果と指示文をコピー</button>'+
+ '<label class="scan-field">ChatGPTの結果（JSON）<textarea id="chatgpt-input" rows="9" maxlength="30000" placeholder="OCR行IDと商品名候補を貼り付け"></textarea></label>'+
+ '<p id="chatgpt-error" class="scan-warning" role="status">'+esc(chatGptError)+'</p>'+
+ '<button type="button" class="primary" data-act="chatGptImport">商品名候補を取り込む</button></main>';
 }
 function scanChainForStore(raw){
  const name=norm(raw);
