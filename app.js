@@ -145,6 +145,7 @@ function chainMinima(productId,periodValue,records=allPreviewRecords(),details=a
    date:r.record.record_date,source:r.record.record_type
  })).sort((a,b)=>a.price-b.price||a.chainId.localeCompare(b.chainId));
 }
+const aliasNameFor=line=>catalogue.productAliases?.find(a=>a.aliasId===line?.alias_id)?.ocrName||line?.raw_name||'';
 const chainLabel=id=>catalogue.chains.find(c=>c.id===id)?.name||'チェーン未設定';
 const listPriceText=item=>{
  const first=registeredProducts(item.id)[0];
@@ -247,7 +248,7 @@ function compareOcrAndChatGpt(ocr,gpt){
 function scanDuplicates(draft){
  if(!draft||!draft.chainId||!draft.date||!draft.items.length)return [];
  const sig=rows=>JSON.stringify(rows.map(x=>[
-  norm(x.name??x.raw_name??''),
+  norm(x.name??aliasNameFor(x)??''),
   Number(x.quantity),
   x.amount===undefined?Number(x.amount_tax_included):Number(x.amount)
  ]).sort((a,b)=>JSON.stringify(a).localeCompare(JSON.stringify(b))));
@@ -273,7 +274,7 @@ function recordDetailView(){
     ${record.branch_name?'<p>支店：'+esc(record.branch_name)+'</p>':''}
     <p>明細数：${detail.length}件</p><strong>税込合計：${yen(total)}</strong></div>
   ${detail.map((x,i)=>`<div class="panel preview-record-row">
-    <strong>${i+1}. ${esc(x.raw_name||catalogue.products.find(p=>p.id===x.product_id)?.name||'未入力')}</strong>
+    <strong>${i+1}. ${esc(catalogue.products.find(p=>p.id===x.product_id)?.name||aliasNameFor(x)||'未特定')}</strong>
     <span>${esc(x.quantity)}個　税込 ${yen(Number(x.amount_tax_included))}</span>
     <span>${x.product_id?'照合商品：'+esc(catalogue.products.find(p=>p.id===x.product_id)?.name||'登録済み商品'):'商品未照合'}</span></div>`).join('')}
   ${liveMode?'<div class="record-detail-actions"><button type="button" class="secondary" data-act="recordEdit">編集</button><button type="button" class="tertiary" data-act="recordDelete">削除</button></div>':''}
@@ -301,14 +302,14 @@ function scanProductView(){
  const item=scanDraft?.items[scanProductRow];
  if(!item)return UI.sheet({title:'商品を登録',body:'<p>対象の明細が見つかりません。</p>'});
  const fields=[
-  '<p class="hint">レシート表記（履歴に残します）：<strong>'+esc(item.name)+'</strong></p>',
-  UI.formField({id:'scan-product-name',name:'name',label:'商品マスタに登録する正式商品名',value:item.canonicalName||item.name,maxlength:80,required:true}),
+  '<p class="hint">読み取り名（OCR辞書へ保存）：<strong>'+esc(item.name)+'</strong></p>',
+  UI.formField({id:'scan-product-name',name:'name',label:'商品マスタに登録する正式商品名',value:item.canonicalName||item.nameCandidate||item.name,maxlength:80,required:true}),
   '<label class="scan-field">日用品リストへの紐付け（任意）<select id="scan-product-group" name="group">'+scanGroupOptions()+'</select></label>',
   UI.formField({id:'scan-product-quantity',name:'package_quantity',label:'内容量（任意）',type:'number',value:'',extra:'min="0.001" step="any"'}),
   UI.formField({id:'scan-product-unit',name:'package_unit',label:'単位',control:'select',value:'個',options:UNIT_OPTIONS.map(v=>({label:v,value:v}))})
  ].join('');
  return UI.sheet({title:'レシートの商品を登録',variant:'receipt-product-modal',
-  body:`<form id="scanProductForm">${fields}<p class="hint">商品は日用品に紐付けず登録できます。後から「チョコ」などに紐付けられます。レシート表記は変更しません。</p>
+  body:`<form id="scanProductForm">${fields}<p class="hint">商品は日用品に紐付けず登録できます。後から「チョコ」などに紐付けられます。OCR名は後から編集せず、商品の紐付けだけ変更できます。</p>
   <button type="submit" class="primary">商品を登録</button></form>`});
 }
 function scanBulkProductCandidates(){
@@ -316,7 +317,7 @@ function scanBulkProductCandidates(){
  for(const item of scanDraft?.items||[]){
   const key=norm(item.name);
   if(item.productId||!item.name.trim()||seen.has(key))continue;
-  seen.add(key);candidates.push({name:item.name.trim(),canonicalName:item.canonicalName||item.name.trim(),key});
+  seen.add(key);candidates.push({name:item.name.trim(),canonicalName:item.canonicalName||item.nameCandidate||item.name.trim(),key});
  }
  return candidates;
 }
@@ -324,7 +325,7 @@ function scanBulkProductsView(){
  const candidates=scanBulkProductCandidates();
  const body=!candidates.length?'<p>未照合の商品はありません。</p>':
   `<form id="scanBulkProductsForm">
-   <p class="hint">正式商品名を修正し、「商品だけ登録」または日用品への紐付けを選択してください。レシートの印字名はそのまま残ります。</p>
+   <p class="hint">正式商品名を修正し、「商品だけ登録」または日用品への紐付けを選択してください。読み取り名はOCR辞書に保存し、後から編集しません。</p>
    ${candidates.map((item,i)=>`<div class="panel scan-bulk-entry">
      <p class="hint">レシート表記：${esc(item.name)}</p>
      <label class="scan-field">正式商品名<input type="text" name="name-${i}" value="${esc(item.canonicalName)}" maxlength="80" required></label>
@@ -492,7 +493,7 @@ function chatGptDraft(parsed){
    const issues=[...(i.issues||[])];
    if(amount==='')issues.push('税込金額を確認');
    const productId=scanMatchProduct(name,chain?.id||null);
-   return {name,quantity:i.quantity||1,amount,productId,autoLinked:!!productId,issues};
+   return {name,ocrRawName:name,nameCandidate:String(i.nameCandidate||'').trim(),quantity:i.quantity||1,amount,productId,autoLinked:!!productId,issues};
   })};
 }
 const scanDate=text=>{
@@ -545,7 +546,7 @@ function scanFormView(){
      scanDraft.ocrCandidates.map(c=>'<option value="'+esc(c.index)+'">'+
      esc(c.name)+'　'+esc(c.amount)+'円 / '+esc(c.quantity)+'個</option>').join('')+
      '</select></label>':''}
-    <label class="scan-field">レシートの商品名（原本表記）<input name="name-${i}" maxlength="120" value="${esc(item.name)}" placeholder="印字名を原本と照合"></label>
+    <label class="scan-field">解析した商品名（登録商品名とは別）<input name="name-${i}" maxlength="120" value="${esc(item.name)}" placeholder="印字名を原本と照合"></label>
     <input type="hidden" name="product-${i}" value="${esc(scanResolvedProductId(item))}">
     <div class="scan-product-association">
       <span class="scan-product-association-label">商品マスタとの紐付け</span>
@@ -908,7 +909,7 @@ function receiptView(){
  const first=details[0],p=catalogue.products.find(x=>x.id===first?.product_id);
  return `<button type="button" class="panel preview-record-row receipt-history-row" data-act="recordDetail" data-record-id="${esc(r.record_id)}">
  <strong>${esc(r.record_type==='receipt'?'レシート':'値札')} · ${esc(r.record_date)}</strong>
- <span>${esc(chainLabel(r.chain_id))}／${esc(p?.name||first?.raw_name||'未照合')}${details.length>1?' ほか'+(details.length-1)+'件':''}</span>
+ <span>${esc(chainLabel(r.chain_id))}／${esc(p?.name||aliasNameFor(first)||'未照合')}${details.length>1?' ほか'+(details.length-1)+'件':''}</span>
  <span>${yen(total)} · ${details.length}明細</span></button>`;
  }).join('')||'<div class="empty">記録はまだありません</div>';
  return `${head('レシート','くらしストック_試作')}<main class="preview-record-page"><p class="sample-price-notice">${liveMode?'レシート写真から自動解析できます。OCR結果は保存前に必ず確認してください。':'※ 手入力の試作機能。OCR・Sheets・夫婦間同期は未接続です。'}</p><div class="record-entry-actions">${liveMode?'<button class="primary" data-act="receiptScan">'+miniIcon('plus')+'<span>写真からレシートを読み取る</span></button><input id="receipt-source-picker" class="scan-file-input" type="file" accept="image/*" multiple><button class="secondary" data-act="receiptChatGpt">ChatGPTで解析結果を取り込む</button>':''}${scanDraftAvailable?'<button class="secondary" data-act="resumeScanDraft">下書きを再開</button>':''}<button class="secondary" data-act="newReceipt">${miniIcon('plus')}<span>レシート明細</span></button><button class="secondary" data-act="newShelf">${miniIcon('plus')}<span>値札</span></button></div><h2 class="sectiontitle">${liveMode?'保存した記録':'この端末の記録'}</h2>${rows}</main>${nav()}`;
@@ -1387,7 +1388,7 @@ app.addEventListener('submit',e=>{e.preventDefault();const form=e.target;const d
   if(!liveMode){fieldNotice(form,'正式保存はSheets接続時に利用できます');return;}
   if(!scanDraft||!scanDraft.items.length){fieldNotice(form,'保存する明細がありません');return;}
   const lines=scanDraft.items.map((item,i)=>({
-   raw_name:String(d.get('name-'+i)||'').trim(),
+   raw_name:String(item.ocrRawName||d.get('name-'+i)||'').trim(),
    product_id:String(d.get('product-'+i)||'')||null,
    quantity:Number(d.get('qty-'+i)),
    amount_tax_included:String(d.get('amount-'+i)||'').trim()===''?NaN:Number(d.get('amount-'+i)),
@@ -1434,11 +1435,7 @@ app.addEventListener('submit',e=>{e.preventDefault();const form=e.target;const d
    }
    // Product-specific aliases are synchronized through the preexisting queue.
    // Include the exact original OCR name after explicit confirmation.
-   const aliasLines=[...lines,...lines.flatMap((line,i)=>{
-     const raw=scanDraft?.items[i]?.ocrRawName;
-     return raw&&line.product_id&&norm(raw)!==norm(line.raw_name)?
-      [{...line,raw_name:raw}]:[];
-   })];
+   const aliasLines=lines;
    if(window.KurashiLive.learnAliases&&learnedChain&&learnedChain!=='__new__')
     void window.KurashiLive.learnAliases({chain_id:learnedChain,items:aliasLines})
      .catch(e=>console.warn('別名学習を保存できませんでした',e));
@@ -1730,7 +1727,7 @@ if(action==='recordEdit'){
   chainName:'',branchName:r.branch_name||'',total:null,
   items:allPreviewItems().filter(x=>x.record_id===r.record_id&&!x.deleted_at)
    .sort((a,b)=>Number(a.line_order)-Number(b.line_order))
-   .map(x=>({name:x.raw_name||'',quantity:x.quantity,
+   .map(x=>({name:aliasNameFor(x),ocrRawName:aliasNameFor(x),quantity:x.quantity,
     amount:x.amount_tax_included,productId:x.product_id||'',manuallyLinked:!!x.product_id,issues:[]}))
  };
  saveScanDraft();scanStatus='保存済みの記録を編集中です';page='recordScan';render();return;
