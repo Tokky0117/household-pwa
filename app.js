@@ -1,4 +1,4 @@
-const APP_VERSION='0.64.0';
+const APP_VERSION='0.65.0';
 const CATS=['飲食','キッチン','洗面・風呂','洗濯・掃除','その他'];
 const liveMode=!!window.KurashiLive; // Data source only; original Preview v46 UI components remain.
 const SEED=[['牛乳',0,true],['麦茶',0,false],['コーヒー',0,true],['卵',0,false],['キッチンペーパー',1,false],['ラップ',1,true],['食器用洗剤',1,true],['シャンプー',2,false],['歯磨き粉',2,true],['ハンドソープ',2,false],['洗濯洗剤',3,false],['柔軟剤',3,true],['トイレットペーパー',3,false],['乾電池',4,true],['ティッシュ',4,true]];
@@ -570,7 +570,7 @@ function scanFormView(){
       </div>
       <div class="scan-product-candidates">${scanSuggestionButtons(item,i)}</div>
     </div>
-    <div class="scan-input-pair"><label class="scan-field">購入数<input name="qty-${i}" type="number" min="1" step="1" required value="${esc(item.quantity)}"></label>
+    <div class="scan-input-pair"><label class="scan-field">購入数<input name="qty-${i}" type="number" min="1" step="1" required value="${esc(item.quantity)}" ${item.quantityUncertain?'class="scan-quantity-uncertain" aria-describedby="scan-quantity-hint-'+i+'"':''}>${item.quantityUncertain?'<span class="scan-quantity-hint" id="scan-quantity-hint-'+i+'">数量要確認（仮に1を表示）</span>':''}</label>
     <label class="scan-field">税込明細合計（円）<input name="amount-${i}" type="number" min="0" step="1" required value="${esc(item.amount)}" placeholder="確認して入力"></label></div>
    </div>`).join('')}
   <button type="button" class="secondary" data-act="scanAddItem">＋ 明細を追加</button>
@@ -621,11 +621,10 @@ async function runReceiptScan(){
       item.taxIncludedAmount:'';
     const issues=[...(item.issues||[])];
     if(price==='')issues.push('税込金額を原本で確認');
-    if(item.quantitySource==='default'||item.quantitySource==='inferred_candidate')
-     issues.push('数量を確認');
+    const quantityUncertain=item.quantity==null||item.quantitySource==='default'||item.quantitySource==='inferred_candidate';
     const productId='';
-    allItems.push({name:n,ocrRawName:n,quantity:item.quantity||1,amount:price,
-     productId,autoLinked:!!productId,issues});
+    allItems.push({name:n,ocrRawName:n,ocrRowId:'ocr-'+id(),quantity:quantityUncertain?1:item.quantity,
+     quantityUncertain,amount:price,productId,autoLinked:!!productId,issues});
    }
    if(Number.isSafeInteger(out.parsed.receiptTotal))total=out.parsed.receiptTotal;
   }
@@ -2202,6 +2201,16 @@ app.addEventListener('input',e=>{
   return;
  }
  if(page==='recordScan'&&e.target.closest('#scanConfirmForm')){
+  const qty=e.target;
+  if(qty.matches('input[name^="qty-"]')){
+   const index=Number(qty.name.slice(4)),item=scanDraft?.items[index];
+   if(item?.quantityUncertain){
+    item.quantityUncertain=false;
+    qty.classList.remove('scan-quantity-uncertain');
+    qty.removeAttribute('aria-describedby');
+    qty.closest('label')?.querySelector('.scan-quantity-hint')?.remove();
+   }
+  }
   syncScanReview();saveScanDraft();refreshScanDuplicateUI();refreshScanTotalUI();
  }
 });
