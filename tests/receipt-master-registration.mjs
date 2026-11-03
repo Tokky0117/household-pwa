@@ -93,7 +93,10 @@ const target={closest(selector){
  return null;
 }};
 for(const listener of listeners.click)listener({target});
-for(let i=0;i<120&&storedAliases.length===0;i++)await Promise.resolve();
+for(let i=0;i<200;i++){
+ await Promise.resolve();
+ if(storedAliases.length&&win.KurashiLiveJournal.read()===null)break;
+}
 assert.equal(mutations.length,2,'Product and alias must be separate journaled mutations: '+
  JSON.stringify(api.state()));
 assert.deepEqual(mutations.map(x=>x.action),['product.create','product.alias.create']);
