@@ -225,8 +225,8 @@ assert.ok(ui.receiptChatGptView().includes('chatgpt-input'),
  'ChatGPT JSON import has a normal UI');
 assert.ok(source.includes('updateRecord(')&&source.includes('deleteRecord('),
  'Edit/delete connect to durable queue, not a local-only fake');
-assert.ok(!ui.budgetView().includes('budget-total'),
- 'Budget tab has only implementation-plan notice, not sample figures');
+assert.ok(!source.includes('function budgetView(')&&!source.includes('function budgetTotals('),
+ 'Budget screen and aggregation have been retired');
 assert.ok(source.includes("import('./ocr-engine/engine.js')"),
  'PaddleOCR runtime loads lazily, after explicit scan');
 
