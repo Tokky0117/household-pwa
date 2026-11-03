@@ -10,7 +10,7 @@
  */
 const IMPORT_VERSION='kurashi-receipt-import-1';
 const rootFields=['version','purchaseDate','storeName','taxBasis','taxTotal','receiptTotal','printedCount','items'];
-const itemFields=['name','code','quantity','unitPrice','grossAmount','discount','netAmount'];
+const itemFields=['name','code','quantity','unitPrice','grossAmount','discount','netAmount','nameCandidate'];
 const privatePattern=/(?:会員(?:番号|ID)?|カード(?:番号|会社|会員)|クレジット(?:売上|カード)|取引(?:ID|番号|ICD)|承認番号|受付番号|レシート(?:No|番号)|電話番号|有効期限|決済(?:番号|ID)|支払(?:方法|番号)|トークン|PayPay|楽天ペイ)/i;
 const cardPattern=/(?:\d{4}[- ]?){3}\d{4}/;
 const longDigits=/\d{10,}/;
@@ -50,6 +50,7 @@ function validate(raw){
   if(!isObject(item)||!exactKeys(item,itemFields)||
      !itemFields.every(k=>k in item))throw Error('INVALID_ITEM_FIELDS');
   const name=item.name===null?null:cleanText(item.name,120);
+  const nameCandidate=item.nameCandidate===null?null:cleanText(item.nameCandidate,80,{optional:true});
   if(item.code!==null&&(typeof item.code!=='string'||!/^(?:\d{4,8}|\d{13})$/.test(item.code)))
    throw Error('INVALID_PRODUCT_CODE');
   if(!name&&!item.code&&item.grossAmount===null&&item.netAmount===null)throw Error('ITEM_NOT_IDENTIFIABLE');
@@ -59,7 +60,7 @@ function validate(raw){
    throw Error('INVALID_ITEM_AMOUNT');
   if(item.discount!==null&&item.grossAmount!==null&&item.discount>item.grossAmount)
    throw Error('DISCOUNT_GREATER_THAN_AMOUNT');
-  return {name:name||'',productCode:item.code,quantity:item.quantity,
+  return {name:name||'',nameCandidate,productCode:item.code,quantity:item.quantity,
    unitPrice:item.unitPrice,grossAmount:item.grossAmount,
    discount:item.discount,netAmount:item.netAmount,order:index+1};
  });
@@ -80,7 +81,7 @@ function makeReceipt(raw){
    issues.push('unit_quantity_mismatch');
   if(!row.name)issues.push('missing_product_name');
   return {
-   name:row.name,rawName:row.name,productCode:row.productCode,
+   name:row.name,rawName:row.name,nameCandidate:row.nameCandidate,productCode:row.productCode,
    quantity:row.quantity,quantitySource:'inferred_candidate',
    quantityCandidate:row.quantity,unitPrice:row.unitPrice,
    grossAmount:row.grossAmount,discount:row.discount,
@@ -157,7 +158,7 @@ function normalizeImport(raw){
   if(isObject(result.items))result.items=[result.items];
   else throw Error('ITEMS_ARRAY_REQUIRED');
  }
- const keys=['name','code','quantity','unitPrice','grossAmount','discount','netAmount'];
+ const keys=['name','code','quantity','unitPrice','grossAmount','discount','netAmount','nameCandidate'];
  result.items=result.items.map((line,index)=>{
   if(!isObject(line))throw Error('ITEM_INVALID_'+(index+1));
   return Object.fromEntries(keys.map(k=>[k,line[k]??null]));
@@ -181,7 +182,7 @@ function editChatGptReceiptDraft(receipt,index,patch){
   taxTotal:receipt.taxTotal,receiptTotal:receipt.receiptTotal,
   printedCount:receipt.printedCount,
   items:receipt.items.map(i=>({
-   name:i.name||null,code:i.productCode,quantity:i.quantity,
+   name:i.name||null,nameCandidate:i.nameCandidate||null,code:i.productCode,quantity:i.quantity,
    unitPrice:i.unitPrice,grossAmount:i.grossAmount,discount:i.discount,
    netAmount:i.netAmount
   }))
@@ -211,7 +212,7 @@ function makeChatGptReceiptPrompt(ocrReference=''){
   'itemsは必ず[ と ]で囲んだ配列にし、各商品を{ と }で囲んでカンマで区切ってください。',
   '会員・決済・取引・カード・電話番号などの個人情報を出力しないでください。',
   '画像から確認できない商品名・数量・税率・商品コード・値引きやメーカーを推測で補わず、nullにしてください。',
-  '商品名は原本表記。商品名中の「20個入」は購入数量ではありません。quantityは購入数量です。',
+  'nameはレシートの読み取り表記をそのまま記載し、誤字に見えても勝手に正式商品名へ置き換えないでください。nameCandidateは参考用の自然な商品名候補で、確信がなければnullとします。商品名中の「20個入」は購入数量ではありません。quantityは購入数量です。',
   'grossAmountは値引前の明細合計、discountは値引額の正の整数、netAmountは値引後の明細合計です。',
   '明確に値引きがないと読み取れる場合だけdiscountを0にし、不明ならnullにします。',
   '金額と数量は円・個の整数で、¥や桁区切り記号を含めません。数字が読み取れない場合はnull。',
@@ -221,7 +222,7 @@ function makeChatGptReceiptPrompt(ocrReference=''){
   JSON.stringify({
    version:IMPORT_VERSION,purchaseDate:null,storeName:null,taxBasis:'unknown',
    taxTotal:null,receiptTotal:null,printedCount:null,items:[{
-    name:null,code:null,quantity:null,unitPrice:null,
+    name:null,nameCandidate:null,code:null,quantity:null,unitPrice:null,
     grossAmount:null,discount:null,netAmount:null
    }]
   },null,2)
