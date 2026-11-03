@@ -232,10 +232,41 @@ function makeChatGptReceiptPrompt(ocrReference=''){
 
 // Receipt assistant v2: candidate names only, bound to existing PWA OCR IDs.
 const ASSIST_VERSION='kurashi-receipt-assist-1';
+// Parse only the first structured JSON; explanatory OCR diagnosis stays outside.
+function extractOcrAssistJson(source){
+ const trimmed=source.trim();
+ if(trimmed.startsWith('```')){
+  const fence=/^```(?:json)?[ \t]*\r?\n([\s\S]*?)\r?\n```(?=\s|$)/i.exec(trimmed);
+  if(!fence)throw Error('ASSIST_JSON_BLOCK_REQUIRED');
+  try{return JSON.parse(fence[1].replace(/[“”]/g,'"'))}
+  catch(_){throw Error('INVALID_OCR_ASSIST_JSON')}
+ }
+ if(!trimmed.startsWith('{'))throw Error('ASSIST_JSON_FIRST_REQUIRED');
+ const plain=trimmed.replace(/[“”]/g,'"');
+ let level=0,inQuote=false,escaped=false,end=-1;
+ for(let i=0;i<plain.length;i++){
+  const c=plain[i];
+  if(inQuote){
+   if(escaped)escaped=false;
+   else if(c==='\\')escaped=true;
+   else if(c==='"')inQuote=false;
+  }else if(c==='"')inQuote=true;
+  else if(c==='{')level++;
+  else if(c==='}'){
+   level--;
+   if(level===0){end=i+1;break;}
+   if(level<0)throw Error('INVALID_OCR_ASSIST_JSON');
+  }
+ }
+ if(end<0||level!==0||inQuote)throw Error('INVALID_OCR_ASSIST_JSON');
+ try{return JSON.parse(plain.slice(0,end))}
+ catch(_){throw Error('INVALID_OCR_ASSIST_JSON')}
+}
+
 function parseChatGptOcrAssistJson(source){
  if(typeof source!=='string'||source.length>30000||!source.trim())
   throw Error('JSON_SIZE_OR_EMPTY');
- const raw=extractJson(source);
+ const raw=extractOcrAssistJson(source);
  if(!isObject(raw)||Object.keys(raw).sort().join(',')!=='items,version'||
   raw.version!==ASSIST_VERSION||!Array.isArray(raw.items)||
   !raw.items.length||raw.items.length>100)
@@ -246,7 +277,7 @@ function parseChatGptOcrAssistJson(source){
    typeof entry.rowId!=='string'||!(/^[A-Za-z0-9_-]{1,80}$/).test(entry.rowId)||
    typeof entry.ocrName!=='string'||entry.ocrName.length>120||
    /[\r\n\t<>]/.test(entry.ocrName)||privatePattern.test(entry.ocrName)||
-   cardPattern.test(entry.ocrName)||longDigits.test(entry.ocrName)||
+   cardPattern.test(entry.ocrName)||
    (entry.nameCandidate!==null&&typeof entry.nameCandidate!=='string'))
    throw Error('INVALID_OCR_ASSIST_ITEM');
   if(seen.has(entry.rowId))throw Error('OCR_ROW_DUPLICATE');
