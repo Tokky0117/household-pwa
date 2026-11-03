@@ -151,7 +151,10 @@ function applyReceiptExactMatches(){
   const item=receiptScan.items[match.index];
   if(item&&!item.productId&&
      (match.status==='name_candidate'||match.status==='code_candidate')&&
-     match.candidates?.length===1)item.productId=match.candidates[0].productId;
+     match.candidates?.length===1){
+   item.productId=match.candidates[0].productId;
+   item.autoMatched=true;
+  }
  }
 }
 async function loadReceiptCatalog(){
@@ -724,7 +727,8 @@ function receiptScanFormValues(){
   productId:String(data.get('product-'+i)||''),
   category:String(data.get('category-'+i)||''),
   readNetAmount:item.readNetAmount??null,
-  importWarnings:item.importWarnings||[],productCode:item.productCode||null
+  importWarnings:item.importWarnings||[],productCode:item.productCode||null,
+  autoMatched:String(data.get('product-'+i)||'')===String(item.productId||'')&&item.autoMatched===true
  }));
  if(receiptScan.source==='chatgpt_paste')
   receiptScan.taxResolvedForPreview=data.get('taxResolved')==='yes';
@@ -1045,7 +1049,7 @@ async function sendPendingLive(entry){
     receiptScan.items[intent.index].productId=String(entity.product_id);
     if(receiptRemoteCatalog?.household_id===entry.householdId)
      receiptRemoteCatalog.products=[...receiptRemoteCatalog.products,entity];
-    receiptProductNotice='商品マスタに登録し、この明細と紐付けました。次回も認識させるには「この印字名を記憶」を選んでください。';
+    receiptProductNotice='商品マスタに登録し、明細と紐付けました。チェーンが選択されていれば次回照合用の印字名も登録します。';
    }
    receiptProductCreateIndex=null;receiptProductIntent=null;
   }
@@ -1459,7 +1463,7 @@ function receiptScanReview(){
  ${receiptRemoteWritable()?'<button type="button" class="tertiary" data-act="receiptNewProduct" data-ocr-index="'+i+'">＋ 新しい商品を登録</button>':''}
  ${receiptRemoteWritable()&&item.productId&&!receiptAliasAlreadyKnown(item)?
   '<button type="button" class="tertiary" data-act="saveReceiptAlias" data-ocr-index="'+i+'">この印字名を記憶（次回の照合用）</button>':''}
- ${receiptProductCreateIndex===i?'<div class="receipt-inline-create"><p class="hint">日用品に紐付けず商品だけ登録することもできます。</p>'+
+ ${receiptProductCreateIndex===i?'<div class="receipt-inline-create"><p class="hint">日用品への紐付けは任意です。チェーンを選択済みなら印字名も次回の照合用に記憶します。</p>'+
   UI.formField({id:'receipt-new-product-name',name:'receipt_new_name',label:'正式商品名',value:item.rawName,required:true,maxlength:150})+
   UI.quantityUnitFields({quantityId:'receipt-new-product-quantity',unitId:'receipt-new-product-unit',quantity:'',unit:'個'})+
   UI.formField({id:'receipt-new-product-group',name:'receipt_new_group',label:'日用品リストとの紐付け（任意）',control:'select',value:'',options:groupOptions})+
@@ -1761,7 +1765,26 @@ function updateComparisonPrices(){
   if(heading&&updatedHeading)heading.textContent=updatedHeading.textContent;
  }
 }
-app.addEventListener('change',e=>{if(['receipt-camera','receipt-photo'].includes(e.target.id)){
+app.addEventListener('change',e=>{
+ if(e.target?.name==='chain'&&e.target.closest?.('#receiptScanForm')&&receiptScan){
+  const previous=receiptScan.chainId;
+  receiptScanFormValues();
+  if(previous!==receiptScan.chainId){
+   for(const item of receiptScan.items){
+    if(item.autoMatched)item.productId='';
+    item.autoMatched=false;
+   }
+   applyReceiptExactMatches();
+  }
+  render();return;
+ }
+ if(e.target?.name?.startsWith('product-')&&e.target.closest?.('#receiptScanForm')&&receiptScan){
+  receiptScanFormValues();
+  const index=Number(e.target.name.slice(8));
+  if(Number.isInteger(index)&&receiptScan.items[index])receiptScan.items[index].autoMatched=false;
+  return;
+ }
+ if(['receipt-camera','receipt-photo'].includes(e.target.id)){
  const photo=e.target.files?.[0];
  if(photo)scanReceiptPhoto(photo);
  return;
@@ -1863,7 +1886,7 @@ if(el.dataset.receiptCandidate!==undefined){
  receiptScanFormValues();
  const index=Number(el.dataset.ocrIndex),pid=String(el.dataset.receiptCandidate);
  if(Number.isInteger(index)&&receiptScan.items[index]&&receiptProductChoices().some(p=>p.id===pid)){
-  receiptScan.items[index].productId=pid;render();
+  receiptScan.items[index].productId=pid;receiptScan.items[index].autoMatched=false;render();
  }
  return;
 }
@@ -2137,8 +2160,20 @@ if(action==='saveReceiptNewProduct'){
   receiptProductNotice='正式商品名・内容量・日用品の選択を確認してください';render();return;
  }
  receiptScanFormValues();
- liveMutate('product.create',{item_group_id:group,name,
-  package_quantity:quantity,package_unit:unit},receiptProductCreateIndex);return;
+ const index=receiptProductCreateIndex;
+ const rawName=receiptScan.items[index]?.rawName||'';
+ const chainId=receiptScan.chainId||'';
+ void (async()=>{
+  await liveMutate('product.create',{item_group_id:group,name,
+   package_quantity:quantity,package_unit:unit},index);
+  // Separate durable intents: never store an alias for an uncertain product.
+  if(receiptProductIntent||!chainId||!receiptScan?.items[index]||
+     receiptScan.chainId!==chainId||receiptScan.items[index].rawName!==rawName||
+     !receiptScan.items[index].productId||receiptAliasAlreadyKnown(receiptScan.items[index]))return;
+  await liveMutate('product.alias.create',{product_id:receiptScan.items[index].productId,
+   chain_id:chainId,printed_name:rawName,confirmed:true});
+ })();
+ return;
 }
 if(action==='saveReceiptStore'){saveReceiptStore();return}
 if(action==='retryReceiptStore'){saveReceiptStore(true);return}
