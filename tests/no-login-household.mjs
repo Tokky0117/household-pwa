@@ -1441,6 +1441,9 @@ conflictSession.window.document.querySelector('#chatgpt-input').value=JSON.strin
  ...historyJson,storeName:'初めての不明チェーンXY'
 });
 conflictSession.window.document.querySelector('[data-act="chatGptImport"]').click();
+console.log('DEBUG conflict aliases',JSON.stringify(temp.call('bootstrap').data.product_aliases.filter(a=>a.normalized_alias===historyRaw.normalize('NFKC').toLowerCase())));
+console.log('DEBUG conflict UI candidate',conflictSession.window.document.querySelector('[name="product-0"]').value,'chain',conflictSession.window.document.querySelector('[name="chain"]').value);
+console.log('DEBUG conflict app aliases',JSON.stringify(conflictSession.window.eval('catalogue.productAliases.filter(a=>a.normalizedAlias==="かたかな・直売x-123")')));
 assert.equal(conflictSession.window.document.querySelector('[name="product-0"]').value,'',
  'without retailer context an ambiguous confirmed name stays unlinked');
 assert.ok(conflictSession.window.document.querySelectorAll(
