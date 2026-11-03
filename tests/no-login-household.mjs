@@ -1206,6 +1206,12 @@ assert.equal(standaloneForm.querySelector('[name="chain"]').value,'__new__',
 standaloneForm.querySelector('[name="chain"]').value=standaloneChainId;
 standaloneForm.querySelector('[name="chain"]').dispatchEvent(
  new standaloneSession.window.Event('change',{bubbles:true}));
+await pause(180);
+console.log('v62 diagnostic store alias',JSON.stringify({
+ state:standaloneSession.window.KurashiLive.state(),
+ stores:temp.call('bootstrap').data?.stores?.filter(x=>x.chain_id===standaloneChainId),
+ op:temp.db.processed_operations.slice(-3).map(x=>x.slice(0,3))
+}));
 await waitFor(()=>temp.call('bootstrap').data.stores.some(x=>
  x.chain_id===standaloneChainId&&String(x.aliases).includes('COSTCO WHOLESALE')),
  'confirmed retailer spelling is remembered via existing stores.aliases and queue');

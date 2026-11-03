@@ -347,6 +347,8 @@ assert.ok(!receiptReview.includes('name="confirmed"')&&
  'receipt save requires no extra generic/total checkbox');
 assert.ok(receiptReview.includes('scan-sum-text'),
  'printed total and line sum remain visible for comparison');
+ui.setScanDraft({source:'chatgpt',date:'2026-11-02',chainId:'c-a',total:200,
+ items:[{name:'一括未登録商品',quantity:1,amount:200,productId:'',issues:[]}]});
 const batchOptional=ui.scanBulkProductsView();
 assert.ok(batchOptional.includes('value="__skip__"')&&
  batchOptional.includes('商品だけ登録（日用品未紐付け）'),
