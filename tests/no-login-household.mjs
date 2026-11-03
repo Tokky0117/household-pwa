@@ -723,7 +723,7 @@ assert.equal(receiptSaved.data.items.length,2);
 assert.equal(receiptSaved.data.items[0].amount_tax_included,340,
  'two units for 340 yen never multiply amount again');
 assert.equal(receiptSaved.data.items[0].price_eligible,false,
- 'unlinked receipt is budget-only');
+ 'unlinked receipt is stored without a product price');
 assert.equal(receiptSaved.data.items[0].category_id,'',
  'null category is saved as uncategorized');
 assert.equal(recordFixture.call('record.create',receiptPayload,
@@ -898,7 +898,7 @@ loseRecord.window.close();
 let retryRecord=appSession();
 await waitFor(()=>retryRecord.window.KurashiLive.state().loaded&&
  retryRecord.window.KurashiLive.state().queued===0&&
- temp.call('bootstrap').data.record_items.some(x=>x.raw_name==='応答喪失テスト'),
+ temp.call('bootstrap').data.record_items.some(x=>aliasText(temp,x)==='応答喪失テスト'),
  'response-loss receipt reconciled after restart');
 assert.equal(temp.db.processed_operations.length,opsBeforeReceiptRetry,
  'no second journal entry for response-loss record');
@@ -1340,8 +1340,7 @@ relinkSession.window.close();
 console.log('v63: retailer changes, OCR-name corrections and user-confirmed master links OK');
 
 
-/* v64: A saved receipt's raw_name/product_id is itself reusable evidence.
- * This particular product deliberately has NO product_aliases row. */
+/* v64: saved receipts register OCR names independently of the historic row text. */
 const historyRaw='かたかな・直売X-123',historyCanonical='履歴から再照合する商品A';
 const historyProduct=temp.call('product.create',{
  item_group_id:null,name:historyCanonical,package_quantity:null,package_unit:null
@@ -1354,7 +1353,7 @@ assert.equal(temp.call('record.create',{
   amount_tax_included:221,category_id:null}]
 },'op-v64-history-receipt-abcdefghijk').ok,true);
 assert.equal(temp.call('bootstrap').data.product_aliases.filter(a=>
- a.product_id===historyId).length,0,'history test has no alias');
+ a.product_id===historyId).length,1,'receipt automatically registers OCR name in dictionary');
 let historySession=appSession();
 await waitFor(()=>historySession.window.KurashiLive.state().loaded,'history on next session');
 await waitFor(()=>historySession.window.KurashiLive.state().queued===0,
@@ -1452,7 +1451,7 @@ assert.ok(temp.call('bootstrap').data.products.some(p=>
  p.product_id===kitSavedProduct.product_id&&!p.item_group_id),
  'product still exists after unlink');
 assert.ok(temp.call('bootstrap').data.record_items.some(x=>
- x.raw_name===kitRaw&&x.product_id===kitSavedProduct.product_id),
+ aliasText(temp,x)===kitRaw&&x.product_id===kitSavedProduct.product_id),
  'past receipt/product ID remains stable after product is removed from daily item');
 console.log('v64: receipt/shelf exact history, cross-chain matching, safe kana suggestions, conflicts, master unlink OK');
 
