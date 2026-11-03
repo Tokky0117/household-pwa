@@ -2243,6 +2243,10 @@ main>.ui-search + .filterrow{margin-bottom:5px}
 .scan-photo-list button{min-height:44px}
 .scan-field{display:flex;flex-direction:column;gap:6px;font-size:14px;margin:12px 0}
 .scan-field input,.scan-field select{box-sizing:border-box;width:100%;min-height:44px;border:1px solid var(--line,#ccc);border-radius:10px;padding:9px 11px;font-size:16px;color:inherit;background:var(--card,#fff)}
+.scan-review .scan-quantity-uncertain{background:#fff0b3;color:#272316;border-color:#d8ad3c}
+.scan-quantity-hint{font-size:12px;color:#866400;font-weight:600}
+.scan-ocr-name{padding:4px 0;font-size:16px;line-height:1.5;overflow-wrap:anywhere}
+.scan-name-candidate{font-size:13px;line-height:1.5;color:var(--text-secondary,#555)}
 .scan-input-pair{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.4fr);gap:10px}
 .scan-review-item{margin:12px 0}
 .scan-warning{font-size:13px;color:var(--text-secondary,#666);line-height:1.5}
