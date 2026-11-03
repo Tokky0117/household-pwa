@@ -1106,7 +1106,7 @@ function kurashiCreateRecord_(user,payload,id){
       kurashiEnsureNewRow_('record_items','record_item_id',item,hid,book);
     return kurashiCompleteOperation_(book,hid,id,check.hash,plan,{
       status:'completed',action,record:plan.record,
-      items:plan.items,sequence_no:plan.sequence_no
+      items:plan.items,aliases:plan.aliases||[],sequence_no:plan.sequence_no
     },'records',plan.record.record_id);
   }finally{lock.releaseLock()}
 }
@@ -1217,7 +1217,7 @@ function kurashiMutateRecord_(user,action,payload,id){
   for(const row of plan.items)
    kurashiEnsureNewRow_('record_items','record_item_id',row,hid,book);
   return kurashiCompleteOperation_(book,hid,id,check.hash,plan,{
-   status:'completed',action,record:plan.record,items:plan.items,
+   status:'completed',action,record:plan.record,items:plan.items,aliases:plan.aliases||[],
    sequence_no:plan.sequence_no
   },'records',plan.record.record_id);
  }finally{lock.releaseLock()}
