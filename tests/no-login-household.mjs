@@ -1116,9 +1116,16 @@ kitForm.querySelector('[name="group"]').value=chocId;
 kitForm.dispatchEvent(new kitSession.window.Event('submit',{bubbles:true,cancelable:true}));
 await waitFor(()=>!!kitSession.window.document.getElementById('scanConfirmForm'),
  'new product returns directly to the same receipt');
-await waitFor(()=>temp.call('bootstrap').data.products.some(x=>
+try{
+ await waitFor(()=>temp.call('bootstrap').data.products.some(x=>
  x.name===kitCanonical&&x.item_group_id===chocId),
  'canonical KitKat master saved under existing chocolate item');
+}catch(err){
+ console.log('DEBUG KitKat state',JSON.stringify(kitSession.window.KurashiLive.state()));
+ console.log('DEBUG KitKat sheet',JSON.stringify(temp.call('bootstrap').data.products.slice(-5)));
+ console.log('DEBUG KitKat UI',kitSession.window.document.body.textContent.slice(-900));
+ throw err;
+}
 const kitSavedProduct=temp.call('bootstrap').data.products.find(x=>x.name===kitCanonical);
 await waitFor(()=>kitSession.window.document.querySelector(
  '#scanConfirmForm [name="product-0"]')?.value===kitSavedProduct.product_id,
