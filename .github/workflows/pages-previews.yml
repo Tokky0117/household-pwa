@@ -36,7 +36,7 @@ jobs:
           set -euo pipefail
           git fetch --prune origin '+refs/heads/*:refs/remotes/origin/*'
           mkdir -p _site/previews
-          files=(index.html app.js auth.js gas-api.js live-operation-journal.js receipt-save-contract.js receipt-operation-journal.js receipt-save-session.js receipt-ocr.js receipt-chatgpt-import.js styles.css manifest.webmanifest icon.svg sw.js)
+          files=(index.html app.js auth.js gas-api.js live-operation-journal.js receipt-save-contract.js receipt-operation-journal.js receipt-save-session.js receipt-ocr.js receipt-chatgpt-import.js receipt-product-matching.js styles.css manifest.webmanifest icon.svg sw.js)
 
           copy_site() {
             local ref="$1"
@@ -66,7 +66,11 @@ jobs:
               if [[ -f "$dest/sw.js" ]]; then
                 # Keep the branch's own cache version, but namespace its preview.
                 version="$(sed -nE "s/^const CACHE='household-ui-v([0-9]+)';/\\1/p" "$dest/sw.js" | head -n 1)"
-                [[ "$version" =~ ^[0-9]+$ ]] || { echo "Invalid SW cache version: $branch"; exit 1; }
+                if [[ ! "$version" =~ ^[0-9]+$ ]]; then
+                  echo "::warning::Skip outdated preview with invalid SW cache version: $branch"
+                  rm -rf "$dest"
+                  continue
+                fi
                 sed -i "s/const CACHE=\x27[^\x27]*\x27/const CACHE=\x27household-preview-$slug-v$version\x27/" "$dest/sw.js"
               fi
               echo "Preview: /previews/$slug/"
