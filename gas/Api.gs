@@ -978,6 +978,64 @@ function kurashiBranchName_(v){
    kurashiFail_('BAD_REQUEST','支店名を確認してください');
  return value;
 }
+
+/* OCR names are immutable. Prepare new aliases before journaling a record. */
+function kurashiAliasIndex_(book){
+ const index=new Map();
+ for(const {value} of kurashiRows_('product_aliases',book)){
+  const key=String(value.chain_id)+'|'+String(value.normalized_alias);
+  if(index.has(key))kurashiFail_('RECOVERY_CONFLICT','同じチェーンのOCR名が重複しています');
+  index.set(key,{...value});
+ }
+ return index;
+}
+function kurashiPlanAlias_(raw,chainId,productId,index,newRows,now){
+ const original=kurashiRawName_(raw);
+ if(!original)return '';
+ const normalized=kurashiNormalize_(original),key=chainId+'|'+normalized;
+ if(index.has(key))return String(index.get(key).alias_id);
+ const entity={alias_id:'alias-'+Utilities.getUuid(),product_id:productId||'',
+  chain_id:chainId,normalized_alias:normalized,ocr_name:original,
+  version:1,updated_at:now};
+ index.set(key,entity);newRows.push(entity);
+ return entity.alias_id;
+}
+/* Retriable migration. Previous raw_name values remain only for legacy history. */
+function kurashiMigrateLegacyAliasRows_(book,hid){
+ const props=PropertiesService.getScriptProperties();
+ if(props.getProperty('KURASHI_ALIAS_ROWS_V2')==='1')return;
+ const index=kurashiAliasIndex_(book),now=new Date().toISOString();
+ for(const {row,value} of kurashiRows_('product_aliases',book))
+  if(!value.ocr_name)kurashiReplace_('product_aliases',row,
+   {...value,ocr_name:String(value.normalized_alias)},book);
+ const records=new Map(kurashiRows_('records',book).filter(x=>
+  String(x.value.household_id)===hid).map(x=>
+  [String(x.value.record_id),String(x.value.chain_id)]));
+ const historical=kurashiRows_('record_items',book).filter(x=>
+  x.value.raw_name&&!x.value.alias_id&&records.has(String(x.value.record_id)));
+ const evidence=new Map();
+ for(const {value} of historical){
+  const key=records.get(String(value.record_id))+'|'+kurashiNormalize_(value.raw_name);
+  if(!evidence.has(key))evidence.set(key,new Set());
+  if(value.product_id)evidence.get(key).add(String(value.product_id));
+ }
+ for(const {row,value} of historical){
+  const chainId=records.get(String(value.record_id)),name=String(value.raw_name);
+  const key=chainId+'|'+kurashiNormalize_(name);
+  if(!index.has(key)){
+   const ids=evidence.get(key)||new Set();
+   const entity={alias_id:'alias-'+Utilities.getUuid(),
+    product_id:ids.size===1?[...ids][0]:'',
+    chain_id:chainId,normalized_alias:kurashiNormalize_(name),
+    ocr_name:name,version:1,updated_at:now};
+   kurashiAppend_('product_aliases',entity,book);index.set(key,entity);
+  }
+  kurashiReplace_('record_items',row,
+   {...value,alias_id:index.get(key).alias_id},book);
+ }
+ if(typeof props.setProperty==='function')props.setProperty('KURASHI_ALIAS_ROWS_V2','1');
+}
+
 function kurashiCreateRecord_(user,payload,id){
   if(!['chain_id,items,record_date,record_type',
     'branch_name,chain_id,items,record_date,record_type'].includes(
