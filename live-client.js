@@ -645,32 +645,54 @@
   return changed;
  }
  async function learnAliases({chain_id,items}){
-  await boot();
-  if(!workspace.base)await load();
+  await boot();if(!workspace.base)await load();
   await modify(doc=>{
    const snap=project(doc);
    if(!snap?.stores.some(c=>c.chain_id===chain_id))
     throw Error('別名のチェーンがありません');
    const normal=s=>String(s||'').normalize('NFKC').trim().replace(/\s+/g,' ').toLocaleLowerCase('ja');
-   const aliases=new Set((snap.product_aliases||[]).map(a=>
-    a.chain_id+'|'+a.normalized_alias+'|'+a.product_id));
+   const queued=new Set();
    for(const line of items||[]){
-    if(!line.product_id||!line.raw_name)continue;
-    const product=snap.products.find(x=>x.product_id===line.product_id&&!x.deleted_at);
-    if(!product)continue;
+    if(!line.raw_name)continue;
+    const productId=line.product_id||null;
+    if(productId&&!snap.products.some(x=>x.product_id===productId&&!x.deleted_at))continue;
     const alias=String(line.raw_name).trim();
     if(!alias||alias.length>120||/^[=+@\-]/.test(alias)||
-       /[\x00-\x1f\x7f<>]/.test(alias)||normal(alias)===normal(product.name))
-      continue;
-    const key=chain_id+'|'+normal(alias)+'|'+line.product_id;
-    if(aliases.has(key))continue;
-    aliases.add(key);
+       /[\x00-\x1f\x7f<>]/.test(alias))continue;
+    const key=chain_id+'|'+normal(alias);
+    if(queued.has(key))continue;
+    queued.add(key);
+    const existing=snap.product_aliases.find(a=>a.chain_id===chain_id&&
+      a.normalized_alias===normal(alias));
+    if(existing){
+     if(!productId||String(existing.product_id||'')===productId)continue;
+     if(!String(existing.alias_id).startsWith('local-'))
+      doc.queue.push({id:operationId(),kind:'alias-link',aliasId:existing.alias_id,
+       productId,version:Number(existing.version),retries:0});
+     continue;
+    }
     doc.queue.push({id:operationId(),kind:'alias-create',clientId:'local-'+uid(),
-     chainId:chain_id,productId:line.product_id,alias,retries:0});
+     chainId:chain_id,productId,alias,retries:0});
    }
    return doc;
   });
   void flush();
+ }
+ async function linkAlias(aliasId,productId){
+  await boot();if(!workspace.base)await load();
+  const changed=await modify(doc=>{
+   const snap=project(doc),alias=snap?.product_aliases.find(x=>x.alias_id===aliasId);
+   if(!alias)throw Error('OCR名が見つかりません');
+   if(productId&&!snap.products.some(x=>x.product_id===productId))
+    throw Error('登録商品が見つかりません');
+   if(String(alias.product_id||'')===String(productId||''))return false;
+   if(String(aliasId).startsWith('local-'))throw Error('OCR名の同期後に変更してください');
+   doc.queue.push({id:operationId(),kind:'alias-link',aliasId,
+     productId:productId||null,version:Number(alias.version),retries:0});
+   return true;
+  });
+  if(changed)void flush();
+  return changed;
  }
  async function updateRecord(input){
   return enqueue(doc=>{
