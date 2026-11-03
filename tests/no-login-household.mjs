@@ -1000,7 +1000,7 @@ scanSession.window.document.getElementById('chatgpt-input').value=JSON.stringify
 await completeOcrImport(scanSession);
 assert.ok(scanSession.window.document.getElementById('scanConfirmForm'),
  'ChatGPT JSON uses the same edit and confirmation form as OCR');
-assert.ok(scanSession.window.document.querySelector('[name="name-0"]').value==='新しいレシート品');
+assert.equal(scanSession.window.document.querySelector('.scan-ocr-name').textContent,'新しいレシート品');
 await waitFor(()=>scanSession.window.KurashiLive.state().loaded,'receipt draft saved');
 await pause(100); // Let the prior UI draft write finish before this test override.
 await scanSession.window.KurashiLive.saveReceiptDraft({
@@ -1186,7 +1186,7 @@ await waitFor(()=>kitSession.window.document.querySelector(
  '#scanConfirmForm [name="product-0"]')?.value===kitSavedProduct.product_id,
  'local product ID reconciles to permanent Sheets ID even with different OCR spelling');
 const kitReview=kitSession.window.document.getElementById('scanConfirmForm');
-assert.equal(kitReview.querySelector('[name="name-0"]').value,kitRaw,
+assert.equal(kitReview.querySelector('.scan-ocr-name').textContent,kitRaw,
  'raw receipt name is never silently replaced with canonical master name');
 assert.match(kitReview.textContent,/キットカット濃い抹茶10袋/,
  'canonical product appears as selected master in confirmation view');
@@ -1227,7 +1227,7 @@ assert.equal(duplicateKitReview.querySelector('[name="chain"]').value,kitStore.c
  'registered retailer is recognized on another iPhone');
 assert.equal(duplicateKitReview.querySelector('[name="product-0"]').value,
  kitSavedProduct.product_id,'the exact same receipt OCR alias auto-links across devices');
-assert.equal(duplicateKitReview.querySelector('[name="name-0"]').value,kitRaw,
+assert.equal(duplicateKitReview.querySelector('.scan-ocr-name').textContent,kitRaw,
  'reimport does not replace original printed name');
 assert.equal(duplicateKitReview.querySelector('#scan-duplicate-warning').hidden,false,
  'importing an identical already-saved receipt shows duplicate warning');
@@ -1303,13 +1303,13 @@ thirdPhone.window.document.querySelector(
  '[data-act="recordDetail"][data-record-id="'+purchasedReceiptId+'"]').click();
 thirdPhone.window.document.querySelector('[data-act="recordEdit"]').click();
 let savedEditForm=thirdPhone.window.document.getElementById('scanConfirmForm');
-assert.equal(savedEditForm.querySelector('[name="name-0"]').readOnly,true,
+assert.equal(savedEditForm.querySelector('[name="name-0"]'),null,
  'original saved OCR name cannot be edited');
-assert.equal(savedEditForm.querySelector('[name="name-0"]').value,storedName,
+assert.equal(savedEditForm.querySelector('.scan-ocr-name').textContent,storedName,
  'saved original text is displayed unchanged');
 thirdPhone.window.document.querySelector('[data-act="scanAddItem"]').click();
 savedEditForm=thirdPhone.window.document.getElementById('scanConfirmForm');
-assert.equal(savedEditForm.querySelector('[name="name-0"]').readOnly,true);
+assert.equal(savedEditForm.querySelector('[name="name-0"]'),null);
 const addedLine=savedEditForm.querySelector('[name="name-1"]');
 assert.ok(addedLine&&!addedLine.readOnly,
  'new line added to an existing receipt is editable');
@@ -1377,7 +1377,7 @@ existingChoice.click();
 const selectedReview=existingSession.window.document.getElementById('scanConfirmForm');
 assert.equal(selectedReview.querySelector('[name="product-0"]').value,
  kitSavedProduct.product_id,'existing product selected without creating a duplicate');
-assert.equal(selectedReview.querySelector('[name="name-0"]').value,
+assert.equal(selectedReview.querySelector('.scan-ocr-name').textContent,
  'キットカット別レシート表記','printed spelling kept when choosing existing product');
 existingSession.window.close();
 console.log('v61: KitKat canonical master, chocolate item link, original receipt name, alias and no-pinch gestures: OK');
@@ -1510,16 +1510,10 @@ reviewField('chain').value=standaloneChainId;
 reviewField('chain').dispatchEvent(new relinkSession.window.Event('change',{bubbles:true}));
 assert.equal(reviewField('product-0').value,standaloneProduct.product_id,
  'switching back to the original retailer re-links its known alias');
-reviewField('name-0').value='印字修正後の未登録商品';
-reviewField('name-0').dispatchEvent(new relinkSession.window.Event('input',{bubbles:true}));
-assert.equal(reviewField('product-0').value,'',
- 'editing the printed name removes its previous automatic link immediately');
-assert.match(relinkSession.window.document.querySelector('.scan-product-association').textContent,
- /未照合/,'the user sees the corrected matching state without losing input focus');
-reviewField('name-0').value=standaloneRaw;
-reviewField('name-0').dispatchEvent(new relinkSession.window.Event('input',{bubbles:true}));
-assert.equal(reviewField('product-0').value,standaloneProduct.product_id,
- 'restoring a known print alias re-matches it without a full page reload');
+assert.equal(relinkSession.window.document.querySelector('[name="name-0"]'),null,
+ 'OCR original name cannot be modified; only product associations are editable');
+assert.equal(relinkSession.window.document.querySelector('.scan-ocr-name').textContent,
+ standaloneRaw,'OCR name remains unchanged when the retailer changes');
 relinkSession.window.document.querySelector('[data-act="scanPickExisting"]').click();
 const manualChoice=relinkSession.window.document.querySelector(
  '[data-act="scanChooseExisting"][data-product-id="'+standaloneProduct.product_id+'"]');
@@ -1529,10 +1523,10 @@ reviewField('chain').value=kitStore.chain_id;
 reviewField('chain').dispatchEvent(new relinkSession.window.Event('change',{bubbles:true}));
 assert.equal(reviewField('product-0').value,standaloneProduct.product_id,
  'an explicit existing-product selection survives retailer changes');
-reviewField('name-0').value='手動で紐付けた別印字名';
-reviewField('name-0').dispatchEvent(new relinkSession.window.Event('input',{bubbles:true}));
 assert.equal(reviewField('product-0').value,standaloneProduct.product_id,
- 'an explicit existing-product selection survives printed-name edits');
+ 'explicit existing-product selection survives retailer changes');
+assert.equal(relinkSession.window.document.querySelector('.scan-ocr-name').textContent,
+ standaloneRaw,'manual product selection does not rewrite the OCR name');
 relinkSession.window.close();
 console.log('v63: retailer changes, OCR-name corrections and user-confirmed master links OK');
 
@@ -1568,18 +1562,23 @@ await completeOcrImport(historySession);
 const hfield=name=>historySession.window.document.querySelector('#scanConfirmForm [name="'+name+'"]');
 assert.equal(hfield('product-0').value,historyId,
  'second receipt at a DIFFERENT chain uses a saved OCR dictionary alias');
-assert.equal(hfield('name-0').value,historyRaw,'printed name remains unchanged');
-hfield('name-0').value='カタカナ 直売X123';
-hfield('name-0').dispatchEvent(new historySession.window.Event('input',{bubbles:true}));
+assert.equal(historySession.window.document.querySelector('.scan-ocr-name').textContent,
+ historyRaw,'printed name remains unchanged');
+assert.equal(hfield('name-0'),null,'OCR text is not an editable input');
+historySession.window.document.querySelector('[data-tab="receipt"]').click();
+prepareOcrImport(historySession);
+historySession.window.document.getElementById('chatgpt-input').value=JSON.stringify({
+ ...historyJson,items:[{...historyJson.items[0],name:'カタカナ 直売X123'}]
+});
+await completeOcrImport(historySession);
 assert.equal(hfield('product-0').value,'','kana/mark variation is NOT auto-confirmed');
 const hSuggestion=historySession.window.document.querySelector(
  '[data-act="scanChooseSuggested"][data-product-id="'+historyId+'"]');
 assert.ok(hSuggestion,'kana and punctuation variant appears as master candidate');
 hSuggestion.click();
 assert.equal(hfield('product-0').value,historyId,'choosing a candidate links the master');
-hfield('name-0').value='手動選択した別の表記';
-hfield('name-0').dispatchEvent(new historySession.window.Event('input',{bubbles:true}));
-assert.equal(hfield('product-0').value,historyId,'manual selection survives subsequent editing');
+assert.equal(hfield('product-0').value,historyId,
+ 'manually confirmed product is retained without editing the OCR name');
 await waitFor(()=>historySession.window.KurashiLive.state().queued===0,'candidate alias queue drained');
 historySession.window.close();
 
