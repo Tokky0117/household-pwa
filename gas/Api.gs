@@ -47,6 +47,8 @@ function doPost(e) {
       return kurashiReply_({ok:true,data:kurashiMutateRecord_(user,action,payload,input.operation_id)});
     if (action === 'alias.upsert')
       return kurashiReply_({ok:true,data:kurashiUpsertAlias_(user,payload,input.operation_id)});
+    if (action === 'store.alias.upsert')
+      return kurashiReply_({ok:true,data:kurashiUpsertStoreAlias_(user,payload,input.operation_id)});
     kurashiFail_('UNSUPPORTED','未対応の操作です');
   } catch (err) {
     return kurashiReply_({ok:false,error:{
@@ -614,7 +616,6 @@ function kurashiSaveProduct_(user,action,payload,operationId){
       if(creating){
         const fields=kurashiProductFields_(payload);
         const group=kurashiProductGroup_(payload.item_group_id,hid,book);
-        if(!group)kurashiFail_('BAD_REQUEST','登録先の日用品を選択してください');
         if(scoped.some(x=>x.value.normalized_name===fields.normalized_name&&
            String(x.value.package_quantity||'')===String(fields.package_quantity||'')&&
            String(x.value.package_unit||'')===String(fields.package_unit||'')))
@@ -623,7 +624,7 @@ function kurashiSaveProduct_(user,action,payload,operationId){
           String(x.value.item_group_id)===group)
           .map(x=>Number(x.value.item_group_order)||0))+1;
         entity={product_id:'product-'+Utilities.getUuid(),household_id:hid,
-          item_group_id:group,...fields,item_group_order:order,version:1,
+          item_group_id:group||'',...fields,item_group_order:group?order:'',version:1,
           created_at:now,updated_at:now,deleted_at:''};
       }else{
         const productId=String(payload.product_id||'');
@@ -1183,4 +1184,65 @@ function kurashiUpsertAlias_(user,payload,id){
    status:'completed',action,entity:plan.entity,sequence_no:plan.sequence_no
   },'product_aliases',plan.entity.alias_id);
  }finally{lock.releaseLock()}
+}
+
+/**
+ * A manually selected chain confirms an alias for a retailer name printed by
+ * OCR/ChatGPT. This uses the existing stores.aliases JSON column and the same
+ * durable, retryable operation journal; no new sheet or migration is needed.
+ */
+function kurashiStoreAliasList_(value){
+  const raw=String(value||'').trim();
+  if(!raw)return [];
+  try{
+    const parsed=JSON.parse(raw);
+    if(Array.isArray(parsed))return parsed.filter(x=>typeof x==='string'&&x.trim());
+  }catch(_){}
+  return raw.split(/[,、\n]/).map(x=>x.trim()).filter(Boolean);
+}
+function kurashiUpsertStoreAlias_(user,payload,id){
+  if(Object.keys(payload).sort().join(',')!=='chain_id,raw_alias')
+    kurashiFail_('BAD_REQUEST','チェーン別名の形式が不正です');
+  const hid=user.householdId,action='store.alias.upsert',lock=LockService.getScriptLock();
+  if(!lock.tryLock(20000))kurashiFail_('BUSY','保存が混み合っています');
+  try{
+    const book=kurashiBook_(),check=kurashiCheckOperation_(book,hid,id,action,payload);
+    let plan=check.found;
+    if(plan?.status==='completed')return kurashiPublic_(plan);
+    if(!plan){
+      const chainId=String(payload.chain_id||'');
+      const alias=kurashiName_(payload.raw_alias),normalized=kurashiNormalize_(alias);
+      const chainRows=kurashiRows_('stores',book).filter(x=>
+        String(x.value.household_id)===hid);
+      const chosen=chainRows.filter(x=>String(x.value.chain_id)===chainId);
+      if(chosen.length!==1)
+        kurashiFail_('NOT_FOUND','チェーンが見つかりません');
+      if(chainRows.some(row=>String(row.value.chain_id)!==chainId&&(
+        kurashiNormalize_(row.value.canonical_name)===normalized||
+        kurashiStoreAliasList_(row.value.aliases).some(x=>kurashiNormalize_(x)===normalized))))
+        kurashiFail_('DUPLICATE','この店舗表記は別チェーンに登録されています');
+      const before=kurashiPublic_(chosen[0].value);
+      const aliases=kurashiStoreAliasList_(before.aliases);
+      if(kurashiNormalize_(before.canonical_name)===normalized||
+         aliases.some(x=>kurashiNormalize_(x)===normalized))
+        return {status:'completed',action,entity:before,
+          sequence_no:kurashiSequence_(hid,book)};
+      const now=new Date().toISOString();
+      aliases.push(alias);
+      const next={...before,aliases:JSON.stringify(aliases),
+        version:Number(before.version)+1,updated_at:now};
+      plan={status:'prepared',action,before,entity:next,
+        sequence_no:kurashiSequence_(hid,book)+1,updated_at:now};
+      kurashiPrepareOperation_(book,hid,id,check.hash,plan);
+    }
+    if(!plan.before||!plan.entity||
+       String(plan.entity.household_id)!==hid||
+       String(plan.entity.chain_id)!==String(payload.chain_id))
+      kurashiFail_('RECOVERY_CONFLICT','チェーン別名の履歴が不正です');
+    kurashiRecordTransition_('stores','chain_id',plan.before,plan.entity,book);
+    return kurashiCompleteOperation_(book,hid,id,check.hash,plan,{
+      status:'completed',action,entity:plan.entity,
+      sequence_no:plan.sequence_no
+    },'stores',plan.entity.chain_id);
+  }finally{lock.releaseLock()}
 }

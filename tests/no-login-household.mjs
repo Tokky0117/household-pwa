@@ -63,7 +63,8 @@ function fixture(code) {
       createTextOutput:text=>({setMimeType:()=>({text})})}
   });
   vm.runInContext(setup+'\n'+code,context);
-  return {db,failItemWriteAfter(n){failAfterSheet='item_groups';failAfterWrites=n},failProductWriteAfter(n){failAfterSheet='products';failAfterWrites=n},failRecordItemWriteAfter(n){failAfterSheet='record_items';failAfterWrites=n},call:(action,payload={},operation_id=null,id_token='')=>{
+  return {db,failItemWriteAfter(n){failAfterSheet='item_groups';failAfterWrites=n},failProductWriteAfter(n){failAfterSheet='products';failAfterWrites=n},failRecordItemWriteAfter(n){failAfterSheet='record_items';failAfterWrites=n},
+    failStoreWriteAfter(n){failAfterSheet='stores';failAfterWrites=n},call:(action,payload={},operation_id=null,id_token='')=>{
     const req={action,payload,id_token,...(operation_id?{operation_id}:{})};
     return JSON.parse(context.doPost({postData:{contents:JSON.stringify(req)}}).text);
   }};
@@ -181,7 +182,7 @@ assert.equal(temp.db.processed_operations.length,afterCommit,
  'GAS did not create an extra processed operation');
 assert.equal(pill(c),'なし');
 c.window.document.querySelector('[data-tab="settings"]').click();
-assert.match(c.window.document.body.textContent,/試作 v0\.61\.0/);
+assert.match(c.window.document.body.textContent,/試作 v0\.62\.0/);
 
 // New item IDs can be referenced by edits/hides before the first GAS save.
 online=false;
@@ -989,7 +990,6 @@ historyUI.window.document.querySelector('[data-act="recordEdit"]').click();
 const editForm=historyUI.window.document.getElementById('scanConfirmForm');
 assert.ok(editForm,'history edit reuses shared multi-line confirmation form');
 editForm.querySelector('[name="amount-0"]').value='345';
-editForm.querySelector('[name="confirmed"]').checked=true;
 online=false;
 editForm.dispatchEvent(new historyUI.window.Event('submit',{bubbles:true,cancelable:true}));
 await waitFor(()=>historyUI.window.KurashiLive.state().queued===1,
@@ -1126,7 +1126,6 @@ assert.match(kitReview.textContent,/キットカット濃い抹茶10袋/,
  'canonical product appears as selected master in confirmation view');
 assert.match(kitReview.textContent,/日用品：チョコ/,
  'selected master shows item-group relationship to chocolate');
-kitReview.querySelector('[name="confirmed"]').checked=true;
 kitReview.dispatchEvent(new kitSession.window.Event('submit',{bubbles:true,cancelable:true}));
 await waitFor(()=>kitSession.window.KurashiLive.state().queued===0&&
  temp.call('bootstrap').data.record_items.some(x=>
@@ -1181,3 +1180,102 @@ assert.equal(selectedReview.querySelector('[name="name-0"]').value,
  'キットカット別レシート表記','printed spelling kept when choosing existing product');
 existingSession.window.close();
 console.log('v61: KitKat canonical master, chocolate item link, original receipt name, alias and no-pinch gestures: OK');
+
+/* v62: Product masters can exist without item_groups, and a recognized
+ * chain + the explicitly confirmed receipt alias links on re-import, even
+ * when the initial receipt was never saved. */
+const standaloneName='キットカット濃い抹茶10袋（単独マスタ試験）';
+const standaloneRaw='キットカットコイマッチャ10フクロ試験';
+const standaloneChain=temp.call('store.create',{name:'コストコ'},
+ 'op-v62-costco-chain-create-abcdefghijklmn');
+assert.equal(standaloneChain.ok,true);
+const standaloneChainId=standaloneChain.data.entity.chain_id;
+const standaloneJson={...kitJson,storeName:'COSTCO WHOLESALE',
+  receiptTotal:268,items:[{...kitJson.items[0],name:standaloneRaw}]};
+let standaloneSession=appSession();
+await waitFor(()=>standaloneSession.window.KurashiLive.state().loaded,
+ 'standalone product and chain bootstrap');
+standaloneSession.window.document.querySelector('[data-tab="receipt"]').click();
+standaloneSession.window.document.querySelector('[data-act="receiptChatGpt"]').click();
+standaloneSession.window.eval(importer);
+standaloneSession.window.document.getElementById('chatgpt-input').value=JSON.stringify(standaloneJson);
+standaloneSession.window.document.querySelector('[data-act="chatGptImport"]').click();
+const standaloneForm=standaloneSession.window.document.getElementById('scanConfirmForm');
+assert.equal(standaloneForm.querySelector('[name="chain"]').value,'__new__',
+ 'unrecognized printed retailer initially needs explicit chain selection');
+standaloneForm.querySelector('[name="chain"]').value=standaloneChainId;
+standaloneForm.querySelector('[name="chain"]').dispatchEvent(
+ new standaloneSession.window.Event('change',{bubbles:true}));
+await waitFor(()=>temp.call('bootstrap').data.stores.some(x=>
+ x.chain_id===standaloneChainId&&String(x.aliases).includes('COSTCO WHOLESALE')),
+ 'confirmed retailer spelling is remembered via existing stores.aliases and queue');
+standaloneSession.window.document.querySelector('[data-act="scanNewProduct"]').click();
+const standaloneProductForm=standaloneSession.window.document.getElementById('scanProductForm');
+assert.ok(standaloneProductForm,'new product form is open');
+assert.equal(standaloneProductForm.querySelector('[name="group"]').value,'',
+ 'unlinked product is the default');
+standaloneProductForm.querySelector('[name="name"]').value=standaloneName;
+// No selection of an item group. This used to be rejected in both client and GAS.
+standaloneProductForm.dispatchEvent(new standaloneSession.window.Event(
+ 'submit',{bubbles:true,cancelable:true}));
+await waitFor(()=>temp.call('bootstrap').data.products.some(x=>
+ x.name===standaloneName&&x.item_group_id===''),
+ 'product.create accepts null item_group_id through durable queue and GAS');
+const standaloneProduct=temp.call('bootstrap').data.products.find(x=>x.name===standaloneName);
+assert.ok(standaloneProduct);
+await waitFor(()=>temp.call('bootstrap').data.product_aliases.some(x=>
+ x.chain_id===standaloneChainId&&x.product_id===standaloneProduct.product_id&&
+ x.normalized_alias===standaloneRaw.toLocaleLowerCase('ja')),
+ 'user confirmed abbreviation is persisted immediately after product registration');
+const standaloneReview=standaloneSession.window.document.getElementById('scanConfirmForm');
+assert.ok(standaloneReview,'standalone creation returns to receipt review');
+assert.match(standaloneReview.textContent,/日用品未紐付け/,
+ 'standalone product is clearly identified as unlinked');
+assert.ok(!standaloneReview.querySelector('[name="difference"]')&&
+ !standaloneReview.querySelector('[name="confirmed"]'),
+ 'there is no redundant receipt-total or generic confirmation checkbox');
+// Exit without saving the receipt: the product and confirmed alias must persist.
+standaloneSession.window.close();
+let readAgain=appSession();
+await waitFor(()=>readAgain.window.KurashiLive.state().loaded,
+ 'second ChatGPT import with persisted product/store aliases');
+readAgain.window.document.querySelector('[data-tab="receipt"]').click();
+readAgain.window.document.querySelector('[data-act="receiptChatGpt"]').click();
+readAgain.window.eval(importer);
+readAgain.window.document.getElementById('chatgpt-input').value=JSON.stringify(standaloneJson);
+readAgain.window.document.querySelector('[data-act="chatGptImport"]').click();
+const matchedReview=readAgain.window.document.getElementById('scanConfirmForm');
+assert.equal(matchedReview.querySelector('[name="chain"]').value,standaloneChainId,
+ 're-read recognizes COSTCO WHOLESALE as registered コストコ');
+assert.equal(matchedReview.querySelector('[name="product-0"]').value,
+ standaloneProduct.product_id,
+ 're-read automatically selects canonical product via chain-scoped abbreviation');
+assert.match(matchedReview.textContent,/日用品未紐付け/);
+const totalText=matchedReview.querySelector('#scan-sum-text').textContent;
+assert.match(totalText,/印字合計と一致/,'total comparison is visible without a checkbox');
+matchedReview.dispatchEvent(new readAgain.window.Event('submit',{
+ bubbles:true,cancelable:true
+}));
+await waitFor(()=>temp.call('bootstrap').data.record_items.some(x=>
+ x.product_id===standaloneProduct.product_id&&x.raw_name===standaloneRaw),
+ 'auto-linked product stores original printed name and master ID');
+readAgain.window.close();
+const dupStoreAlias=temp.call('store.alias.upsert',{
+ chain_id:standaloneChainId,raw_alias:'COSTCO WHOLESALE'
+},'op-v62-store-alias-newid-abcdefghijk');
+assert.equal(dupStoreAlias.ok,true,'same store alias is idempotent with a new operation ID');
+assert.equal(temp.call('store.alias.upsert',{
+ chain_id:standaloneChainId,raw_alias:'COSTCO WHOLESALE'
+},'op-v62-store-alias-newid-abcdefghijk').ok,true);
+assert.equal(temp.call('store.alias.upsert',{
+ chain_id:kitStore.chain_id,raw_alias:'COSTCO WHOLESALE'
+},'op-v62-store-alias-conflict-abcdefghijk').error.code,'DUPLICATE',
+ 'alias cannot be silently assigned to a different chain');
+const standaloneDirect=productFixture.call('product.create',{
+ item_group_id:null,name:'日用品未紐付け単独商品の直接保存',
+ package_quantity:null,package_unit:null
+},'op-v62-null-group-direct-abcdefghijk');
+assert.equal(standaloneDirect.ok,true,'GAS directly accepts an unlinked product master');
+assert.equal(standaloneDirect.data.entity.item_group_id,'');
+assert.equal(standaloneDirect.data.entity.item_group_order,'');
+console.log('v62: nullable master, store alias learning, next receipt auto-link and checkbox removal OK');

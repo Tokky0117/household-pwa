@@ -17,7 +17,7 @@ const doc={
 const ctx={document:doc,localStorage:{getItem:k=>storage.get(k)??null,setItem:(k,v)=>storage.set(k,v),removeItem:k=>storage.delete(k)},
  navigator:{},window:{scrollTo(){},scrollY:0},crypto:{randomUUID:()=> 'test-id'},setTimeout:()=>0};
 const ui=vm.runInNewContext(source+`
-({listView,priceCompareView,pickerView,pickerResults,receiptView,budgetView,receiptScanView,receiptChatGptView,recordDetailView,scanDuplicates,compareOcrAndChatGpt,receiptOcrReference,correctionFor,scanBulkProductsView,scanProductView,scanExistingProductView,render,initializeCompare,
+({listView,priceCompareView,pickerView,pickerResults,receiptView,budgetView,receiptScanView,receiptChatGptView,recordDetailView,scanDuplicates,compareOcrAndChatGpt,receiptOcrReference,correctionFor,scanBulkProductsView,scanProductView,scanExistingProductView,scanChainForStore,scanAutolinkUnmatched,scanMatchProduct,render,initializeCompare,
  setProductGroup,reorderProducts,registeredProducts,convertQuantity,setOpenSwipe,
  chainMinima,priceCandidates,budgetTotals,savePreviewRecord,periodStart,
  demoRecords,demoRecordItems,allPreviewRecords,allPreviewItems,
@@ -309,7 +309,9 @@ assert.ok(newProductHtml.includes('scan-product-name')&&
  newProductHtml.includes('キットカットコイマッチャ10フクロ')&&
  newProductHtml.includes('scan-product-group'),
  'canonical product name and household-item linking are both on the new-product form');
-assert.match(newProductHtml,/日用品を選択してください/,'no arbitrary initial group selected');
+assert.match(newProductHtml,/紐付けしない（商品だけ登録）/,'new product permits an unlinked master');
+assert.ok(!newProductHtml.includes('name="group" required'),
+ 'item group selection is optional, not forced');
 const listingHtml=ui.receiptScanView();
 assert.ok(listingHtml.includes('レシートの商品名（原本表記）')&&
  listingHtml.includes('既存商品と照合')&&listingHtml.includes('新しい商品を登録'),
@@ -324,3 +326,29 @@ assert.ok(existingHtml.includes('scan-existing-search')&&
  existingHtml.includes('日用品：牛乳'),
  'existing-product picker searches products and shows linked household item');
 console.log('v61: printed-name preservation, explicit product↔item linking, and no-pinch UI OK');
+
+ui.setScanDraft({source:'chatgpt',date:'2026-11-02',chainId:'c-a',total:200,
+ items:[{name:'マスタとは異なる印字略称',quantity:1,amount:200,
+  productId:'',issues:[]}]});
+const catalog=ui.catalogue();
+catalog.productAliases=[{productId:'p-milk-1',chainId:'c-a',
+ normalizedAlias:'マスタとは異なる印字略称'}];
+catalog.chains.find(x=>x.id==='c-a').aliases=['COSTCO WHOLESALE'];
+assert.equal(ui.scanChainForStore('COSTCO WHOLESALE')?.id,'c-a',
+ 'print name resolves to the previously confirmed chain alias');
+assert.equal(ui.scanAutolinkUnmatched(),1,
+ 'a chain-specific product alias automatically selects the previously linked master');
+assert.equal(ui.getScanDraft().items[0].productId,'p-milk-1');
+assert.equal(ui.scanMatchProduct('マスタとは異なる印字略称','c-b'),'',
+ 'other chains cannot inherit the alias');
+const receiptReview=ui.receiptScanView();
+assert.ok(!receiptReview.includes('name="confirmed"')&&
+ !receiptReview.includes('name="difference"'),
+ 'receipt save requires no extra generic/total checkbox');
+assert.ok(receiptReview.includes('scan-sum-text'),
+ 'printed total and line sum remain visible for comparison');
+const batchOptional=ui.scanBulkProductsView();
+assert.ok(batchOptional.includes('value="__skip__"')&&
+ batchOptional.includes('商品だけ登録（日用品未紐付け）'),
+ 'batch lets user independently skip a product or create it without an item group');
+console.log('v62: nullable item group, chain+product alias rematch, no unnecessary total checkbox OK');

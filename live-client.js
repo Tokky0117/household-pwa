@@ -100,6 +100,19 @@
      aliases:'',version:1});
     continue;
    }
+   if(op.kind==='store-alias'){
+    const store=snap.stores.find(x=>x.chain_id===op.chainId);
+    if(store){
+     let names=[];
+     try{
+      const parsed=JSON.parse(store.aliases||'[]');
+      if(Array.isArray(parsed))names=parsed;
+     }catch(_){names=String(store.aliases||'').split(/[,、\n]/).filter(Boolean)}
+     if(!names.includes(op.alias))names.push(op.alias);
+     store.aliases=JSON.stringify(names);
+    }
+    continue;
+   }
    if(op.kind==='alias-create'){
     snap.product_aliases.push({alias_id:op.clientId,product_id:op.productId,
      chain_id:op.chainId,normalized_alias:op.alias.normalize('NFKC')
@@ -151,10 +164,10 @@
     continue;
    }
    if(op.kind==='product-create'){
-    const order=Math.max(0,...snap.products.filter(p=>
-     p.item_group_id===op.groupId).map(p=>Number(p.item_group_order)||0))+1;
+    const order=op.groupId?Math.max(0,...snap.products.filter(p=>
+     p.item_group_id===op.groupId).map(p=>Number(p.item_group_order)||0))+1:'';
     snap.products.push({product_id:op.clientId,household_id:snap.household_id,
-     item_group_id:op.groupId,name:op.name,
+     item_group_id:op.groupId||'',name:op.name,
      normalized_name:op.name.normalize('NFKC').toLocaleLowerCase('ja'),
      package_quantity:op.quantity??'',package_unit:op.unit||'',
      item_group_order:order,version:1,deleted_at:''});
@@ -475,8 +488,9 @@
  function makeProductOperation(action,payload,doc){
   const snap=project(doc),products=snap?.products||[];
   if(action==='product.create'){
-   const fields=productFields(payload),groupId=String(payload.item_group_id||'');
-   if(!snap.item_groups.some(i=>i.item_group_id===groupId&&!i.deleted_at))
+   const fields=productFields(payload),
+    groupId=payload.item_group_id===null?null:String(payload.item_group_id||'');
+   if(groupId!==null&&!snap.item_groups.some(i=>i.item_group_id===groupId&&!i.deleted_at))
     throw Error('登録先の日用品が見つかりません');
    if(products.some(p=>p.name.normalize('NFKC')===fields.name.normalize('NFKC')&&
      Number(p.package_quantity||0)===Number(fields.quantity||0)&&
@@ -594,6 +608,36 @@
   return {id:operationId(),kind:'record-create',clientId:'local-'+uid(),
    chainId,recordType:kind,date,branchName:String(input.branch_name||'').trim(),items:lines,
    itemIds:lines.map(()=> 'local-'+uid()),retries:0};
+ }
+ async function learnStoreAlias({chain_id,raw_alias}){
+  await boot();if(!workspace.base)await load();
+  const alias=String(raw_alias||'').trim(),chainId=String(chain_id||'');
+  if(!alias||alias.length>80||/^[=+@\-]/.test(alias)||
+     /[\x00-\x1f\x7f<>]/.test(alias)||!chainId)return false;
+  const normalize=v=>String(v||'').normalize('NFKC').trim()
+   .replace(/\s+/g,' ').toLocaleLowerCase('ja');
+  let changed=false;
+  await modify(doc=>{
+   const snap=project(doc),store=snap?.stores.find(x=>x.chain_id===chainId);
+   if(!store)throw Error('登録先のチェーンが見つかりません');
+   if(normalize(store.canonical_name)===normalize(alias))return doc;
+   const getAliases=value=>{
+    try{const rows=JSON.parse(value||'[]');if(Array.isArray(rows))return rows}
+    catch(_){}
+    return String(value||'').split(/[,、\n]/).filter(Boolean);
+   };
+   const current=getAliases(store.aliases);
+   if(current.some(x=>normalize(x)===normalize(alias)))return doc;
+   if(snap.stores.some(x=>x.chain_id!==chainId&&(
+      normalize(x.canonical_name)===normalize(alias)||
+      getAliases(x.aliases).some(v=>normalize(v)===normalize(alias)))))
+    throw Error('別のチェーンが同じ店舗名を使っています');
+   doc.queue.push({id:operationId(),kind:'store-alias',
+    chainId,alias,retries:0});
+   changed=true;return doc;
+  });
+  if(changed)void flush();
+  return changed;
  }
  async function learnAliases({chain_id,items}){
   await boot();
@@ -721,6 +765,12 @@
   if(op.request)return op.request; // preserve exact payload for interrupted requests.
   if(op.kind==='store-create')
    return {operationId:op.id,action:'store.create',payload:{name:op.name}};
+  if(op.kind==='store-alias'){
+   if(!base?.stores.some(x=>x.chain_id===op.chainId))
+    throw Error('別名のチェーンが見つかりません');
+   return {operationId:op.id,action:'store.alias.upsert',payload:{
+    chain_id:op.chainId,raw_alias:op.alias}};
+  }
   if(op.kind==='record-create'){
    if(!base?.stores.some(s=>s.chain_id===op.chainId))
     throw Error('記録のチェーンが見つかりません');
@@ -775,7 +825,8 @@
    }};
   }
   if(op.kind==='product-create'){
-   if(!base?.item_groups.some(i=>i.item_group_id===op.groupId&&!i.deleted_at))
+   if(op.groupId!==null&&!base?.item_groups.some(i=>
+       i.item_group_id===op.groupId&&!i.deleted_at))
     throw Error('登録先の日用品が見つかりません');
    return {operationId:op.id,action:'product.create',payload:{
     name:op.name,package_quantity:op.quantity,package_unit:op.unit,
@@ -854,6 +905,10 @@
       result.entity.product_id!==plan.payload.product_id||
       result.entity.chain_id!==plan.payload.chain_id)
     throw Error('RESPONSE_INVALID');
+  }else if(plan.action==='store.alias.upsert'){
+   if(!result.entity||typeof result.entity.chain_id!=='string'||
+      result.entity.chain_id!==plan.payload.chain_id)
+    throw Error('RESPONSE_INVALID');
   }else if(plan.action==='product.reorder'){
    if(!Array.isArray(result.entities)||
       result.entities.length!==plan.payload.product_ids.length||
@@ -891,7 +946,7 @@
    ws.base={...ws.base,
     ...(plan.action==='alias.upsert'?{product_aliases:[
       ...(ws.base.product_aliases||[]).filter(a=>a.alias_id!==result.entity.alias_id),result.entity]}
-     :plan.action==='store.create'?{stores:[
+     :['store.create','store.alias.upsert'].includes(plan.action)?{stores:[
       ...ws.base.stores.filter(x=>x.chain_id!==result.entity.chain_id),result.entity]}
      :plan.action==='record.create'?{
        records:[...(ws.base.records||[]),result.record],
@@ -1052,13 +1107,21 @@
    aliasId:a.alias_id,productId:a.product_id,chainId:a.chain_id,
    normalizedAlias:a.normalized_alias
   }));
+  const aliases=value=>{
+   if(Array.isArray(value))return value.filter(x=>typeof x==='string');
+   try{const parsed=JSON.parse(value||'[]');
+     if(Array.isArray(parsed))return parsed.filter(x=>typeof x==='string')}
+   catch(_){}
+   return String(value||'').split(/[,、\n]/).map(x=>x.trim()).filter(Boolean);
+  };
   return {productAliases,products:(data?.products||[]).map(p=>({
    id:p.product_id,name:p.name,packageQuantity:p.package_quantity===''?null:p.package_quantity,
    packageUnit:p.package_unit||null,itemGroupId:p.item_group_id||null,
    itemGroupOrder:p.item_group_order===''?null:Number(p.item_group_order),
    version:Number(p.version),aliases:productAliases.filter(a=>a.productId===p.product_id)
     .map(a=>a.normalizedAlias)
-  })),chains:(data?.stores||[]).map(s=>({id:s.chain_id,name:s.canonical_name})),branches:[]};
+  })),chains:(data?.stores||[]).map(s=>({id:s.chain_id,name:s.canonical_name,
+   aliases:aliases(s.aliases)})),branches:[]};
  }
  const kick=()=>{
   boot().then(()=>{
@@ -1066,7 +1129,7 @@
    else void load();
   }).catch(e=>{error=e.message||'端末内の保存領域を開けません';notify()});
  };
- window.KurashiLive={state,load,save,saveRecord,updateRecord,deleteRecord,learnAliases,
+ window.KurashiLive={state,load,save,saveRecord,updateRecord,deleteRecord,learnAliases,learnStoreAlias,
   saveReceiptDraft,loadReceiptDraft,saveOcrCorrections,loadOcrCorrections,toggleStock,reorderItems,reorderProducts,retry,logout,renderLogin,
   subscribe:fn=>{listeners.add(fn);return()=>listeners.delete(fn)},itemsOf,catalogueOf};
  window.addEventListener('kurashi-gis-ready',initialize);

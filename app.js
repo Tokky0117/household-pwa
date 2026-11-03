@@ -1,4 +1,4 @@
-const APP_VERSION='0.61.0';
+const APP_VERSION='0.62.0';
 const CATS=['飲食','キッチン','洗面・風呂','洗濯・掃除','その他'];
 const liveMode=!!window.KurashiLive; // Data source only; original Preview v46 UI components remain.
 const SEED=[['牛乳',0,true],['麦茶',0,false],['コーヒー',0,true],['卵',0,false],['キッチンペーパー',1,false],['ラップ',1,true],['食器用洗剤',1,true],['シャンプー',2,false],['歯磨き粉',2,true],['ハンドソープ',2,false],['洗濯洗剤',3,false],['柔軟剤',3,true],['トイレットペーパー',3,false],['乾電池',4,true],['ティッシュ',4,true]];
@@ -25,7 +25,7 @@ function loadCatalogue(){if(liveMode)return {products:[],chains:[],branches:[]};
 let catalogue=loadCatalogue(),pickQuery='',pickKind='product',pickerAll=false,editingProductId=null;
 const persistCatalogue=()=>{if(!liveMode)localStorage.setItem(catalogueKey,JSON.stringify(catalogue))};
 const productTitle=p=>p.name+(p.packageQuantity&&p.packageUnit?' '+p.packageQuantity+p.packageUnit:'');
-const linkedItemName=p=>items.find(i=>i.id===p.itemGroupId)?.name||'未登録';
+const linkedItemName=p=>items.find(i=>i.id===p.itemGroupId)?.name||'日用品未紐付け';
 const registeredProducts=itemId=>catalogue.products.filter(p=>p.itemGroupId===itemId).sort((a,b)=>(a.itemGroupOrder??9999)-(b.itemGroupOrder??9999));
 function reorderProducts(itemId,ids){
  const currentProducts=registeredProducts(itemId);
@@ -302,7 +302,7 @@ if(typeof document.addEventListener==='function'){
 
 function scanGroupOptions(selected='',{includeNone=true}={}){
  const choices=items.filter(x=>!x.hidden);
- return (includeNone?'<option value="">日用品を選択してください</option>':'')+
+ return (includeNone?'<option value="">紐付けしない（商品だけ登録）</option>':'')+
   choices.map(x=>'<option value="'+esc(x.id)+'"'+(x.id===selected?' selected':'')+
   '>'+esc(x.name)+'（'+esc(CATS[x.category]||'その他')+'）</option>').join('');
 }
@@ -312,13 +312,13 @@ function scanProductView(){
  const fields=[
   '<p class="hint">レシート表記（履歴に残します）：<strong>'+esc(item.name)+'</strong></p>',
   UI.formField({id:'scan-product-name',name:'name',label:'商品マスタに登録する正式商品名',value:item.canonicalName||item.name,maxlength:80,required:true}),
-  '<label class="scan-field">日用品リストの紐付け先<select id="scan-product-group" name="group" required>'+scanGroupOptions()+'</select></label>',
+  '<label class="scan-field">日用品リストへの紐付け（任意）<select id="scan-product-group" name="group">'+scanGroupOptions()+'</select></label>',
   UI.formField({id:'scan-product-quantity',name:'package_quantity',label:'内容量（任意）',type:'number',value:'',extra:'min="0.001" step="any"'}),
   UI.formField({id:'scan-product-unit',name:'package_unit',label:'単位',control:'select',value:'個',options:UNIT_OPTIONS.map(v=>({label:v,value:v}))})
  ].join('');
  return UI.sheet({title:'レシートの商品を登録',variant:'receipt-product-modal',
-  body:`<form id="scanProductForm">${fields}<p class="hint">「チョコ」などの登録先を選ぶと、その日用品の価格情報に追加されます。レシート表記は変更しません。</p>
-  <button type="submit" class="primary">この商品を登録・紐付け</button></form>`});
+  body:`<form id="scanProductForm">${fields}<p class="hint">商品は日用品に紐付けず登録できます。後から「チョコ」などに紐付けられます。レシート表記は変更しません。</p>
+  <button type="submit" class="primary">商品を登録</button></form>`});
 }
 function scanBulkProductCandidates(){
  const candidates=[],seen=new Set();
@@ -331,16 +331,15 @@ function scanBulkProductCandidates(){
 }
 function scanBulkProductsView(){
  const candidates=scanBulkProductCandidates();
- const hasGroups=items.some(x=>!x.hidden);
  const body=!candidates.length?'<p>未照合の商品はありません。</p>':
-  !hasGroups?'<p>登録先の日用品がありません。日用品タブで登録してください。</p>':
   `<form id="scanBulkProductsForm">
-   <p class="hint">登録が必要な行だけ日用品を選んでください。商品マスタに登録する名前は変更できます。レシートの印字名は残ります。</p>
+   <p class="hint">正式商品名を修正し、「商品だけ登録」または日用品への紐付けを選択してください。レシートの印字名はそのまま残ります。</p>
    ${candidates.map((item,i)=>`<div class="panel scan-bulk-entry">
      <p class="hint">レシート表記：${esc(item.name)}</p>
      <label class="scan-field">正式商品名<input type="text" name="name-${i}" value="${esc(item.canonicalName)}" maxlength="80" required></label>
      <label class="scan-field">紐付け先の日用品<select name="group-${i}">
-       <option value="">今回は商品登録しない</option>
+       <option value="__skip__">今回は商品登録しない</option>
+       <option value="">商品だけ登録（日用品未紐付け）</option>
        ${scanGroupOptions('',{includeNone:false})}
      </select></label>
    </div>`).join('')}
@@ -390,6 +389,35 @@ function receiptChatGptView(){
  <button type="button" class="primary" data-act="chatGptImport">解析結果を確認</button>
  </main>`;
 }
+function scanChainForStore(raw){
+ const name=norm(raw);
+ if(!name)return null;
+ const labels=c=>[c.name,...(c.aliases||[])].filter(Boolean).map(norm);
+ const exact=catalogue.chains.filter(c=>labels(c).includes(name));
+ if(exact.length)return exact.length===1?exact[0]:null;
+ const partial=catalogue.chains.filter(c=>labels(c).some(v=>
+  v.length>=3&&name.length>=3&&(name.includes(v)||v.includes(name))));
+ return partial.length===1?partial[0]:null;
+}
+function scanAutolinkUnmatched(){
+ if(!scanDraft?.chainId)return 0;
+ let added=0;
+ for(const item of scanDraft.items){
+  if(item.productId||!item.name)continue;
+  const match=scanMatchProduct(item.name,scanDraft.chainId);
+  if(match){item.productId=match;item.autoLinked=true;added++}
+ }
+ return added;
+}
+function learnConfirmedReceiptLine(item,chainId){
+ if(!liveMode||!chainId||!item?.productId||!item.name||
+    !window.KurashiLive?.learnAliases)return;
+ const lines=[{raw_name:String(item.name).trim(),product_id:item.productId}];
+ if(item.ocrRawName&&norm(item.ocrRawName)!==norm(item.name))
+  lines.push({raw_name:String(item.ocrRawName).trim(),product_id:item.productId});
+ void window.KurashiLive.learnAliases({chain_id:chainId,items:lines})
+   .catch(err=>console.warn('確認済みのレシート商品別名を保存できません',err));
+}
 function scanMatchProduct(raw,chainId=null){
  const name=norm(raw);
  if(!name)return '';
@@ -402,17 +430,17 @@ function scanMatchProduct(raw,chainId=null){
 }
 function chatGptDraft(parsed){
  const store=String(parsed.storeName||'').trim();
- const matches=catalogue.chains.filter(c=>store&&(norm(store).includes(norm(c.name))||norm(c.name).includes(norm(store))));
+ const chain=scanChainForStore(store);
  return {source:'chatgpt',date:parsed.purchaseDate|| (chatGptFromScan&&scanDraft?.date) || daysFromDate(new Date()),
-  chainId:matches.length===1?matches[0].id:null,
-  chainName:matches.length===1?'':store,
+  chainId:chain?.id||null,
+  chainName:chain?'':store,rawStoreName:store,
   total:Number.isSafeInteger(parsed.receiptTotal)?parsed.receiptTotal:null,
   items:parsed.items.map(i=>{
    const name=String(i.name||i.rawName||'').trim();
    const amount=Number.isSafeInteger(i.taxIncludedAmount)?i.taxIncludedAmount:'';
    const issues=[...(i.issues||[])];
    if(amount==='')issues.push('税込金額を確認');
-   return {name,quantity:i.quantity||1,amount,productId:scanMatchProduct(name,matches.length===1?matches[0].id:null),issues};
+   return {name,quantity:i.quantity||1,amount,productId:scanMatchProduct(name,chain?.id||null),issues};
   })};
 }
 const scanDate=text=>{
@@ -483,13 +511,12 @@ function scanFormView(){
   ${scanDraft.items.some(x=>!x.productId&&x.name.trim())?'<button type="button" class="secondary" data-act="scanBulkProducts">未照合商品をまとめて登録</button>':''}
   <div class="panel">
    <p>印字合計：${scanDraft.total===null?'未検出':yen(scanDraft.total)}</p>
-   <p id="scan-sum-text" class="hint">明細合計は入力内容を確認して算出します。</p>
-   <label class="scan-check"><input type="checkbox" name="confirmed" required> 原本と照合し、すべての明細を確認しました</label>
+   <p id="scan-sum-text" class="hint">明細合計を表示します。レシート原本と照合してから保存してください。</p>
    <div id="scan-duplicate-warning" ${scanDuplicates(scanDraft).length?'':'hidden'}>
     <p class="scan-warning">同じ店舗・日付・明細のレシートが登録されています。</p>
     <label class="scan-check"><input type="checkbox" name="duplicateOk"> 重複登録の可能性を確認しました</label>
    </div>
-   ${scanDraft.total!==null?'<label class="scan-check"><input type="checkbox" name="difference"> 印字合計との差額がある場合も内容を確認しました</label>':''}
+   <p class="hint">「保存」を押すことで、内容の確認を確定します。</p>
   </div>
   <button class="primary" type="submit">${scanDraft.recordId?'修正したレシートを保存':'確認したレシートを一括保存'}</button>
   <p class="hint">写真やOCR全文は保存しません。現在のGASはログインを使わない共有接続のため、個人情報を含む記録の扱いには注意してください。</p>
@@ -539,9 +566,9 @@ async function runReceiptScan(){
   if(token!==scanToken)return;
   if(!allItems.length)throw Error('商品明細を抽出できませんでした。別の写真で読み取りを試してください。');
   const raw=observations.join('\n');
-  const chainMatches=catalogue.chains.filter(c=>norm(raw.slice(0,800)).includes(norm(c.name)));
+  const chain=scanChainForStore(raw.slice(0,800));
   scanDraft={items:allItems,total,date:scanDate(raw),source:'ocr',
-   chainId:chainMatches.length===1?chainMatches[0].id:null,chainName:''};
+   chainId:chain?.id||null,chainName:''};
   scanDraft.items.forEach(item=>{
    const correction=correctionFor(item.ocrRawName||item.name,scanDraft.chainId);
    if(correction&&norm(correction)!==norm(item.name)){
@@ -845,6 +872,7 @@ function render(){
  if(enteringProductCreate&&window.requestAnimationFrame)
   window.requestAnimationFrame(()=>window.scrollTo(0,0));
  previousPage=page;previousSelected=selected;
+ if(page==='recordScan')refreshScanTotalUI();
  if(liveMode&&tab==='settings')window.KurashiLive.renderLogin(document.getElementById('google-login-button'));
 }
 let toastTimer=null,toastSerial=0;
@@ -1049,6 +1077,25 @@ app.addEventListener('change',e=>{
  }
  if(e.target.id==='scan-chain'){
   document.getElementById('scan-new-chain-wrap').hidden=e.target.value!=='__new__';
+  if(scanDraft){
+   syncScanReview();
+   const chainId=scanDraft.chainId;
+   const learned=scanAutolinkUnmatched();
+   saveScanDraft();
+   if(chainId&&window.KurashiLive){
+    // Explicit chain choice is user confirmation of the retailer's printed name.
+    if(scanDraft.rawStoreName&&window.KurashiLive.learnStoreAlias)
+     void window.KurashiLive.learnStoreAlias({
+      chain_id:chainId,raw_alias:scanDraft.rawStoreName
+     }).catch(err=>console.warn('チェーンの別名を保存できません',err));
+    for(const item of scanDraft.items.filter(x=>x.manuallyLinked))
+     learnConfirmedReceiptLine(item,chainId);
+   }
+   if(learned){
+    scanStatus=learned+'件の登録済み商品を自動照合しました。内容を確認してください。';
+    render();
+   }
+  }
  }
 });
 function syncScanReview(){
@@ -1079,20 +1126,20 @@ app.addEventListener('submit',e=>{e.preventDefault();const form=e.target;const d
   const candidates=scanBulkProductCandidates(),selected=[],byCanonical=new Map();
   for(let i=0;i<candidates.length;i++){
    const candidate=candidates[i];
-   const group=String(d.get('group-'+i)||'');
-   if(!group)continue; // User chose "not registered" for this line.
+   const group=String(d.get('group-'+i)??'__skip__');
+   if(group==='__skip__')continue; // receipt-only line.
    const name=String(d.get('name-'+i)||'').trim();
    if(!name||name.length>80){
     fieldNotice(form,'正式商品名を80文字以内で入力してください');return;
    }
-   const canonical=norm(name),previous=byCanonical.get(canonical);
-   if(previous&&previous!==group){
+   const canonical=norm(name),groupId=group||null,previous=byCanonical.get(canonical);
+   if(previous!==undefined&&previous!==groupId){
     fieldNotice(form,'同じ正式商品名を異なる日用品に登録できません');return;
    }
-   byCanonical.set(canonical,group);
-   selected.push({...candidate,group,name,canonical});
+   byCanonical.set(canonical,groupId);
+   selected.push({...candidate,group:groupId,name,canonical});
   }
-  if(!selected.length){fieldNotice(form,'登録する商品の紐付け先を選択してください');return;}
+  if(!selected.length){fieldNotice(form,'登録する商品を選択してください');return;}
   scanBulkBusy=true;form.querySelector('[type="submit"]').disabled=true;
   (async()=>{
    const created=new Map();
@@ -1111,7 +1158,9 @@ app.addEventListener('submit',e=>{e.preventDefault();const form=e.target;const d
      id=product.product_id;created.set(candidate.canonical,id);
     }
     for(const item of scanDraft.items)if(norm(item.name)===candidate.key){
-     item.productId=id;item.canonicalName=candidate.name;item.canonicalGroupId=candidate.group;
+     item.productId=id;item.canonicalName=candidate.name;
+     item.canonicalGroupId=candidate.group;item.manuallyLinked=true;
+     learnConfirmedReceiptLine(item,scanDraft.chainId);
     }
     saveScanDraft();
    }
@@ -1134,9 +1183,6 @@ app.addEventListener('submit',e=>{e.preventDefault();const form=e.target;const d
   if(!name||name.length>80){
    fieldNotice(form,'正式商品名を80文字以内で入力してください','scan-product-name');return;
   }
-  if(!group){
-   fieldNotice(form,'日用品リストの紐付け先を選択してください','scan-product-group');return;
-  }
   if(catalogue.products.some(p=>norm(p.name)===norm(name))){
    fieldNotice(form,'同じ商品名が登録されています。既存商品との照合を利用してください','scan-product-name');return;
   }
@@ -1146,13 +1192,15 @@ app.addEventListener('submit',e=>{e.preventDefault();const form=e.target;const d
   const btn=form.querySelector('[type="submit"]');if(btn?.disabled)return;
   if(btn)btn.disabled=true;
   window.KurashiLive.save('product.create',{
-   item_group_id:group,name,package_quantity:quantity,package_unit:unit
+   item_group_id:group||null,name,package_quantity:quantity,package_unit:unit
   }).then(product=>{
    if(!product)throw Error('商品を登録できませんでした');
    if(scanDraft?.items[scanProductRow]){
     scanDraft.items[scanProductRow].productId=product.product_id;
     scanDraft.items[scanProductRow].canonicalName=name;
-    scanDraft.items[scanProductRow].canonicalGroupId=group;
+    scanDraft.items[scanProductRow].canonicalGroupId=group||null;
+    scanDraft.items[scanProductRow].manuallyLinked=true;
+    learnConfirmedReceiptLine(scanDraft.items[scanProductRow],scanDraft.chainId);
    }
    saveScanDraft();scanProductRow=null;page='recordScan';render();
   }).catch(err=>{
@@ -1175,7 +1223,6 @@ app.addEventListener('submit',e=>{e.preventDefault();const form=e.target;const d
      !Number.isSafeInteger(x.amount_tax_included)||x.amount_tax_included<0)){
    fieldNotice(form,'数量・税込明細合計をすべて確認してください');return;
   }
-  if(!d.get('confirmed')){fieldNotice(form,'原本を確認したチェックが必要です');return;}
   const editedDate=String(d.get('date')||'');
   const editedChain=String(d.get('chain')||'');
   const dup=scanDuplicates({...scanDraft,date:editedDate,
@@ -1184,10 +1231,6 @@ app.addEventListener('submit',e=>{e.preventDefault();const form=e.target;const d
   if(dup.length&&!d.get('duplicateOk')){
    document.getElementById('scan-duplicate-warning')?.removeAttribute('hidden');
    fieldNotice(form,'重複の可能性があります。確認してから登録してください');return;
-  }
-  const sum=lines.reduce((n,x)=>n+x.amount_tax_included,0);
-  if(scanDraft.total!==null&&sum!==scanDraft.total&&!d.get('difference')){
-   fieldNotice(form,'明細合計と印字合計が一致しません。差額を確認してください');return;
   }
   const chain_id=String(d.get('chain')||'');
   if(!chain_id){fieldNotice(form,'チェーンを選択してください');return;}
@@ -1201,6 +1244,10 @@ app.addEventListener('submit',e=>{e.preventDefault();const form=e.target;const d
     window.KurashiLive.saveRecord(values);
   work.then(record=>{
    const learnedChain=record?.chain_id||chain_id;
+   if(scanDraft?.rawStoreName&&window.KurashiLive.learnStoreAlias)
+    void window.KurashiLive.learnStoreAlias({
+     chain_id:learnedChain,raw_alias:scanDraft.rawStoreName
+    }).catch(err=>console.warn('購入店舗の別名を保存できません',err));
    const verifiedCorrections=scanDraft?.items.map((item,i)=>({
     chainId:learnedChain,ocrName:String(item.ocrRawName||'').trim(),
     correctedName:lines[i].raw_name,productId:lines[i].product_id
@@ -1365,6 +1412,8 @@ if(action==='confirmScanProductMove'&&p){
   product_id:product.id,version:product.version,item_group_id:p.groupId
  }).then(()=>{
   scanDraft.items[p.row].productId=product.id;
+  scanDraft.items[p.row].manuallyLinked=true;
+  learnConfirmedReceiptLine(scanDraft.items[p.row],scanDraft.chainId);
   saveScanDraft();scanExistingQuery='';page='recordScan';render();
  }).catch(err=>say(err.message||'紐付け先を変更できませんでした'));
  return;
@@ -1514,6 +1563,8 @@ if(action==='scanChooseExisting'){
  }
  if(scanDraft.items[scanProductRow]){
   scanDraft.items[scanProductRow].productId=product.id;
+  scanDraft.items[scanProductRow].manuallyLinked=true;
+  learnConfirmedReceiptLine(scanDraft.items[scanProductRow],scanDraft.chainId);
   saveScanDraft();page='recordScan';scanExistingQuery='';render();
  }
  return;
@@ -1869,6 +1920,32 @@ app.addEventListener('touchcancel',e=>{
 
 
 // Update the possible-duplicate warning as form fields change.
+function refreshScanTotalUI(){
+ const form=document.getElementById('scanConfirmForm');
+ const node=document.getElementById('scan-sum-text');
+ if(!form||!node||!scanDraft)return;
+ const d=new FormData(form);
+ let sum=0;
+ for(let i=0;i<scanDraft.items.length;i++){
+  const raw=String(d.get('amount-'+i)||'').trim();
+  const value=Number(raw);
+  if(raw===''||!Number.isSafeInteger(value)||value<0){
+   node.textContent='明細合計：金額未確定の行があります。';node.classList.remove('scan-warning');return;
+  }
+  sum+=value;
+ }
+ const total=scanDraft.total;
+ if(total===null){
+  node.textContent='明細合計：'+yen(sum)+'（印字合計は未検出）';
+  node.classList.remove('scan-warning');return;
+ }
+ const diff=sum-total;
+ node.textContent='明細合計：'+yen(sum)+(diff===0?
+  '／印字合計と一致':
+  '／印字合計との差額：'+yen(Math.abs(diff))+
+   (diff>0?'（明細が多い）':'（明細が少ない）')+'。原本を確認してください。');
+ node.classList.toggle('scan-warning',diff!==0);
+}
 function refreshScanDuplicateUI(){
  const form=document.getElementById('scanConfirmForm'),warn=document.getElementById('scan-duplicate-warning');
  if(!form||!warn||!scanDraft)return;
@@ -1890,7 +1967,7 @@ app.addEventListener('input',e=>{
   return;
  }
  if(page==='recordScan'&&e.target.closest('#scanConfirmForm')){
-  syncScanReview();saveScanDraft();refreshScanDuplicateUI();
+  syncScanReview();saveScanDraft();refreshScanDuplicateUI();refreshScanTotalUI();refreshScanTotalUI();
  }
 });
 // Only structured receipt draft fields are stored, never raw OCR or photos.
