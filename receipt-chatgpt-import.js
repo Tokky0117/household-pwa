@@ -229,8 +229,67 @@ function makeChatGptReceiptPrompt(ocrReference=''){
  ].concat(ocrReference?['','参考OCR結果（原本より優先しない）:',String(ocrReference).slice(0,18000)]:[]).join('\n');
 }
 
+
+// Receipt assistant v2: candidate names only, bound to existing PWA OCR IDs.
+const ASSIST_VERSION='kurashi-receipt-assist-1';
+function parseChatGptOcrAssistJson(source){
+ if(typeof source!=='string'||source.length>30000||!source.trim())
+  throw Error('JSON_SIZE_OR_EMPTY');
+ const raw=extractJson(source);
+ if(!isObject(raw)||Object.keys(raw).sort().join(',')!=='items,version'||
+  raw.version!==ASSIST_VERSION||!Array.isArray(raw.items)||
+  !raw.items.length||raw.items.length>100)
+  throw Error('INVALID_OCR_ASSIST_FORMAT');
+ const seen=new Set();
+ const items=raw.items.map(entry=>{
+  if(!isObject(entry)||Object.keys(entry).sort().join(',')!=='nameCandidate,ocrName,rowId'||
+   typeof entry.rowId!=='string'||!(/^[A-Za-z0-9_-]{1,80}$/).test(entry.rowId)||
+   typeof entry.ocrName!=='string'||entry.ocrName.length>120||
+   /[\r\n\t<>]/.test(entry.ocrName)||privatePattern.test(entry.ocrName)||
+   cardPattern.test(entry.ocrName)||longDigits.test(entry.ocrName)||
+   (entry.nameCandidate!==null&&typeof entry.nameCandidate!=='string'))
+   throw Error('INVALID_OCR_ASSIST_ITEM');
+  if(seen.has(entry.rowId))throw Error('OCR_ROW_DUPLICATE');
+  seen.add(entry.rowId);
+  return {
+   rowId:entry.rowId,
+   ocrName:entry.ocrName,
+   nameCandidate:entry.nameCandidate===null?null:
+    cleanText(entry.nameCandidate,80,{optional:true})
+  };
+ });
+ return {version:ASSIST_VERSION,items};
+}
+function makeChatGptOcrAssistPrompt(ocrReference){
+ if(typeof ocrReference!=='string'||ocrReference.length>18000)
+  throw Error('OCR_REFERENCE_REQUIRED');
+ let reference;
+ try{reference=JSON.parse(ocrReference)}catch(_){throw Error('OCR_REFERENCE_INVALID')}
+ if(!isObject(reference)||!Array.isArray(reference.items)||!reference.items.length||
+  reference.items.length>100||reference.items.some(x=>!isObject(x)||
+   typeof x.rowId!=='string'||typeof x.ocrName!=='string'))
+  throw Error('OCR_REFERENCE_INVALID');
+ const output={version:ASSIST_VERSION,
+  items:reference.items.map(x=>({rowId:x.rowId,ocrName:x.ocrName,nameCandidate:null}))};
+ return [
+  '添付したレシート写真と、以下の本アプリの参考OCR結果を照合してください。',
+  '目的は商品マスタに登録するときの「正式商品名候補」を提案することだけです。',
+  'OCR明細の行数・rowId・ocrNameは一文字も変更せず、提示された全行をそのまま返してください。',
+  'nameCandidateだけ写真を参考に自然な正式商品名を提案し、不明ならnullにしてください。',
+  'OCR明細名を正規化・修正・補完して上書きしてはいけません。候補は商品の確定登録ではありません。',
+  '数量・金額・店舗・日付の修正は返さず、OCRにない商品行を追加・統合しないでください。',
+  '会員番号・決済情報・カード・電話番号・住所などの個人情報は出力しないでください。',
+  '出力はJSONオブジェクトのみ。説明・Markdown・コードフェンスは不要です。',
+  '必須の返却形式（行IDとocrNameは以下から変えず、nameCandidateだけ埋める）:',
+  JSON.stringify(output,null,2),
+  '参考OCR結果:',ocrReference
+ ].join('\n');
+}
+
 root.KurashiReceiptImport={
- IMPORT_VERSION,parseChatGptReceiptJson,editChatGptReceiptDraft,
- draftQuality,makeChatGptReceiptPrompt
+ IMPORT_VERSION,ASSIST_VERSION,
+ parseChatGptReceiptJson,editChatGptReceiptDraft,
+ draftQuality,makeChatGptReceiptPrompt,
+ parseChatGptOcrAssistJson,makeChatGptOcrAssistPrompt
 };
 })(typeof window==='undefined'?globalThis:window);
