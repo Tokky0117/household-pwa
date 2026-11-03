@@ -1,4 +1,4 @@
-const APP_VERSION='0.62.1';
+const APP_VERSION='0.63.0';
 const CATS=['飲食','キッチン','洗面・風呂','洗濯・掃除','その他'];
 const liveMode=!!window.KurashiLive; // Data source only; original Preview v46 UI components remain.
 const SEED=[['牛乳',0,true],['麦茶',0,false],['コーヒー',0,true],['卵',0,false],['キッチンペーパー',1,false],['ラップ',1,true],['食器用洗剤',1,true],['シャンプー',2,false],['歯磨き粉',2,true],['ハンドソープ',2,false],['洗濯洗剤',3,false],['柔軟剤',3,true],['トイレットペーパー',3,false],['乾電池',4,true],['ティッシュ',4,true]];
@@ -418,16 +418,70 @@ function learnConfirmedReceiptLine(item,chainId){
  void window.KurashiLive.learnAliases({chain_id:chainId,items:lines})
    .catch(err=>console.warn('確認済みのレシート商品別名を保存できません',err));
 }
+// Saved receipt and shelf rows are exact product-name evidence, even without alias.upsert.
+let scanMatchCache=null;
+const scanVariantKey=value=>norm(value)
+ .replace(/[\u3041-\u3096]/g,c=>String.fromCharCode(c.charCodeAt(0)+96))
+ .replace(/[\s\p{P}\p{S}]/gu,'');
+function scanNameEvidence(){
+ if(scanMatchCache)return scanMatchCache;
+ const exact=new Map(),variants=new Map(),active=new Set(catalogue.products.map(p=>p.id));
+ const add=(raw,productId,chainId='')=>{
+  const name=norm(raw);
+  if(!name||!active.has(productId))return;
+  if(!exact.has(name))exact.set(name,[]);
+  const entries=exact.get(name);
+  if(!entries.some(e=>e.productId===productId&&e.chainId===chainId))
+   entries.push({productId,chainId});
+  const v=scanVariantKey(raw);
+  if(v){if(!variants.has(v))variants.set(v,new Set());variants.get(v).add(productId)}
+ };
+ for(const p of catalogue.products)add(p.name,p.id);
+ for(const a of catalogue.productAliases||[])add(a.normalizedAlias,a.productId,a.chainId||'');
+ if(!liveMode)for(const p of catalogue.products)for(const alias of p.aliases||[])add(alias,p.id);
+ const records=new Map(allPreviewRecords().filter(r=>!r.deleted_at&&
+  ['receipt','shelf'].includes(r.record_type)).map(r=>[r.record_id,r.chain_id||'']));
+ for(const line of allPreviewItems())
+  if(!line.deleted_at&&records.has(line.record_id))
+   add(line.raw_name,line.product_id,records.get(line.record_id));
+ return scanMatchCache={exact,variants};
+}
 function scanMatchProduct(raw,chainId=null){
- const name=norm(raw);
- if(!name)return '';
- // Chain-scoped print aliases have priority. Conflicting aliases are ambiguous.
- const matches=chainId?(catalogue.productAliases||[]).filter(a=>
-  a.chainId===chainId&&norm(a.normalizedAlias)===name):[];
- const ids=[...new Set(matches.map(a=>a.productId))];
- if(ids.length)return ids.length===1?ids[0]:'';
- const exact=catalogue.products.filter(p=>norm(p.name)===name);
- return exact.length===1?exact[0].id:'';
+ const entries=scanNameEvidence().exact.get(norm(raw))||[];
+ const local=new Set(entries.filter(e=>!!chainId&&e.chainId===chainId).map(e=>e.productId));
+ if(local.size)return local.size===1?[...local][0]:'';
+ const ids=new Set(entries.map(e=>e.productId));
+ return ids.size===1?[...ids][0]:'';
+}
+// One OCR character difference is a suggestion, never an automatic product link.
+function scanNearVariant(a,b){
+ if(Math.abs(a.length-b.length)>1)return false;
+ let i=0,j=0,n=0;
+ while(i<a.length&&j<b.length){
+  if(a[i]===b[j]){i++;j++;continue}
+  if(++n>1)return false;
+  if(a.length>b.length)i++;else if(a.length<b.length)j++;else{i++;j++}
+ }
+ return n+Number(i<a.length||j<b.length)<=1;
+}
+function scanSimilarProducts(raw,chainId=null){
+ const key=scanVariantKey(raw);if(!key)return [];
+ const {exact,variants}=scanNameEvidence(),ids=new Set();
+ const matched=scanMatchProduct(raw,chainId);
+ for(const e of exact.get(norm(raw))||[])ids.add(e.productId);
+ for(const id of variants.get(key)||[])ids.add(id);
+ if(ids.size<3&&key.length>=6)for(const [v,found] of variants)
+  if(v!==key&&scanNearVariant(key,v))for(const id of found)ids.add(id);
+ return catalogue.products.filter(p=>ids.has(p.id)&&p.id!==matched).slice(0,4);
+}
+function scanSuggestionButtons(item,row){
+ if(item.productId||!item.name?.trim())return '';
+ const found=scanSimilarProducts(item.name,scanDraft?.chainId);
+ if(!found.length)return '';
+ return '<p class="hint">表記が近い登録商品（確認して選択）</p><div class="scan-product-actions">'+
+  found.map(p=>'<button type="button" class="secondary" data-act="scanChooseSuggested" data-scan-row="'+
+   row+'" data-product-id="'+esc(p.id)+'">'+esc(productTitle(p))+
+   ' ／ '+esc(linkedItemName(p))+'</button>').join('')+'</div>';
 }
 function chatGptDraft(parsed){
  const store=String(parsed.storeName||'').trim();
@@ -505,6 +559,7 @@ function scanFormView(){
        <button type="button" class="secondary" data-act="scanPickExisting" data-scan-row="${i}">既存商品と照合</button>
        <button type="button" class="tertiary" data-act="scanNewProduct" data-scan-row="${i}">＋ 新しい商品を登録</button>
       </div>
+      <div class="scan-product-candidates">${scanSuggestionButtons(item,i)}</div>
     </div>
     <div class="scan-input-pair"><label class="scan-field">購入数<input name="qty-${i}" type="number" min="1" step="1" required value="${esc(item.quantity)}"></label>
     <label class="scan-field">税込明細合計（円）<input name="amount-${i}" type="number" min="0" step="1" required value="${esc(item.amount)}" placeholder="確認して入力"></label></div>
@@ -553,14 +608,13 @@ async function runReceiptScan(){
    observations.push(out.text);
    for(const item of out.parsed.items){
     const n=String(item.name||'').trim();
-    const matched=catalogue.products.filter(p=>norm(p.name)===norm(n));
     const price=Number.isSafeInteger(item.taxIncludedAmount)&&item.taxIncludedAmount>=0?
       item.taxIncludedAmount:'';
     const issues=[...(item.issues||[])];
     if(price==='')issues.push('税込金額を原本で確認');
     if(item.quantitySource==='default'||item.quantitySource==='inferred_candidate')
      issues.push('数量を確認');
-    const productId=matched.length===1?matched[0].id:'';
+    const productId='';
     allItems.push({name:n,ocrRawName:n,quantity:item.quantity||1,amount:price,
      productId,autoLinked:!!productId,issues});
    }
@@ -578,10 +632,8 @@ async function runReceiptScan(){
     item.issues.push('過去に確認したOCR補正候補（今回も原本確認）');
     item.name=correction;
    }
-   if(!item.productId){
-    item.productId=scanMatchProduct(item.name,scanDraft.chainId);
-    item.autoLinked=!!item.productId;
-   }
+   item.productId=scanMatchProduct(item.name,scanDraft.chainId);
+   item.autoLinked=!!item.productId;
   });
   saveScanDraft();
   scanStatus='読み取り完了：'+allItems.length+'明細。原本と照合して修正してください。';
@@ -1143,6 +1195,8 @@ function syncScanReview(){
   }else{
    it.productId=String(d.get('product-'+i)||'');
   }
+  const suggest=form.querySelectorAll('.scan-product-candidates')[i];
+  if(suggest)suggest.innerHTML=scanSuggestionButtons(it,i);
   it.quantity=String(d.get('qty-'+i)||'');
   it.amount=String(d.get('amount-'+i)||'');
   const ocrLink=d.get('ocr-'+i);
@@ -1233,7 +1287,7 @@ app.addEventListener('submit',e=>{e.preventDefault();const form=e.target;const d
     scanDraft.items[scanProductRow].productId=product.product_id;
     scanDraft.items[scanProductRow].canonicalName=name;
     scanDraft.items[scanProductRow].canonicalGroupId=group||null;
-    scanDraft.items[scanProductRow].manuallyLinked=true;
+    scanDraft.items[scanProductRow].manuallyLinked=true;scanDraft.items[scanProductRow].autoLinked=false;
     learnConfirmedReceiptLine(scanDraft.items[scanProductRow],scanDraft.chainId);
    }
    saveScanDraft();scanProductRow=null;page='recordScan';render();
@@ -1558,7 +1612,7 @@ if(action==='recordEdit'){
   items:allPreviewItems().filter(x=>x.record_id===r.record_id&&!x.deleted_at)
    .sort((a,b)=>Number(a.line_order)-Number(b.line_order))
    .map(x=>({name:x.raw_name||'',quantity:x.quantity,
-    amount:x.amount_tax_included,productId:x.product_id||'',issues:[]}))
+    amount:x.amount_tax_included,productId:x.product_id||'',manuallyLinked:!!x.product_id,issues:[]}))
  };
  saveScanDraft();scanStatus='保存済みの記録を編集中です';page='recordScan';render();return;
 }
@@ -1582,6 +1636,17 @@ if(action==='scanExistingToNew'){
  if(!scanDraft)return;
  page='scanProduct';render();return;
 }
+if(action==='scanChooseSuggested'){
+ if(!scanDraft)return;
+ syncScanReview();
+ const row=Number(el.dataset.scanRow),item=scanDraft.items[row];
+ const product=catalogue.products.find(p=>p.id===el.dataset.productId);
+ if(!product||!item||!scanSimilarProducts(item.name,scanDraft.chainId)
+   .some(p=>p.id===product.id))return;
+ item.productId=product.id;item.manuallyLinked=true;item.autoLinked=false;
+ learnConfirmedReceiptLine(item,scanDraft.chainId);
+ saveScanDraft();page='recordScan';render();return;
+}
 if(action==='scanChooseExisting'){
  if(page!=='scanExistingProduct'||!scanDraft)return;
  const product=catalogue.products.find(p=>p.id===el.dataset.productId);
@@ -1597,7 +1662,7 @@ if(action==='scanChooseExisting'){
  }
  if(scanDraft.items[scanProductRow]){
   scanDraft.items[scanProductRow].productId=product.id;
-  scanDraft.items[scanProductRow].manuallyLinked=true;
+  scanDraft.items[scanProductRow].manuallyLinked=true;scanDraft.items[scanProductRow].autoLinked=false;
   learnConfirmedReceiptLine(scanDraft.items[scanProductRow],scanDraft.chainId);
   saveScanDraft();page='recordScan';scanExistingQuery='';render();
  }
@@ -1661,6 +1726,7 @@ if(liveMode)window.KurashiLive.subscribe((state,data)=>{
  if(!window.document)return;
  const nextItems=data?window.KurashiLive.itemsOf(data):null;
  if(!nextItems){if(tab==='settings'||page==='list'&&!items.length)render();return}
+ scanMatchCache=null;
  const structureSame=items.length===nextItems.length&&items.every((old,i)=>{
   const next=nextItems[i];
   return next&&old.id===next.id&&old.name===next.name&&
