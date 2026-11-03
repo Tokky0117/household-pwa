@@ -1243,11 +1243,52 @@ await waitFor(()=>thirdPhone.window.KurashiLive.state().loaded&&
 thirdPhone.window.document.querySelector('[data-tab="receipt"]').click();
 assert.match(thirdPhone.window.document.body.textContent,/340円/,
  'new receipt appears on a different fresh iPhone');
+// Saved OCR names must remain immutable, but a newly appended line must be
+// editable and must survive the same durable record.update journal.
+const purchasedLine=kitAfterSecondPurchase.record_items.find(x=>
+ x.product_id===kitSavedProduct.product_id&&Number(x.quantity)===2&&
+ Number(x.amount_tax_included)===340);
+assert.ok(purchasedLine,'locate the actual 2x KitKat receipt');
+const purchasedReceiptId=purchasedLine.record_id;
+const storedName=aliasText(temp,purchasedLine);
+thirdPhone.window.document.querySelector(
+ '[data-act="recordDetail"][data-record-id="'+purchasedReceiptId+'"]').click();
+thirdPhone.window.document.querySelector('[data-act="recordEdit"]').click();
+let savedEditForm=thirdPhone.window.document.getElementById('scanConfirmForm');
+assert.equal(savedEditForm.querySelector('[name="name-0"]').readOnly,true,
+ 'original saved OCR name cannot be edited');
+assert.equal(savedEditForm.querySelector('[name="name-0"]').value,storedName,
+ 'saved original text is displayed unchanged');
+thirdPhone.window.document.querySelector('[data-act="scanAddItem"]').click();
+savedEditForm=thirdPhone.window.document.getElementById('scanConfirmForm');
+assert.equal(savedEditForm.querySelector('[name="name-0"]').readOnly,true);
+const addedLine=savedEditForm.querySelector('[name="name-1"]');
+assert.ok(addedLine&&!addedLine.readOnly,
+ 'new line added to an existing receipt is editable');
+addedLine.value='手入力の追加明細';
+savedEditForm.querySelector('[name="qty-1"]').value='1';
+savedEditForm.querySelector('[name="amount-1"]').value='99';
+savedEditForm.dispatchEvent(new thirdPhone.window.Event('submit',{
+ bubbles:true,cancelable:true
+}));
+await waitFor(()=>{
+ const latest=temp.call('bootstrap');
+ return latest.ok&&latest.data.record_items.filter(x=>
+  x.record_id===purchasedReceiptId).length===2;
+},'newly appended line to saved receipt is persisted and visible');
+const updatedLines=temp.call('bootstrap').data.record_items.filter(x=>
+ x.record_id===purchasedReceiptId);
+assert.equal(updatedLines.filter(x=>aliasText(temp,x)===storedName).length,1,
+ 'record.update retains one original immutable OCR spelling');
+assert.equal(updatedLines.filter(x=>aliasText(temp,x)==='手入力の追加明細').length,1,
+ 'record.update preserves the user's newly typed line');
+assert.equal(updatedLines.find(x=>aliasText(temp,x)===storedName).amount_tax_included,340,
+ 'editing existing receipt does not alter historical 2x KitKat line total');
 thirdPhone.window.document.querySelector('[data-tab="items"]').click();
-assert.match(thirdPhone.window.document.body.textContent,/170円/,
+await waitFor(()=>thirdPhone.window.document.body.textContent.includes('170円'),
  'day-to-day stock screen uses 340/2 = 170-yen minimum for registered KitKat');
 thirdPhone.window.close();
-console.log('v65: two independent iPhones, same receipt reimport, duplicate guard, second purchase and 340/2 unit price OK');
+console.log('v65: independent iPhones, same-receipt duplicate guard, 340/2 price, immutable OCR and appended-line edit all OK');
 
 const pinchSession=appSession();
 await waitFor(()=>pinchSession.window.KurashiLive.state().loaded,'pinch UI bootstrap');
