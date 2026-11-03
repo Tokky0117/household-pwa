@@ -1284,3 +1284,56 @@ assert.equal(standaloneDirect.ok,true,'GAS directly accepts an unlinked product 
 assert.equal(standaloneDirect.data.entity.item_group_id,'');
 assert.equal(standaloneDirect.data.entity.item_group_order,'');
 console.log('v62: nullable master, store alias learning, next receipt auto-link and checkbox removal OK');
+
+/* v63: A newly selected chain or a corrected OCR name must never retain an
+ * automatic link from the old print alias. A manual product choice survives. */
+let relinkSession=appSession();
+await waitFor(()=>relinkSession.window.KurashiLive.state().loaded,
+ 'receipt retailer reassignment regression bootstrap');
+await waitFor(()=>relinkSession.window.KurashiLive.state().queued===0,
+ 'finish earlier alias operations before chain reassignment');
+await relinkSession.window.KurashiLive.load();
+relinkSession.window.document.querySelector('[data-tab="receipt"]').click();
+relinkSession.window.document.querySelector('[data-act="receiptChatGpt"]').click();
+relinkSession.window.eval(importer);
+relinkSession.window.document.getElementById('chatgpt-input').value=JSON.stringify(standaloneJson);
+relinkSession.window.document.querySelector('[data-act="chatGptImport"]').click();
+const reviewField=(name)=>relinkSession.window.document
+ .querySelector('#scanConfirmForm [name="'+name+'"]');
+assert.equal(reviewField('product-0').value,standaloneProduct.product_id,
+ 'known Costco print alias initially identifies saved product');
+reviewField('chain').value=kitStore.chain_id;
+reviewField('chain').dispatchEvent(new relinkSession.window.Event('change',{bubbles:true}));
+assert.equal(reviewField('product-0').value,'',
+ 'switching to another retailer removes the stale automatic product ID');
+assert.match(relinkSession.window.document.querySelector('.scan-product-association').textContent,
+ /未照合/,'receipt clearly shows that the item is no longer matched');
+reviewField('chain').value=standaloneChainId;
+reviewField('chain').dispatchEvent(new relinkSession.window.Event('change',{bubbles:true}));
+assert.equal(reviewField('product-0').value,standaloneProduct.product_id,
+ 'switching back to the original retailer re-links its known alias');
+reviewField('name-0').value='印字修正後の未登録商品';
+reviewField('name-0').dispatchEvent(new relinkSession.window.Event('input',{bubbles:true}));
+assert.equal(reviewField('product-0').value,'',
+ 'editing the printed name removes its previous automatic link immediately');
+assert.match(relinkSession.window.document.querySelector('.scan-product-association').textContent,
+ /未照合/,'the user sees the corrected matching state without losing input focus');
+reviewField('name-0').value=standaloneRaw;
+reviewField('name-0').dispatchEvent(new relinkSession.window.Event('input',{bubbles:true}));
+assert.equal(reviewField('product-0').value,standaloneProduct.product_id,
+ 'restoring a known print alias re-matches it without a full page reload');
+relinkSession.window.document.querySelector('[data-act="scanPickExisting"]').click();
+const manualChoice=relinkSession.window.document.querySelector(
+ '[data-act="scanChooseExisting"][data-product-id="'+standaloneProduct.product_id+'"]');
+assert.ok(manualChoice,'previously saved standalone product can be explicitly selected');
+manualChoice.click();
+reviewField('chain').value=kitStore.chain_id;
+reviewField('chain').dispatchEvent(new relinkSession.window.Event('change',{bubbles:true}));
+assert.equal(reviewField('product-0').value,standaloneProduct.product_id,
+ 'an explicit existing-product selection survives retailer changes');
+reviewField('name-0').value='手動で紐付けた別印字名';
+reviewField('name-0').dispatchEvent(new relinkSession.window.Event('input',{bubbles:true}));
+assert.equal(reviewField('product-0').value,standaloneProduct.product_id,
+ 'an explicit existing-product selection survives printed-name edits');
+relinkSession.window.close();
+console.log('v63: retailer changes, OCR-name corrections and user-confirmed master links OK');
