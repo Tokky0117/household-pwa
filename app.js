@@ -1645,7 +1645,15 @@ if(action==='chatGptImport'){
   scanStatus='既存商品の自動照合と商品名候補の取り込みが完了しました。';
   page='recordScan';render();
  }catch(e){
-  chatGptError='補助解析の結果を取り込めません：'+String(e?.message||e);
+  const reason=String(e?.message||e);
+  const readable=reason==='INVALID_OCR_ASSIST_ITEM'?
+   'OCR行の形式が不正です。OCR原表記や商品名候補に余分な情報がないか確認してください。':
+   reason==='INVALID_OCR_ASSIST_FORMAT'?
+   'JSONの項目または形式が異なります。OCR結果からコピーした指示文を使用してください。':
+   reason==='ASSIST_JSON_BLOCK_REQUIRED'||reason==='ASSIST_JSON_FIRST_REQUIRED'?
+   '解析結果の先頭にあるJSON部分を貼り付けてください。':
+   reason;
+  chatGptError='商品名候補を取り込めません：'+readable;
   const el=document.getElementById('chatgpt-error');if(el)el.textContent=chatGptError;
  }
  return;
