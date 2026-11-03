@@ -182,7 +182,7 @@ assert.equal(temp.db.processed_operations.length,afterCommit,
  'GAS did not create an extra processed operation');
 assert.equal(pill(c),'なし');
 c.window.document.querySelector('[data-tab="settings"]').click();
-assert.match(c.window.document.body.textContent,/試作 v0\.63\.0/);
+assert.match(c.window.document.body.textContent,/試作 v0\.63\.1/);
 
 // New item IDs can be referenced by edits/hides before the first GAS save.
 online=false;
@@ -1452,3 +1452,66 @@ assert.ok(temp.call('bootstrap').data.record_items.some(x=>
  x.raw_name===kitRaw&&x.product_id===kitSavedProduct.product_id),
  'past receipt/product link persists after unlink');
 console.log('v64: receipt/shelf exact history, cross-chain matching, safe kana suggestions, conflicts, master unlink OK');
+
+
+/* v65: manage independent product masters without linking to a daily item. */
+let masterUI=appSession();
+await waitFor(()=>masterUI.window.KurashiLive.state().loaded,'master management bootstrap');
+await waitFor(()=>masterUI.window.KurashiLive.state().queued===0,'prior master operations drained');
+assert.equal(await masterUI.window.KurashiLive.load(),true,'master management current snapshot');
+masterUI.window.document.querySelector('[data-tab="settings"]').click();
+const settingsMaster=masterUI.window.document.querySelector('[data-act="masterProducts"]');
+assert.ok(settingsMaster,'Settings links to the independent product master');
+settingsMaster.click();
+assert.ok(masterUI.window.document.querySelector('#master-product-results'),
+ 'master list is visible without any item selected');
+masterUI.window.document.querySelector('[data-act="masterProductNew"]').click();
+const masterForm=masterUI.window.document.querySelector('#masterProductForm');
+assert.ok(masterForm,'independent new product form');
+assert.equal(masterForm.querySelector('[name="group"]').value,'',
+ 'group link is optional when a product is created');
+masterForm.querySelector('[name="name"]').value='マスタ単独登録テストC';
+masterForm.dispatchEvent(new masterUI.window.Event('submit',{bubbles:true,cancelable:true}));
+await waitFor(()=>temp.call('bootstrap').data.products.some(p=>
+ p.name==='マスタ単独登録テストC'&&!p.item_group_id),
+ 'standalone product was created through IndexedDB queue and Sheets');
+const createdMaster=temp.call('bootstrap').data.products.find(p=>
+ p.name==='マスタ単独登録テストC');
+await waitFor(()=>!!masterUI.window.document.querySelector(
+ '[data-act="masterProductEdit"][data-product-id="'+createdMaster.product_id+'"]'),
+ 'newly created product appears in searchable master list');
+masterUI.window.document.querySelector(
+ '[data-act="masterProductEdit"][data-product-id="'+createdMaster.product_id+'"]').click();
+const editMaster=masterUI.window.document.querySelector('#masterProductForm');
+assert.ok(editMaster,'standalone product can be edited without an item link');
+editMaster.querySelector('[name="name"]').value='マスタ単独編集テストC';
+editMaster.dispatchEvent(new masterUI.window.Event('submit',{bubbles:true,cancelable:true}));
+await waitFor(()=>temp.call('bootstrap').data.products.some(p=>
+ p.product_id===createdMaster.product_id&&p.name==='マスタ単独編集テストC'),
+ 'product master edit reaches Sheets');
+await waitFor(()=>masterUI.window.KurashiLive.state().queued===0,
+ 'previous product edit completed');
+const currentMaster=temp.call('bootstrap').data.products.find(p=>
+ p.product_id===createdMaster.product_id);
+await masterUI.window.KurashiLive.save('product.update',{
+ product_id:createdMaster.product_id,version:Number(currentMaster.version),item_group_id:chocId
+});
+await waitFor(()=>temp.call('bootstrap').data.products.some(p=>
+ p.product_id===createdMaster.product_id&&p.item_group_id===chocId),
+ 'linked product keeps the same master ID');
+await waitFor(()=>masterUI.window.KurashiLive.state().queued===0,'link queue completed');
+masterUI.window.document.querySelector(
+ '[data-act="masterProductEdit"][data-product-id="'+createdMaster.product_id+'"]').click();
+assert.ok(masterUI.window.document.querySelector('[data-act="masterProductUnlink"]'),
+ 'linked product has a separate unlink-only action');
+masterUI.window.document.querySelector('[data-act="masterProductUnlink"]').click();
+const unlinkConfirm=masterUI.window.document.querySelector(
+ '[data-dialog="confirmMasterProductUnlink"]');
+assert.ok(unlinkConfirm,'unlink confirmation explains the master is retained');
+unlinkConfirm.click();
+await waitFor(()=>temp.call('bootstrap').data.products.some(p=>
+ p.product_id===createdMaster.product_id&&!p.item_group_id),
+ 'unlink does not delete the product master');
+assert.ok(!app.includes('product.delete'),'no product-delete action is introduced');
+masterUI.window.close();
+console.log('v65: independent master create/edit, optional item link and unlink-only API OK');

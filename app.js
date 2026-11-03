@@ -1,4 +1,4 @@
-const APP_VERSION='0.63.0';
+const APP_VERSION='0.63.1';
 const CATS=['飲食','キッチン','洗面・風呂','洗濯・掃除','その他'];
 const liveMode=!!window.KurashiLive; // Data source only; original Preview v46 UI components remain.
 const SEED=[['牛乳',0,true],['麦茶',0,false],['コーヒー',0,true],['卵',0,false],['キッチンペーパー',1,false],['ラップ',1,true],['食器用洗剤',1,true],['シャンプー',2,false],['歯磨き粉',2,true],['ハンドソープ',2,false],['洗濯洗剤',3,false],['柔軟剤',3,true],['トイレットペーパー',3,false],['乾電池',4,true],['ティッシュ',4,true]];
@@ -1037,6 +1037,15 @@ function hasUnsavedFormChanges(){
      String(data.get('chain')||'')!==(catalogue.chains[0]?.id||'') ||
      String(data.get('product')||'')!=='' ||
      String(data.get('category')||'')!=='';
+  }
+  const master=document.getElementById('masterProductForm');
+  if(master){
+   const d=new FormData(master),p=masterProductId?
+    catalogue.products.find(x=>x.id===masterProductId):null;
+   const name=String(d.get('name')||'').trim(),q=String(d.get('quantity')||'').trim();
+   if(p)return name!==p.name||(q?Number(q.replace(',','.')):null)!==p.packageQuantity||
+    (q?String(d.get('unit')||''):null)!==p.packageUnit;
+   return !!(name||q||String(d.get('group')||''));
   }
   const form=document.getElementById('itemForm')||document.getElementById('productCreateForm');
   if(!form)return false;
