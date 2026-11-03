@@ -176,7 +176,7 @@ let newRecordType='receipt';
 // Native iPhone chooser: Photo Library, Take Photo, or Files. Photos stay in memory.
 let scanPhotos=[],scanIndex=0,scanBusy=false,scanDraft=null,scanStatus='',scanToken=0;
 let scanRuntime=null,scanDraftAvailable=false,scanDraftWrites=Promise.resolve(),chatGptError='',recordDetailId=null,scanProductRow=null;
-let ocrLearning=[],ocrLearningReady=false,chatGptFromScan=false,scanBulkBusy=false,scanExistingQuery='';
+let scanBulkBusy=false,scanExistingQuery='';
 function saveScanDraft(){
  if(!liveMode||!window.KurashiLive?.saveReceiptDraft)return;
  const snapshot=scanDraft?JSON.parse(JSON.stringify(scanDraft)):null;
@@ -188,63 +188,56 @@ function resetScan({keepDraft=false}={}){
  scanToken++;scanPhotos=[];scanIndex=0;scanBusy=false;scanStatus='';
  if(!keepDraft){scanDraft=null;saveScanDraft();}
 }
-// Confirmed exact OCR-name corrections are cached locally, per chain.
-// The image and raw full-text OCR result never enter IndexedDB.
-function correctionFor(rawName,chainId){
- const name=norm(rawName);
- const matches=ocrLearning.filter(x=>x.chainId===(chainId||'')&&norm(x.ocrName)===name);
- const names=[...new Set(matches.map(x=>x.correctedName))];
- return names.length===1?names[0]:null;
+// OCR row IDs and printed names are authoritative; AI may only suggest a product name.
+function receiptOcrRows(draft){
+ if(!draft||draft.source!=='ocr')return [];
+ return (draft.items||[]).map((item,i)=>({item,i}))
+  .filter(({item})=>item.inputOrigin!=='manual'&&item.ocrRawName!==undefined);
 }
 function receiptOcrReference(draft){
- if(!draft)return '';
  return JSON.stringify({
-  receiptDate:draft.date||null,store:draft.chainId?chainLabel(draft.chainId):draft.chainName||null,
-  receiptTotal:draft.total,items:draft.items.map((x,i)=>({
-   row:i+1,name:x.ocrRawName||x.name,quantity:Number(x.quantity)||null,
-   taxIncludedAmount:String(x.amount)===''?null:Number(x.amount)
+  receiptDate:draft?.date||null,
+  store:draft?.chainId?chainLabel(draft.chainId):draft?.chainName||null,
+  receiptTotal:draft?.total??null,
+  items:receiptOcrRows(draft).map(({item,i})=>({
+   rowId:item.ocrRowId||'row-'+(i+1),
+   ocrName:String(item.ocrRawName||''),
+   quantity:Number(item.quantity)||null,
+   taxIncludedAmount:String(item.amount)===''?null:Number(item.amount)
   }))
- },null,2).slice(0,17000);
+ },null,2);
 }
-function compareOcrAndChatGpt(ocr,gpt){
- if(!ocr)return {...gpt,source:'chatgpt'};
- // Pair only on UNIQUE, exact quantity and tax-included line amount.
- // Never assume that a repeated price or same row order identifies a product.
- const positions=new Map();
- ocr.items.forEach((item,index)=>{
-  const key=String(item.amount)+'|'+String(item.quantity);
-  if(String(item.amount)!==''&&Number.isSafeInteger(Number(item.amount))&&
-    Number.isSafeInteger(Number(item.quantity))){
-   const list=positions.get(key)||[];list.push(index);positions.set(key,list);
-  }
- });
- const gptCounts=new Map();
- for(const item of gpt.items){
-  const key=String(item.amount)+'|'+String(item.quantity);
-  gptCounts.set(key,(gptCounts.get(key)||0)+1);
+function applyChatGptOcrAssistance(draft,result){
+ if(!draft||draft.source!=='ocr')throw Error('先に写真をOCRで読み取ってください');
+ const rows=receiptOcrRows(draft);
+ if(!rows.length)throw Error('対応するOCR明細がありません');
+ const known=new Map(rows.map(({item,i})=>[item.ocrRowId||'row-'+(i+1),item]));
+ if(known.size!==rows.length||result.items.length!==rows.length)
+  throw Error('OCR明細の行数またはIDが一致しません');
+ const proposed=new Map();
+ for(const entry of result.items){
+  const original=known.get(entry.rowId);
+  if(!original||proposed.has(entry.rowId)||
+   String(original.ocrRawName||'')!==entry.ocrName)
+   throw Error('OCR行IDまたは原表記が一致しません');
+  proposed.set(entry.rowId,entry.nameCandidate);
  }
- let paired=0,unmatched=0;
- const pairedIndexes=new Set();
- const items=gpt.items.map(item=>{
-  const key=String(item.amount)+'|'+String(item.quantity);
-  const positionsForKey=positions.get(key)||[];
-  if(positionsForKey.length===1&&gptCounts.get(key)===1&&String(item.amount)!==''){
-   const original=ocr.items[positionsForKey[0]];
-   pairedIndexes.add(positionsForKey[0]);paired++;
-   const changes=norm(original.ocrRawName||original.name)!==norm(item.name);
-   return {...item,ocrRawName:original.ocrRawName||original.name,
-    productId:item.productId||original.productId||'',
-    issues:[...(item.issues||[]),...(changes?['OCR結果から商品名を補正（原本で確認）']:[])]};
+ const next={...draft,items:draft.items.map(x=>({...x})),
+  matchedCount:0,unmatchedCount:0};
+ for(const {i} of rows){
+  const item=next.items[i],rowId=item.ocrRowId||'row-'+(i+1);
+  if(!proposed.has(rowId))throw Error('OCR行IDが不足しています');
+  const productId=item.productId||scanMatchProduct(item.ocrRawName||'',next.chainId);
+  if(productId){
+   item.productId=productId;item.autoLinked=!item.manuallyLinked;
+   item.nameCandidate='';next.matchedCount++;
+  }else{
+   item.productId='';
+   item.nameCandidate=proposed.get(rowId)||'';
+   next.unmatchedCount++;
   }
-  unmatched++;
-  return {...item,issues:[...(item.issues||[]),'OCRとの行対応は未確定（原本で確認）']};
- });
- const ocrCandidates=ocr.items.map((x,i)=>({index:i,name:x.ocrRawName||x.name,
-  amount:x.amount,quantity:x.quantity})).filter(x=>!pairedIndexes.has(x.index));
- return {...gpt,items,ocrCandidates,source:'chatgpt-ocr',matchedCount:paired,unmatchedCount:unmatched,
-  // Preserve existing chain when ChatGPT did not identify one.
-  chainId:gpt.chainId||ocr.chainId,chainName:gpt.chainId?'':gpt.chainName||ocr.chainName||'',
-  date:gpt.date||ocr.date};
+ }
+ return next;
 }
 function scanDuplicates(draft){
  if(!draft||!draft.chainId||!draft.date||!draft.items.length)return [];
@@ -407,8 +400,7 @@ function learnConfirmedReceiptLine(item,chainId){
  if(!liveMode||!chainId||!item?.productId||!item.name||
     !window.KurashiLive?.learnAliases)return;
  const lines=[{raw_name:String(item.name).trim(),product_id:item.productId}];
- if(item.ocrRawName&&norm(item.ocrRawName)!==norm(item.name))
-  lines.push({raw_name:String(item.ocrRawName).trim(),product_id:item.productId});
+ // AI suggestions are never learned as printed-name aliases.
  void window.KurashiLive.learnAliases({chain_id:chainId,items:lines})
    .catch(err=>console.warn('確認済みのレシート商品別名を保存できません',err));
 }
@@ -482,22 +474,6 @@ function scanSuggestionButtons(item,row){
    row+'" data-product-id="'+esc(p.id)+'">'+esc(productTitle(p))+
    ' ／ '+esc(linkedItemName(p))+'</button>').join('')+'</div>';
 }
-function chatGptDraft(parsed){
- const store=String(parsed.storeName||'').trim();
- const chain=scanChainForStore(store);
- return {source:'chatgpt',date:parsed.purchaseDate|| (chatGptFromScan&&scanDraft?.date) || daysFromDate(new Date()),
-  chainId:chain?.id||null,
-  chainName:chain?'':store,rawStoreName:store,
-  total:Number.isSafeInteger(parsed.receiptTotal)?parsed.receiptTotal:null,
-  items:parsed.items.map(i=>{
-   const name=String(i.name||i.rawName||'').trim();
-   const amount=Number.isSafeInteger(i.taxIncludedAmount)?i.taxIncludedAmount:'';
-   const issues=[...(i.issues||[])];
-   if(amount==='')issues.push('税込金額を確認');
-   const productId=scanMatchProduct(name,chain?.id||null);
-   return {name,ocrRawName:name,nameCandidate:String(i.nameCandidate||'').trim(),quantity:i.quantity||1,amount,productId,autoLinked:!!productId,issues};
-  })};
-}
 const scanDate=text=>{
  const found=String(text).match(/(?:20)?(2[0-9])\s*[\/-年.]\s*(0?[1-9]|1[0-2])\s*[\/-月.]\s*([0-2]?[0-9]|3[01])\s*日?/);
  if(!found)return daysFromDate(new Date());
@@ -524,15 +500,6 @@ function scanResolvedProductId(item){
   norm(p.name)===norm(item.canonicalName)&&
   (!item.canonicalGroupId||p.itemGroupId===item.canonicalGroupId));
  return matches.length===1?matches[0].id:current;
-}
-// Keep OCR's exact original spelling; only the reviewed lookup correction is learned.
-function scanConfirmedCorrections(chainId,items,formData){
- return (items||[]).map((item,i)=>({
-  chainId,ocrName:String(item.ocrRawName||'').trim(),
-  correctedName:String(formData.get('name-'+i)||'').trim(),
-  productId:String(formData.get('product-'+i)||'')||null
- })).filter(x=>x.ocrName&&x.correctedName&&
-  norm(x.ocrName)!==norm(x.correctedName));
 }
 function scanFormView(){
  if(!scanDraft)return '';
@@ -630,12 +597,7 @@ async function runReceiptScan(){
   scanDraft={items:allItems,total,date:scanDate(raw),source:'ocr',
    chainId:chain?.id||null,chainName:''};
   scanDraft.items.forEach(item=>{
-   const correction=correctionFor(item.ocrRawName||item.name,scanDraft.chainId);
-   if(correction&&norm(correction)!==norm(item.name)){
-    item.issues.push('過去に確認したOCR補正候補（今回も原本確認）');
-    item.name=correction;
-   }
-   item.productId=scanMatchProduct(item.name,scanDraft.chainId);
+   item.productId=scanMatchProduct(item.ocrRawName,scanDraft.chainId);
    item.autoLinked=!!item.productId;
   });
   saveScanDraft();
@@ -1276,11 +1238,6 @@ function syncScanReview(){
   if(suggest)suggest.innerHTML=scanSuggestionButtons(it,i);
   it.quantity=String(d.get('qty-'+i)||'');
   it.amount=String(d.get('amount-'+i)||'');
-  const ocrLink=d.get('ocr-'+i);
-  if(ocrLink!==null){
-   const linked=scanDraft.ocrCandidates?.find(x=>String(x.index)===String(ocrLink));
-   it.ocrRawName=linked?.name||'';
-  }
  }
  return relinked;
 }
@@ -1427,13 +1384,6 @@ app.addEventListener('submit',e=>{e.preventDefault();const form=e.target;const d
     void window.KurashiLive.learnStoreAlias({
      chain_id:learnedChain,raw_alias:scanDraft.rawStoreName
     }).catch(err=>console.warn('購入店舗の別名を保存できません',err));
-   const verifiedCorrections=scanConfirmedCorrections(
-    learnedChain,scanDraft?.items,d);
-   if(verifiedCorrections.length&&window.KurashiLive.saveOcrCorrections){
-    void window.KurashiLive.saveOcrCorrections(verifiedCorrections)
-      .then(()=>window.KurashiLive.loadOcrCorrections()).then(x=>{ocrLearning=x||[]})
-      .catch(err=>console.warn('OCR補正候補の保存に失敗しました',err));
-   }
    // Product-specific aliases are synchronized through the preexisting queue.
    // Include the exact original OCR name after explicit confirmation.
    const aliasLines=lines;
@@ -2224,8 +2174,3 @@ if(liveMode){
  }).catch(e=>console.warn('下書きを読み込めません',e));
 }
 
-if(liveMode&&window.KurashiLive.loadOcrCorrections){
- window.KurashiLive.loadOcrCorrections().then(rows=>{
-  ocrLearning=Array.isArray(rows)?rows:[];ocrLearningReady=true;
- }).catch(e=>console.warn('OCR補正候補を読み込めません',e));
-}
