@@ -190,7 +190,7 @@ async function completeOcrImport(session){
  session.window.document.getElementById('chatgpt-input').value=JSON.stringify(assistant);
  session.window.document.querySelector('[data-act="chatGptImport"]').click();
  if(!session.window.document.getElementById('scanConfirmForm'))
-  throw Error('OCR-bound import did not return to receipt review');
+  throw Error('OCR-bound import did not return: '+(session.window.document.getElementById('chatgpt-error')?.textContent||'no error message'))
 }
 
 const pause=ms=>new Promise(resolve=>setTimeout(resolve,ms));
