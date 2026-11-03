@@ -507,7 +507,7 @@ function scanFormView(){
  return `<form id="scanConfirmForm" class="scan-review">
   <h2 class="sectiontitle">読み取り結果の確認</h2>
   <p class="hint">OCR・ChatGPTの文字・数量・金額には誤認識が残ります。必ず原本と照合してください。${scanDraft.source==='chatgpt-ocr'?' OCRとChatGPTの一意対応 '+scanDraft.matchedCount+'件、要確認 '+scanDraft.unmatchedCount+'件。':''}</p>
-  ${scanDraft.source==='ocr'?'<button type="button" class="secondary" data-act="chatGptAssist">ChatGPTでOCRを補助解析</button>':''}
+  ${scanDraft.source==='ocr'&&receiptOcrRows(scanDraft).length?'<button type="button" class="secondary" data-act="chatGptAssist">ChatGPTで商品名候補を確認</button>':''}
   <label class="scan-field">チェーン<select name="chain" id="scan-chain">${chains}</select></label>
   <label class="scan-field" id="scan-new-chain-wrap" ${scanDraft.chainId?'hidden':''}>新しいチェーン名<input name="chain_name" maxlength="80" placeholder="新しいチェーン名" value="${esc(scanDraft.chainName||'')}"></label>
   <label class="scan-field">支店名（任意）<input name="branch_name" maxlength="80" placeholder="例：駅前店" value="${esc(scanDraft.branchName||'')}"></label>
@@ -1064,7 +1064,7 @@ function back(){
   if(page==='scanProduct'){page='recordScan';scanProductRow=null;render();return;}
   if(page==='recordDetail'){page='list';tab='receipt';render();return;}
   if(page==='recordChatGpt'){
-   page=chatGptFromScan&&scanDraft?'recordScan':'list';tab='receipt';render();return;
+   page=scanDraft?.source==='ocr'?'recordScan':'list';tab='receipt';render();return;
   }
   if(page==='recordScan'){
    syncScanReview();if(scanDraft)saveScanDraft();
@@ -1616,17 +1616,17 @@ if(action==='productCreate'){
 if(action==='catalogueList'){pickerAll=!pickerAll;const heading=document.querySelector('.catalogue-list-heading');if(heading)heading.textContent=pickerAll?'登録一覧':'候補（最大3件）';const target=document.getElementById('catalogue-results');if(target)target.innerHTML=pickerResults();el.textContent=pickerAll?'候補に戻る':'登録一覧から選ぶ';return}if(action==='hide'){menu=false;dialog={title:'日用品を削除',message:'日用品リストから削除します',buttons:[{id:'cancel',label:'キャンセル'},{id:'confirmHide',label:'削除',primary:true}]}}if(action==='copyList'){const txt=CATS.map((cat,idx)=>{const rows=visible().filter(i=>i.category===idx&&!i.inStock).sort((a,b)=>a.order-b.order);return rows.length?cat+'\n'+rows.map(i=>'- '+i.name).join('\n'):''}).filter(Boolean).join('\n\n');menu=false;render();if(!txt){inlineActionNotice(document.querySelector('[data-act="copyList"]'),'在庫なしの日用品はありません');return}navigator.clipboard.writeText(txt).then(()=>say('在庫なしをコピーしました',{anchor:'[data-act="copyList"]'})).catch(()=>inlineActionNotice(document.querySelector('[data-act="copyList"]'),'コピーできませんでした'));return}if(action==='receiptScan'){
  document.getElementById('receipt-source-picker')?.click();return;
 }
-if(action==='receiptChatGpt'){chatGptFromScan=false;chatGptError='';page='recordChatGpt';render();return;}
+
 if(action==='chatGptAssist'){
  if(!scanDraft||scanDraft.source!=='ocr')return;
- syncScanReview();saveScanDraft();chatGptFromScan=true;chatGptError='';
+ syncScanReview();saveScanDraft();chatGptError='';
  page='recordChatGpt';render();return;
 }
 if(action==='chatGptCopyPrompt'){
  const parser=window.KurashiReceiptImport;
  if(!parser){say('読み取り指示が準備できません');return;}
- navigator.clipboard.writeText(parser.makeChatGptReceiptPrompt(
-   chatGptFromScan?receiptOcrReference(scanDraft):''))
+ navigator.clipboard.writeText(parser.makeChatGptOcrAssistPrompt(
+   receiptOcrReference(scanDraft)))
   .then(()=>say('ChatGPT用の指示をコピーしました'))
   .catch(()=>say('コピーできませんでした'));return;
 }
