@@ -878,9 +878,8 @@ recordForm.dispatchEvent(new recordReopened.window.Event('submit',{bubbles:true,
 await waitFor(()=>recordReopened.window.KurashiLive.state().queued===0&&
  temp.call('bootstrap').data.records.some(r=>r.record_type==='shelf'),
  'shelf form writes to same records/record_items schema');
-recordReopened.window.document.querySelector('[data-tab="budget"]').click();
-assert.match(recordReopened.window.document.body.textContent,/今後実装予定/,
- 'budget placeholder stays stable after receipt and shelf are stored');
+assert.equal(recordReopened.window.document.querySelector('[data-tab="budget"]'),null,
+ 'receipt and shelf saves do not restore the budget tab');
 recordReopened.window.close();
 
 // Server committed a receipt, but HTTP response was lost. On restarting,
