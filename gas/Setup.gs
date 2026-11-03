@@ -12,9 +12,9 @@ const KURASHI_NEW_SCHEMA = {
   stores: ['chain_id', 'household_id', 'canonical_name', 'normalized_name', 'aliases', 'version', 'updated_at'],
   item_groups: ['item_group_id', 'household_id', 'category_id', 'name', 'normalized_name', 'in_stock', 'sort_order', 'is_hidden', 'version', 'created_at', 'updated_at', 'deleted_at'],
   products: ['product_id', 'household_id', 'item_group_id', 'name', 'normalized_name', 'package_quantity', 'package_unit', 'item_group_order', 'version', 'created_at', 'updated_at', 'deleted_at'],
-  product_aliases: ['alias_id', 'product_id', 'chain_id', 'normalized_alias', 'version', 'updated_at'],
+  product_aliases: ['alias_id', 'product_id', 'chain_id', 'normalized_alias', 'version', 'updated_at', 'ocr_name'],
   records: ['record_id', 'household_id', 'record_type', 'chain_id', 'branch_name', 'raw_store_name', 'record_date', 'created_at', 'updated_at', 'version', 'deleted_at'],
-  record_items: ['record_item_id', 'record_id', 'line_order', 'raw_name', 'product_id', 'quantity', 'amount_tax_included', 'category_id', 'price_eligible', 'created_at', 'updated_at', 'version', 'deleted_at'],
+  record_items: ['record_item_id', 'record_id', 'line_order', 'raw_name', 'product_id', 'quantity', 'amount_tax_included', 'category_id', 'price_eligible', 'created_at', 'updated_at', 'version', 'deleted_at', 'alias_id'],
   change_log: ['change_id', 'sequence_no', 'household_id', 'entity_type', 'entity_id', 'action', 'occurred_at'],
   processed_operations: ['household_id', 'operation_id', 'request_hash', 'result', 'processed_at'],
   receipt_rules: ['rule_id', 'chain_id', 'pattern', 'priority', 'enabled', 'version', 'updated_at']
