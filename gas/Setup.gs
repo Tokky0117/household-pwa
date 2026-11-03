@@ -66,7 +66,13 @@ function setupNewWorkbook() {
         sheet.setFrozenRows(1);
         range.setFontWeight('bold');
       } else if (JSON.stringify(existing) !== JSON.stringify(headers)) {
-        throw new Error(name + ': シート列が規定と一致しません。');
+        // v0.64: Existing receipts and OCR aliases retain all rows and column positions.
+        // Only the single new trailing column may be added to the original schema.
+        const additive = ['product_aliases', 'record_items'].includes(name) &&
+          JSON.stringify(existing.slice(0, -1)) === JSON.stringify(headers.slice(0, -1)) &&
+          existing[headers.length - 1] === '';
+        if (!additive) throw new Error(name + ': シート列が規定と一致しません。');
+        sheet.getRange(1, headers.length, 1, 1).setValues([[headers[headers.length - 1]]]);
       }
     });
 

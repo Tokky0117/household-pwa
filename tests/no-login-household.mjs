@@ -47,7 +47,7 @@ function fixture(code) {
     LockService:{getScriptLock:()=>({
       tryLock:()=>!locked&&(locked=true),releaseLock:()=>{locked=false}
     })},
-    PropertiesService:{getScriptProperties:()=>({getProperty:key=>props[key]??''})},
+    PropertiesService:{getScriptProperties:()=>({getProperty:key=>props[key]??'',setProperty:(key,value)=>{props[key]=value}})},
     Utilities:{getUuid:()=>String(++uuid).padStart(6,'0'),
       DigestAlgorithm:{SHA_256:1},
       computeDigest:(_,text)=>Array.from(text).map(c=>c.charCodeAt(0)&255)},
@@ -71,8 +71,8 @@ function fixture(code) {
 }
 
 const temp=fixture(api);
-const aliasText=(f,line)=>f.call('bootstrap').data.product_aliases.find(a=>
- a.alias_id===line.alias_id)?.ocr_name||line.raw_name||'';
+const aliasText=(f,line)=>line.raw_name||f.call('bootstrap').data.product_aliases.find(a=>
+ a.alias_id===line.alias_id)?.ocr_name||'';
 
 assert.equal(temp.call('bootstrap').ok,true,'initial anonymous read');
 assert.equal(temp.db.users.length,1,'anonymous does not register a fake user');
@@ -1547,3 +1547,86 @@ await waitFor(()=>temp.call('bootstrap').data.products.some(p=>
 assert.ok(!app.includes('product.delete'),'no product-delete action is introduced');
 masterUI.window.close();
 console.log('v65: independent master create/edit, optional item link and unlink-only API OK');
+
+
+/* v64 migration: a previous schema must be upgraded in place. A failure after
+ * the first historical row must allow a repeat without losing receipts or
+ * adding duplicate OCR names. */
+const legacy=fixture(api);
+const legacyChain=legacy.call('store.create',{name:'旧レシート移行検証店'},
+ 'op-v64-legacy-store-abcdefghijk');
+const legacyProduct=legacy.call('product.create',{
+ item_group_id:null,name:'移行検証の正式商品',package_quantity:null,package_unit:null
+},'op-v64-legacy-product-abcdefghijk');
+assert.equal(legacyChain.ok,true);
+assert.equal(legacyProduct.ok,true);
+const legacyChainId=legacyChain.data.entity.chain_id;
+const legacyProductId=legacyProduct.data.entity.product_id;
+const legacyNames=['旧レシート印字・Ａ','過去印字 二号'];
+const legacyRecord=legacy.call('record.create',{
+ record_type:'receipt',chain_id:legacyChainId,record_date:'2026-10-31',
+ items:[
+  {raw_name:legacyNames[0],product_id:legacyProductId,quantity:2,
+    amount_tax_included:340,category_id:null},
+  {raw_name:legacyNames[1],product_id:null,quantity:1,
+    amount_tax_included:119,category_id:null}
+ ]
+},'op-v64-legacy-receipt-abcdefghijk');
+assert.equal(legacyRecord.ok,true);
+const legacyOriginalItems=legacyRecord.data.items.map((row,i)=>({
+ ...row,raw_name:legacyNames[i],alias_id:''
+}));
+// Restore pre-v64 sheet headers and rows to simulate an existing workbook.
+legacy.db.product_aliases.length=1;
+legacy.db.product_aliases[0].pop();
+legacy.db.record_items[0].pop();
+for(let i=1;i<legacy.db.record_items.length;i++){
+ const line=legacyOriginalItems[i-1];
+ legacy.db.record_items[i][schema.record_items.indexOf('raw_name')]=line.raw_name;
+ legacy.db.record_items[i][schema.record_items.indexOf('alias_id')]='';
+}
+legacy.failRecordItemWriteAfter(2); // new header, first linked row, then simulated failure
+assert.equal(legacy.call('bootstrap').ok,false,
+ 'interrupted schema migration does not claim completion');
+assert.equal(legacy.db.record_items[0].at(-1),'alias_id',
+ 'existing record item sheet gains only the new trailing header');
+assert.equal(legacy.db.product_aliases[0].at(-1),'ocr_name',
+ 'existing OCR dictionary gains only the new trailing header');
+const resumedLegacy=legacy.call('bootstrap');
+assert.equal(resumedLegacy.ok,true,'second boot resumes and completes migration');
+const savedLegacy=resumedLegacy.data.record_items.sort((a,b)=>a.line_order-b.line_order);
+assert.equal(savedLegacy.length,2,'all old receipt lines remain');
+savedLegacy.forEach((line,i)=>{
+ assert.equal(line.raw_name,legacyNames[i],
+  'migration preserves the per-purchase printed name');
+ assert.ok(line.alias_id,'each historical line references its OCR dictionary row');
+ assert.equal(line.product_id,legacyOriginalItems[i].product_id,
+  'past product attribution is immutable');
+ assert.equal(Number(line.amount_tax_included),legacyOriginalItems[i].amount_tax_included,
+  'past tax-inclusive line total is preserved');
+ assert.equal(Number(line.quantity),legacyOriginalItems[i].quantity,
+  'past purchase quantity is preserved');
+});
+assert.equal(savedLegacy[0].amount_tax_included/savedLegacy[0].quantity,170,
+ 'price comparison derives a single unit from complete 2-item line total');
+assert.equal(resumedLegacy.data.product_aliases.length,2,
+ 'partial first migration does not create duplicate OCR names when retried');
+assert.ok(resumedLegacy.data.product_aliases.some(x=>
+ x.alias_id===savedLegacy[1].alias_id&&!x.product_id),
+ 'unrecognized past OCR text stays in the dictionary without a product');
+const thirdLegacy=legacy.call('bootstrap');
+assert.equal(thirdLegacy.ok,true,'completed migration remains readable');
+assert.equal(thirdLegacy.data.product_aliases.length,2,'repeated bootstrap is idempotent');
+const originalAlias=thirdLegacy.data.product_aliases.find(x=>
+ x.alias_id===savedLegacy[0].alias_id);
+const detach=legacy.call('alias.link',{
+ alias_id:originalAlias.alias_id,product_id:null,version:Number(originalAlias.version)
+},'op-v64-legacy-alias-unlink-abcdefghijk');
+assert.equal(detach.ok,true,'OCR link may be removed after historical migration');
+const unchangedAfterUnlink=legacy.call('bootstrap').data.record_items.find(x=>
+ x.record_item_id===savedLegacy[0].record_item_id);
+assert.equal(unchangedAfterUnlink.product_id,legacyProductId,
+ 'changing OCR dictionary association never rewrites confirmed purchase history');
+assert.ok(app.includes('const aliasNameFor=line=>line?.raw_name||'),
+ 'historical receipt display prefers original spelling over normalized dictionary');
+console.log('v64: non-destructive legacy Sheets column upgrade, partial migration retry, OCR unlink and price history OK');

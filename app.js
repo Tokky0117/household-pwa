@@ -145,7 +145,8 @@ function chainMinima(productId,periodValue,records=allPreviewRecords(),details=a
    date:r.record.record_date,source:r.record.record_type
  })).sort((a,b)=>a.price-b.price||a.chainId.localeCompare(b.chainId));
 }
-const aliasNameFor=line=>catalogue.productAliases?.find(a=>a.aliasId===line?.alias_id)?.ocrName||line?.raw_name||'';
+// Keep each pre-migration receipt's original printed spelling; the shared OCR dictionary may normalize it.
+const aliasNameFor=line=>line?.raw_name||catalogue.productAliases?.find(a=>a.aliasId===line?.alias_id)?.ocrName||'';
 const chainLabel=id=>catalogue.chains.find(c=>c.id===id)?.name||'チェーン未設定';
 const listPriceText=item=>{
  const first=registeredProducts(item.id)[0];
