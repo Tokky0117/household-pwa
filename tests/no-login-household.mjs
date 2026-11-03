@@ -1430,11 +1430,27 @@ const conflict=temp.call('product.create',{
  item_group_id:null,name:'別商品B（明細名の競合試験）',package_quantity:null,package_unit:null
 },'op-v64-conflict-product-abcdefghijk');
 assert.equal(conflict.ok,true);
+// The previously used Costco chain has already learned this name for product A.
+// Use a fresh chain to create a REAL cross-chain conflict with product B.
+const conflictChain=temp.call('store.create',{name:'OCR名競合検証専用チェーン'},
+ 'op-v64-conflict-chain-abcdefghijk');
+assert.equal(conflictChain.ok,true);
+const conflictChainId=conflictChain.data.entity.chain_id;
+assert.notEqual(conflictChainId,kitStore.chain_id);
+assert.notEqual(conflictChainId,standaloneChainId);
 assert.equal(temp.call('record.create',{
- record_type:'receipt',chain_id:standaloneChainId,record_date:'2026-11-01',
+ record_type:'receipt',chain_id:conflictChainId,record_date:'2026-11-01',
  items:[{raw_name:historyRaw,product_id:conflict.data.entity.product_id,
   quantity:1,amount_tax_included:222,category_id:null}]
 },'op-v64-conflict-record-abcdefghijk').ok,true);
+const competingAliases=temp.call('bootstrap').data.product_aliases.filter(a=>
+ a.normalized_alias===historyRaw.normalize('NFKC').toLocaleLowerCase('ja'));
+assert.ok(competingAliases.some(a=>a.chain_id===kitStore.chain_id&&
+ a.product_id===historyId),'original retailer confirms product A');
+assert.ok(competingAliases.some(a=>a.chain_id===conflictChainId&&
+ a.product_id===conflict.data.entity.product_id),'second retailer confirms DIFFERENT product B');
+assert.notEqual(historyId,conflict.data.entity.product_id,
+ 'ambiguous OCR text must genuinely identify two product masters');
 let conflictSession=appSession();
 await waitFor(()=>conflictSession.window.KurashiLive.state().loaded,'conflicting history loaded');
 await waitFor(()=>conflictSession.window.KurashiLive.state().queued===0,
@@ -1448,9 +1464,6 @@ conflictSession.window.document.querySelector('#chatgpt-input').value=JSON.strin
  ...historyJson,storeName:'初めての不明チェーンXY'
 });
 conflictSession.window.document.querySelector('[data-act="chatGptImport"]').click();
-console.log('DEBUG conflict aliases',JSON.stringify(temp.call('bootstrap').data.product_aliases.filter(a=>a.normalized_alias===historyRaw.normalize('NFKC').toLowerCase())));
-console.log('DEBUG conflict UI candidate',conflictSession.window.document.querySelector('[name="product-0"]').value,'chain',conflictSession.window.document.querySelector('[name="chain"]').value);
-console.log('DEBUG conflict app aliases',JSON.stringify(conflictSession.window.eval('catalogue.productAliases.filter(a=>a.normalizedAlias==="かたかな・直売x-123")')));
 assert.equal(conflictSession.window.document.querySelector('[name="product-0"]').value,'',
  'without retailer context an ambiguous confirmed name stays unlinked');
 assert.ok(conflictSession.window.document.querySelectorAll(
