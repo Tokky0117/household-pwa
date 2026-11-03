@@ -163,7 +163,10 @@ function completeOcrImport(session){
   'scanDraft.items.forEach(x=>{x.productId=scanMatchProduct(x.ocrRawName,scanDraft.chainId);x.autoLinked=!!x.productId});'+
   'page="recordScan";tab="receipt";render();');
  const assist=session.window.document.querySelector('[data-act="chatGptAssist"]');
- if(!assist)throw Error('OCR assistance action missing: view '+session.window.eval('receiptScanView()').includes('chatGptAssist')+' dom '+session.window.document.body.innerHTML.includes('chatGptAssist')+' '+session.window.document.body.innerHTML.slice(-300));
+ if(!assist){
+  const state=session.window.eval("({source:scanDraft?.source,rows:receiptOcrRows(scanDraft).length,view:scanFormView().slice(0,410),page,tab})");
+  throw Error('OCR assistance action missing: '+JSON.stringify(state));
+ }
  assist.click();
  const assistant={version:'kurashi-receipt-assist-1',
   items:items.map((x,i)=>({rowId:x.ocrRowId,ocrName:x.ocrRawName,
