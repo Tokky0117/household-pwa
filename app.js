@@ -84,6 +84,7 @@ let previewRecords=loadPreviewRecords();
 let receiptScan=null,receiptScanBusy=false,receiptScanEpoch=0,receiptPhotoUrl=null;
 let receiptChatGptText='',receiptChatGptNotice='';
 let receiptStoreBusy=false,receiptStoreNotice='',receiptStoreNameDraft='';
+let receiptCatalogAliases=[],receiptProductCreateIndex=null,receiptProductIntent=null,receiptProductNotice='';
 
 // The same review form can target the authenticated family only when BOTH
 // client and GAS write releases are approved. Preview stays browser-local.
@@ -100,7 +101,7 @@ function currentReceiptCatalog(){
   receiptRemoteCatalog:null;
 }
 function invalidateReceiptCatalog(){
- ++receiptCatalogEpoch;receiptRemoteCatalog=null;receiptCatalogSubject=null;
+ ++receiptCatalogEpoch;receiptRemoteCatalog=null;receiptCatalogAliases=[];receiptCatalogSubject=null;
  receiptCatalogBusy=false;receiptCatalogStatus='未取得';
 }
 function receiptStoreChoices(){
@@ -113,6 +114,34 @@ function receiptProductChoices(){
  return remote?remote.products.filter(p=>!p.deleted_at).map(p=>({
    id:String(p.product_id),name:String(p.name)})):catalogue.products.map(p=>({
    id:p.id,name:productTitle(p)}));
+}
+// Names and chain-scoped aliases are suggestions in the uncommitted review.
+function receiptMatches(){
+ const catalog=currentReceiptCatalog();
+ if(!catalog||!receiptScan)return [];
+ const products=catalog.products.filter(p=>!p.deleted_at);
+ if(window.KurashiProductMatching?.suggest){
+  try{return window.KurashiProductMatching.suggest(receiptScan.items.map(item=>({
+   name:item.rawName,productCode:item.productCode||null,issues:item.importWarnings||[]
+  })),{householdId:catalog.household_id,chainId:receiptScan.chainId||null,
+   products,aliases:receiptCatalogAliases});}
+  catch(_){return [];}
+ }
+ const key=s=>String(s||'').normalize('NFKC').toLowerCase().replace(/\s+/gu,'');
+ return receiptScan.items.map((item,index)=>{
+  const candidates=products.filter(p=>key(p.name)===key(item.rawName))
+   .map(p=>({productId:String(p.product_id),name:String(p.name)}));
+  return {index,status:candidates.length===1?'name_candidate':candidates.length>1?'ambiguous':'unresolved',candidates};
+ });
+}
+function applyReceiptExactMatches(){
+ if(!receiptScan)return;
+ for(const match of receiptMatches()){
+  const item=receiptScan.items[match.index];
+  if(item&&!item.productId&&
+     (match.status==='name_candidate'||match.status==='code_candidate')&&
+     match.candidates?.length===1)item.productId=match.candidates[0].productId;
+ }
 }
 async function loadReceiptCatalog(){
  if(!receiptRemoteWritable()||receiptCatalogBusy||currentReceiptCatalog())return;
@@ -129,7 +158,18 @@ async function loadReceiptCatalog(){
      new Set(data.stores.map(x=>x.chain_id)).size!==data.stores.length||
      new Set(data.products.map(x=>x.product_id)).size!==data.products.length)
    throw Error('RECEIPT_CATALOG_INVALID');
-  receiptRemoteCatalog=data;receiptCatalogStatus='家庭の店舗・商品を取得済み';
+  receiptRemoteCatalog=data;receiptCatalogAliases=[];
+  try{
+   const aliases=await window.KurashiGasApi.request('product.catalog',{});
+   if(epoch!==receiptCatalogEpoch||window.KurashiAuth?.status?.()?.subject!==subject)return;
+   const productIds=new Set(data.products.map(p=>String(p.product_id)));
+   const storeIds=new Set(data.stores.map(s=>String(s.chain_id)));
+   if(aliases?.household_id===data.household_id&&Array.isArray(aliases.product_aliases)&&
+      aliases.product_aliases.every(a=>productIds.has(String(a.product_id))&&
+       (a.chain_id==null||storeIds.has(String(a.chain_id)))))
+    receiptCatalogAliases=aliases.product_aliases;
+  }catch(_){/* Old deployments may lack the optional alias read. */}
+  receiptCatalogStatus='家庭の店舗・商品を取得済み';
   if(receiptScan){
    const stores=receiptStoreChoices(),products=receiptProductChoices();
    if(!stores.some(x=>x.id===receiptScan.chainId)){
@@ -138,6 +178,7 @@ async function loadReceiptCatalog(){
    }
    for(const item of receiptScan.items)
     if(!products.some(x=>x.id===item.productId))item.productId='';
+   applyReceiptExactMatches();
   }
  }catch{
   if(epoch===receiptCatalogEpoch){
@@ -559,10 +600,11 @@ function readChatGptReceiptIntoPreview(){
      !item.issues.includes('unit_quantity_mismatch')?
      String(item.netAmount):'',
     readNetAmount:item.netAmount,importWarnings:item.issues.slice(),
-    category:'',productId:''
+    productCode:item.productCode||null,category:'',productId:''
    }))
   };
   receiptStoreNameDraft=receiptScan.store||'';
+  applyReceiptExactMatches();
   receiptChatGptText='';receiptChatGptNotice='';
   render();return true;
  }catch(error){
@@ -607,7 +649,11 @@ async function scanReceiptPhoto(file){
    receiptTotal:Number.isSafeInteger(result.receiptTotal)?result.receiptTotal:null,
    rawPreview:String(result.rawPreview||'').slice(0,4000),
    recognizedCharacters:Number(result.recognizedCharacters)||0,
-   items:result.items.map(item=>({rawName:item.name,quantity:String(item.quantity),amount:String(item.amount),category:'',productId:''}))};
+   items:result.items.map(item=>({rawName:item.name,productCode:item.productCode||null,
+    quantity:String(item.quantity),amount:String(item.amount),category:'',productId:''}))};
+  const known=receiptStoreChoices().filter(s=>norm(s.name)===norm(receiptScan.store||''));
+  if(known.length===1)receiptScan.chainId=known[0].id;
+  applyReceiptExactMatches();
  }catch(error){
   if(epoch!==receiptScanEpoch||tab!=='receipt')return;
   receiptScan={status:receiptScanError(error),store:'',date:daysFromDate(new Date()),chainId:'',items:[]};
@@ -666,7 +712,7 @@ function receiptScanFormValues(){
   productId:String(data.get('product-'+i)||''),
   category:String(data.get('category-'+i)||''),
   readNetAmount:item.readNetAmount??null,
-  importWarnings:item.importWarnings||[]
+  importWarnings:item.importWarnings||[],productCode:item.productCode||null
  }));
  if(receiptScan.source==='chatgpt_paste')
   receiptScan.taxResolvedForPreview=data.get('taxResolved')==='yes';
@@ -1347,7 +1393,7 @@ function receiptScanReview(){
  const scan=receiptScan,options=[{value:'',label:'チェーンを選択'},...receiptStoreChoices().map(c=>({value:c.id,label:c.name}))];
  const products=[{value:'',label:'商品未照合（価格比較に使用しない）'},...receiptProductChoices().map(p=>({value:p.id,label:p.name}))];
  const categories=[{value:'',label:'未分類'},...CATS.map((c,i)=>({value:String(i),label:c}))];
- const chat=scan.source==='chatgpt_paste';
+ const chat=scan.source==='chatgpt_paste',matches=receiptMatches();
  const items=scan.items.map((item,i)=>`<section class="receipt-review-line">
  <div class="receipt-review-line-title"><strong>明細 ${i+1}</strong><button type="button" class="secondary" data-act="removeReceiptScanItem" data-ocr-index="${i}">除外</button></div>
  ${chat&&item.importWarnings?.some(code=>code==='line_amount_mismatch'||code==='unit_quantity_mismatch')?
@@ -1362,6 +1408,9 @@ function receiptScanReview(){
  ${UI.formField({id:'scan-amount-'+i,name:'amount-'+i,label:'税込明細合計（円・数量分）',type:'number',value:item.amount,required:true,extra:'min="0" max="1000000" step="1" inputmode="numeric"'})}
  </div>
  ${UI.formField({id:'scan-product-'+i,name:'product-'+i,label:'登録済み商品との対応（任意）',control:'select',value:item.productId,options:products})}
+ ${!item.productId&&matches[i]?.candidates?.length?
+  '<div class="receipt-match-candidates"><p class="hint">登録済み商品の候補</p>'+
+  matches[i].candidates.slice(0,3).map(p=>'<button type="button" class="secondary" data-receipt-candidate="'+esc(p.productId)+'" data-ocr-index="'+i+'">'+esc(p.name)+'</button>').join('')+'</div>':''}
  ${UI.formField({id:'scan-category-'+i,name:'category-'+i,label:'家計簿カテゴリ',control:'select',value:item.category,options:categories})}
  </section>`).join('');
  const total=Number.isSafeInteger(scan.receiptTotal)?scan.receiptTotal:null;
@@ -1743,10 +1792,19 @@ if(form.id==='productCreateForm'){
  if(page==='productEdit'){const p=catalogue.products.find(x=>x.id===editingProductId&&x.itemGroupId===selected);if(!p){fieldNotice(form,'商品が見つかりません','new-product-name');return}Object.assign(p,{name,packageQuantity:String(d.get('quantity')||'').trim()?quantity:null,packageUnit:String(d.get('quantity')||'').trim()?unit:null})}else{catalogue.products.push({id:id(),name,packageQuantity:String(d.get('quantity')||'').trim()?quantity:null,packageUnit:String(d.get('quantity')||'').trim()?unit:null,itemGroupId:selected,itemGroupOrder:registeredProducts(selected).length+1,aliases:[]})}
  persistCatalogue();page='compare';initializeCompare();render();
 }});
-app.addEventListener('click',e=>{if(e.target.classList?.contains('sheet-back')&&(liveEditor||liveProductEditor)){liveEditor=null;liveProductEditor=null;render();return}if(e.target.classList?.contains('sheet-back')&&['add','edit','productEdit','productPick'].includes(page)){back();return}if(suppressClick){e.preventDefault();e.stopPropagation();suppressClick=false;return}const clear=e.target.closest('[data-search-clear]');if(clear){const input=document.getElementById(clear.dataset.searchClear);if(input){input.value='';syncSearch(input);input.focus()}return}const el=e.target.closest('[data-tab],[data-cat],[data-stock],[data-open],[data-act],[data-ui-toggle],[data-ui-choice],[data-dialog],[data-premove],[data-pedit],[data-pick],[data-product-menu],[data-list-edit],[data-list-hide]');if(!el)return;if(el.hasAttribute('data-ui-toggle')){
+app.addEventListener('click',e=>{if(e.target.classList?.contains('sheet-back')&&(liveEditor||liveProductEditor)){liveEditor=null;liveProductEditor=null;render();return}if(e.target.classList?.contains('sheet-back')&&['add','edit','productEdit','productPick'].includes(page)){back();return}if(suppressClick){e.preventDefault();e.stopPropagation();suppressClick=false;return}const clear=e.target.closest('[data-search-clear]');if(clear){const input=document.getElementById(clear.dataset.searchClear);if(input){input.value='';syncSearch(input);input.focus()}return}const el=e.target.closest('[data-tab],[data-cat],[data-stock],[data-open],[data-act],[data-ui-toggle],[data-ui-choice],[data-dialog],[data-premove],[data-pedit],[data-pick],[data-product-menu],[data-list-edit],[data-list-hide],[data-receipt-candidate]');if(!el)return;if(el.hasAttribute('data-ui-toggle')){
  const wrapper=el.closest('.ui-select'),open=el.getAttribute('aria-expanded')==='true';
  closeAllDropdowns();
  if(!open&&wrapper){const popup=wrapper.querySelector('.ui-menu');if(popup)popup.hidden=false;el.setAttribute('aria-expanded','true');if(wrapper.dataset.uiSelect==='price-period')periodMenu=true}
+ return;
+}
+if(el.dataset.receiptCandidate!==undefined){
+ if(!receiptScan||receiptSaveBusy)return;
+ receiptScanFormValues();
+ const index=Number(el.dataset.ocrIndex),pid=String(el.dataset.receiptCandidate);
+ if(Number.isInteger(index)&&receiptScan.items[index]&&receiptProductChoices().some(p=>p.id===pid)){
+  receiptScan.items[index].productId=pid;render();
+ }
  return;
 }
 if(el.dataset.uiChoice!==undefined){
