@@ -165,14 +165,24 @@ async function completeOcrImport(session){
  const draft={source:'ocr',date:receipt.purchaseDate||'2026-10-14',
   chainId:knownStore?.chain_id||null,chainName:knownStore?'':receipt.storeName||'',
   rawStoreName:receipt.storeName||'',total:receipt.receiptTotal??null,items};
+ await pause(100);
  await session.window.KurashiLive.saveReceiptDraft(draft);
+ const persisted=await session.window.KurashiLive.loadReceiptDraft();
+ assert.equal(persisted?.source,'ocr','test setup stored the PWA OCR draft');
  // Run the actual app's resume-from-IndexedDB action (no test-only app API).
  const resume=session.window.document.createElement('button');
  resume.dataset.act='resumeScanDraft';
  session.window.document.getElementById('app').append(resume);
  resume.click();
- await waitFor(()=>!!session.window.document.querySelector('[data-act="chatGptAssist"]'),
-  'OCR draft restored into the production receipt review');
+ try{
+  await waitFor(()=>!!session.window.document.querySelector('[data-act="chatGptAssist"]'),
+   'OCR draft restored into the production receipt review');
+ }catch(e){
+  const stored=await session.window.KurashiLive.loadReceiptDraft();
+  throw Error('OCR resume failed: '+JSON.stringify({stored:stored?.source,
+   page:session.window.document.getElementById('app')?.textContent.slice(0,170),
+   status:session.window.KurashiLive.state().error}));
+ }
  session.window.document.querySelector('[data-act="chatGptAssist"]').click();
  const assistant={version:'kurashi-receipt-assist-1',
   items:items.map((x,i)=>({rowId:x.ocrRowId,ocrName:x.ocrRawName,
