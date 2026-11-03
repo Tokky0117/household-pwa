@@ -823,6 +823,46 @@ function productCreateView(){
  const form=`<form id="productCreateForm">${fields}<div class="formactions"><button class="primary" type="submit">${editing?'変更を保存':'商品を登録'}</button></div></form>`;
  return editing?UI.sheet({title:'商品を編集',variant:'product-editor-sheet',body:form}):`${head('新しい商品を作成',i.name,true)}<main class="manage-main">${form}<p class="hint">内容量が不明なら空欄でも登録できます。</p></main>`;
 }
+
+let masterQuery='',masterProductId=null;
+function masterProductRows(){
+ const q=norm(masterQuery);
+ const found=catalogue.products.filter(p=>!q||productMatches(p,q)||
+  norm(linkedItemName(p)).includes(q)).sort((a,b)=>a.name.localeCompare(b.name,'ja'));
+ return found.map(p=>'<button type="button" class="panel catalogue-candidate" data-act="masterProductEdit" data-product-id="'+esc(p.id)+'">'+
+  '<span class="catalogue-row-body"><strong>'+esc(productTitle(p))+'</strong>'+
+  '<span class="hint">日用品：'+esc(linkedItemName(p))+'</span></span>'+
+  '<span class="catalogue-candidate-end" aria-hidden="true">'+chevron('right')+
+  '</span></button>').join('')||'<div class="panel empty">該当する商品はありません</div>';
+}
+function masterProductsView(){
+ return head('商品マスタ','登録商品の管理',true)+
+  '<main class="manage-main"><p class="hint">日用品に未紐付けの商品も登録・編集できます。商品マスタ自体は削除しません。</p>'+
+  '<label class="scan-field">商品名・日用品名で検索'+
+  '<input id="master-product-query" type="search" placeholder="商品を検索" value="'+esc(masterQuery)+'"></label>'+
+  '<div id="master-product-results" class="catalogue-rows">'+masterProductRows()+'</div>'+
+  '<button type="button" class="primary manage-add" data-act="masterProductNew">＋ 商品マスタを追加</button></main>';
+}
+function masterProductEditorView(){
+ const editing=page==='masterProductEdit';
+ const p=editing?catalogue.products.find(x=>x.id===masterProductId):null;
+ if(editing&&!p)return masterProductsView();
+ const fields=UI.formField({id:'master-product-name',name:'name',
+  label:'商品マスタの正式商品名',value:p?.name||'',required:true,maxlength:80})+
+  UI.quantityUnitFields({quantityId:'master-product-quantity',unitId:'master-product-unit',
+   quantity:p?.packageQuantity??'',unit:p?.packageUnit||'個',extra:'inputmode="decimal"'})+
+  (editing?'<p class="hint">日用品：'+esc(linkedItemName(p))+
+   '。移動は日用品リストの「登録商品の管理」から操作してください。</p>':
+   '<label class="scan-field">日用品との紐付け（任意）<select name="group">'+
+   scanGroupOptions()+'</select></label>');
+ return head(editing?'商品マスタを編集':'商品マスタを追加','',true)+
+  '<main class="manage-main"><form id="masterProductForm">'+fields+
+  '<div class="formactions"><button type="submit" class="primary">'+
+  (editing?'変更を保存':'商品を登録')+'</button></div></form>'+
+  (editing&&p.itemGroupId?'<button type="button" class="secondary" data-act="masterProductUnlink">'+
+  '日用品との紐付けを解除</button>':'')+
+  '<p class="hint">紐付けを解除しても、商品マスタと過去のレシート明細は残ります。</p></main>';
+}
 function recordAddView(){
  const type=newRecordType;
  const optsProduct=[{value:'',label:'商品未照合'},...catalogue.products.map(p=>({value:p.id,label:productTitle(p)}))];
