@@ -327,8 +327,8 @@ assert.ok(/html,body\s*\{touch-action:pan-x pan-y\}/.test(css),
 assert.ok(source.includes("document.addEventListener('gesturestart'")&&
  source.includes("e.touches?.length>1"),
  'Safari two-finger zoom is prevented without blocking one-finger touch');
-ui.setScanDraft({source:'chatgpt',date:'2026-10-14',chainId:'c-a',total:268,
- items:[{name:'キットカットコイマッチャ10フクロ',quantity:1,amount:268,productId:'',issues:[]}]});
+ui.setScanDraft({source:'ocr',date:'2026-10-14',chainId:'c-a',total:268,
+ items:[{name:'キットカットコイマッチャ10フクロ',ocrRawName:'キットカットコイマッチャ10フクロ',quantity:1,amount:268,productId:'',issues:[]}]});
 ui.setScanProductRow(0);
 const newProductHtml=ui.scanProductView();
 assert.ok(newProductHtml.includes('scan-product-name')&&
