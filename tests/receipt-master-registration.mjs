@@ -33,7 +33,7 @@ const win={scrollY:0,scrollTo(){},addEventListener(){},
   async request(action,payload={},options={}){
    if(action==='bootstrap')return structuredClone(catalog);
    if(action==='product.catalog')return structuredClone({
-    household_id:household,products:catalog.products,stores:catalog.stores,product_aliases:storedAliases
+    household_id:household,products:catalog.products,stores:catalog.stores,product_aliases:storedAliases,alias_write_supported:true
    });
    mutations.push({action,payload,operationId:options.operationId});
    if(action==='product.create'){
