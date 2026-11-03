@@ -75,9 +75,9 @@ const api=vm.runInContext(source[2]+
  '\n({loadReceiptCatalog,applyReceiptExactMatches,receiptScanReview,'+
  "setReady(){tab='receipt';page='list';liveMode=true;liveOwnerSubject='"+subject+"';liveSnapshot="+JSON.stringify(catalog)+";},"+
  'setScan(value){receiptScan=value;},state:()=>({scan:receiptScan,intent:receiptProductIntent,'+
- 'aliases:receiptCatalogAliases,notice:receiptProductNotice,liveMode,liveWriteBusy,
- liveWriteStatus,liveOwnerSubject,catalogReady:!!currentReceiptCatalog(),
- hasSnapshot:!!liveSnapshot,pending:window.KurashiLiveJournal.read()}),'+
+ 'aliases:receiptCatalogAliases,notice:receiptProductNotice,liveMode,liveWriteBusy,'+
+ 'liveWriteStatus,liveOwnerSubject,catalogReady:!!currentReceiptCatalog(),'+
+ 'hasSnapshot:!!liveSnapshot,pending:window.KurashiLiveJournal.read()}),'+
  'setCreateIndex(index){receiptProductCreateIndex=index}})',ctx);
 api.setReady();
 await api.loadReceiptCatalog();
