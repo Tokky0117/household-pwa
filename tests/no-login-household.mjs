@@ -1825,4 +1825,28 @@ assert.equal(unchangedAfterUnlink.product_id,legacyProductId,
  'changing OCR dictionary association never rewrites confirmed purchase history');
 assert.ok(app.includes('const aliasNameFor=line=>line?.raw_name||'),
  'historical receipt display prefers original spelling over normalized dictionary');
+// The yellow quantity warning must clear when the user re-enters even "1".
+let qtySession=appSession(new IDBFactory());
+await waitFor(()=>qtySession.window.KurashiLive.state().loaded,'uncertain quantity test bootstrap');
+qtySession.window.document.querySelector('[data-tab="receipt"]').click();
+prepareOcrImport(qtySession);
+qtySession.window.document.getElementById('chatgpt-input').value=JSON.stringify({
+ version:'kurashi-receipt-import-1',purchaseDate:'2026-11-02',
+ storeName:kitStore.canonical_name,receiptTotal:340,
+ items:[{name:'数量未確認テストOCR名',quantity:null,netAmount:340,nameCandidate:null}]
+});
+await completeOcrImport(qtySession);
+const qtyField=qtySession.window.document.querySelector('#scanConfirmForm [name="qty-0"]');
+assert.equal(qtyField.value,'1','unconfirmed OCR quantity defaults to one');
+assert.ok(qtyField.classList.contains('scan-quantity-uncertain'));
+assert.match(qtySession.window.document.querySelector('#scanConfirmForm').textContent,/数量要確認/);
+qtyField.value='1';
+qtyField.dispatchEvent(new qtySession.window.Event('input',{bubbles:true}));
+assert.ok(!qtyField.classList.contains('scan-quantity-uncertain'),
+ 'even confirming one by re-entry clears the yellow field');
+assert.ok(!qtySession.window.document.querySelector('.scan-quantity-hint'),
+ 'yellow warning and explanatory label are cleared together');
+qtySession.window.close();
+console.log('v65: quantity unknown defaults to yellow one; re-entering one clears warning OK');
+
 console.log('v64: non-destructive legacy Sheets column upgrade, partial migration retry, OCR unlink and price history OK');
