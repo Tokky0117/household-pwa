@@ -1062,6 +1062,7 @@ function kurashiCreateRecord_(user,payload,id){
         String(x.value.household_id)===hid&&!x.value.deleted_at)
         .map(x=>String(x.value.product_id)));
       const now=new Date().toISOString(),recordId='record-'+Utilities.getUuid();
+      const aliasIndex=kurashiAliasIndex_(book),newAliases=[];
       const lineItems=payload.items.map((line,n)=>{
         if(!line||Object.keys(line).sort().join(',')!==
           'amount_tax_included,category_id,product_id,quantity,raw_name')
@@ -1077,8 +1078,10 @@ function kurashiCreateRecord_(user,payload,id){
            (payload.record_type==='shelf'?cat!==null:
             cat!==null&&(!Number.isInteger(cat)||cat<0||cat>4)))
           kurashiFail_('BAD_REQUEST','数量・税込金額・カテゴリを確認してください');
+        const aliasId=kurashiPlanAlias_(line.raw_name,payload.chain_id,prod,
+          aliasIndex,newAliases,now);
         return {record_item_id:'recorditem-'+Utilities.getUuid(),
-          record_id:recordId,line_order:n+1,raw_name:kurashiRawName_(line.raw_name),
+          record_id:recordId,line_order:n+1,raw_name:'',alias_id:aliasId,
           product_id:prod||'',quantity:qty,amount_tax_included:amount,
           category_id:cat===null?'':cat,price_eligible:prod!==null,
           created_at:now,updated_at:now,version:1,deleted_at:''};
@@ -1088,13 +1091,16 @@ function kurashiCreateRecord_(user,payload,id){
           record_type:payload.record_type,chain_id:payload.chain_id,
           branch_name:kurashiBranchName_(payload.branch_name),raw_store_name:'',record_date:date,
           created_at:now,updated_at:now,version:1,deleted_at:''},
-        items:lineItems,sequence_no:kurashiSequence_(hid,book)+1,updated_at:now};
+        items:lineItems,aliases:newAliases,
+        sequence_no:kurashiSequence_(hid,book)+1,updated_at:now};
       kurashiPrepareOperation_(book,hid,id,check.hash,plan);
     }
     if(!plan.record||String(plan.record.household_id)!==hid||
        !Array.isArray(plan.items)||!plan.items.length||
        plan.items.some(x=>String(x.record_id)!==String(plan.record.record_id)))
       kurashiFail_('RECOVERY_CONFLICT','記録保存の履歴が不正です');
+    for(const alias of plan.aliases||[])
+      kurashiEnsureNewRow_('product_aliases','alias_id',alias,hid,book);
     kurashiEnsureNewRow_('records','record_id',plan.record,hid,book);
     for(const item of plan.items)
       kurashiEnsureNewRow_('record_items','record_item_id',item,hid,book);
@@ -1158,6 +1164,7 @@ function kurashiMutateRecord_(user,action,payload,id){
     const known=new Set(kurashiRows_('products',book).filter(x=>
      String(x.value.household_id)===hid&&!x.value.deleted_at)
      .map(x=>String(x.value.product_id)));
+    const aliasIndex=kurashiAliasIndex_(book),newAliases=[];
     fresh=payload.items.map((line,n)=>{
      if(!line||Object.keys(line).sort().join(',')!==
        'amount_tax_included,category_id,product_id,quantity,raw_name')
@@ -1172,8 +1179,10 @@ function kurashiMutateRecord_(user,action,payload,id){
         (original.record_type==='shelf'?cat!==null:
           cat!==null&&(!Number.isInteger(cat)||cat<0||cat>4)))
        kurashiFail_('BAD_REQUEST','数量・税込金額を確認してください');
+     const aliasId=kurashiPlanAlias_(line.raw_name,payload.chain_id,prod,
+       aliasIndex,newAliases,now);
      return {record_item_id:'recorditem-'+Utilities.getUuid(),
-      record_id:recordId,line_order:n+1,raw_name:kurashiRawName_(line.raw_name),
+      record_id:recordId,line_order:n+1,raw_name:'',alias_id:aliasId,
       product_id:prod||'',quantity:line.quantity,
       amount_tax_included:line.amount_tax_included,
       category_id:cat===null?'':cat,price_eligible:prod!==null,
@@ -1181,11 +1190,14 @@ function kurashiMutateRecord_(user,action,payload,id){
     });
     next.chain_id=payload.chain_id;next.record_date=date;
     next.branch_name=kurashiBranchName_(payload.branch_name);
+    next.aliasesToCreate=newAliases;
    }
    const originals=oldRows.map(x=>kurashiPublic_(x.value));
    const expired=originals.map(x=>({...x,deleted_at:now,updated_at:now,version:Number(x.version)+1}));
+   const aliases=next.aliasesToCreate||[];
+   delete next.aliasesToCreate;
    plan={status:'prepared',action,beforeRecord:original,record:next,
-    beforeItems:originals,expiredItems:expired,items:fresh,
+    beforeItems:originals,expiredItems:expired,items:fresh,aliases,
     sequence_no:kurashiSequence_(hid,book)+1,updated_at:now};
    kurashiPrepareOperation_(book,hid,id,check.hash,plan);
   }
@@ -1200,6 +1212,8 @@ function kurashiMutateRecord_(user,action,payload,id){
   for(let i=0;i<plan.beforeItems.length;i++)
    kurashiRecordTransition_('record_items','record_item_id',
     plan.beforeItems[i],plan.expiredItems[i],book);
+  for(const alias of plan.aliases||[])
+   kurashiEnsureNewRow_('product_aliases','alias_id',alias,hid,book);
   for(const row of plan.items)
    kurashiEnsureNewRow_('record_items','record_item_id',row,hid,book);
   return kurashiCompleteOperation_(book,hid,id,check.hash,plan,{
