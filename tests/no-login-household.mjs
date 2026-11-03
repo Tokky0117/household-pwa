@@ -1281,7 +1281,7 @@ const updatedLines=temp.call('bootstrap').data.record_items.filter(x=>
 assert.equal(updatedLines.filter(x=>aliasText(temp,x)===storedName).length,1,
  'record.update retains one original immutable OCR spelling');
 assert.equal(updatedLines.filter(x=>aliasText(temp,x)==='手入力の追加明細').length,1,
- 'record.update preserves the user's newly typed line');
+ 'record.update preserves the newly typed line');
 assert.equal(updatedLines.find(x=>aliasText(temp,x)===storedName).amount_tax_included,340,
  'editing existing receipt does not alter historical 2x KitKat line total');
 thirdPhone.window.document.querySelector('[data-tab="items"]').click();
