@@ -181,7 +181,7 @@ assert.equal(temp.db.processed_operations.length,afterCommit,
  'GAS did not create an extra processed operation');
 assert.equal(pill(c),'なし');
 c.window.document.querySelector('[data-tab="settings"]').click();
-assert.match(c.window.document.body.textContent,/試作 v0\.60\.0/);
+assert.match(c.window.document.body.textContent,/試作 v0\.61\.0/);
 
 // New item IDs can be referenced by edits/hides before the first GAS save.
 online=false;
@@ -1074,3 +1074,110 @@ await waitFor(()=>!!bulkUI.window.document.querySelector('#scanConfirmForm [name
  'newly confirmed product remains selected after local ID becomes Sheets ID');
 bulkUI.window.close();
 console.log('v60: unmatched receipt products batch register with durable queue OK');
+
+/* COSTCO KitKat: receipt's printed spelling remains historical raw_name,
+ * while the canonical master belongs to the household's "チョコ" item. */
+const chocCreated=temp.call('item.create',{name:'チョコ',category_id:0},
+ 'op-v61-chocolate-group-create-abcdefghijklmn');
+assert.equal(chocCreated.ok,true);
+const chocId=chocCreated.data.entity.item_group_id;
+const kitStore=temp.call('bootstrap').data.stores[0];
+assert.ok(kitStore,'existing chain for receipt training');
+const kitRaw='キットカットコイマッチャ10フクロ';
+const kitCanonical='キットカット濃い抹茶10袋';
+const kitJson={version:'kurashi-receipt-import-1',purchaseDate:'2026-11-02',
+ storeName:kitStore.canonical_name,taxBasis:'included',taxTotal:null,
+ receiptTotal:268,printedCount:1,items:[{
+  name:kitRaw,code:'90697',quantity:1,unitPrice:268,
+  grossAmount:268,discount:0,netAmount:268
+ }]};
+let kitSession=appSession();
+await waitFor(()=>kitSession.window.KurashiLive.state().loaded,'KitKat receipt bootstrap');
+kitSession.window.document.querySelector('[data-tab="receipt"]').click();
+kitSession.window.document.querySelector('[data-act="receiptChatGpt"]').click();
+kitSession.window.eval(importer);
+kitSession.window.document.getElementById('chatgpt-input').value=JSON.stringify(kitJson);
+kitSession.window.document.querySelector('[data-act="chatGptImport"]').click();
+assert.ok(kitSession.window.document.getElementById('scanConfirmForm'),
+ 'malformed name appears on receipt confirmation page');
+kitSession.window.document.querySelector('[data-act="scanNewProduct"]').click();
+const kitForm=kitSession.window.document.getElementById('scanProductForm');
+assert.ok(kitForm,'receipt shows explicit new master registration form');
+assert.equal(kitForm.querySelector('[name="group"]').value,'',
+ 'no arbitrary item-group auto-selection');
+assert.equal(kitForm.querySelector('[name="name"]').value,kitRaw,
+ 'printed raw name only pre-fills editable canonical name');
+kitForm.querySelector('[name="name"]').value=kitCanonical;
+kitForm.querySelector('[name="group"]').value=chocId;
+kitForm.dispatchEvent(new kitSession.window.Event('submit',{bubbles:true,cancelable:true}));
+await waitFor(()=>!!kitSession.window.document.getElementById('scanConfirmForm'),
+ 'new product returns directly to the same receipt');
+await waitFor(()=>temp.call('bootstrap').data.products.some(x=>
+ x.name===kitCanonical&&x.item_group_id===chocId),
+ 'canonical KitKat master saved under existing chocolate item');
+const kitSavedProduct=temp.call('bootstrap').data.products.find(x=>x.name===kitCanonical);
+await waitFor(()=>kitSession.window.document.querySelector(
+ '#scanConfirmForm [name="product-0"]')?.value===kitSavedProduct.product_id,
+ 'local product ID reconciles to permanent Sheets ID even with different OCR spelling');
+const kitReview=kitSession.window.document.getElementById('scanConfirmForm');
+assert.equal(kitReview.querySelector('[name="name-0"]').value,kitRaw,
+ 'raw receipt name is never silently replaced with canonical master name');
+assert.match(kitReview.textContent,/キットカット濃い抹茶10袋/,
+ 'canonical product appears as selected master in confirmation view');
+assert.match(kitReview.textContent,/日用品：チョコ/,
+ 'selected master shows item-group relationship to chocolate');
+kitReview.querySelector('[name="confirmed"]').checked=true;
+kitReview.dispatchEvent(new kitSession.window.Event('submit',{bubbles:true,cancelable:true}));
+await waitFor(()=>kitSession.window.KurashiLive.state().queued===0&&
+ temp.call('bootstrap').data.record_items.some(x=>
+  x.raw_name===kitRaw&&x.product_id===kitSavedProduct.product_id),
+ 'receipt stores printed raw spelling with linked canonical product ID');
+await waitFor(()=>temp.call('bootstrap').data.product_aliases.some(x=>
+ x.product_id===kitSavedProduct.product_id&&x.chain_id===kitStore.chain_id&&
+ x.normalized_alias===kitRaw.toLocaleLowerCase('ja')),
+ 'confirmed receipt abbreviation is learned as chain-specific alias');
+kitSession.window.close();
+
+const pinchSession=appSession();
+await waitFor(()=>pinchSession.window.KurashiLive.state().loaded,'pinch UI bootstrap');
+const pinchEvent=new pinchSession.window.Event('gesturestart',{cancelable:true});
+pinchSession.window.document.dispatchEvent(pinchEvent);
+assert.equal(pinchEvent.defaultPrevented,true,'Safari page-pinch gesture suppressed');
+const twoFingers=new pinchSession.window.Event('touchmove',{cancelable:true});
+Object.defineProperty(twoFingers,'touches',{value:[{},{}]});
+pinchSession.window.document.dispatchEvent(twoFingers);
+assert.equal(twoFingers.defaultPrevented,true,'two-finger page scale suppressed');
+const oneFinger=new pinchSession.window.Event('touchmove',{cancelable:true});
+Object.defineProperty(oneFinger,'touches',{value:[{}]});
+pinchSession.window.document.dispatchEvent(oneFinger);
+assert.equal(oneFinger.defaultPrevented,false,'normal scroll and swipes stay available');
+pinchSession.window.close();
+
+let existingSession=appSession();
+await waitFor(()=>existingSession.window.KurashiLive.state().loaded,
+ 'existing-product search session');
+existingSession.window.document.querySelector('[data-tab="receipt"]').click();
+existingSession.window.document.querySelector('[data-act="receiptChatGpt"]').click();
+existingSession.window.eval(importer);
+const variant={...kitJson,receiptTotal:278,items:[{
+ ...kitJson.items[0],name:'キットカット別レシート表記',unitPrice:278,grossAmount:278,netAmount:278
+}]};
+existingSession.window.document.getElementById('chatgpt-input').value=JSON.stringify(variant);
+existingSession.window.document.querySelector('[data-act="chatGptImport"]').click();
+existingSession.window.document.querySelector('[data-act="scanPickExisting"]').click();
+assert.ok(existingSession.window.document.getElementById('scan-existing-search'));
+const existingSearch=existingSession.window.document.getElementById('scan-existing-search');
+existingSearch.value='チョコ';
+existingSearch.dispatchEvent(new existingSession.window.Event('input',{bubbles:true}));
+const existingChoice=existingSession.window.document.querySelector(
+ '[data-act="scanChooseExisting"][data-product-id="'+kitSavedProduct.product_id+'"]');
+assert.ok(existingChoice,'registered KitKat found using household-item name');
+assert.match(existingChoice.textContent,/日用品：チョコ/);
+existingChoice.click();
+const selectedReview=existingSession.window.document.getElementById('scanConfirmForm');
+assert.equal(selectedReview.querySelector('[name="product-0"]').value,
+ kitSavedProduct.product_id,'existing product selected without creating a duplicate');
+assert.equal(selectedReview.querySelector('[name="name-0"]').value,
+ 'キットカット別レシート表記','printed spelling kept when choosing existing product');
+existingSession.window.close();
+console.log('v61: KitKat canonical master, chocolate item link, original receipt name, alias and no-pinch gestures: OK');

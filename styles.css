@@ -2260,3 +2260,35 @@ main>.ui-search + .filterrow{margin-bottom:5px}
 .receipt-scan-page [data-act="scanAddPhotos"],.receipt-scan-page [data-act="scanStart"]{width:100%;min-height:44px}
 .scan-review [data-act="scanNewProduct"]{min-height:44px}
 .scan-review [hidden],.receipt-scan-page [hidden]{display:none!important}
+
+/* Normal one-finger scroll and swipes remain enabled. No page pinch scaling. */
+html,body{touch-action:pan-x pan-y}
+.scan-product-association{padding:10px 12px;border:1px solid var(--line,#d5d9df);border-radius:12px;margin:12px 0;display:flex;flex-direction:column;gap:7px}
+.scan-product-association-label{font-size:13px;color:var(--text-secondary,#666)}
+.scan-product-association strong{font-size:14px;overflow-wrap:anywhere}
+.scan-product-actions{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:9px}
+.scan-product-actions button{min-height:44px;white-space:normal}
+.scan-bulk-entry{margin:12px 0;padding:12px}
+.scan-bulk-entry .hint{overflow-wrap:anywhere}
+.scan-existing-picker{display:flex;flex-direction:column;min-height:0;gap:8px}
+.scan-existing-results{overflow-y:auto;min-height:64px;max-height:45vh;display:flex;flex-direction:column;gap:5px;overscroll-behavior:contain}
+.scan-existing-option{display:flex;flex-direction:column;align-items:flex-start;gap:4px;min-height:50px;width:100%;padding:11px;border:1px solid var(--line,#d5d9df);border-radius:10px;background:var(--card,#fff);color:inherit;text-align:left}
+.scan-existing-option span{font-size:12px;color:var(--text-secondary,#666)}
+.scan-existing-picker>[data-act]{min-height:44px}
+
+/* Receipt product registration uses the shared sheet frame but independent
+   scrolling; long receipts must not clip the batch form. */
+.half-sheet.receipt-product-modal{
+ height:min(84dvh,760px);max-height:calc(100dvh - env(safe-area-inset-top) - 18px);
+ min-height:0;display:flex;flex-direction:column;overflow:hidden
+}
+.half-sheet.receipt-product-modal>.sheet-body{
+ flex:1 1 auto;min-height:0;overflow-y:auto;overscroll-behavior:contain;
+ padding-bottom:calc(16px + env(safe-area-inset-bottom))
+}
+.half-sheet.receipt-product-modal .scan-field input,
+.half-sheet.receipt-product-modal .scan-field select,
+.half-sheet.receipt-product-modal .formfield input,
+.half-sheet.receipt-product-modal .formfield select{
+ font-size:16px
+}

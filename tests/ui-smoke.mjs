@@ -17,14 +17,14 @@ const doc={
 const ctx={document:doc,localStorage:{getItem:k=>storage.get(k)??null,setItem:(k,v)=>storage.set(k,v),removeItem:k=>storage.delete(k)},
  navigator:{},window:{scrollTo(){},scrollY:0},crypto:{randomUUID:()=> 'test-id'},setTimeout:()=>0};
 const ui=vm.runInNewContext(source+`
-({listView,priceCompareView,pickerView,pickerResults,receiptView,budgetView,receiptScanView,receiptChatGptView,recordDetailView,scanDuplicates,compareOcrAndChatGpt,receiptOcrReference,correctionFor,scanBulkProductsView,render,initializeCompare,
+({listView,priceCompareView,pickerView,pickerResults,receiptView,budgetView,receiptScanView,receiptChatGptView,recordDetailView,scanDuplicates,compareOcrAndChatGpt,receiptOcrReference,correctionFor,scanBulkProductsView,scanProductView,scanExistingProductView,render,initializeCompare,
  setProductGroup,reorderProducts,registeredProducts,convertQuantity,setOpenSwipe,
  chainMinima,priceCandidates,budgetTotals,savePreviewRecord,periodStart,
  demoRecords,demoRecordItems,allPreviewRecords,allPreviewItems,
  setSelected(v){selected=v},setPage(v){page=v},setMode(v){priceScope=v},setDock(v){shopExpanded=v},
  setPeriod(v){period=v},setQty(v){compareQuantity=v},setUnit(v){compareUnit=v},
  setNewRecordType(v){newRecordType=v},recordAddView,
- setScanDraft(v){scanDraft=v},setOcrLearning(v){ocrLearning=v},getScanDraft(){return scanDraft},
+ setScanDraft(v){scanDraft=v},setScanProductRow(v){scanProductRow=v},setScanExistingQuery(v){scanExistingQuery=v},setOcrLearning(v){ocrLearning=v},getScanDraft(){return scanDraft},
  getCompare(){return [compareQuantity,compareUnit]},getSwipe(){return openSwipeId},
  getPeriod(){return period},getListHelpOpen(){return listHelpOpen},listHelpView,readListHelpOpen,catalogue:()=>catalogue})
 `,ctx,{filename:'app.js'});
@@ -292,3 +292,35 @@ assert.ok(ui.receiptScanView().includes('scanBulkProducts'),
 assert.ok(ui.scanBulkProductsView().includes('scanBulkProductsForm'),
  'bulk product registration uses one shared UI confirmation sheet');
 console.log('v60: manual OCR pairing and batch product registration UI OK');
+
+const pageHtml=readFileSync(new URL('../index.html',import.meta.url),'utf8');
+assert.ok(/maximum-scale=1,user-scalable=no/.test(pageHtml),
+ 'global viewport prevents native page pinch zoom');
+assert.ok(/html,body\s*\{touch-action:pan-x pan-y\}/.test(css),
+ 'global CSS allows scrolling but not pinch scaling');
+assert.ok(source.includes("document.addEventListener('gesturestart'")&&
+ source.includes("e.touches?.length>1"),
+ 'Safari two-finger zoom is prevented without blocking one-finger touch');
+ui.setScanDraft({source:'chatgpt',date:'2026-10-14',chainId:'c-a',total:268,
+ items:[{name:'キットカットコイマッチャ10フクロ',quantity:1,amount:268,productId:'',issues:[]}]});
+ui.setScanProductRow(0);
+const newProductHtml=ui.scanProductView();
+assert.ok(newProductHtml.includes('scan-product-name')&&
+ newProductHtml.includes('キットカットコイマッチャ10フクロ')&&
+ newProductHtml.includes('scan-product-group'),
+ 'canonical product name and household-item linking are both on the new-product form');
+assert.match(newProductHtml,/日用品を選択してください/,'no arbitrary initial group selected');
+const listingHtml=ui.receiptScanView();
+assert.ok(listingHtml.includes('レシートの商品名（原本表記）')&&
+ listingHtml.includes('既存商品と照合')&&listingHtml.includes('新しい商品を登録'),
+ 'scan review clearly distinguishes printed text and master product actions');
+const bulkHtml=ui.scanBulkProductsView();
+assert.ok(bulkHtml.includes('name="name-0"')&&bulkHtml.includes('name="group-0"')&&
+ bulkHtml.includes('今回は商品登録しない'),
+ 'batch registration can rename a product and choose its item group');
+const existingHtml=ui.scanExistingProductView();
+assert.ok(existingHtml.includes('scan-existing-search')&&
+ existingHtml.includes('scan-existing-group')&&
+ existingHtml.includes('日用品：牛乳'),
+ 'existing-product picker searches products and shows linked household item');
+console.log('v61: printed-name preservation, explicit product↔item linking, and no-pinch UI OK');
