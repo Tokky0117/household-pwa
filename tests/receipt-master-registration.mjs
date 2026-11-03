@@ -75,7 +75,9 @@ const api=vm.runInContext(source[2]+
  '\n({loadReceiptCatalog,applyReceiptExactMatches,receiptScanReview,'+
  "setReady(){tab='receipt';page='list';liveMode=true;liveOwnerSubject='"+subject+"';liveSnapshot="+JSON.stringify(catalog)+";},"+
  'setScan(value){receiptScan=value;},state:()=>({scan:receiptScan,intent:receiptProductIntent,'+
- 'aliases:receiptCatalogAliases,notice:receiptProductNotice}),'+
+ 'aliases:receiptCatalogAliases,notice:receiptProductNotice,liveMode,liveWriteBusy,
+ liveWriteStatus,liveOwnerSubject,catalogReady:!!currentReceiptCatalog(),
+ hasSnapshot:!!liveSnapshot,pending:window.KurashiLiveJournal.read()}),'+
  'setCreateIndex(index){receiptProductCreateIndex=index}})',ctx);
 api.setReady();
 await api.loadReceiptCatalog();
@@ -92,7 +94,8 @@ const target={closest(selector){
 }};
 listeners.click({target});
 for(let i=0;i<120&&storedAliases.length===0;i++)await Promise.resolve();
-assert.equal(mutations.length,2,'Product and alias must be separate journaled mutations');
+assert.equal(mutations.length,2,'Product and alias must be separate journaled mutations: '+
+ JSON.stringify(api.state()));
 assert.deepEqual(mutations.map(x=>x.action),['product.create','product.alias.create']);
 assert.notEqual(mutations[0].operationId,mutations[1].operationId);
 assert.equal(catalog.products[0].name,'キットカット濃い抹茶10袋');
