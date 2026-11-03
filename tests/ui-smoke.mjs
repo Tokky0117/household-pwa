@@ -17,9 +17,9 @@ const doc={
 const ctx={document:doc,localStorage:{getItem:k=>storage.get(k)??null,setItem:(k,v)=>storage.set(k,v),removeItem:k=>storage.delete(k)},
  navigator:{},window:{scrollTo(){},scrollY:0},crypto:{randomUUID:()=> 'test-id'},setTimeout:()=>0};
 const ui=vm.runInNewContext(source+`
-({listView,priceCompareView,pickerView,pickerResults,receiptView,budgetView,receiptScanView,receiptChatGptView,recordDetailView,scanDuplicates,compareOcrAndChatGpt,receiptOcrReference,correctionFor,scanBulkProductsView,scanProductView,scanExistingProductView,scanChainForStore,scanAutolinkUnmatched,scanMatchProduct,render,initializeCompare,
+({listView,priceCompareView,pickerView,pickerResults,receiptView,receiptScanView,receiptChatGptView,recordDetailView,scanDuplicates,compareOcrAndChatGpt,receiptOcrReference,correctionFor,scanBulkProductsView,scanProductView,scanExistingProductView,scanChainForStore,scanAutolinkUnmatched,scanMatchProduct,render,initializeCompare,
  setProductGroup,reorderProducts,registeredProducts,convertQuantity,setOpenSwipe,
- chainMinima,priceCandidates,budgetTotals,savePreviewRecord,periodStart,
+ chainMinima,priceCandidates,savePreviewRecord,periodStart,
  demoRecords,demoRecordItems,allPreviewRecords,allPreviewItems,
  setSelected(v){selected=v},setPage(v){page=v},setMode(v){priceScope=v},setDock(v){shopExpanded=v},
  setPeriod(v){period=v},setQty(v){compareQuantity=v},setUnit(v){compareUnit=v},
@@ -149,10 +149,6 @@ const month=ui.demoRecords[0].record_date.slice(0,7);
 const base=ui.budgetTotals(ui.demoRecords,ui.demoRecordItems,month);
 const receiptFixtureTotal=ui.demoRecordItems.filter(x=>ui.demoRecords.find(r=>r.record_id===x.record_id).record_type==='receipt'&&ui.demoRecords.find(r=>r.record_id===x.record_id).record_date.startsWith(month)).reduce((v,r)=>v+r.amount_tax_included,0);
 assert.equal(base.total,receiptFixtureTotal,'Receipt amount only; shelf not budgeted');
-const noMatch=ui.budgetTotals([{record_id:'x',record_type:'receipt',record_date:month+'-01',deleted_at:null}],
- [{record_id:'x',product_id:null,amount_tax_included:125,category_id:null,deleted_at:null}],month);
-assert.equal(noMatch.total,125,'Unmatched product counts toward budget');
-assert.equal(noMatch.byCategory.get('uncategorized'),125,'Null category maps to uncategorized without extra category');
 assert.ok(!ui.savePreviewRecord({type:'shelf',chainId:'c-life',date:month+'-01',quantity:1,amount:123,productId:''}),'Shelf needs product');
 assert.ok(!ui.savePreviewRecord({type:'receipt',chainId:'c-life',date:'2026-02-31',quantity:1,amount:123,productId:''}),'Invalid calendar date rejected');
 assert.ok(!ui.savePreviewRecord({type:'receipt',chainId:'c-life',date:month+'-01',quantity:1,amount:'',productId:''}),'Empty amount cannot silently become zero');
@@ -162,12 +158,12 @@ assert.ok(ui.savePreviewRecord({type:'receipt',chainId:'c-life',date:ui.demoReco
 assert.equal(ui.allPreviewRecords().length,ui.demoRecords.length+1,'Saved header in preview storage');
 assert.equal(ui.allPreviewItems().length,ui.demoRecordItems.length+1,'Saved child with same record');
 assert.ok(ui.receiptView().includes('この端末の記録'));
-assert.ok(ui.budgetView().includes('今後実装予定'));
+assert.ok(!ui.receiptView().includes('家計簿'),'retired budget tab stays absent');
 const cls=(id)=>{const c=new Set();return {dataset:{productId:id},classList:{toggle(k,b){b?c.add(k):c.delete(k)}},querySelectorAll(){return [{tabIndex:-1}]},state:c}};
 const a=cls('p-milk-1'),b=cls('p-milk-2');mockSwipeRows=[a,b];
 ui.setOpenSwipe('p-milk-1');assert.ok(a.state.has('swipe-open')&&!b.state.has('swipe-open'));
 ui.setOpenSwipe('p-milk-2');assert.ok(!a.state.has('swipe-open')&&b.state.has('swipe-open'));
-console.log('v36 preview: price by chain, period, conversion, budget, common UI, reorder and swipe passed');
+console.log('v64 preview: price by chain, period, conversion, common UI, reorder and swipe passed');
 
 // Shared UI regression assertions: all search fields expose consistent clearing.
 assert.ok(source.includes('data-search-clear=')&&source.includes('function syncSearch('),'Shared search-clear DOM and behavior');
@@ -313,7 +309,7 @@ assert.match(newProductHtml,/紐付けしない（商品だけ登録）/,'new pr
 assert.ok(!newProductHtml.includes('name="group" required'),
  'item group selection is optional, not forced');
 const listingHtml=ui.receiptScanView();
-assert.ok(listingHtml.includes('レシートの商品名（原本表記）')&&
+assert.ok(listingHtml.includes('解析した商品名（登録商品名とは別）')&&
  listingHtml.includes('既存商品と照合')&&listingHtml.includes('新しい商品を登録'),
  'scan review clearly distinguishes printed text and master product actions');
 const bulkHtml=ui.scanBulkProductsView();
