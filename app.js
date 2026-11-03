@@ -620,6 +620,7 @@ function readChatGptReceiptIntoPreview(){
 
 function discardReceiptScan(){
  receiptStoreNameDraft='';receiptStoreNotice='';
+ receiptProductCreateIndex=null;receiptProductIntent=null;receiptProductNotice='';
  ++receiptScanEpoch;
  receiptScanBusy=false;receiptScan=null;
  if(receiptPhotoUrl){window.URL?.revokeObjectURL?.(receiptPhotoUrl);receiptPhotoUrl=null;}
@@ -1013,6 +1014,17 @@ async function sendPendingLive(entry){
   }
   if(!liveMode)return;
   applyConfirmedLiveEntity(entry,entity);
+  if(entry.action==='product.create'&&receiptProductIntent?.operationId===entry.operationId){
+   const intent=receiptProductIntent;
+   if(receiptScan?.items[intent.index]&&
+      receiptScan.items[intent.index].rawName===intent.rawName){
+    receiptScan.items[intent.index].productId=String(entity.product_id);
+    if(receiptRemoteCatalog?.household_id===entry.householdId)
+     receiptRemoteCatalog.products=[...receiptRemoteCatalog.products,entity];
+    receiptProductNotice='商品マスタに登録し、この明細と紐付けました。次回も認識させるには「この印字名を記憶」を選んでください。';
+   }
+   receiptProductCreateIndex=null;receiptProductIntent=null;
+  }
   liveEditor=null;liveProductEditor=null;
   if(entry.action.startsWith('product.')&&['productCreate','productEdit','productPick'].includes(page)){
    page='compare';initializeCompare();
@@ -1057,7 +1069,7 @@ function updateLiveProductGroup(product,destination){
   package_unit:product.package_unit??null
  });
 }
-async function liveMutate(action,payload){
+async function liveMutate(action,payload,receiptIndex=null){
  return withLiveWriteLock(async()=>{
  if(!liveWritable()||liveWriteBusy){liveWriteStatus='保存機能はまだ無効です';render();return}
  if(!window.KurashiAuth?.status?.().signedIn||!liveSnapshot){liveWriteStatus='Googleログインとデータ取得が必要です';render();return}
@@ -1069,6 +1081,9 @@ async function liveMutate(action,payload){
    householdId:liveSnapshot.household_id,action,payload,operationId:crypto.randomUUID()
   });
  }catch(err){liveWriteStatus='送信前の安全記録に失敗しました：'+String(err?.message||'UNKNOWN');render();return}
+ if(action==='product.create'&&Number.isInteger(receiptIndex)&&receiptScan?.items[receiptIndex])
+  receiptProductIntent={operationId:entry.operationId,index:receiptIndex,
+   rawName:receiptScan.items[receiptIndex].rawName};
  await sendPendingLive(entry);
  });
 }
@@ -1400,6 +1415,9 @@ function receiptScanReview(){
  const products=[{value:'',label:'商品未照合（価格比較に使用しない）'},...receiptProductChoices().map(p=>({value:p.id,label:p.name}))];
  const categories=[{value:'',label:'未分類'},...CATS.map((c,i)=>({value:String(i),label:c}))];
  const chat=scan.source==='chatgpt_paste',matches=receiptMatches();
+ const groupOptions=[{value:'',label:'紐付けしない'},...(currentReceiptCatalog()?.item_groups||[])
+  .filter(g=>!g.deleted_at&&!g.is_hidden)
+  .map(g=>({value:String(g.item_group_id),label:String(g.name)}))];
  const items=scan.items.map((item,i)=>`<section class="receipt-review-line">
  <div class="receipt-review-line-title"><strong>明細 ${i+1}</strong><button type="button" class="secondary" data-act="removeReceiptScanItem" data-ocr-index="${i}">除外</button></div>
  ${chat&&item.importWarnings?.some(code=>code==='line_amount_mismatch'||code==='unit_quantity_mismatch')?
@@ -1414,6 +1432,13 @@ function receiptScanReview(){
  ${UI.formField({id:'scan-amount-'+i,name:'amount-'+i,label:'税込明細合計（円・数量分）',type:'number',value:item.amount,required:true,extra:'min="0" max="1000000" step="1" inputmode="numeric"'})}
  </div>
  ${UI.formField({id:'scan-product-'+i,name:'product-'+i,label:'登録済み商品との対応（任意）',control:'select',value:item.productId,options:products})}
+ ${receiptRemoteWritable()?'<button type="button" class="tertiary" data-act="receiptNewProduct" data-ocr-index="'+i+'">＋ 新しい商品を登録</button>':''}
+ ${receiptProductCreateIndex===i?'<div class="receipt-inline-create"><p class="hint">日用品に紐付けず商品だけ登録することもできます。</p>'+
+  UI.formField({id:'receipt-new-product-name',name:'receipt_new_name',label:'正式商品名',value:item.rawName,required:true,maxlength:150})+
+  UI.quantityUnitFields({quantityId:'receipt-new-product-quantity',unitId:'receipt-new-product-unit',quantity:'',unit:'個'})+
+  UI.formField({id:'receipt-new-product-group',name:'receipt_new_group',label:'日用品リストとの紐付け（任意）',control:'select',value:'',options:groupOptions})+
+  '<button type="button" class="primary" data-act="saveReceiptNewProduct"'+(liveWriteBusy?' disabled':'')+'>商品マスタに登録</button>'+
+  '<button type="button" class="secondary" data-act="cancelReceiptNewProduct">キャンセル</button></div>':''}
  ${!item.productId&&matches[i]?.candidates?.length?
   '<div class="receipt-match-candidates"><p class="hint">登録済み商品の候補</p>'+
   matches[i].candidates.slice(0,3).map(p=>'<button type="button" class="secondary" data-receipt-candidate="'+esc(p.productId)+'" data-ocr-index="'+i+'">'+esc(p.name)+'</button>').join('')+'</div>':''}
@@ -1440,6 +1465,7 @@ function receiptScanReview(){
  ${UI.formField({id:'scan-chain',name:'chain',label:'チェーン（確認必須）',control:'select',value:scan.chainId,options})}
  ${receiptRemoteWritable()?'<details class="receipt-store-register"><summary>チェーンが一覧にない場合は登録</summary><label class="formlabel" for="receipt-new-store-name">新しいチェーン名</label><input id="receipt-new-store-name" type="text" maxlength="80" autocomplete="off" value="'+esc(receiptStoreNameDraft||scan.store||'')+'"><button type="button" class="secondary" data-act="saveReceiptStore"'+(receiptStoreBusy||receiptSaveBusy?' disabled':'')+'>チェーンを登録</button><p class="hint">家庭の店舗一覧に追加します。レシート自体は保存しません。</p></details>':''}
  ${receiptStoreNotice?'<p class="hint" role="status">'+esc(receiptStoreNotice)+'</p>':''}
+ ${receiptProductNotice?'<p class="hint" role="status">'+esc(receiptProductNotice)+'</p>':''}
  ${UI.formField({id:'scan-date',name:'date',label:'購入日（確認必須）',type:'date',value:scan.date,required:true})}
  ${total!==null?`<p class="hint" role="status"><strong>支払合計のOCR候補：${yen(total)}</strong> ／ 抽出した明細候補の合計：${amountsReady?yen(initialSum):'未確定'}。税込・税抜や値引きが別計上される場合、明細と合計は一致しません。</p>`:''}
  ${items}
@@ -2052,6 +2078,33 @@ if(action==='copyChatGptPrompt'){
 }
 if(action==='scanReceiptCamera'||action==='scanReceiptPhoto'){
  document.getElementById(action==='scanReceiptCamera'?'receipt-camera':'receipt-photo')?.click();return;
+}
+if(action==='receiptNewProduct'){
+ const index=Number(el.dataset.ocrIndex);
+ if(!receiptScan||!Number.isInteger(index)||!receiptScan.items[index])return;
+ receiptScanFormValues();receiptProductCreateIndex=index;receiptProductNotice='';render();return;
+}
+if(action==='cancelReceiptNewProduct'){
+ receiptScanFormValues();receiptProductCreateIndex=null;render();return;
+}
+if(action==='saveReceiptNewProduct'){
+ if(!receiptScan||receiptProductCreateIndex===null||!currentReceiptCatalog()||
+    !liveSnapshot||!liveWritable()){
+  receiptProductNotice='家庭の商品一覧を取得してから登録してください';render();return;
+ }
+ const d=new FormData(document.getElementById('receiptScanForm'));
+ const name=String(d.get('receipt_new_name')||'').trim(),raw=String(d.get('quantity')||'').trim();
+ const quantity=raw===''?null:Number(raw.replace(',','.'));
+ const unit=raw===''?null:String(d.get('unit')||'');
+ const group=String(d.get('receipt_new_group')||'')||null;
+ if(!name||name.length>150||/^[=+@-]/.test(name)||
+    quantity!==null&&(!Number.isFinite(quantity)||quantity<=0||!UNIT_OPTIONS.includes(unit))||
+    group&&!liveSnapshot.item_groups.some(x=>String(x.item_group_id)===group&&!x.deleted_at)){
+  receiptProductNotice='正式商品名・内容量・日用品の選択を確認してください';render();return;
+ }
+ receiptScanFormValues();
+ liveMutate('product.create',{item_group_id:group,name,
+  package_quantity:quantity,package_unit:unit},receiptProductCreateIndex);return;
 }
 if(action==='saveReceiptStore'){saveReceiptStore();return}
 if(action==='retryReceiptStore'){saveReceiptStore(true);return}
