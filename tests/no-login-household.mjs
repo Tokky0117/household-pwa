@@ -1110,6 +1110,14 @@ assert.equal(kitForm.querySelector('[name="name"]').value,kitRaw,
 kitForm.querySelector('[name="name"]').value=kitCanonical;
 kitForm.querySelector('[name="group"]').value=chocId;
 kitForm.dispatchEvent(new kitSession.window.Event('submit',{bubbles:true,cancelable:true}));
+await pause(180);
+console.log('v62 diagnostic KitKat',JSON.stringify({
+ state:kitSession.window.KurashiLive.state(),
+ modal:kitSession.window.document.getElementById('scanProductForm')?.textContent?.slice(-700),
+ snapshot:temp.call('bootstrap').data?.products?.slice(-4).map(x=>({
+  name:x.name,item_group_id:x.item_group_id
+ }))
+}));
 await waitFor(()=>!!kitSession.window.document.getElementById('scanConfirmForm'),
  'new product returns directly to the same receipt');
 await waitFor(()=>temp.call('bootstrap').data.products.some(x=>
