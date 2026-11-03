@@ -859,10 +859,9 @@ assert.ok(storedReceipt);
 const storedDetail=temp.call('bootstrap').data.record_items.find(x=>x.record_id===storedReceipt.record_id);
 assert.equal(Number(storedDetail.amount_tax_included),340);
 assert.equal(Number(storedDetail.quantity),2);
-assert.equal(Number(storedDetail.category_id),0);
-recordReopened.window.document.querySelector('[data-tab="budget"]').click();
-assert.match(recordReopened.window.document.body.textContent,/今後実装予定/,
- 'budget tab shows planned implementation only; purchase data remains intact');
+assert.equal(String(storedDetail.category_id),'','budget category is retired');
+assert.equal(recordReopened.window.document.querySelector('[data-tab="budget"]'),null,
+ 'budget tab has been removed');
 recordReopened.window.document.querySelector('[data-tab="receipt"]').click();
 assert.ok(recordReopened.window.document.body.textContent.includes('アプリ実機試験用チェーン'));
 recordReopened.window.document.querySelector('[data-act="newShelf"]').click();
