@@ -368,7 +368,8 @@ function scanExistingProductView(){
 function receiptChatGptView(){
  return head('ChatGPTの補助解析','OCR後の商品名候補',true)+
  '<main class="preview-record-page receipt-chatgpt-page">'+
- '<p class="hint">アプリのOCR明細名は変更せず、正式商品名の候補だけを取り込みます。写真はChatGPTへ手動添付してください。</p>'+
+ '<p class="hint">ChatGPTにはレシート写真を必ず手動で添付してください。写真がない場合、商品名候補は生成しない指示です。先に写真を確認し、OCR原表記との照合結果を返します。</p>'+
+ '<p class="hint">返答は「貼り付け用JSON」と「OCR診断」の2つです。返答全文を貼り付けても、アプリに反映するのはJSONの商品名候補だけで、診断は保存しません。</p>'+
  '<button type="button" class="secondary" data-act="chatGptCopyPrompt">OCR結果と指示文をコピー</button>'+
  '<label class="scan-field">ChatGPTの結果（JSON）<textarea id="chatgpt-input" rows="9" maxlength="30000" placeholder="OCR行IDと商品名候補を貼り付け"></textarea></label>'+
  '<p id="chatgpt-error" class="scan-warning" role="status">'+esc(chatGptError)+'</p>'+
