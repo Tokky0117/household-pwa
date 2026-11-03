@@ -306,6 +306,32 @@ assert.throws(()=>imports.parseChatGptOcrAssistJson(JSON.stringify({
 })),/INVALID_OCR_ASSIST_ITEM/,'assistant cannot change quantity');
 assert.match(imports.makeChatGptOcrAssistPrompt(ocrRef),/参考OCR結果/,
  'OCR-bound prompt includes current OCR rows');
+// Clothing barcodes are valid OCR names, not automatically private financial data.
+const apparel={version:'kurashi-receipt-assist-1',items:[
+ {rowId:'row-1',ocrName:'2000211787545',nameCandidate:'メリノクルーネックカーディガン'},
+ {rowId:'row-2',ocrName:'背景の別レシート',nameCandidate:null}
+]};
+const apparelJson=JSON.stringify(apparel);
+assert.equal(imports.parseChatGptOcrAssistJson(apparelJson).items[0].ocrName,
+ '2000211787545','13-digit OCR product codes are accepted');
+const fencedApparel='```json\n'+JSON.stringify(apparel,null,2)+
+ '\n```\n\nOCR診断\n- 写真には5商品だが参考OCRは9行';
+assert.equal(imports.parseChatGptOcrAssistJson(fencedApparel).items[0].nameCandidate,
+ 'メリノクルーネックカーディガン',
+ 'a fenced JSON block is accepted with separate human explanation');
+assert.equal(imports.parseChatGptOcrAssistJson(apparelJson+'\n\nOCR診断：写真とOCR行数に差があります。').items.length,
+ 2,'plain JSON followed by OCR diagnosis is accepted');
+assert.throws(()=>imports.parseChatGptOcrAssistJson('OCR診断\n'+apparelJson),
+ /ASSIST_JSON_FIRST_REQUIRED/,'prose cannot preempt the structured JSON');
+assert.throws(()=>imports.parseChatGptOcrAssistJson(JSON.stringify({
+ version:'kurashi-receipt-assist-1',items:[
+ {rowId:'row-1',ocrName:'2000211787545',nameCandidate:'会員番号を商品名として保存'}
+ ]})),/NAME_OR_STORE_UNSAFE/,'sensitive personal patterns remain prohibited in candidate names');
+const newPrompt=imports.makeChatGptOcrAssistPrompt(ocrRef);
+assert.match(newPrompt,/画像がない／開けない場合/,'no photo means no JSON');
+assert.match(newPrompt,/写真そのものを目視/,'visual reading must precede OCR comparison');
+assert.match(newPrompt,/OCR診断/,'correction reasoning must be separate from JSON');
+assert.match(newPrompt,/商品行数が一致/,'OCR splitting mismatches are inspected');
 ui.setScanDraft({...rowOcr,items:[{...rowOcr.items[0],quantityUncertain:true}]});
 const uncertainHtml=ui.receiptScanView();
 assert.ok(uncertainHtml.includes('scan-quantity-uncertain'));
