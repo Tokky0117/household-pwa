@@ -841,7 +841,7 @@ recordForm.querySelector('[name="chain_name"]').value='アプリ実機試験用�
 recordForm.querySelector('[name="quantity"]').value='2';
 recordForm.querySelector('[name="amount"]').value='340';
 recordForm.querySelector('[name="raw"]').value='未照合商品';
-recordForm.querySelector('[name="category"]').value='0';
+assert.equal(recordForm.querySelector('[name="category"]'),null,'budget category is retired');
 online=false;
 recordForm.dispatchEvent(new recordUI.window.Event('submit',{bubbles:true,cancelable:true}));
 await waitFor(()=>recordUI.window.KurashiLive.state().queued===2,
