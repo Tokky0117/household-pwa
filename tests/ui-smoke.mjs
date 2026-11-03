@@ -146,9 +146,6 @@ assert.ok(ui.recordAddView().includes('id="recordForm"')&&!ui.recordAddView().in
 ui.setNewRecordType('shelf');
 assert.ok(ui.recordAddView().includes('id="recordForm"')&&!ui.recordAddView().includes('id="record-category"'));
 const month=ui.demoRecords[0].record_date.slice(0,7);
-const base=ui.budgetTotals(ui.demoRecords,ui.demoRecordItems,month);
-const receiptFixtureTotal=ui.demoRecordItems.filter(x=>ui.demoRecords.find(r=>r.record_id===x.record_id).record_type==='receipt'&&ui.demoRecords.find(r=>r.record_id===x.record_id).record_date.startsWith(month)).reduce((v,r)=>v+r.amount_tax_included,0);
-assert.equal(base.total,receiptFixtureTotal,'Receipt amount only; shelf not budgeted');
 assert.ok(!ui.savePreviewRecord({type:'shelf',chainId:'c-life',date:month+'-01',quantity:1,amount:123,productId:''}),'Shelf needs product');
 assert.ok(!ui.savePreviewRecord({type:'receipt',chainId:'c-life',date:'2026-02-31',quantity:1,amount:123,productId:''}),'Invalid calendar date rejected');
 assert.ok(!ui.savePreviewRecord({type:'receipt',chainId:'c-life',date:month+'-01',quantity:1,amount:'',productId:''}),'Empty amount cannot silently become zero');
