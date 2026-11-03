@@ -916,7 +916,7 @@ function settingsView(){
      s.temporary?(s.loaded?'Google Sheets 接続済み（ログイン一時停止中）':'Google Sheets 自動読み込み中…'):
      !s.signedIn?'Googleログインが必要です':
      s.loaded?'Google Sheets 接続済み':'読み込み中…');
-  return `${head('設定','くらしストック_試作')}<main><div class="panel"><h2>データと同期</h2><div class="info-row row"><div><strong>同期状態</strong><div class="hint">${esc(syncStatus)}</div></div><span class="tag">${s.loaded?'接続済み':s.cached?'再接続中':'未接続'}</span></div>${s.loginRequired?(s.signedIn?'<button type="button" class="secondary" data-act="liveLogout">ログアウト</button>':'<div id="google-login-button"></div>') : ''}${s.error&&s.queued?'<p class="hint" role="alert">通信が回復すると自動で再送します。未反映の操作は端末に残っています。</p>':''}</div><div class="panel"><div class="info-row row"><div><strong>アプリバージョン</strong><div class="hint">試作 v${esc(APP_VERSION)}</div></div></div></div></main>${nav()}`;
+  return `${head('設定','くらしストック_試作')}<main><div class="panel"><h2>データと同期</h2><div class="info-row row"><div><strong>同期状態</strong><div class="hint">${esc(syncStatus)}</div></div><span class="tag">${s.loaded?'接続済み':s.cached?'再接続中':'未接続'}</span></div>${s.loginRequired?(s.signedIn?'<button type="button" class="secondary" data-act="liveLogout">ログアウト</button>':'<div id="google-login-button"></div>') : ''}${s.error&&s.queued?'<p class="hint" role="alert">通信が回復すると自動で再送します。未反映の操作は端末に残っています。</p>':''}</div><div class="panel"><div class="info-row row"><div><strong>アプリバージョン</strong><div class="hint">試作 v${esc(APP_VERSION)}</div></div></div></div><div class="panel"><h2>商品マスタ</h2><p class="hint">日用品に未紐付けの商品も編集できます。</p><button type="button" class="secondary" data-act="masterProducts">商品マスタを管理</button></div></main>${nav()}`;
  }
  return `${head('設定','くらしストック_試作')}<main><div class="panel"><h2>データと同期</h2><div class="info-row row"><div><strong>同期状態</strong><div class="hint">Google Sheets 接続前</div></div><span class="tag">未設定</span></div><button class="secondary" data-act="sync" style="width:100%">手動同期</button></div><div class="panel"><h2>試作版の操作</h2><p class="hint">変更内容はこの端末の localStorage のみに保存され、夫婦間では共有されません。</p><button class="secondary danger" data-act="reset">仮データを初期状態に戻す</button></div><div class="panel"><h2>今後の実装</h2><p class="hint">レシート／値札のチェーン照合、Google Apps Script 接続、認証、オフライン差分同期を追加予定です。</p></div></main>${nav()}`
 }
@@ -949,6 +949,8 @@ function pageView(){
   case 'scanProduct': return receiptScanView();
   case 'scanBulkProducts': return receiptScanView();
   case 'scanExistingProduct': return receiptScanView();
+  case 'masterProducts': return masterProductsView();
+  case 'masterProductEdit': case 'masterProductNew': return masterProductEditorView();
   case 'productCreate': return productCreateView();
   case 'productEdit': return priceCompareView();
   default: return mainTabView();
@@ -1019,7 +1021,11 @@ function fieldNotice(form,message,fieldId){
  note.textContent=message;
  field.querySelector('input,textarea,.ui-select-trigger')?.focus();
 }
-app.addEventListener('input',e=>{const field=e.target.closest?.('.formfield');field?.querySelector('.ui-field-notice')?.remove()});
+app.addEventListener('input',e=>{if(e.target.id==='master-product-query'){
+ masterQuery=e.target.value;
+ const rows=document.getElementById('master-product-results');
+ if(rows)rows.innerHTML=masterProductRows();return;
+}const field=e.target.closest?.('.formfield');field?.querySelector('.ui-field-notice')?.remove()});
 function hasUnsavedFormChanges(){
   const pendingRecord=document.getElementById('recordForm');
   if(pendingRecord){
@@ -1062,6 +1068,8 @@ function goBack(){
   else if(page==='productPick'){page='compare';initializeCompare();}
   else if(page==='recordAdd'){page='list';tab='receipt';}
   else if(page==='edit')page=editReturnPage;
+  else if(page==='masterProductEdit'||page==='masterProductNew')page='masterProducts';
+  else if(page==='masterProducts'){page='list';tab='settings';masterQuery='';}
   else if(page==='products')page='compare';
   else page='list';
   render();
@@ -1511,6 +1519,14 @@ if(el.dataset.pick){
 }
 if(el.dataset.dialog){if(el.dataset.dialog==='cancel'&&(dialog?.title==='変更を破棄しますか？'||dialog?.title==='比較単位について'||dialog?.title==='OCR下書きを破棄しますか？')){dialog=null;document.querySelector('.dialog-back')?.remove();return}const action=el.dataset.dialog,p=dialog?.pending;dialog=null;
 
+if(action==='confirmMasterProductUnlink'&&p){
+ const product=catalogue.products.find(x=>x.id===p.productId);
+ if(!product?.itemGroupId)return;
+ window.KurashiLive.save('product.update',{
+  product_id:product.id,version:product.version,item_group_id:null
+ }).then(()=>render()).catch(err=>say(err.message||'紐付けを解除できませんでした'));
+ return;
+}
 if(action==='confirmProductUnlink'&&p){
  const product=catalogue.products.find(x=>x.id===p.productId);
  if(product&&product.itemGroupId===selected){
@@ -1679,6 +1695,19 @@ if(action==='scanPickExisting'){
 if(action==='scanExistingToNew'){
  if(!scanDraft)return;
  page='scanProduct';render();return;
+}
+if(action==='masterProducts'){masterQuery='';masterProductId=null;tab='settings';page='masterProducts';render();return;}
+if(action==='masterProductNew'){masterProductId=null;page='masterProductNew';render();return;}
+if(action==='masterProductEdit'){
+ const p=catalogue.products.find(x=>x.id===el.dataset.productId);
+ if(!p)return;masterProductId=p.id;page='masterProductEdit';render();return;
+}
+if(action==='masterProductUnlink'){
+ const p=catalogue.products.find(x=>x.id===masterProductId);
+ if(!p?.itemGroupId)return;
+ dialog={title:'日用品との紐付け解除',message:'商品マスタは削除しません。過去のレシート明細と商品IDは残ります。',
+  buttons:[{id:'cancel',label:'キャンセル'},{id:'confirmMasterProductUnlink',label:'紐付けを解除',critical:true}],pending:{productId:p.id}};
+ renderDialogOnly();return;
 }
 if(action==='scanChooseSuggested'){
  if(!scanDraft)return;
