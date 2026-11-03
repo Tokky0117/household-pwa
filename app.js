@@ -1,4 +1,4 @@
-const APP_VERSION='0.63.1';
+const APP_VERSION='0.64.0';
 const CATS=['飲食','キッチン','洗面・風呂','洗濯・掃除','その他'];
 const liveMode=!!window.KurashiLive; // Data source only; original Preview v46 UI components remain.
 const SEED=[['牛乳',0,true],['麦茶',0,false],['コーヒー',0,true],['卵',0,false],['キッチンペーパー',1,false],['ラップ',1,true],['食器用洗剤',1,true],['シャンプー',2,false],['歯磨き粉',2,true],['ハンドソープ',2,false],['洗濯洗剤',3,false],['柔軟剤',3,true],['トイレットペーパー',3,false],['乾電池',4,true],['ティッシュ',4,true]];
@@ -145,15 +145,6 @@ function chainMinima(productId,periodValue,records=allPreviewRecords(),details=a
    date:r.record.record_date,source:r.record.record_type
  })).sort((a,b)=>a.price-b.price||a.chainId.localeCompare(b.chainId));
 }
-function budgetTotals(records,details,yearMonth){
- const byCategory=new Map(),included=recordJoin(records,details).filter(r=>
-  r.record.record_type==='receipt'&&!r.record.deleted_at&&!r.deleted_at&&
-  r.record.record_date.startsWith(yearMonth)&&
-  typeof r.amount_tax_included==='number'&&Number.isFinite(r.amount_tax_included)&&r.amount_tax_included>=0
- );
- for(const r of included){const cat=r.category_id??'uncategorized';byCategory.set(cat,(byCategory.get(cat)||0)+r.amount_tax_included)}
- return {total:included.reduce((sum,r)=>sum+r.amount_tax_included,0),byCategory};
-}
 const chainLabel=id=>catalogue.chains.find(c=>c.id===id)?.name||'チェーン未設定';
 const listPriceText=item=>{
  const first=registeredProducts(item.id)[0];
@@ -179,7 +170,7 @@ function convertQuantity(amount,from,to){
 function load(){if(liveMode)return [];try{const d=JSON.parse(localStorage.getItem(key));return Array.isArray(d)?d:makeSeed()}catch{return makeSeed()}}
 let items=load(),tab='items',page='list',selected=null,query='',onlyOut=false,collapsed=new Set(),menu=false,dialog=null,toast='',period='1y',priceScope='product',periodMenu=false;
 const app=document.getElementById('app');
-let budgetMonth=daysFromDate(new Date()).slice(0,7);let newRecordType='receipt';
+let newRecordType='receipt';
 // Native iPhone chooser: Photo Library, Take Photo, or Files. Photos stay in memory.
 let scanPhotos=[],scanIndex=0,scanBusy=false,scanDraft=null,scanStatus='',scanToken=0;
 let scanRuntime=null,scanDraftAvailable=false,scanDraftWrites=Promise.resolve(),chatGptError='',recordDetailId=null,scanProductRow=null;
@@ -694,7 +685,7 @@ const UI={
 };
 const svg=k=>`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${icons[k]}</svg>`;
 function head(title,sub='',back=false,right='',left=''){return `<header class="top"><div class="headrow"><div class="head-left">${back?`<button class="iconbtn" data-act="back" aria-label="戻る">${chevron('left')}</button>`:left}</div><div class="head-title">${sub?`<p class="eyebrow">${esc(sub)}</p>`:''}<h1>${esc(title)}</h1></div><div class="head-right">${right}</div></div></header>`}
-function nav(){return `<nav class="bottom" aria-label="メインメニュー"><div class="tabs">${[['items','日用品'],['receipt','レシート'],['budget','家計簿'],['settings','設定']].map(([k,v])=>`<button class="tab ${tab===k?'active':''}" data-tab="${k}" ${tab===k?'aria-current="page"':''}>${svg(k)}<span>${v}</span></button>`).join('')}</div></nav>`}
+function nav(){return `<nav class="bottom" aria-label="メインメニュー"><div class="tabs">${[['items','日用品'],['receipt','レシート'],['settings','設定']].map(([k,v])=>`<button class="tab ${tab===k?'active':''}" data-tab="${k}" ${tab===k?'aria-current="page"':''}>${svg(k)}<span>${v}</span></button>`).join('')}</div></nav>`}
 function listResults(){
  const q=norm(query),matches=i=>(!q||norm(i.name).includes(q))&&(!onlyOut||!i.inStock);
  return CATS.map((cat,idx)=>{
@@ -879,8 +870,7 @@ function recordAddView(){
   UI.formField({id:'record-product',name:'product',label:'商品',control:'select',value:'',options:optsProduct}),
   UI.formField({id:'record-raw',name:'raw',label:'明細の商品名',value:'',placeholder:'例：牛乳'}),
   UI.formField({id:'record-quantity',name:'quantity',label:'購入数・販売個数',type:'number',value:1,required:true,extra:'min="1" step="1" inputmode="numeric"'}),
-  UI.formField({id:'record-amount',name:'amount',label:'明細の税込合計（円）',type:'number',value:'',required:true,extra:'min="0" step="1" inputmode="numeric"'}),
-  ...(type==='receipt'?[UI.formField({id:'record-category',name:'category',label:'家計簿カテゴリ',control:'select',value:'',options:optsCategory})]:[])
+  UI.formField({id:'record-amount',name:'amount',label:'明細の税込合計（円）',type:'number',value:'',required:true,extra:'min="0" step="1" inputmode="numeric"'})
  ].join('');
  return UI.sheet({title:type==='receipt'?'レシート明細を記録':'値札を記録',variant:'product-picker-modal',body:`<form id="recordForm" class="record-entry-form">${fields}<button class="primary" type="submit">${liveMode?'記録する':'この端末に試作保存'}</button><p class="sample-price-notice">${liveMode?'※ 1回1明細。Google Sheetsへ自動保存。ログイン一時停止中は個人情報の入力を控えてください。':'※ OCR・Sheets・夫婦間同期は未接続。1回につき1明細の試作入力です。'}</p></form>`});
 }
@@ -896,15 +886,6 @@ function receiptView(){
  <span>${yen(total)} · ${details.length}明細</span></button>`;
  }).join('')||'<div class="empty">記録はまだありません</div>';
  return `${head('レシート','くらしストック_試作')}<main class="preview-record-page"><p class="sample-price-notice">${liveMode?'レシート写真から自動解析できます。OCR結果は保存前に必ず確認してください。':'※ 手入力の試作機能。OCR・Sheets・夫婦間同期は未接続です。'}</p><div class="record-entry-actions">${liveMode?'<button class="primary" data-act="receiptScan">'+miniIcon('plus')+'<span>写真からレシートを読み取る</span></button><input id="receipt-source-picker" class="scan-file-input" type="file" accept="image/*" multiple><button class="secondary" data-act="receiptChatGpt">ChatGPTで解析結果を取り込む</button>':''}${scanDraftAvailable?'<button class="secondary" data-act="resumeScanDraft">下書きを再開</button>':''}<button class="secondary" data-act="newReceipt">${miniIcon('plus')}<span>レシート明細</span></button><button class="secondary" data-act="newShelf">${miniIcon('plus')}<span>値札</span></button></div><h2 class="sectiontitle">${liveMode?'保存した記録':'この端末の記録'}</h2>${rows}</main>${nav()}`;
-}
-function budgetView(){
- // UI work is deferred by request. Keep record data and calculation helpers
- // intact for the eventual budget implementation; no fake totals shown.
- return `${head('家計簿','くらしストック_試作')}<main class="preview-budget-page">
-  <div class="panel"><h2>家計簿は今後実装予定です</h2>
-   <p class="hint">レシートの購入履歴をもとに月別・カテゴリ別の支出を確認できる機能を予定しています。</p>
-   <p class="hint">レシートと明細の保存データは保持します。</p>
-  </div></main>${nav()}`;
 }
 function stub(title,icon,desc){return `${head(title,'くらしストック_試作')}<main><div class="panel placeholder"><div class="bubble">${icon}</div><h2>${title}画面</h2><p>${desc}</p></div><div class="alert">この画面は共通UIの確認用です。データ処理や同期はまだ行いません。</div></main>${nav()}`}
 function settingsView(){
@@ -930,7 +911,6 @@ function dialogView(){
 function mainTabView(){
  switch(tab){
   case 'receipt': return receiptView();
-  case 'budget': return budgetView();
   case 'settings': return settingsView();
   default: return listView();
  }
@@ -1439,7 +1419,7 @@ app.addEventListener('submit',e=>{e.preventDefault();const form=e.target;const d
    record_type:input.type,chain_id:input.chainId,chain_name:input.chainName,
    record_date:input.date,
    items:[{raw_name:input.rawName,product_id:input.productId||null,quantity,
-     amount_tax_included:amount,category_id:input.type==='shelf'||input.category===''?null:Number(input.category)}]
+     amount_tax_included:amount,category_id:null}]
   }).then(()=>{page='list';tab='receipt';render()}).catch(err=>{
    if(submit)submit.disabled=false;
    fieldNotice(form,err.message||'記録を保存できませんでした','record-amount');
@@ -1711,7 +1691,7 @@ if(action==='recordEdit'){
  saveScanDraft();scanStatus='保存済みの記録を編集中です';page='recordScan';render();return;
 }
 if(action==='recordDelete'){
- dialog={title:'記録を削除しますか？',message:'削除すると価格比較と家計簿の集計からも除外されます。',
+ dialog={title:'記録を削除しますか？',message:'削除すると価格比較と購入履歴から除外されます。',
   buttons:[{id:'cancel',label:'キャンセル'},{id:'confirmRecordDelete',label:'削除する',critical:true}],
   pending:{recordId:recordDetailId}};
  renderDialogOnly();return;
