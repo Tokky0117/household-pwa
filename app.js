@@ -1,4 +1,4 @@
-const APP_VERSION='0.70.5';
+const APP_VERSION='0.70.6';
 const CATS=['飲食','キッチン','洗面・風呂','洗濯・掃除','その他'];
 const liveMode=!!window.KurashiLive; // Data source only; original Preview v46 UI components remain.
 const SEED=[['牛乳',0,true],['麦茶',0,false],['コーヒー',0,true],['卵',0,false],['キッチンペーパー',1,false],['ラップ',1,true],['食器用洗剤',1,true],['シャンプー',2,false],['歯磨き粉',2,true],['ハンドソープ',2,false],['洗濯洗剤',3,false],['柔軟剤',3,true],['トイレットペーパー',3,false],['乾電池',4,true],['ティッシュ',4,true]];
@@ -174,7 +174,7 @@ let items=load(),tab='items',page='list',selected=null,query='',onlyOut=false,co
 const app=document.getElementById('app');
 let newRecordType='receipt';
 // Native iPhone chooser: Photo Library, Take Photo, or Files. Photos stay in memory.
-let scanPhotos=[],scanIndex=0,scanBusy=false,scanDraft=null,scanStatus='',scanToken=0,scanStage='review';
+let scanPhotos=[],scanIndex=0,scanBusy=false,scanDraft=null,scanStatus='',scanToken=0,scanPhotosExpanded=true;
 const scanPhotoUrls=new Map(); // Memory-only thumbnails; never persisted.
 function scanThumbnail(file){if(scanPhotoUrls.has(file))return scanPhotoUrls.get(file);const create=window.URL?.createObjectURL;if(typeof create!=='function')return '';const url=create.call(window.URL,file);scanPhotoUrls.set(file,url);return url;}
 function releaseScanThumbnail(file){const url=scanPhotoUrls.get(file);if(!url)return;scanPhotoUrls.delete(file);window.URL?.revokeObjectURL?.(url);}
@@ -189,7 +189,7 @@ function saveScanDraft(){
  scanDraftWrites.catch(err=>console.warn('レシート下書き保存失敗',err));
 }
 function resetScan({keepDraft=false}={}){
- scanToken++;clearScanThumbnails();scanPhotos=[];scanIndex=0;scanBusy=false;scanStatus='';scanStage='review';
+ scanToken++;closeScanViewer();clearScanThumbnails();scanPhotos=[];scanIndex=0;scanBusy=false;scanStatus='';scanPhotosExpanded=true;
  if(!keepDraft){scanDraft=null;saveScanDraft();}
 }
 // OCR row IDs and printed names are authoritative; AI may only suggest a product name.
@@ -603,29 +603,107 @@ function scanFormView(){
   <p class="hint">写真やOCR全文は保存しません。現在のGASはログインを使わない共有接続のため、個人情報を含む記録の扱いには注意してください。</p>
  </form>`;
 }
+function scanPhotoSection(){
+ if(!scanPhotos.length){
+  return scanDraft?'<p class="hint scan-photo-unavailable">写真は端末に保存されていません。レシート原本を見て内容を確認してください。</p>':'';
+ }
+ const editing=!scanDraft&&!scanBusy;
+ return `<section class="scan-photo-section">
+  <button type="button" class="scan-photo-heading" data-act="scanTogglePhotos" aria-expanded="${scanPhotosExpanded?'true':'false'}" aria-controls="scan-photo-content">
+   <span>選択した写真 <small>${scanPhotos.length}枚</small></span>
+   <span class="scan-photo-heading-right">${scanPhotosExpanded?'閉じる':'開く'} ${chevron(scanPhotosExpanded?'up':'down')}</span>
+  </button>
+  <div id="scan-photo-content" ${scanPhotosExpanded?'':'hidden'}>
+   <p class="hint scan-photo-instruction">写真をタップすると拡大して確認できます。</p>
+   <div class="scan-photo-grid">${scanPhotos.map((file,i)=>`
+    <div class="scan-photo-tile">
+     <div class="scan-photo-thumb">
+      <button type="button" class="scan-photo-open" data-act="scanOpenPhoto" data-scan-row="${i}" aria-label="写真${i+1}を拡大表示">
+       ${scanThumbnail(file)?`<img src="${esc(scanThumbnail(file))}" alt="写真${i+1}" loading="lazy">`:`<span>写真${i+1}</span>`}
+      </button>
+      ${editing?`<button type="button" class="scan-photo-remove" data-act="scanRemovePhoto" data-scan-row="${i}" aria-label="写真${i+1}を削除">${miniIcon('close')}</button>`:''}
+     </div><span class="scan-photo-label">写真${i+1}</span>
+    </div>`).join('')}</div>
+   ${editing&&scanPhotos.length<6?`<button type="button" class="secondary scan-photo-add" data-act="scanAddPhotos">${miniIcon('plus')}<span>写真を追加</span></button>`:''}
+  </div>
+ </section>`;
+}
 function receiptScanView(){
- if(scanDraft&&scanStage==='review')return `${head('読み取り結果の確認','くらしストック',true)}
- <main class="preview-record-page receipt-scan-page receipt-review-page">
- <p id="scan-status" role="status" class="hint">${esc(scanStatus||'内容を写真と照合してください。')}</p>
- ${scanFormView()}</main>`;
- return `${head('レシート読取','くらしストック',true)}<main class="preview-record-page receipt-scan-page receipt-photo-page">
- ${UI.sectionHeading({title:'選択した写真',subtitle:scanPhotos.length+'枚選択中 · 最大6枚'})}
- ${scanPhotos.length?`<div class="scan-photo-grid">${scanPhotos.map((file,i)=>`
-  <div class="scan-photo-tile">
-   <div class="scan-photo-thumb">
-    ${scanThumbnail(file)?`<img src="${esc(scanThumbnail(file))}" alt="選択した写真 ${i+1}" loading="lazy">`:`<span>写真${i+1}</span>`}
-    <button type="button" class="scan-photo-remove" data-act="scanRemovePhoto" data-scan-row="${i}" aria-label="写真${i+1}を削除" ${scanBusy?'disabled':''}>${miniIcon('close')}</button>
-   </div><span class="scan-photo-label">写真${i+1}</span>
-  </div>`).join('')}</div>`:'<p class="hint">写真を選択してください。</p>'}
- ${scanPhotos.length<6?`<button type="button" class="secondary scan-photo-add" data-act="scanAddPhotos" ${scanBusy?'disabled':''}>${miniIcon('plus')}<span>写真を追加</span></button>`:''}
- ${scanPhotos.length?`<button type="button" class="primary scan-photo-start" data-act="scanStart" ${scanBusy?'disabled':''}>${scanBusy?'読み取り中…':'写真を解析する'}</button>`:''}
- ${scanDraft&&!scanBusy?'<button type="button" class="tertiary scan-return-review" data-act="scanReturnReview">読み取り結果の確認に戻る</button>':''}
- <p id="scan-status" role="status" class="hint">${esc(scanStatus||(scanPhotos.length?'解析後、商品名・数量・金額を確認できます。':'写真を選択してください。'))}</p>
+ const reviewing=!!scanDraft;
+ return `${head('レシート読取','くらしストック',true)}<main class="preview-record-page receipt-scan-page">
+ ${scanPhotoSection()}
+ ${!scanPhotos.length&&!reviewing?'<p class="hint">写真を選択してください。</p>':''}
+ ${!reviewing&&scanPhotos.length?`<button type="button" class="primary scan-photo-start" data-act="scanStart" ${scanBusy?'disabled':''}>${scanBusy?'読み取り中…':'写真を解析する'}</button>`:''}
+ <p id="scan-status" role="status" class="hint">${esc(scanStatus||(!reviewing&&scanPhotos.length?'解析後、商品名・数量・金額を確認できます。':''))}</p>
+ ${scanFormView()}
  </main>`;
+}
+function closeScanViewer(){
+ const viewer=document.getElementById('scan-photo-viewer');
+ if(viewer)viewer.remove();
+}
+function openScanViewer(index){
+ if(!Number.isInteger(index)||index<0||index>=scanPhotos.length)return;
+ const url=scanThumbnail(scanPhotos[index]);if(!url)return;
+ closeScanViewer();
+ const viewer=document.createElement('div');
+ viewer.id='scan-photo-viewer';viewer.className='scan-photo-viewer';viewer.setAttribute('role','dialog');
+ viewer.setAttribute('aria-modal','true');viewer.setAttribute('aria-label','レシート写真の拡大表示');
+ viewer.innerHTML=`<div class="scan-viewer-head"><span>写真 ${index+1} / ${scanPhotos.length}</span><button type="button" class="scan-viewer-close" aria-label="閉じる">×</button></div>
+  <div class="scan-viewer-viewport"><div class="scan-viewer-image-wrap"><img src="${esc(url)}" alt="レシート写真 ${index+1}" draggable="false"></div></div>
+  <div class="scan-viewer-controls"><button type="button" data-zoom="out" aria-label="縮小">−</button><button type="button" data-zoom="actual">原寸</button><span class="scan-viewer-scale">全体表示</span><button type="button" data-zoom="in" aria-label="拡大">＋</button></div>`;
+ document.body.appendChild(viewer);
+ const viewport=viewer.querySelector('.scan-viewer-viewport'),image=viewer.querySelector('img'),scale=viewer.querySelector('.scan-viewer-scale');
+ let fitted=1,zoom=1,ready=false,pinchBase=null,pinchZoom=null;
+ function setZoom(next){
+  if(!ready)return;
+  const priorW=image.clientWidth,priorH=image.clientHeight;
+  const centerX=viewport.scrollLeft+viewport.clientWidth/2,centerY=viewport.scrollTop+viewport.clientHeight/2;
+  zoom=Math.max(fitted,Math.min(4,next));
+  image.style.width=Math.round(image.naturalWidth*zoom)+'px';
+  image.style.height=Math.round(image.naturalHeight*zoom)+'px';
+  scale.textContent=Math.round(zoom*100)+'%';
+  viewport.scrollLeft=centerX*(image.clientWidth/Math.max(priorW,1))-viewport.clientWidth/2;
+  viewport.scrollTop=centerY*(image.clientHeight/Math.max(priorH,1))-viewport.clientHeight/2;
+ }
+ function init(){
+  if(!image.naturalWidth||!image.naturalHeight)return;
+  fitted=Math.min(1,viewport.clientWidth/image.naturalWidth,viewport.clientHeight/image.naturalHeight);
+  ready=true;zoom=fitted;
+  image.style.width=Math.round(image.naturalWidth*fitted)+'px';
+  image.style.height=Math.round(image.naturalHeight*fitted)+'px';
+  scale.textContent='全体表示';
+ }
+ if(image.complete)init();else image.addEventListener('load',init,{once:true});
+ viewer.querySelector('.scan-viewer-close').addEventListener('click',closeScanViewer);
+ viewer.querySelectorAll('[data-zoom]').forEach(button=>button.addEventListener('click',()=>{
+  if(button.dataset.zoom==='actual')setZoom(1);
+  else setZoom(zoom*(button.dataset.zoom==='in'?1.5:1/1.5));
+ }));
+ viewport.addEventListener('touchstart',e=>{
+  if(e.touches.length===2){
+   const [a,b]=e.touches;pinchBase=Math.hypot(a.clientX-b.clientX,a.clientY-b.clientY);pinchZoom=zoom;
+  }
+ },{passive:true});
+ viewport.addEventListener('touchmove',e=>{
+  if(e.touches.length===2&&pinchBase&&pinchZoom){
+   e.preventDefault();const [a,b]=e.touches;
+   setZoom(pinchZoom*Math.hypot(a.clientX-b.clientX,a.clientY-b.clientY)/pinchBase);
+  }
+ },{passive:false});
+ viewport.addEventListener('touchend',e=>{if(e.touches.length<2){pinchBase=null;pinchZoom=null;}},{passive:true});
+ let drag=null;
+ viewport.addEventListener('pointerdown',e=>{if(e.pointerType==='mouse'&&e.button===0)drag={x:e.clientX,y:e.clientY,left:viewport.scrollLeft,top:viewport.scrollTop};});
+ viewport.addEventListener('pointermove',e=>{if(drag){viewport.scrollLeft=drag.left+drag.x-e.clientX;viewport.scrollTop=drag.top+drag.y-e.clientY;}});
+ viewport.addEventListener('pointerup',()=>{drag=null});
+ viewport.addEventListener('pointercancel',()=>{drag=null});
+ const onKey=e=>{if(e.key==='Escape'){closeScanViewer();document.removeEventListener('keydown',onKey)}};
+ document.addEventListener('keydown',onKey);
+ viewer.querySelector('.scan-viewer-close').focus();
 }
 async function runReceiptScan(){
  if(scanBusy||!scanPhotos.length)return;
- scanBusy=true;scanStage='photos';scanDraft=null;const token=++scanToken;
+ scanBusy=true;scanDraft=null;const token=++scanToken;
  scanStatus='読み取りを準備中です。初回はOCRモデルの取得に時間がかかる場合があります。';
  render();
  try{
@@ -666,7 +744,7 @@ async function runReceiptScan(){
    item.autoLinked=!!item.productId;
   });
   saveScanDraft();
-  scanStage='review';
+  scanPhotosExpanded=false;
   scanStatus='読み取り完了：'+allItems.length+'明細。原本と照合して修正してください。'+
    (scanWarnings.size?' 複数の印字合計・点数を検出したため自動確定していません。':'')+
    (!date?' 購入日は原本を見て確認してください。':'');
@@ -1024,6 +1102,7 @@ function pageView(){
 }
 function render(){
  if(!window.document)return; // A closed iOS page/session must not re-render.
+  closeScanViewer();
  const currentModal=page==='add'||page==='edit'||page==='productEdit'||page==='productPick'||page==='recordAdd'||page==='scanProduct'||page==='scanBulkProducts'||page==='scanExistingProduct';
  const wasModal=previousPage==='add'||previousPage==='edit'||previousPage==='productEdit'||previousPage==='productPick'||previousPage==='recordAdd'||previousPage==='recordSource';
  // The product-creation page replaces an open search sheet. It is a full
@@ -1160,10 +1239,7 @@ function back(){
    page=scanDraft?.source==='ocr'?'recordScan':'list';tab='receipt';render();return;
   }
   if(page==='recordScan'){
-   if(scanStage==='review'&&scanPhotos.length&&scanDraft){
-    syncScanReview();saveScanDraft();scanStage='photos';render();return;
-   }
-   if(scanStage==='review'&&scanDraft){syncScanReview();saveScanDraft();}
+   if(scanDraft){syncScanReview();saveScanDraft();}
    if(scanBusy){say('読み取り処理中です');return;}
    if(scanPhotos.length||scanDraft){
     dialog={title:'OCR下書きを破棄しますか？',message:'写真と読み取り結果は保存せず破棄します。',
@@ -1262,7 +1338,7 @@ function acceptReceiptPhotos(picker){
   scanStatus='一度に読み込める写真は最大6枚です。';
   picker.value='';render();return;
  }
- scanPhotos.push(...files);scanIndex=scanPhotos.length-1;scanStage='photos';
+ scanPhotos.push(...files);scanIndex=scanPhotos.length-1;scanPhotosExpanded=true;
  page='recordScan';scanDraft=null;scanToken++;
  scanStatus=files.length+'枚の写真を追加しました。';
  picker.value=''; // Same photo can be selected again.
@@ -1810,7 +1886,7 @@ if(action==='resumeScanDraft'){
  window.KurashiLive.loadReceiptDraft().then(draft=>{
   if(!draft)return;
   resetScan({keepDraft:true});scanDraft=draft;scanDraftAvailable=true;
-  scanStage='review';scanStatus='下書きを再開しました。写真の画像は保存されていません。';
+  scanStatus='下書きを再開しました。写真の画像は保存されていません。';
   page='recordScan';render();
  }).catch(e=>say(e?.message||'下書きを再開できません'));return;
 }
@@ -1836,7 +1912,7 @@ if(action==='recordEdit'){
     quantity:x.quantity,amount:x.amount_tax_included,
     productId:x.product_id||'',manuallyLinked:!!x.product_id,issues:[]}))
  };
- saveScanDraft();scanStage='review';scanStatus='保存済みの記録を編集中です';page='recordScan';render();return;
+ saveScanDraft();scanStatus='保存済みの記録を編集中です';page='recordScan';render();return;
 }
 if(action==='recordDelete'){
  dialog={title:'記録を削除しますか？',message:'削除すると価格比較と購入履歴から除外されます。',
@@ -1911,14 +1987,19 @@ if(action==='scanNewProduct'){
  page='scanProduct';render();return;
 }
 if(action==='scanStart'){void runReceiptScan();return}
-if(action==='scanReturnReview'&&scanDraft){scanStage='review';render();return}
+if(action==='scanTogglePhotos'){
+ const content=document.getElementById('scan-photo-content'),button=document.querySelector('.scan-photo-heading');
+ if(content&&button){scanPhotosExpanded=!scanPhotosExpanded;content.hidden=!scanPhotosExpanded;button.setAttribute('aria-expanded',String(scanPhotosExpanded));const label=button.querySelector('.scan-photo-heading-right');if(label)label.innerHTML=(scanPhotosExpanded?'閉じる':'開く')+' '+chevron(scanPhotosExpanded?'up':'down');}
+ return;
+}
+if(action==='scanOpenPhoto'){openScanViewer(Number(el.dataset.scanRow));return}
 if(action==='scanRemovePhoto'){
  if(scanBusy)return;
  const index=Number(el.dataset.scanRow);
  if(!Number.isInteger(index)||index<0||index>=scanPhotos.length)return;
  const removed=scanPhotos.splice(index,1)[0];releaseScanThumbnail(removed);
  scanIndex=Math.max(0,Math.min(scanIndex,scanPhotos.length-1));
- scanDraft=null;scanStage='photos';scanToken++;scanStatus=scanPhotos.length?'写真を削除しました。':'写真を選択してください。';
+ scanDraft=null;scanToken++;scanStatus=scanPhotos.length?'写真を削除しました。':'写真を選択してください。';
  render();return;
 }
 if(action==='scanRemoveItem'&&scanDraft){
