@@ -1834,7 +1834,7 @@ const unchangedAfterUnlink=legacy.call('bootstrap').data.record_items.find(x=>
  x.record_item_id===savedLegacy[0].record_item_id);
 assert.equal(unchangedAfterUnlink.product_id,legacyProductId,
  'changing OCR dictionary association never rewrites confirmed purchase history');
-assert.ok(app.includes('const aliasNameFor=line=>line?.raw_name||'),
+assert.ok(app.includes('const aliasNameFor=line=>line?.confirmed_name||line?.raw_name||'),
  'historical receipt display prefers original spelling over normalized dictionary');
 // The yellow quantity warning must clear when the user re-enters even "1".
 let qtySession=appSession(new IDBFactory());
