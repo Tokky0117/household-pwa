@@ -2244,21 +2244,36 @@ main>.ui-search + .filterrow{margin-bottom:5px}
 .scan-file-input{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}
 .receipt-scan-page [data-act="scanAddPhotos"],.receipt-scan-page [data-act="scanStart"]{display:block;width:100%;margin:12px auto;min-height:48px}
 .receipt-scan-page .panel{margin-top:12px}
-/* Photos stay in browser memory and thumbnails never enter persistent drafts. */
-.receipt-photo-page .ui-section-heading{margin:2px 0 14px}
+/* Receipt original and editable OCR review share one screen. */
+.scan-photo-section{margin:0 0 14px}
+.scan-photo-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;width:100%;min-height:48px;padding:6px 0;border:0;background:transparent;color:var(--ink);font-size:17px;font-weight:700;text-align:left}
+.scan-photo-heading small{font-size:13px;font-weight:500;color:var(--muted);margin-left:6px}
+.scan-photo-heading-right{display:flex;align-items:center;gap:5px;font-size:14px;font-weight:650;color:var(--accent)}
+.scan-photo-heading-right svg{width:18px;height:18px}
+#scan-photo-content[hidden]{display:none}
+.scan-photo-instruction{margin:0 0 12px}
 .scan-photo-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin:0 0 16px}
 .scan-photo-tile{min-width:0}
-.scan-photo-thumb{position:relative;aspect-ratio:4/5;border:1px solid var(--line);border-radius:12px;overflow:hidden;background:var(--card);display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:14px}
-.scan-photo-thumb img{display:block;width:100%;height:100%;object-fit:contain}
-.scan-photo-remove{position:absolute;right:6px;top:6px;display:grid;place-items:center;width:44px;height:44px;min-width:44px;min-height:44px;border:1px solid var(--line);border-radius:50%;background:var(--card);color:var(--accent)}
+.scan-photo-thumb{position:relative;min-width:0;display:flex;align-items:center;justify-content:center}
+.scan-photo-open{display:block;width:100%;height:180px;min-height:44px;padding:0;border:0;border-radius:0;background:transparent;color:var(--muted);cursor:zoom-in}
+.scan-photo-open img{display:block;width:100%;height:100%;object-fit:contain;object-position:center}
+.scan-photo-remove{position:absolute;right:0;top:0;display:grid;place-items:center;width:44px;height:44px;min-width:44px;min-height:44px;border:1px solid var(--line);border-radius:50%;background:var(--card);color:var(--accent)}
 .scan-photo-remove svg{width:20px;height:20px}
 .scan-photo-label{display:block;font-size:13px;color:var(--muted);margin:6px 2px 0}
-.receipt-photo-page .scan-photo-add{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;min-height:48px;margin:10px 0 16px}
-.receipt-photo-page .scan-photo-add svg{width:18px;height:18px}
-.receipt-photo-page .scan-photo-start{display:block;width:100%;min-height:48px;margin:0 0 12px}
-.receipt-photo-page .scan-return-review{display:block;width:100%;margin:0 0 10px}
-.receipt-photo-page #scan-status{margin-top:12px;line-height:1.6}
-.receipt-review-page #scan-status{line-height:1.6;margin:0 0 12px}
+.receipt-scan-page .scan-photo-add{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;min-height:48px;margin:10px 0 16px}
+.receipt-scan-page .scan-photo-add svg{width:18px;height:18px}
+.receipt-scan-page .scan-photo-start{display:block;width:100%;min-height:48px;margin:0 0 12px}
+.receipt-scan-page #scan-status{margin:12px 0;line-height:1.6}
+.scan-photo-unavailable{margin:12px 0 18px}
+.scan-photo-viewer{position:fixed;inset:0;z-index:350;display:flex;flex-direction:column;background:#15171a;color:#fff;padding:env(safe-area-inset-top,0px) 0 env(safe-area-inset-bottom,0px)}
+.scan-viewer-head{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:6px 16px;min-height:54px;font-weight:700}
+.scan-viewer-close{width:44px;height:44px;border:0;background:transparent;color:#fff;font-size:32px;font-weight:400}
+.scan-viewer-viewport{flex:1;min-height:0;width:100%;overflow:auto;overscroll-behavior:contain;touch-action:pan-x pan-y;background:#15171a}
+.scan-viewer-image-wrap{display:flex;align-items:center;justify-content:center;min-width:100%;min-height:100%;width:max-content;height:max-content}
+.scan-viewer-image-wrap img{display:block;max-width:none;max-height:none;object-fit:contain;user-select:none}
+.scan-viewer-controls{display:flex;align-items:center;justify-content:center;gap:12px;min-height:62px;padding:6px 12px}
+.scan-viewer-controls button{min-width:44px;min-height:44px;border:1px solid #656b73;border-radius:10px;background:#33383f;color:#fff;font-size:17px;font-weight:700}
+.scan-viewer-controls .scan-viewer-scale{font-size:13px;min-width:56px;text-align:center}
 .scan-field{display:flex;flex-direction:column;gap:6px;font-size:14px;margin:12px 0}
 .scan-field input,.scan-field select{box-sizing:border-box;width:100%;min-height:44px;border:1px solid var(--line,#ccc);border-radius:10px;padding:9px 11px;font-size:16px;color:inherit;background:var(--card,#fff)}
 .scan-review .scan-quantity-uncertain{background:#fff0b3;color:#272316;border-color:#d8ad3c}
