@@ -574,6 +574,7 @@ function scanFormView(){
   '<option value="__new__"'+(!scanDraft.chainId?' selected':'')+'>＋ 新しいチェーン</option>'].join('');
  return `<form id="scanConfirmForm" class="scan-review">
   <h2 class="sectiontitle">読み取り結果の確認</h2>
+  ${scanDraft.taxBasis==='unknown'&&scanDraft.source==='ocr'?'<p class="scan-warning">OCRで内税・外税の区分を特定できませんでした。税込明細合計を自動計算するには、印字税率・税額・商品価格の確認が必要です。</p>':''}
   ${scanDraft.taxBasis==='excluded'?(scanDraft.taxAllocationStatus==='allocated'?'<p class="hint">外税レシート：印字された税率別税額を各商品の値引き後税抜額に比例配分し、端数は合計が一致するよう調整しています。各行の税込額は計算値です。原本と照合してください。</p>':'<div class="scan-warning">外税レシートの税込額を計算できません：'+esc(scanTaxFailureDescription(scanDraft.taxAllocationReason))+'。'+(scanDraft.taxDiagnostics?'<p>抽出した税抜明細合計：'+esc(scanDraft.taxDiagnostics.netSum)+'円 ／ 印字小計：'+(scanDraft.taxDiagnostics.subtotal===null?'未取得':esc(scanDraft.taxDiagnostics.subtotal)+'円')+' ／ 印字税額：'+(scanDraft.taxDiagnostics.taxTotal===null?'未取得':esc(scanDraft.taxDiagnostics.taxTotal)+'円')+' ／ 印字合計：'+(scanDraft.taxDiagnostics.receiptTotal===null?'未取得':esc(scanDraft.taxDiagnostics.receiptTotal)+'円')+'</p>':'')+'原本と照合してください。</div>'):''}
   <p class="hint">OCR・ChatGPTの文字・数量・金額には誤認識が残ります。必ず原本と照合してください。${scanDraft.source==='chatgpt-ocr'?' OCRとChatGPTの一意対応 '+scanDraft.matchedCount+'件、要確認 '+scanDraft.unmatchedCount+'件。':''}</p>
   ${scanDraft.source==='chatgpt-rebuild'?'<p class="scan-warning">ChatGPTによる写真再解析です。OCR明細'+esc(scanDraft.ocrReplacedCount||0)+'件は破棄しました。商品名・数量・金額・購入日・店舗を写真と照合してください。AIの回答は誤ることがあります。</p>':''}
