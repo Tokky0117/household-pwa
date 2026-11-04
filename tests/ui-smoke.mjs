@@ -223,7 +223,7 @@ assert.ok(!ui.receiptScanView().includes('id="scan-add-picker"'));
 assert.ok(source.includes("document.addEventListener('change',e=>{"));
 assert.ok(source.includes("picker.value=''"));
 assert.ok(source.includes("if(!files.length)return"));
-assert.ok(source.includes('type="file" accept="image/*" multiple'),
+assert.ok(indexHtml.includes('type="file" accept="image/*" multiple'),
  'Native picker offers photo library, camera or files');
 assert.ok(!source.includes('getUserMedia(')&&!source.includes('scanFromCamera'),
  'Custom camera and custom two-choice UI are gone');
