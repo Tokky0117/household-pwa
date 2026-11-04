@@ -164,10 +164,13 @@ assert.ok(ui.receiptView().includes('値札入力'));
 assert.ok(ui.receiptView().includes('ui-section-heading')&&ui.receiptView().includes('ui-text-action'),'Receipt home reuses section heading and backgroundless link');
 assert.ok(ui.receiptView().includes('ui-record-row')&&!ui.receiptView().includes('ほか'),'Receipt rows omit product summaries');
 assert.ok(ui.receiptView().includes('くらしストック'),'Receipt header uses the daily-item subtitle');
-assert.ok(css.includes('border: 1px solid var(--accent);')&&css.includes('color: var(--accent);'),'Secondary uses the shared blue outline and text');
+assert.ok(css.includes('background: #e4e6e9;')&&css.includes('.secondary {')&&css.includes('font-weight: 700;'),'Secondary uses agreed gray fill and bold blue label');
 assert.ok(css.includes('.tertiary{\n background:transparent;'),'Tertiary is transparent');
 assert.ok(!source.includes('secondary confirm-caution')&&!source.includes('class="secondary danger"'),'Shared dialog no longer uses per-danger colors');
-assert.ok(source.includes("b.primary&&!b.critical&&!b.danger?'primary':'secondary'"),'Dangerous dialog controls retain non-primary treatment');
+assert.ok(source.includes('class="dialog-action" data-dialog='),'Dialog choices share the same flat interaction surface');
+assert.ok(css.includes('border-top: 1px solid var(--line);')&&css.includes('.dialog-actions .dialog-action + .dialog-action')&&css.includes('border-left: 1px solid var(--line);'),'Dialog horizontal and vertical dividers connect without gaps');
+assert.ok(css.includes('gap: 0;')&&css.includes('margin: 18px -20px 0;'),'Dialog action separators span the panel width');
+assert.ok(css.includes('.ui-text-action{')&&css.includes('font-weight:700;font-size:14px;'),'Text actions use common bold type');
 
 assert.ok(source.includes('function getRecordSummary(')&&source.includes('UI.recordRow(getRecordSummary(r))'),'History summary and shared row renderer');
 assert.ok(css.includes('.record-entry-actions{display:grid;grid-template-columns:repeat(3'),'Receipt registration has three equal columns');
@@ -195,9 +198,9 @@ assert.ok(!source.includes('if(el.dataset.move)')&&!source.includes('if(el.datas
 assert.ok(!source.includes('headerMenu({')&&!source.includes('info({action,'),'Unused UI helpers stay removed');
 assert.ok(!css.includes('.compare-form-row{')&&!css.includes('.unit-page{'),'Retired comparison CSS stays removed');
 
-assert.ok(source.includes("b.primary&&!b.critical&&!b.danger?'primary':'secondary'"),'Shared dialog uses primary only for safe promoted actions');
+assert.ok(source.includes('class="dialog-action" data-dialog='),'Shared dialog renders every confirmation option with the same style');
 assert.ok(source.includes("{id:'confirmHide',label:'削除',critical:true}")&&source.includes("{id:'confirmProductUnlink',label:'解除する',critical:true}"),'Delete and unlink share cautious style');
-assert.ok(!css.includes('[data-dialog="confirmHide"]')&&!css.includes('.dialog-actions .confirm-caution'),'Delete uses the same common secondary style without action-specific overrides');
+assert.ok(!css.includes('[data-dialog="confirmHide"]')&&!css.includes('.dialog-actions .confirm-caution'),'Delete uses shared flat dialog actions without action-ID overrides');
 assert.ok(source.includes('duplicateItemNotice(existing,false)')&&source.includes('duplicateItemNotice(hidden,true)'),'Existing and hidden duplicates use inline notice');
 assert.ok(!source.includes('新しい日用品として登録')&&!source.includes("if(action==='new'&&p)"),'Retired duplicate-new flow is absent');
 assert.ok(source.includes("if(action==='restoreItem'||action==='showExistingItem')"),'Duplicate notice actions are handled');
