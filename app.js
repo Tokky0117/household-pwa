@@ -1722,8 +1722,10 @@ if(action==='recordEdit'){
   chainName:'',branchName:r.branch_name||'',total:null,
   items:allPreviewItems().filter(x=>x.record_id===r.record_id&&!x.deleted_at)
    .sort((a,b)=>Number(a.line_order)-Number(b.line_order))
-   .map(x=>({name:aliasNameFor(x),ocrRawName:aliasNameFor(x),savedOcrName:true,quantity:x.quantity,
-    amount:x.amount_tax_included,productId:x.product_id||'',manuallyLinked:!!x.product_id,issues:[]}))
+   .map(x=>({name:aliasNameFor(x),
+    ...(x.confirmed_name?{inputOrigin:'photo'}:{ocrRawName:aliasNameFor(x),savedOcrName:true}),
+    quantity:x.quantity,amount:x.amount_tax_included,
+    productId:x.product_id||'',manuallyLinked:!!x.product_id,issues:[]}))
  };
  saveScanDraft();scanStatus='保存済みの記録を編集中です';page='recordScan';render();return;
 }
