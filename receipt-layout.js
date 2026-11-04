@@ -7,7 +7,7 @@
   const boxes=observations.map((o,index)=>{
    if(typeof o.text!=='string'||!Array.isArray(o.poly)||o.poly.length!==4||!o.poly.every(p=>Array.isArray(p)&&p.length===2&&p.every(Number.isFinite)))throw new TypeError('invalid text/poly observation at '+index);
    const [p,q,r,s]=o.poly,cx=(p[0]+q[0]+r[0]+s[0])/4,cy=(p[1]+q[1]+r[1]+s[1])/4;
-   return {index,text:o.text,cx,cy,height:Math.max(1,(Math.hypot(p[0]-s[0],p[1]-s[1])+Math.hypot(q[0]-r[0],q[1]-r[1]))/2),angle:Math.atan2(q[1]-p[1],q[0]-p[0])};
+   return {index,text:o.text,cx,cy,x0:Math.min(...o.poly.map(pt=>pt[0])),x1:Math.max(...o.poly.map(pt=>pt[0])),y0:Math.min(...o.poly.map(pt=>pt[1])),y1:Math.max(...o.poly.map(pt=>pt[1])),height:Math.max(1,(Math.hypot(p[0]-s[0],p[1]-s[1])+Math.hypot(q[0]-r[0],q[1]-r[1]))/2),angle:Math.atan2(q[1]-p[1],q[0]-p[0])};
   });
   if(!boxes.length)return {text:'',lines:[],observations,angle:0};
   const angles=boxes.map(b=>b.angle).filter(a=>Math.abs(a)<=Math.PI/6),angle=angles.length?median(angles):0,cos=Math.cos(angle),sin=Math.sin(angle);
@@ -18,8 +18,58 @@
    if(near){near.boxes.push(b);near.y=median(near.boxes.map(x=>x.y));near.height=median(near.boxes.map(x=>x.height));}
    else rows.push({y:b.y,height:b.height,boxes:[b]});
   }
-  const lines=rows.sort((a,b)=>a.y-b.y).map(r=>{const b=r.boxes.sort((a,b)=>a.x-b.x);return {text:b.map(x=>x.text.trim()).join(' '),observationIndices:b.map(x=>x.index)};});
+  const lines=rows.sort((a,b)=>a.y-b.y).map(r=>{const b=r.boxes.sort((a,b)=>a.x-b.x);return {text:b.map(x=>x.text.trim()).join(' '),observationIndices:b.map(x=>x.index),bounds:{x0:Math.min(...b.map(x=>x.x0)),x1:Math.max(...b.map(x=>x.x1)),y0:Math.min(...b.map(x=>x.y0)),y1:Math.max(...b.map(x=>x.y1))}};});
   return {text:lines.map(l=>l.text).join('\n'),lines,observations,angle};
  }
- root.KurashiReceiptLayout={groupLines};
+
+ // An unpriced product name can be printed immediately above/below a priced
+ // EAN-13. Attach it only with independent geometric evidence. Do not merge
+ // two priced lines merely because their price or code happens to match.
+ function attachAdjacentCodeNames(receipt,layout){
+  if(!Array.isArray(receipt?.items)||!Array.isArray(layout?.lines))return receipt;
+  const source=String(receipt.rawText||'').split(/\r?\n/);
+  const used=new Set(receipt.items.flatMap(item=>Array.isArray(item.sourceLines)?item.sourceLines:[]));
+  const notName=/^(?:合\s*計|小\s*計|総額|お買上|お買上点数|領収|ユニクロ|コストコ|COSTCO|コノミヤ|税|内税|外税|現金|支払|取引|会員|カード|レジ|JAN|TEL|電話|割引|値引|ありがとうございます)/i;
+  const possibleName=value=>{
+   const text=String(value||'').normalize('NFKC').trim();
+   return text.length>=4&&text.length<=100&&
+    /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}A-Za-z]/u.test(text)&&
+    !notName.test(text)&&!/[¥￥]/.test(text)&&
+    !/\s[0-9０-９,，]{2,}\s*(?:円)?$/.test(text);
+  };
+  const near=(a,b)=>{
+   if(!a||!b)return false;
+   const aw=a.x1-a.x0,bw=b.x1-b.x0,ah=a.y1-a.y0,bh=b.y1-b.y0;
+   if(aw<=0||bw<=0||ah<=0||bh<=0)return false;
+   const overlap=Math.max(0,Math.min(a.x1,b.x1)-Math.max(a.x0,b.x0));
+   const gap=Math.max(0,Math.max(a.y0,b.y0)-Math.min(a.y1,b.y1));
+   return overlap>=0.3*Math.min(aw,bw)&&gap<=1.7*Math.max(ah,bh);
+  };
+  for(const item of receipt.items){
+   const oldName=String(item.rawName||item.name||'').normalize('NFKC').trim();
+   if(!/^\d{13}$/.test(oldName)||!Array.isArray(item.sourceLines)||
+    item.sourceLines.length!==1)continue;
+   const line=item.sourceLines[0],anchor=layout.lines[line-1]?.bounds;
+   const candidates=[line-1,line+1].filter(n=>n>0&&n<=layout.lines.length&&
+    !used.has(n)&&possibleName(source[n-1])&&
+    near(anchor,layout.lines[n-1]?.bounds));
+   if(candidates.length!==1){
+    item.issues=item.issues||[];
+    if(!item.issues.includes('商品コードのみ（商品名を確認）'))
+     item.issues.push('商品コードのみ（商品名を確認）');
+    continue;
+   }
+   const nameLine=candidates[0],printed=source[nameLine-1].trim();
+   item.name=printed;item.rawName=printed;item.productCode=oldName;
+   item.sourceLines=[line,nameLine].sort((a,b)=>a-b);
+   item.rawLines=item.sourceLines.map(n=>source[n-1]);
+   item.issues=item.issues||[];
+   item.issues.push('商品コードと商品名の対応を確認');
+   receipt.warnings=(receipt.warnings||[]).filter(w=>
+    !(w.code==='unpriced_name'&&w.line===nameLine));
+   used.add(nameLine);
+  }
+  return receipt;
+ }
+ root.KurashiReceiptLayout={groupLines,attachAdjacentCodeNames};
 })(typeof window==='undefined'?globalThis:window);

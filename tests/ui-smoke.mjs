@@ -424,3 +424,53 @@ assert.ok(source.includes('scanDraft.items.splice(Number(el.dataset.scanRow),1);
 assert.ok(source.includes("saveScanDraft();render();return;"),
  'Adding a missing merchandise row persists the corrected draft');
 console.log('v66: uncertain date, printed-count review, and draft row persistence OK');
+
+ // v67: purchase dates from multiple receipts must never pick an arbitrary match.
+assert.equal(ui.scanDate('2026/10/14\n2026/11/03'),'',
+ 'Different dates from overlapping receipts require manual confirmation');
+assert.equal(ui.scanDate('2026/11/03\n2026年11月3日'),'2026-11-03',
+ 'Repeated identical purchase dates are safe to use');
+assert.equal(ui.scanDate('2026/02/30\n2026/11/03'),'',
+ 'An invalid date alongside a valid date still needs review');
+
+const layoutScript=readFileSync(new URL('../receipt-layout.js',import.meta.url),'utf8');
+const structureScript=readFileSync(new URL('../receipt-structure.js',import.meta.url),'utf8');
+const {geometry,structure}=vm.runInNewContext(layoutScript+'\n'+structureScript+
+ ';({geometry:KurashiReceiptLayout,structure:KurashiReceiptStructure})');
+const observed=(value,x,y,w=200)=>({text:value,poly:[[x,y],[x+w,y],[x+w,y+16],[x,y+16]]});
+const geomLines=geometry.groupLines([
+ observed('メリノクルーネックカーディガン',105,100,250),
+ observed('2000211787545 ¥2,990',110,129,260),
+ observed('内税10% ¥272',115,164,190),
+ observed('合計 ¥2,990',115,195,190)]);
+let structured=structure.parse(geomLines.text);
+assert.equal(structured.items[0].name,'2000211787545',
+ 'Before position matching, a barcode with a price is not a product name');
+structured=geometry.attachAdjacentCodeNames(structured,geomLines);
+assert.equal(structured.items.length,1,'Name/code combination does not invent another item');
+assert.equal(structured.items[0].name,'メリノクルーネックカーディガン',
+ 'Only an adjacent unpriced product name can replace a code-only display name');
+assert.equal(structured.items[0].productCode,'2000211787545');
+assert.equal(structured.items[0].sourceLines.join(','),'1,2',
+ 'The original code and name source lines are both traceable');
+assert.ok(structured.items[0].issues.includes('商品コードと商品名の対応を確認'));
+const distantLayout=geometry.groupLines([
+ observed('別レシートのカーディガン',550,100,230),
+ observed('2000211787545 ¥2,990',110,129,260),
+ observed('合計 ¥2,990',115,195,190)]);
+let distant=structure.parse(distantLayout.text);
+distant=geometry.attachAdjacentCodeNames(distant,distantLayout);
+assert.equal(distant.items[0].name,'2000211787545',
+ 'A name from a separate horizontal receipt must never be attached by text order');
+assert.ok(distant.items[0].issues.includes('商品コードのみ（商品名を確認）'));
+const competing=structure.parse('商品A ¥100\n合計 ¥100\n合計 ¥200\nお買上点数 1\nお買上点数 2');
+assert.equal(competing.receiptTotal,null,
+ 'Conflicting totals are left unknown, rather than taking the last one');
+assert.equal(competing.printedCount,null,
+ 'Conflicting printed counts are left unknown');
+assert.ok(competing.warnings.some(w=>w.code==='conflicting_receipt_totals'));
+const ordinary=structure.parse('商品A ¥100\n内税10% ¥9\n合計 ¥100\nお買上点数 1');
+assert.equal(ordinary.receiptTotal,100);
+assert.equal(ordinary.printedCount,1);
+console.log('v67: geometric barcode-to-name linking and ambiguous multi-receipt totals/dates OK');
+

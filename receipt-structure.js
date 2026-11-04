@@ -32,6 +32,8 @@
   const taxBreakdown=[];
   const lines=rawText.split(/\r?\n/);let pending=null,last=null,janPending=null,coupon=false,summary=false;
   let receiptTotal=null,subtotal=null,taxTotal=null,printedCount=null;
+  const receiptTotals=[],printedCounts=[];
+  const recordTotal=value=>{receiptTotals.push(value);receiptTotal=value;};
   const warn=(code,line)=>warnings.push({code,line});
   const add=(rawName,q,unit,amount,indices)=>{
    if(!Number.isSafeInteger(amount)||amount<0||amount>1000000||q<1||q>99){warn('invalid_item',indices[0]);return;}
@@ -51,18 +53,18 @@
    const targetTax=l.match(/^\(\s*(8|10)%\s*対象消費税\s*[¥]?([\d,]+)\s*\)$/);
    if(tax){const amount=num(tax[2]||tax[4]||tax[5]);taxBreakdown.push({rate:Number(tax[1]||tax[3]||l.match(/^(8|10)/)[1]),amount,sourceLine:ix});}
    if(targetTax)taxBreakdown.push({rate:+targetTax[1],amount:num(targetTax[2]),sourceLine:ix});
-   if(m=l.match(/^(?:\*+\s*)?(?:合\s*計|お買上)\s*[¥\\]?\s*([\d,]+)$/)){receiptTotal=num(m[1]);summary=true;pending=null;janPending=null;continue;}
+   if(m=l.match(/^(?:\*+\s*)?(?:合\s*計|お買上)\s*[¥\\]?\s*([\d,]+)$/)){recordTotal(num(m[1]));summary=true;pending=null;janPending=null;continue;}
    // "合 33 ¥1,985": OCR merges summary label and count.
    // This pattern is admissible only after an actual subtotal.
    if(m=l.match(/^合\s*\d{1,2}\s*¥([\d,]+)$/)){
     // Without a genuine subtotal, an OCR-mangled "合 33" is ambiguous:
     // do not turn the total into a purchasable line item.
-    if(summary)receiptTotal=num(m[1]);
+    if(summary)recordTotal(num(m[1]));
     else warn('ambiguous_total_label',ix);
     pending=null;janPending=null;continue;
    }
    if(m=l.match(/^小計(?:金額)?\s*[¥]?\s*([\d,]+)$/)){subtotal=num(m[1]);summary=true;pending=null;janPending=null;continue;}
-   if(m=l.match(/^(?:(?:お|御)?買上(?:げ)?点数)\s*(\d{1,3})(?:\s*点)?(?:\s*\([A-Za-z0-9]{1,3}\))?$/)){printedCount=+m[1];continue;}
+   if(m=l.match(/^(?:(?:お|御)?買上(?:げ)?点数)\s*(\d{1,3})(?:\s*点)?(?:\s*\([A-Za-z0-9]{1,3}\))?$/)){printedCount=+m[1];printedCounts.push(printedCount);continue;}
    if(m=l.match(/^(?:税(?:8|10)%|外税額 (?:8|10)%)\s*¥([\d,]+)$/)){taxTotal=(taxTotal||0)+num(m[1]);continue;}
    if(summary)continue;
    if(registerMetadata.test(l)){pending=null;continue;}
@@ -177,6 +179,10 @@
   if(janPending)warn('jan_incomplete_item',janPending.line);
   if(pending)warn('unpriced_name',pending.line);
   if(coupon)warn('incomplete_coupon',null);
+  // Competing totals/counts often indicate a second receipt in the photo.
+  // Never silently replace an earlier value with the last OCR match.
+  if(new Set(receiptTotals).size>1){receiptTotal=null;warn('conflicting_receipt_totals',null);}
+  if(new Set(printedCounts).size>1){printedCount=null;warn('conflicting_printed_counts',null);}
   if(taxTotal===null&&taxBreakdown.length)taxTotal=taxBreakdown.reduce((s,x)=>s+x.amount,0);
   const sum=items.reduce((s,x)=>s+x.netAmount,0);
   // Receipt-wide classification requires explicit tax evidence; never infer from total equality.

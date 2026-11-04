@@ -30,7 +30,8 @@ export async function scanReceiptImage(file,{mode='gray',crop=null}={}){
   const r=await (await reader()).readImage(prepared.image);
   const japanese=normalizeJapaneseOcr(r.text);
   const normalized=normalizeYenGrouping(japanese.text);
-  const parsed=window.KurashiReceiptStructure.parse(normalized.text);
+  const parsed=window.KurashiReceiptLayout.attachAdjacentCodeNames(
+   window.KurashiReceiptStructure.parse(normalized.text),{lines:r.lines});
   return {
    engine:'PP-OCRv6_small',
    parsed,originalText:r.text,text:normalized.text,

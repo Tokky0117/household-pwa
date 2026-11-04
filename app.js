@@ -1,4 +1,4 @@
-const APP_VERSION='0.66.0';
+const APP_VERSION='0.67.0';
 const CATS=['飲食','キッチン','洗面・風呂','洗濯・掃除','その他'];
 const liveMode=!!window.KurashiLive; // Data source only; original Preview v46 UI components remain.
 const SEED=[['牛乳',0,true],['麦茶',0,false],['コーヒー',0,true],['卵',0,false],['キッチンペーパー',1,false],['ラップ',1,true],['食器用洗剤',1,true],['シャンプー',2,false],['歯磨き粉',2,true],['ハンドソープ',2,false],['洗濯洗剤',3,false],['柔軟剤',3,true],['トイレットペーパー',3,false],['乾電池',4,true],['ティッシュ',4,true]];
@@ -474,12 +474,18 @@ function scanSuggestionButtons(item,row){
    ' ／ '+esc(linkedItemName(p))+'</button>').join('')+'</div>';
 }
 const scanDate=text=>{
- const found=String(text).match(/(?:20)?(2[0-9])\s*[\/-年.]\s*(0?[1-9]|1[0-2])\s*[\/-月.]\s*([0-2]?[0-9]|3[01])\s*日?(?!\d)/);
- if(!found)return ''; // Unknown date must be explicitly confirmed.
- const y=2000+Number(found[1]),m=Number(found[2]),d=Number(found[3]);
- const actual=new Date(y,m-1,d);
- return actual.getFullYear()===y&&actual.getMonth()===m-1&&actual.getDate()===d?
-  [y,String(m).padStart(2,'0'),String(d).padStart(2,'0')].join('-'):'';
+ const pattern=/(?:^|[^\d])(?:20)?(2[0-9])\s*[\/-年.]\s*(0?[1-9]|1[0-2])\s*[\/-月.]\s*([0-2]?[0-9]|3[01])\s*日?(?!\d)/g;
+ const matches=[...String(text).matchAll(pattern)];
+ if(!matches.length)return '';
+ const valid=new Set();
+ for(const found of matches){
+  const y=2000+Number(found[1]),m=Number(found[2]),d=Number(found[3]);
+  const actual=new Date(y,m-1,d);
+  if(actual.getFullYear()!==y||actual.getMonth()!==m-1||actual.getDate()!==d)return '';
+  valid.add([y,String(m).padStart(2,'0'),String(d).padStart(2,'0')].join('-'));
+ }
+ // Two conflicting dates can belong to a second receipt; require review.
+ return valid.size===1?[...valid][0]:'';
 };
 function scanOptionsProduct(selected='',rawName=''){
  // A product created offline first appears under local-id, then receives the
@@ -571,7 +577,8 @@ async function runReceiptScan(){
  render();
  try{
   const engine=scanRuntime||(scanRuntime=await import('./ocr-engine/engine.js'));
-  const observations=[],allItems=[];let total=null,printedCount=null;
+  const observations=[],allItems=[],receiptTotals=[];let total=null,printedCount=null;
+  const scanWarnings=new Set();
   for(let i=0;i<scanPhotos.length;i++){
    if(token!==scanToken)return;
    scanStatus='写真 '+(i+1)+' / '+scanPhotos.length+' を解析しています…';
@@ -589,21 +596,26 @@ async function runReceiptScan(){
     allItems.push({name:n,ocrRawName:n,ocrRowId:'ocr-'+id(),quantity:quantityUncertain?1:item.quantity,
      quantityUncertain,amount:price,productId,autoLinked:!!productId,issues});
    }
-   if(Number.isSafeInteger(out.parsed.receiptTotal))total=out.parsed.receiptTotal;
+   if(Number.isSafeInteger(out.parsed.receiptTotal)){total=out.parsed.receiptTotal;receiptTotals.push(total);}
+   for(const w of out.parsed.warnings||[])if(w.code==='conflicting_receipt_totals'||w.code==='conflicting_printed_counts')scanWarnings.add(w.code);
    if(scanPhotos.length===1&&Number.isSafeInteger(out.parsed.printedCount))printedCount=out.parsed.printedCount;
   }
   if(token!==scanToken)return;
   if(!allItems.length)throw Error('商品明細を抽出できませんでした。別の写真で読み取りを試してください。');
   const raw=observations.join('\n');
+  if(new Set(receiptTotals).size>1){total=null;scanWarnings.add('conflicting_receipt_totals');}
+  const date=scanDate(raw);
   const chain=scanChainForStore(raw.slice(0,800));
-  scanDraft={items:allItems,total,printedCount,date:scanDate(raw),source:'ocr',
+  scanDraft={items:allItems,total,printedCount,date,source:'ocr',
    chainId:chain?.id||null,chainName:''};
   scanDraft.items.forEach(item=>{
    item.productId=scanMatchProduct(item.ocrRawName,scanDraft.chainId);
    item.autoLinked=!!item.productId;
   });
   saveScanDraft();
-  scanStatus='読み取り完了：'+allItems.length+'明細。原本と照合して修正してください。';
+  scanStatus='読み取り完了：'+allItems.length+'明細。原本と照合して修正してください。'+
+   (scanWarnings.size?' 複数の印字合計・点数を検出したため自動確定していません。':'')+
+   (!date?' 購入日は原本を見て確認してください。':'');
  }catch(e){if(token===scanToken)scanStatus='読み取れませんでした：'+(e.message||String(e));}
  finally{if(token===scanToken){scanBusy=false;render();}}
 }
