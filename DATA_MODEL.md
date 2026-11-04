@@ -1,5 +1,13 @@
 # くらしストック｜データモデル v1.8（正本契約・旧接続前資料）
 
+## 現行データモデル：v0.70.0（2026-11-04／推測名・税込明細金額の補完）
+
+- 明細名はOCR原文（`product_aliases.ocr_name`／旧`raw_name`）、ChatGPT推測名（`record_items.inferred_name`）、OCR名がない場合のみ使う確定名（`record_items.confirmed_name`）の3種。OCR原文と確定名の一方があればよく、商品IDは任意。
+- ChatGPT推測名は正式な商品名ではなく商品登録画面の初期値に用いる。OCR名は変更せず、1対1で対応できる行は既存のOCR辞書へ登録・参照する。
+- `kurashi-receipt-assist-1`の従来3キーのJSONも受け取り、追加の`quantity`と`amount`（税込明細**合計**）を任意で取り込む。写真で判別できない金額はnullとし、元OCR値もなければ空欄のまま利用者に入力を求める。印字合計からの推定配賦はしない。
+- ユニクロのような全面再解析はOCR原文がないため、推測名と確定名を保存しOCR辞書へ登録しない。ChatGPT修正候補の採用・OCR解除の二つの旧ボタンは廃止する。
+- 既存の`record_items`の末尾に`inferred_name`を1列追加し、従来列・レシート・OCR辞書は非破壊で維持する。
+
 ## 現行データモデル：v0.69.0（2026-11-04／OCR全面置き換え経路）
 
 - OCRの写真商品行との対応が成立している場合は、`kurashi-receipt-assist-1`の`nameCandidate`だけ取り込み、元のOCR行のID・原文・行数を保持する。
