@@ -732,7 +732,12 @@ async function runReceiptScan(){
      productId,autoLinked:!!productId,issues});
    }
    if(Number.isSafeInteger(out.parsed.receiptTotal)){total=out.parsed.receiptTotal;receiptTotals.push(total);}
-   for(const w of out.parsed.warnings||[])if(w.code==='conflicting_receipt_totals'||w.code==='conflicting_printed_counts')scanWarnings.add(w.code);
+   for(const w of out.parsed.warnings||[]){
+    if(['conflicting_receipt_totals','conflicting_printed_counts','unassigned_price'].includes(w.code))scanWarnings.add(w.code);
+   }
+   if(out.parsed.reconciliation?.candidateCountMatches===false)scanWarnings.add('candidate_count_mismatch');
+   if(out.parsed.reconciliation?.subtotalMatches===false)scanWarnings.add('subtotal_mismatch');
+   if(out.parsed.reconciliation?.totalMatches===false)scanWarnings.add('receipt_total_mismatch');
    if(scanPhotos.length===1&&Number.isSafeInteger(out.parsed.printedCount))printedCount=out.parsed.printedCount;
   }
   if(token!==scanToken)return;
@@ -749,9 +754,16 @@ async function runReceiptScan(){
   });
   saveScanDraft();
   scanPhotosExpanded=false;
+  const scanNotices=[
+   (scanWarnings.has('conflicting_receipt_totals')||scanWarnings.has('conflicting_printed_counts'))?'合計・購入点数の競合を検出しました。':'',
+   scanWarnings.has('candidate_count_mismatch')?'印字購入点数と抽出した数量が一致しません。':'',
+   scanWarnings.has('subtotal_mismatch')?'税抜明細の合計が印字小計と一致しません。':'',
+   scanWarnings.has('receipt_total_mismatch')?'明細と税額の合計が印字合計と一致しません。':'',
+   scanWarnings.has('unassigned_price')?'商品に対応付けられない金額を検出しました。':'',
+   !date?'購入日は原本を見て確認してください。':''
+  ].filter(Boolean);
   scanStatus='読み取り完了：'+allItems.length+'明細。原本と照合して修正してください。'+
-   (scanWarnings.size?' 複数の印字合計・点数を検出したため自動確定していません。':'')+
-   (!date?' 購入日は原本を見て確認してください。':'');
+   (scanNotices.length?' '+scanNotices.join(' '):'');
  }catch(e){if(token===scanToken)scanStatus='読み取れませんでした：'+(e.message||String(e));}
  finally{if(token===scanToken){scanBusy=false;render();}}
 }
