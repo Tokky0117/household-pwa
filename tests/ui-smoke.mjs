@@ -4,10 +4,12 @@ import vm from 'node:vm';
 const source=readFileSync(new URL('../app.js',import.meta.url),'utf8');
 const css=readFileSync(new URL('../styles.css',import.meta.url),'utf8');
 const handlers={};
+const documentHandlers={};
 let mockSwipeRows=[];
 const app={innerHTML:'',addEventListener(type,fn){(handlers[type]??=[]).push(fn)},insertAdjacentHTML(){}};
 const storage=new Map();
 const doc={
+ addEventListener(type,fn){(documentHandlers[type]??=[]).push(fn)},
  getElementById:k=>k==='app'?app:null,
  querySelector(){return null},
  querySelectorAll(s){return s.includes('.swipe-item:not(.drag-ghost)')?mockSwipeRows:[]},
@@ -221,6 +223,7 @@ assert.equal((indexHtml.match(/id="receipt-source-picker"/g)||[]).length,1);
 assert.equal((indexHtml.match(/id="scan-add-picker"/g)||[]).length,1);
 assert.ok(!ui.receiptScanView().includes('id="scan-add-picker"'));
 assert.ok(source.includes("document.addEventListener('change',e=>{"));
+assert.ok(documentHandlers.change?.length,'Native photo change is registered on stable document');
 assert.ok(source.includes("picker.value=''"));
 assert.ok(source.includes("if(!files.length)return"));
 assert.equal((indexHtml.match(/type="file" accept="image\/\*"/g)||[]).length,2,
