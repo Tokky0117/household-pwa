@@ -188,6 +188,9 @@
    if(m=l.match(/^(.+?)\s*¥([\d,]+)$/)||l.match(/^(.+?)\s+([\d,]+)(?:円)?$/)){
     const raw=lines[i].replace(/(?:[¥￥\\]\s*[0-9０-９,，]+|[\s　]+[0-9０-９,，]+(?:円)?)\s*$/,'');
     const candidate=name(raw);
+    if(/^(?:(?:お|御)?買上(?:げ)?点数|買上品数)/.test(candidate)){
+     warn('unreadable_printed_count',ix);pending=null;continue;
+    }
     // A stand-alone OCR fragment like "! ¥98" is a price, not a product.
     // A barcode may still stand alone as a name until geometry resolves it.
     if(!/税|対象|クレジット/.test(m[1])&&
