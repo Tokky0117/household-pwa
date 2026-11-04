@@ -709,7 +709,7 @@ async function runReceiptScan(){
  scanStatus='読み取りを準備中です。初回はOCRモデルの取得に時間がかかる場合があります。';
  render();
  try{
-  const engine=scanRuntime||(scanRuntime=await import('./ocr-engine/engine.js'));
+  const engine=scanRuntime||(scanRuntime=await import('./ocr-engine/engine.js?v=70-ocr7'));
   const observations=[],allItems=[],receiptTotals=[],taxModes=[];let total=null,printedCount=null;
   const scanWarnings=new Set();
   for(let i=0;i<scanPhotos.length;i++){
