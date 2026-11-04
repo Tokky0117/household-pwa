@@ -1,4 +1,4 @@
-const APP_VERSION='0.70.0';
+const APP_VERSION='0.70.1';
 const CATS=['飲食','キッチン','洗面・風呂','洗濯・掃除','その他'];
 const liveMode=!!window.KurashiLive; // Data source only; original Preview v46 UI components remain.
 const SEED=[['牛乳',0,true],['麦茶',0,false],['コーヒー',0,true],['卵',0,false],['キッチンペーパー',1,false],['ラップ',1,true],['食器用洗剤',1,true],['シャンプー',2,false],['歯磨き粉',2,true],['ハンドソープ',2,false],['洗濯洗剤',3,false],['柔軟剤',3,true],['トイレットペーパー',3,false],['乾電池',4,true],['ティッシュ',4,true]];
@@ -176,7 +176,7 @@ let newRecordType='receipt';
 // Native iPhone chooser: Photo Library, Take Photo, or Files. Photos stay in memory.
 let scanPhotos=[],scanIndex=0,scanBusy=false,scanDraft=null,scanStatus='',scanToken=0;
 let scanRuntime=null,scanDraftAvailable=false,scanDraftWrites=Promise.resolve(),chatGptError='',recordDetailId=null,scanProductRow=null;
-let scanBulkBusy=false,scanExistingQuery='';
+let scanBulkBusy=false,scanExistingQuery='',recordDetailOrigin='list';
 function saveScanDraft(){
  if(!liveMode||!window.KurashiLive?.saveReceiptDraft)return;
  const snapshot=scanDraft?JSON.parse(JSON.stringify(scanDraft)):null;
@@ -711,7 +711,7 @@ const UI={
 };
 const svg=k=>`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${icons[k]}</svg>`;
 function head(title,sub='',back=false,right='',left=''){return `<header class="top"><div class="headrow"><div class="head-left">${back?`<button class="iconbtn" data-act="back" aria-label="戻る">${chevron('left')}</button>`:left}</div><div class="head-title">${sub?`<p class="eyebrow">${esc(sub)}</p>`:''}<h1>${esc(title)}</h1></div><div class="head-right">${right}</div></div></header>`}
-function nav(){return `<nav class="bottom" aria-label="メインメニュー"><div class="tabs">${[['items','日用品'],['receipt','レシート'],['settings','設定']].map(([k,v])=>`<button class="tab ${tab===k?'active':''}" data-tab="${k}" ${tab===k?'aria-current="page"':''}>${svg(k)}<span>${v}</span></button>`).join('')}</div></nav>`}
+function nav(){return `<nav class="bottom" aria-label="メインメニュー"><div class="tabs">${[['items','日用品'],['receipt','明細'],['settings','設定']].map(([k,v])=>`<button class="tab ${tab===k?'active':''}" data-tab="${k}" ${tab===k?'aria-current="page"':''}>${svg(k)}<span>${v}</span></button>`).join('')}</div></nav>`}
 function listResults(){
  const q=norm(query),matches=i=>(!q||norm(i.name).includes(q))&&(!onlyOut||!i.inStock);
  return CATS.map((cat,idx)=>{
@@ -925,18 +925,41 @@ function recordAddView(){
  ].join('');
  return UI.sheet({title:type==='receipt'?'レシート明細を記録':'値札を記録',variant:'product-picker-modal',body:`<form id="recordForm" class="record-entry-form">${fields}<button class="primary" type="submit">${liveMode?'記録する':'この端末に試作保存'}</button><p class="sample-price-notice">${liveMode?'※ 1回1明細。Google Sheetsへ自動保存。ログイン一時停止中は個人情報の入力を控えてください。':'※ OCR・Sheets・夫婦間同期は未接続。1回につき1明細の試作入力です。'}</p></form>`});
 }
-function receiptView(){
- const records=liveMode?liveRecords:previewRecords;
- const rows=records.records.slice().reverse().map(r=>{
- const details=records.record_items.filter(x=>x.record_id===r.record_id&&!x.deleted_at);
+function receiptHistoryRows(records){
+ return records.map(r=>{
+ const details=allPreviewItems().filter(x=>x.record_id===r.record_id&&!x.deleted_at);
  const total=details.reduce((sum,x)=>sum+Number(x.amount_tax_included||0),0);
  const first=details[0],p=catalogue.products.find(x=>x.id===first?.product_id);
  return `<button type="button" class="panel preview-record-row receipt-history-row" data-act="recordDetail" data-record-id="${esc(r.record_id)}">
- <strong>${esc(r.record_type==='receipt'?'レシート':'値札')} · ${esc(r.record_date)}</strong>
- <span>${esc(chainLabel(r.chain_id))}／${esc(p?.name||aliasNameFor(first)||'未照合')}${details.length>1?' ほか'+(details.length-1)+'件':''}</span>
- <span>${yen(total)} · ${details.length}明細</span></button>`;
- }).join('')||'<div class="empty">記録はまだありません</div>';
- return `${head('レシート','くらしストック_試作')}<main class="preview-record-page"><p class="sample-price-notice">${liveMode?'レシート写真から自動解析できます。OCR結果は保存前に必ず確認してください。':'※ 手入力の試作機能。OCR・Sheets・夫婦間同期は未接続です。'}</p><div class="record-entry-actions">${liveMode?'<button class="primary" data-act="receiptScan">'+miniIcon('plus')+'<span>写真からレシートを読み取る</span></button>':''}${scanDraftAvailable?'<button class="secondary" data-act="resumeScanDraft">下書きを再開</button>':''}<button class="secondary" data-act="newReceipt">${miniIcon('plus')}<span>レシート明細</span></button><button class="secondary" data-act="newShelf">${miniIcon('plus')}<span>値札</span></button></div><h2 class="sectiontitle">${liveMode?'保存した記録':'この端末の記録'}</h2>${rows}</main>${nav()}`;
+ <strong>${esc(chainLabel(r.chain_id))}</strong>
+ <span>${esc(r.record_date)} · ${esc(r.record_type==='receipt'?'レシート':'値札')} · ${details.length}明細</span>
+ <span>${esc(p?.name||aliasNameFor(first)||'未照合')}${details.length>1?' ほか'+(details.length-1)+'件':''}</span>
+ <strong>${yen(total)}</strong></button>`;
+ }).join('');
+}
+function receiptView(){
+ const recent=allPreviewRecords().filter(r=>!r.deleted_at).slice().reverse().slice(0,5);
+ const draft=scanDraftAvailable?`<button type="button" class="panel preview-record-row receipt-history-row" data-act="resumeScanDraft">
+ <strong>未保存の下書き</strong><span>レシートの確認を再開</span><span>写真は下書きに保存されません</span></button>`:'';
+ return `${head('明細')}<main class="preview-record-page">
+ <h2 class="sectiontitle">明細を登録</h2>
+ <div class="record-entry-actions">
+ ${liveMode?'<button class="primary" data-act="receiptScan">'+miniIcon('plus')+'<span>レシート読取</span></button>':''}
+ <button class="secondary" data-act="newReceipt">${miniIcon('plus')}<span>レシート入力</span></button>
+ <button class="secondary" data-act="newShelf">${miniIcon('plus')}<span>値札入力</span></button>
+ </div>
+ <div class="row" style="justify-content:space-between;align-items:center">
+ <h2 class="sectiontitle">明細一覧</h2>
+ <button type="button" class="tertiary" data-act="receiptAll">すべて表示 ${chevron('right')}</button>
+ </div>
+ ${draft}${receiptHistoryRows(recent)||(!draft?'<div class="empty">記録はまだありません</div>':'')}
+ </main>${nav()}`;
+}
+function receiptAllView(){
+ const records=allPreviewRecords().filter(r=>!r.deleted_at).slice().reverse();
+ return `${head('明細一覧','',true)}<main class="preview-record-page">
+ ${receiptHistoryRows(records)||'<div class="empty">記録はまだありません</div>'}
+ </main>`;
 }
 function stub(title,icon,desc){return `${head(title,'くらしストック_試作')}<main><div class="panel placeholder"><div class="bubble">${icon}</div><h2>${title}画面</h2><p>${desc}</p></div><div class="alert">この画面は共通UIの確認用です。データ処理や同期はまだ行いません。</div></main>${nav()}`}
 function settingsView(){
@@ -977,6 +1000,7 @@ function pageView(){
   case 'recordScan': return receiptScanView();
   case 'recordChatGpt': return receiptChatGptView();
   case 'recordDetail': return recordDetailView();
+  case 'receiptAll': return receiptAllView();
   case 'scanProduct': return receiptScanView();
   case 'scanBulkProducts': return receiptScanView();
   case 'scanExistingProduct': return receiptScanView();
@@ -1120,7 +1144,8 @@ function back(){
   if(page==='scanExistingProduct'){page='recordScan';scanExistingQuery='';render();return;}
   if(page==='scanBulkProducts'){if(!scanBulkBusy){page='recordScan';render();}return;}
   if(page==='scanProduct'){page='recordScan';scanProductRow=null;render();return;}
-  if(page==='recordDetail'){page='list';tab='receipt';render();return;}
+  if(page==='recordDetail'){page=recordDetailOrigin;tab='receipt';render();return;}
+  if(page==='receiptAll'){page='list';tab='receipt';render();return;}
   if(page==='recordChatGpt'){
    page=scanDraft?.source==='ocr'?'recordScan':'list';tab='receipt';render();return;
   }
@@ -1767,6 +1792,7 @@ if(action==='chatGptImport'){
  }
  return;
 }
+if(action==='receiptAll'){page='receiptAll';tab='receipt';render();return;}
 if(action==='resumeScanDraft'){
  window.KurashiLive.loadReceiptDraft().then(draft=>{
   if(!draft)return;
@@ -1779,7 +1805,7 @@ if(action==='scanAddPhotos'){
  if(!scanBusy)document.getElementById('scan-add-picker')?.click();return;
 }
 if(action==='recordDetail'){
- recordDetailId=el.dataset.recordId;page='recordDetail';render();return;
+ recordDetailOrigin=page==='receiptAll'?'receiptAll':'list';recordDetailId=el.dataset.recordId;page='recordDetail';render();return;
 }
 if(action==='recordEdit'){
  const r=allPreviewRecords().find(x=>x.record_id===recordDetailId);
