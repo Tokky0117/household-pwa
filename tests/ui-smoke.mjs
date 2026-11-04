@@ -195,9 +195,9 @@ assert.ok(!source.includes('if(el.dataset.move)')&&!source.includes('if(el.datas
 assert.ok(!source.includes('headerMenu({')&&!source.includes('info({action,'),'Unused UI helpers stay removed');
 assert.ok(!css.includes('.compare-form-row{')&&!css.includes('.unit-page{'),'Retired comparison CSS stays removed');
 
-assert.ok(source.includes("class=\"${b.critical?'secondary confirm-caution'"),'Shared dialog supports cautious confirmation style');
+assert.ok(source.includes("b.primary&&!b.critical&&!b.danger?'primary':'secondary'"),'Shared dialog uses primary only for safe promoted actions');
 assert.ok(source.includes("{id:'confirmHide',label:'削除',critical:true}")&&source.includes("{id:'confirmProductUnlink',label:'解除する',critical:true}"),'Delete and unlink share cautious style');
-assert.ok(!css.includes('[data-dialog="confirmHide"]')&&css.includes('.dialog-actions .confirm-caution'),'Cautious styling is not action-ID specific');
+assert.ok(!css.includes('[data-dialog="confirmHide"]')&&!css.includes('.dialog-actions .confirm-caution'),'Delete uses the same common secondary style without action-specific overrides');
 assert.ok(source.includes('duplicateItemNotice(existing,false)')&&source.includes('duplicateItemNotice(hidden,true)'),'Existing and hidden duplicates use inline notice');
 assert.ok(!source.includes('新しい日用品として登録')&&!source.includes("if(action==='new'&&p)"),'Retired duplicate-new flow is absent');
 assert.ok(source.includes("if(action==='restoreItem'||action==='showExistingItem')"),'Duplicate notice actions are handled');
