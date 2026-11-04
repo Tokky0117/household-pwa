@@ -161,6 +161,11 @@ assert.ok(ui.receiptView().includes('明細一覧'));
 assert.ok(ui.receiptView().includes('すべて表示'));
 assert.ok(ui.receiptView().includes('レシート入力'));
 assert.ok(ui.receiptView().includes('値札入力'));
+assert.ok(ui.receiptView().includes('ui-section-heading')&&ui.receiptView().includes('ui-text-action'),'Receipt home reuses section heading and backgroundless link');
+assert.ok(ui.receiptView().includes('ui-record-row')&&!ui.receiptView().includes('ほか'),'Receipt rows omit product summaries');
+assert.ok(ui.receiptView().includes('くらしストック'),'Receipt header uses the daily-item subtitle');
+assert.ok(source.includes('function getRecordSummary(')&&source.includes('UI.recordRow(getRecordSummary(r))'),'History summary and shared row renderer');
+assert.ok(css.includes('.record-entry-actions{display:grid;grid-template-columns:repeat(3'),'Receipt registration has three equal columns');
 assert.ok(!ui.receiptView().includes('家計簿'),'retired budget tab stays absent');
 const cls=(id)=>{const c=new Set();return {dataset:{productId:id},classList:{toggle(k,b){b?c.add(k):c.delete(k)}},querySelectorAll(){return [{tabIndex:-1}]},state:c}};
 const a=cls('p-milk-1'),b=cls('p-milk-2');mockSwipeRows=[a,b];
@@ -217,9 +222,9 @@ assert.ok(source.includes('liveRecords={records:'),
 assert.ok(ui.receiptScanView().includes('id="scan-status"')&&
  !ui.receiptScanView().includes('scan-crop-canvas')&&
  !ui.receiptScanView().includes('scan-mode'),'No crop and preprocessing selector');
-assert.ok(source.includes('data-act="receiptScan"')&&
+assert.ok(source.includes("action:'receiptScan'")&&
  source.includes("document.getElementById('receipt-source-picker')?.click()"),
- 'Native chooser is available in the live receipt tab; offline preview remains unchanged');
+ 'Live receipt registration maps to the existing native chooser; offline preview remains unchanged');
 assert.ok(source.includes("document.getElementById('receipt-source-picker')?.click()"),
  'Source chooser is opened synchronously on user tap');
 const indexHtml=readFileSync(new URL('../index.html',import.meta.url),'utf8');
