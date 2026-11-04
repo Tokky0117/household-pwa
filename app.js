@@ -189,6 +189,11 @@ function resetScan({keepDraft=false}={}){
  if(!keepDraft){scanDraft=null;saveScanDraft();}
 }
 // OCR row IDs and printed names are authoritative; AI may only suggest a product name.
+function isUnconfirmedBarcodeLine(item){
+ return !!item&&item.ocrRawName!==undefined&&
+  !['manual','photo'].includes(item.inputOrigin)&&!item.savedOcrName&&
+  /^\d{13}$/.test(String(item.ocrRawName||'').trim());
+}
 function receiptOcrRows(draft){
  if(!draft||draft.source!=='ocr')return [];
  return (draft.items||[]).map((item,i)=>({item,i}))
@@ -227,6 +232,12 @@ function applyChatGptOcrAssistance(draft,result){
  for(const {i} of rows){
   const item=next.items[i],rowId=item.ocrRowId||'row-'+(i+1);
   if(!proposed.has(rowId))throw Error('OCR行IDが不足しています');
+  if(isUnconfirmedBarcodeLine(item)){
+   // A barcode can identify a source line, but is not the printed product name.
+   // Ignore even a hallucinated AI candidate or previously learned auto-link.
+   item.productId='';item.autoLinked=false;item.nameCandidate='';
+   next.unmatchedCount++;continue;
+  }
   const productId=item.productId||scanMatchProduct(item.ocrRawName||'',next.chainId);
   if(productId){
    item.productId=productId;item.autoLinked=!item.manuallyLinked;
@@ -389,7 +400,7 @@ function scanAutolinkUnmatched(){
  if(!scanDraft)return 0;
  let added=0;
  for(const item of scanDraft.items){
-  if(['manual','photo'].includes(item.inputOrigin))continue;
+  if(['manual','photo'].includes(item.inputOrigin)||isUnconfirmedBarcodeLine(item))continue;
   if(item.productId||!item.name)continue;
   const match=scanMatchProduct(item.name,scanDraft.chainId);
   if(match){item.productId=match;item.autoLinked=true;added++}
@@ -397,7 +408,7 @@ function scanAutolinkUnmatched(){
  return added;
 }
 function learnConfirmedReceiptLine(item,chainId){
- if(['manual','photo'].includes(item?.inputOrigin))return;
+ if(['manual','photo'].includes(item?.inputOrigin)||isUnconfirmedBarcodeLine(item))return;
  if(!liveMode||!chainId||!item?.productId||!item.name||
     !window.KurashiLive?.learnAliases)return;
  const lines=[{raw_name:String(item.name).trim(),product_id:item.productId}];
@@ -627,7 +638,7 @@ async function runReceiptScan(){
   scanDraft={items:allItems,total,printedCount,date,source:'ocr',
    chainId:chain?.id||null,chainName:''};
   scanDraft.items.forEach(item=>{
-   item.productId=scanMatchProduct(item.ocrRawName,scanDraft.chainId);
+   item.productId=isUnconfirmedBarcodeLine(item)?'':scanMatchProduct(item.ocrRawName,scanDraft.chainId);
    item.autoLinked=!!item.productId;
   });
   saveScanDraft();
@@ -1391,6 +1402,9 @@ app.addEventListener('submit',e=>{e.preventDefault();const form=e.target;const d
     category_id:null
    };
   });
+  if(scanDraft.items.some(isUnconfirmedBarcodeLine)){
+   fieldNotice(form,'商品コードのみの明細はOCR名として保存できません。「OCRと紐付けず写真から明細を入力」で商品名を確認してください');return;
+  }
   if(lines.some(x=>('confirmed_name' in x&&!x.confirmed_name)||
      !Number.isSafeInteger(x.quantity)||x.quantity<1||
      !Number.isSafeInteger(x.amount_tax_included)||x.amount_tax_included<0)){
@@ -1423,7 +1437,7 @@ app.addEventListener('submit',e=>{e.preventDefault();const form=e.target;const d
     }).catch(err=>console.warn('購入店舗の別名を保存できません',err));
    // Product-specific aliases are synchronized through the preexisting queue.
    // Include the exact original OCR name after explicit confirmation.
-   const aliasLines=lines.filter((_,i)=>!['manual','photo'].includes(scanDraft.items[i].inputOrigin)&&
+   const aliasLines=lines.filter((_,i)=>!['manual','photo'].includes(scanDraft.items[i].inputOrigin)&&!isUnconfirmedBarcodeLine(scanDraft.items[i])&&
     scanDraft.items[i].ocrRawName!==undefined);
    if(aliasLines.length&&window.KurashiLive.learnAliases&&learnedChain&&learnedChain!=='__new__')
     void window.KurashiLive.learnAliases({chain_id:learnedChain,items:aliasLines})
