@@ -30,7 +30,7 @@
  function parse(source){
   const rawText=String(source||''), items=[], warnings=[], adjustments=[];
   const taxBreakdown=[];
-  const lines=rawText.split(/\r?\n/);let pending=null,last=null,janPending=null,coupon=false,summary=false;
+  const lines=rawText.split(/\r?\n/);let pending=null,last=null,janPending=null,coupon=false,summary=false,discountPending=null;
   let receiptTotal=null,subtotal=null,taxTotal=null,printedCount=null;
   const receiptTotals=[],printedCounts=[];
   const recordTotal=value=>{receiptTotals.push(value);receiptTotal=value;};
@@ -48,7 +48,7 @@
    if(last.netAmount<0)last.issues.push('negative_net');
   };
   for(let i=0;i<lines.length;i++){
-   const l=norm(lines[i]).replace(/\\(?=\s*\d)/g,'¥');if(!l)continue;const ix=i+1;let m;
+   const l=norm(lines[i]).replace(/\\(?=\s*\d)/g,'¥').replace(/[¥￥]\s+(?=\d)/g,'¥');if(!l)continue;const ix=i+1;let m;
    const tax=l.match(/^(?:\(?(?:内|税)\s*(8|10)%(?: 対象 [¥]?[\d,]+)?\s*[¥]([\d,]+)\)?|内消費税 (8|10)\.00% ¥([\d,]+)|(?:8|10)%\s*対象\s+[¥]?[\d,]+\s*\(\s*消費税\s*[¥]?([\d,]+)\s*\))$/);
    const targetTax=l.match(/^\(\s*(8|10)%\s*対象消費税\s*[¥]?([\d,]+)\s*\)$/);
    if(tax){const amount=num(tax[2]||tax[4]||tax[5]);taxBreakdown.push({rate:Number(tax[1]||tax[3]||l.match(/^(8|10)/)[1]),amount,sourceLine:ix});}
@@ -65,8 +65,20 @@
    }
    if(m=l.match(/^小計(?:金額)?\s*[¥]?\s*([\d,]+)$/)){subtotal=num(m[1]);summary=true;pending=null;janPending=null;continue;}
    if(m=l.match(/^(?:(?:お|御)?買上(?:げ)?点数)\s*(\d{1,3})(?:\s*点)?(?:\s*\([A-Za-z0-9]{1,3}\))?$/)){printedCount=+m[1];printedCounts.push(printedCount);continue;}
+   // A truncated footer cannot become an extra merchandise item.
+   if(/^(?:(?:お|御)?買上(?:げ)?点数|買上品数)(?:\s*[:：]?)?$/.test(l)){
+    warn('unreadable_printed_count',ix);pending=null;continue;
+   }
    if(m=l.match(/^(?:税(?:8|10)%|外税額 (?:8|10)%)\s*¥([\d,]+)$/)){taxTotal=(taxTotal||0)+num(m[1]);continue;}
    if(summary)continue;
+   // Some OCR layouts split "分類一括割引 10%" and its negative amount.
+   // Pair only the immediately following standalone negative number.
+   if(discountPending!==null){
+    if(m=l.match(/^[-−－]\s*[¥￥]?\s*([\d,]+)(?:円)?$/)){
+     discount(num(m[1]),ix);discountPending=null;continue;
+    }
+    discountPending=null;
+   }
    if(registerMetadata.test(l)){pending=null;continue;}
    // Barcode -> name -> tax-inclusive price. Fail closed when incomplete.
    if(m=l.match(janHeader)){
@@ -137,8 +149,9 @@
    }
    if(coupon){continue;}
    if(/値引|割引/.test(l)){
-    if(m=l.match(/-([\d,]+)$/))discount(num(m[1]),ix);
-    // Percentage-only headers do not become names; the quantity discount follows.
+    if(m=l.match(/[-−－]\s*[¥￥]?\s*([\d,]+)$/))discount(num(m[1]),ix);
+    else if(last)discountPending=ix;
+    // Discount rows never count as products.
     pending=null;continue;
    }
    if(m=l.match(/^\(?\s*(\d+)個\s*[x×]\s*@([\d,]+)\s*\)?$/i)){
