@@ -1794,16 +1794,16 @@ for(let i=1;i<legacy.db.record_items.length;i++){
 legacy.failRecordItemWriteAfter(2); // new header, first linked row, then simulated failure
 assert.equal(legacy.call('bootstrap').ok,false,
  'interrupted schema migration does not claim completion');
-assert.equal(legacy.db.record_items[0].at(-1),'inferred_name',
- 'new inferred name appended after historical columns');
-assert.equal(legacy.db.record_items[0].at(-2),'confirmed_name',
- 'photo confirmed names remain at the original column');
-assert.equal(legacy.db.record_items[0].at(-3),'alias_id',
- 'existing alias reference remains in place');
+assert.equal(legacy.db.record_items[0].at(-1),'confirmed_name',
+ 'simulated interruption happened before the final appended column');
+assert.equal(legacy.db.record_items[0].at(-2),'alias_id',
+ 'earlier append-only migration columns remain intact');
 assert.equal(legacy.db.product_aliases[0].at(-1),'ocr_name',
  'existing OCR dictionary gains only the new trailing header');
 const resumedLegacy=legacy.call('bootstrap');
 assert.equal(resumedLegacy.ok,true,'second boot resumes and completes migration');
+assert.equal(legacy.db.record_items[0].at(-1),'inferred_name',
+ 'retry appends final inferred name without rebuilding Sheets');
 const savedLegacy=resumedLegacy.data.record_items.sort((a,b)=>a.line_order-b.line_order);
 assert.equal(savedLegacy.length,2,'all old receipt lines remain');
 savedLegacy.forEach((line,i)=>{
