@@ -512,6 +512,47 @@ const ordinary=structure.parse('商品A ¥100\n内税10% ¥9\n合計 ¥100\nお�
 assert.equal(ordinary.receiptTotal,100);
 assert.equal(ordinary.printedCount,1);
 console.log('v67: geometric barcode-to-name linking and ambiguous multi-receipt totals/dates OK');
+
+// External-tax receipts: merchandise rows and discounts are recognizable, while
+// inclusive amounts must not be fabricated from an invoice-wide tax total.
+const externalFixture=structure.parse([
+ '※ 野菜A ! ¥98','分類一括割引 10% -10',
+ '※ きのこB ! ¥128','分類一括割引 10%','-13',
+ '※ 食品C ! ¥216','2個 × @108','分類一括割引 10% -22',
+ '小計 ¥397','外税額 8% ¥32','買上点数','4点','合計 ¥429'
+].join('\n'));
+assert.equal(externalFixture.items.length,3,'discounts and a split printed-count label are not merchandise');
+assert.equal(externalFixture.printedCount,4,'printed count can follow its label on a separate line');
+assert.deepEqual(Array.from(externalFixture.items,x=>x.netAmount),[88,115,194],
+ 'item net amounts include each adjacent category discount');
+assert.equal(externalFixture.taxBasis,'excluded');
+assert.equal(externalFixture.subtotal,397);
+assert.equal(externalFixture.taxTotal,32);
+assert.equal(externalFixture.receiptTotal,429);
+assert.equal(externalFixture.reconciliation.totalMatches,true);
+assert.ok(externalFixture.items.every(x=>x.taxIncludedAmount===null),
+ 'invoice-wide external tax does not authorize inventing per-item inclusive amounts');
+const separatePriceLayout=geometry.groupLines([
+ observed('※ 野菜A',100,300,124),observed('! ¥98',292,311,60),
+ observed('分類一括割引 10% -10',100,340,245),
+ observed('合計 ¥88',100,386,160)]);
+const separated=structure.parse(separatePriceLayout.text);
+assert.equal(separated.items.length,0,'unassociated standalone price is not invented into merchandise');
+const stitched=geometry.joinSplitPriceColumns(separatePriceLayout);
+assert.equal(stitched.lines.length,3,'a single close right-hand price fragment is geometrically rejoined');
+assert.equal(structure.parse(stitched.text).items[0].name,'野菜A');
+assert.equal(structure.parse(stitched.text).items[0].netAmount,88);
+const unrelatedPrice=geometry.groupLines([
+ observed('※ 野菜A',100,300,124),observed('! ¥98',740,311,60)]);
+assert.equal(geometry.joinSplitPriceColumns(unrelatedPrice).lines.length,2,
+ 'distant neighbouring receipt price is not linked by mere line order');
+ui.setScanDraft({source:'ocr',taxBasis:'excluded',date:'2026-10-12',chainId:'c-a',
+ total:429,printedCount:4,items:[{name:'野菜A',ocrRawName:'野菜A',
+  quantity:1,amount:'',taxExcludedAmount:88,ocrDiscount:10,productId:'',issues:[]}]});
+const externalReview=ui.receiptScanView();
+assert.ok(externalReview.includes('外税方式')&&externalReview.includes('OCR税抜印字額（値引き後）'),
+ 'receipt review exposes printed net amounts without auto-filling unsupported inclusive amounts');
+
 // Photo-confirmed rows persist outside the OCR-name dictionary.
 const photoDraft={source:'ocr',date:'2026-10-12',chainId:'c-a',total:11550,items:[
  {name:'2000211787545',ocrRawName:'2000211787545',ocrRowId:'code-only',
