@@ -561,6 +561,23 @@ assert.equal(longExternal.items.reduce((sum,item)=>sum+item.taxIncludedAmount,0)
 assert.equal(longExternal.items.reduce((sum,item)=>sum+item.allocatedTax,0),255,
  'every allocated yen is accounted for once and only once');
 
+// Ex-tax amount absent from OCR: recover only with explicit single-rate base,
+ // an independent printed subtotal/total, and exact reconciliation.
+const recoveredTax=structure.parse([
+ '※ 食品A ¥100','※ 食品B ¥200','小計 ¥300',
+ '(外税 8%対象額 ¥300)','合計 ¥324'
+].join('\n'));
+assert.equal(recoveredTax.taxAllocation.status,'allocated');
+assert.equal(recoveredTax.taxTotal,24);
+assert.deepEqual(Array.from(recoveredTax.items,x=>x.taxIncludedAmount),[108,216]);
+assert.ok(recoveredTax.warnings.some(w=>w.code==='tax_derived_from_printed_totals'));
+const unsafeTax=structure.parse([
+ '※ 食品A ¥100','※ 食品B ¥200','小計 ¥300',
+ '(外税 8%対象額 ¥300)','合計 ¥350'
+].join('\n'));
+assert.equal(unsafeTax.taxAllocation.status,'unresolved',
+ 'inconsistent invoice tax cannot be constructed from a difference');
+
 const separatePriceLayout=geometry.groupLines([
  observed('※ 野菜A',100,300,124),observed('! ¥98',292,311,60),
  observed('分類一括割引 10% -10',100,340,245),
