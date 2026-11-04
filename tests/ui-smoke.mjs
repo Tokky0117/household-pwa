@@ -223,8 +223,12 @@ assert.ok(!ui.receiptScanView().includes('id="scan-add-picker"'));
 assert.ok(source.includes("document.addEventListener('change',e=>{"));
 assert.ok(source.includes("picker.value=''"));
 assert.ok(source.includes("if(!files.length)return"));
-assert.ok(indexHtml.includes('type="file" accept="image/*" multiple'),
- 'Native picker offers photo library, camera or files');
+assert.equal((indexHtml.match(/type="file" accept="image\/\*"/g)||[]).length,2,
+ 'Both photo inputs use native single-photo selection');
+assert.ok(!indexHtml.includes('accept="image/*" multiple'),
+ 'Avoid the iOS multi-photo picker first-selection failure');
+assert.ok(source.includes("scanPhotos.push(...files)"),
+ 'Subsequent single-photo selections accumulate in the existing scan');
 assert.ok(!source.includes('getUserMedia(')&&!source.includes('scanFromCamera'),
  'Custom camera and custom two-choice UI are gone');
 assert.ok(source.includes("mode:'gray',crop:null"),'Best OCR preprocessing is fixed internally');
