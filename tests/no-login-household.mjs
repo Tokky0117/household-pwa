@@ -987,7 +987,7 @@ const libraryFile=new scanSession.window.File(['synthetic receipt pixels'],
  'receipt.png',{type:'image/png'});
 Object.defineProperty(picker,'files',{configurable:true,value:[libraryFile]});
 picker.dispatchEvent(new scanSession.window.Event('change',{bubbles:true}));
-assert.match(scanSession.window.document.body.textContent,/1枚選択中/);
+assert.match(scanSession.window.document.body.textContent,/選択した写真 1枚/);
 assert.ok(scanSession.window.document.querySelector('.scan-photo-grid'),'photo selection shows thumbnail grid');
 assert.ok(scanSession.window.document.querySelector('[data-act="scanRemovePhoto"][data-scan-row="0"]'),'photo can be removed directly by index');
 assert.ok(scanSession.window.document.querySelector('[data-act="scanStart"]'),'scan remains the primary action');
