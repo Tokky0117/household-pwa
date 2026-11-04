@@ -71,7 +71,7 @@ function fixture(code) {
 }
 
 const temp=fixture(api);
-const aliasText=(f,line)=>line.raw_name||f.call('bootstrap').data.product_aliases.find(a=>
+const aliasText=(f,line)=>line.confirmed_name||line.raw_name||f.call('bootstrap').data.product_aliases.find(a=>
  a.alias_id===line.alias_id)?.ocr_name||'';
 
 assert.equal(temp.call('bootstrap').ok,true,'initial anonymous read');
