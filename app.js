@@ -474,7 +474,7 @@ function scanSuggestionButtons(item,row){
    ' ／ '+esc(linkedItemName(p))+'</button>').join('')+'</div>';
 }
 const scanDate=text=>{
- const found=String(text).match(/(?:20)?(2[0-9])\s*[\/-年.]\s*(0?[1-9]|1[0-2])\s*[\/-月.]\s*([0-2]?[0-9]|3[01])\s*日?/);
+ const found=String(text).match(/(?:20)?(2[0-9])\s*[\/-年.]\s*(0?[1-9]|1[0-2])\s*[\/-月.]\s*([0-2]?[0-9]|3[01])\s*日?(?!\d)/);
  if(!found)return ''; // Unknown date must be explicitly confirmed.
  const y=2000+Number(found[1]),m=Number(found[2]),d=Number(found[3]);
  const actual=new Date(y,m-1,d);
