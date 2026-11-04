@@ -1,4 +1,4 @@
-const APP_VERSION='0.70.1';
+const APP_VERSION='0.70.2';
 const CATS=['飲食','キッチン','洗面・風呂','洗濯・掃除','その他'];
 const liveMode=!!window.KurashiLive; // Data source only; original Preview v46 UI components remain.
 const SEED=[['牛乳',0,true],['麦茶',0,false],['コーヒー',0,true],['卵',0,false],['キッチンペーパー',1,false],['ラップ',1,true],['食器用洗剤',1,true],['シャンプー',2,false],['歯磨き粉',2,true],['ハンドソープ',2,false],['洗濯洗剤',3,false],['柔軟剤',3,true],['トイレットペーパー',3,false],['乾電池',4,true],['ティッシュ',4,true]];
@@ -669,7 +669,7 @@ const id=()=>crypto.randomUUID?.()||`id-${Date.now()}-${Math.random()}`;
 function persist(){if(!liveMode)localStorage.setItem(key,JSON.stringify(items))}function visible(){return items.filter(i=>!i.hidden)}function current(){return items.find(i=>i.id===selected)}
 const icons={items:'<rect x="4" y="5" width="16" height="16" rx="2"/><path d="M4 11h16M10 5v16"/>',receipt:'<path d="M6 3h12v18l-3-2-3 2-3-2-3 2z"/><path d="M9 8h6M9 12h6"/>',budget:'<rect x="3" y="5" width="18" height="15" rx="3"/><path d="M3 10h18M16 15h3"/>',settings:'<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.9 4.9 7 7M17 17l2.1 2.1M2 12h3M19 12h3M4.9 19.1 7 17M17 7l2.1-2.1"/>'};
 const chevron=(direction='right')=>`<svg class="ui-chevron ${direction}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg>`;
-const miniIcon=k=>{const paths={search:'<circle cx="10.8" cy="10.8" r="7"/><path d="m16 16 5 5"/>',plus:'<path d="M12 5v14M5 12h14"/>',copy:'<rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/>',pencil:'<path d="M12 20h9"/><path d="m16 4 4 4-12 12H4v-4L16 4Z"/>',trash:'<path d="M4 7h16M10 7V4h4v3M7 7l1 13h8l1-13M10 11v6M14 11v6"/>',star:'<path d="m12 2 3.1 6.4 7 .9-5.1 5 .9 7-5.9-3.2-5.9 3.2.9-7-5.1-5 7-.9z"/>',package:'<path d="m3 7 9-4 9 4v10l-9 4-9-4zM3 7l9 4 9-4M12 11v10"/>',ruler:'<path d="M3 16 16 3l5 5L8 21zM13 6l3 3M10 9l3 3M7 12l3 3"/>',close:'<path d="M5 5l14 14M19 5 5 19"/>'};return `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths[k]||''}</svg>`};
+const miniIcon=k=>{const paths={camera:'<path d="M4 7h4l2-3h4l2 3h4v13H4z"/><circle cx="12" cy="13" r="4"/>',tag:'<path d="M3 11V4h7l11 11-7 7z"/><circle cx="7.5" cy="7.5" r="1"/>',receiptText:'<path d="M5 3h14v18l-3-2-4 2-4-2-3 2z"/><path d="M9 8h6M9 12h6M9 16h4"/>',search:'<circle cx="10.8" cy="10.8" r="7"/><path d="m16 16 5 5"/>',plus:'<path d="M12 5v14M5 12h14"/>',copy:'<rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/>',pencil:'<path d="M12 20h9"/><path d="m16 4 4 4-12 12H4v-4L16 4Z"/>',trash:'<path d="M4 7h16M10 7V4h4v3M7 7l1 13h8l1-13M10 11v6M14 11v6"/>',star:'<path d="m12 2 3.1 6.4 7 .9-5.1 5 .9 7-5.9-3.2-5.9 3.2.9-7-5.1-5 7-.9z"/>',package:'<path d="m3 7 9-4 9 4v10l-9 4-9-4zM3 7l9 4 9-4M12 11v10"/>',ruler:'<path d="M3 16 16 3l5 5L8 21zM13 6l3 3M10 9l3 3M7 12l3 3"/>',close:'<path d="M5 5l14 14M19 5 5 19"/>'};return `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths[k]||''}</svg>`};
 // One menu DOM for actions and choices, with optional icons and selection.
 function commonMenu(items,{label='',compact=false,hidden=false}={}){
  return `<div class="ui-menu ${compact?'ui-menu-compact':''}" role="group" aria-label="${esc(label)}" ${hidden?'hidden':''}>${items.map(item=>{
@@ -690,6 +690,10 @@ const UI={
   sectionHeading({title,subtitle='',trailing='',className=''}) {
     return `<div class="ui-section-heading ${esc(className)}"><div class="ui-section-heading-copy"><h2 class="sectiontitle">${esc(title)}</h2>${subtitle?`<span class="ui-section-heading-sub">${esc(subtitle)}</span>`:''}</div>${trailing}</div>`;
   },
+  textAction({label,action,arrow=true}){return `<button type="button" class="ui-text-action" data-act="${esc(action)}"><span>${esc(label)}</span>${arrow?chevron('right'):''}</button>`;},
+  recordRow({id,title,subtitle,amount=null,draft=false}){return `<button type="button" class="panel ui-record-row" data-act="${draft?'resumeScanDraft':'recordDetail'}" ${draft?'':`data-record-id="${esc(id)}"`}>
+   <span class="ui-record-row-copy"><strong>${esc(title)}</strong><span>${esc(subtitle)}</span>${amount===null?'':`<strong class="ui-record-amount">${yen(amount)}</strong>`}</span>
+   ${chevron('right')}</button>`;},
   stock(item){return `<button class="stock ${item.inStock?'':'off'}" data-stock="${esc(item.id)}" aria-label="${esc(item.name)}の在庫を切り替える" aria-pressed="${item.inStock}"><span class="stock-pill" aria-hidden="true">${item.inStock?'あり':'なし'}</span></button>`},
   dropdown({id,name=null,value,options,label='',compact=false,open=false}){
     const active=options.find(x=>String(x.value)===String(value))||options[0];
@@ -765,7 +769,7 @@ function listView(){
    s.busy&&!s.loaded?'家庭の日用品を読み込み中…':''):'';
  const copy='<button class="iconbtn" type="button" data-act="copyList" aria-label="在庫なしをコピー" title="在庫なしをコピー">'+miniIcon('copy')+'</button>';
  const add='<button class="iconbtn" type="button" data-act="add" aria-label="日用品を追加" title="日用品を追加">'+miniIcon('plus')+'</button>';
- return `${head('日用品','くらしストック_試作',false,add,copy)}<main>${UI.searchField({id:'search',label:'日用品を検索',placeholder:'日用品を検索',value:query,extra:'autocomplete="off"'})}<div class="filterrow"><label class="switchlabel"><input type="checkbox" id="onlyOut" ${onlyOut?'checked':''}>在庫なしのみ表示</label></div><div id="item-results">${listResults()}</div>${liveMode?'<p id="list-sync-status" class="hint" role="status" '+(notice?'':'hidden')+'>'+esc(notice)+'</p>':''}${listHelpView()}</main>${nav()}`;
+ return `${head('日用品','くらしストック',false,add,copy)}<main>${UI.searchField({id:'search',label:'日用品を検索',placeholder:'日用品を検索',value:query,extra:'autocomplete="off"'})}<div class="filterrow"><label class="switchlabel"><input type="checkbox" id="onlyOut" ${onlyOut?'checked':''}>在庫なしのみ表示</label></div><div id="item-results">${listResults()}</div>${liveMode?'<p id="list-sync-status" class="hint" role="status" '+(notice?'':'hidden')+'>'+esc(notice)+'</p>':''}${listHelpView()}</main>${nav()}`;
 }
 function priceCompareView(){
  const i=current();if(!i){page='list';return listView()}
@@ -925,40 +929,34 @@ function recordAddView(){
  ].join('');
  return UI.sheet({title:type==='receipt'?'レシート明細を記録':'値札を記録',variant:'product-picker-modal',body:`<form id="recordForm" class="record-entry-form">${fields}<button class="primary" type="submit">${liveMode?'記録する':'この端末に試作保存'}</button><p class="sample-price-notice">${liveMode?'※ 1回1明細。Google Sheetsへ自動保存。ログイン一時停止中は個人情報の入力を控えてください。':'※ OCR・Sheets・夫婦間同期は未接続。1回につき1明細の試作入力です。'}</p></form>`});
 }
+function getRecordSummary(record){
+ const details=allPreviewItems().filter(x=>x.record_id===record.record_id&&!x.deleted_at);
+ return {id:record.record_id,title:chainLabel(record.chain_id),
+  subtitle:`${record.record_date} · ${record.record_type==='receipt'?'レシート':'値札'} · ${details.length}明細`,
+  amount:details.reduce((sum,x)=>sum+Number(x.amount_tax_included||0),0)};
+}
 function receiptHistoryRows(records){
- return records.map(r=>{
- const details=allPreviewItems().filter(x=>x.record_id===r.record_id&&!x.deleted_at);
- const total=details.reduce((sum,x)=>sum+Number(x.amount_tax_included||0),0);
- const first=details[0],p=catalogue.products.find(x=>x.id===first?.product_id);
- return `<button type="button" class="panel preview-record-row receipt-history-row" data-act="recordDetail" data-record-id="${esc(r.record_id)}">
- <strong>${esc(chainLabel(r.chain_id))}</strong>
- <span>${esc(r.record_date)} · ${esc(r.record_type==='receipt'?'レシート':'値札')} · ${details.length}明細</span>
- <span>${esc(p?.name||aliasNameFor(first)||'未照合')}${details.length>1?' ほか'+(details.length-1)+'件':''}</span>
- <strong>${yen(total)}</strong></button>`;
- }).join('');
+ return records.map(r=>UI.recordRow(getRecordSummary(r))).join('');
 }
 function receiptView(){
  const recent=allPreviewRecords().filter(r=>!r.deleted_at).slice().reverse().slice(0,5);
- const draft=scanDraftAvailable?`<button type="button" class="panel preview-record-row receipt-history-row" data-act="resumeScanDraft">
- <strong>未保存の下書き</strong><span>レシートの確認を再開</span><span>写真は下書きに保存されません</span></button>`:'';
- return `${head('明細')}<main class="preview-record-page">
- <h2 class="sectiontitle">明細を登録</h2>
- <div class="record-entry-actions">
- ${liveMode?'<button class="primary" data-act="receiptScan">'+miniIcon('plus')+'<span>レシート読取</span></button>':''}
- <button class="secondary" data-act="newReceipt">${miniIcon('plus')}<span>レシート入力</span></button>
- <button class="secondary" data-act="newShelf">${miniIcon('plus')}<span>値札入力</span></button>
- </div>
- <div class="row" style="justify-content:space-between;align-items:center">
- <h2 class="sectiontitle">明細一覧</h2>
- <button type="button" class="tertiary" data-act="receiptAll">すべて表示 ${chevron('right')}</button>
- </div>
- ${draft}${receiptHistoryRows(recent)||(!draft?'<div class="empty">記録はまだありません</div>':'')}
+ const draft=scanDraftAvailable?UI.recordRow({title:'未保存の下書き',subtitle:'レシート · 確認を再開',draft:true}):'';
+ const registration=[
+  {label:'レシート読取',icon:'camera',action:'receiptScan',primary:true,enabled:liveMode},
+  {label:'レシート入力',icon:'receiptText',action:'newReceipt',enabled:true},
+  {label:'値札入力',icon:'tag',action:'newShelf',enabled:true}
+ ].filter(x=>x.enabled);
+ return `${head('明細','くらしストック')}<main class="preview-record-page receipt-home">
+ ${UI.sectionHeading({title:'明細を登録'})}
+ <div class="record-entry-actions">${registration.map(x=>`<button type="button" class="${x.primary?'primary':'secondary'}" data-act="${x.action}">${miniIcon(x.icon)}<span>${esc(x.label)}</span></button>`).join('')}</div>
+ ${UI.sectionHeading({title:'明細一覧',trailing:UI.textAction({label:'すべて表示',action:'receiptAll'}),className:'receipt-list-heading'})}
+ <div class="receipt-record-list">${draft}${receiptHistoryRows(recent)||(!draft?'<div class="empty">記録はまだありません</div>':'')}</div>
  </main>${nav()}`;
 }
 function receiptAllView(){
  const records=allPreviewRecords().filter(r=>!r.deleted_at).slice().reverse();
- return `${head('明細一覧','',true)}<main class="preview-record-page">
- ${receiptHistoryRows(records)||'<div class="empty">記録はまだありません</div>'}
+ return `${head('明細一覧','',true)}<main class="preview-record-page receipt-all">
+ <div class="receipt-record-list">${receiptHistoryRows(records)||'<div class="empty">記録はまだありません</div>'}</div>
  </main>`;
 }
 function stub(title,icon,desc){return `${head(title,'くらしストック_試作')}<main><div class="panel placeholder"><div class="bubble">${icon}</div><h2>${title}画面</h2><p>${desc}</p></div><div class="alert">この画面は共通UIの確認用です。データ処理や同期はまだ行いません。</div></main>${nav()}`}
