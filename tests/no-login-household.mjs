@@ -991,7 +991,13 @@ assert.match(scanSession.window.document.body.textContent,/1枚選択中/);
 assert.ok(scanSession.window.document.querySelector('.scan-photo-grid'),'photo selection shows thumbnail grid');
 assert.ok(scanSession.window.document.querySelector('[data-act="scanRemovePhoto"][data-scan-row="0"]'),'photo can be removed directly by index');
 assert.ok(scanSession.window.document.querySelector('[data-act="scanStart"]'),'scan remains the primary action');
-assert.equal(scanSession.window.document.querySelector('#scanConfirmForm'),null,'OCR confirmation is a separate stage');
+assert.equal(scanSession.window.document.querySelector('#scanConfirmForm'),null,'OCR review appears on the same screen only after analysis');
+assert.ok(scanSession.window.document.querySelector('.scan-photo-heading'),'photos can be collapsed independently of the form');
+assert.ok(scanSession.window.document.querySelector('[data-act="scanOpenPhoto"][data-scan-row="0"]'),'each photo opens the original viewer');
+scanSession.window.document.querySelector('[data-act="scanTogglePhotos"]').click();
+assert.equal(scanSession.window.document.getElementById('scan-photo-content').hidden,true,'photos collapse without navigating');
+scanSession.window.document.querySelector('[data-act="scanTogglePhotos"]').click();
+assert.equal(scanSession.window.document.getElementById('scan-photo-content').hidden,false,'photos expand without losing inputs');
 assert.ok(!scanSession.window.document.querySelector('#scan-crop-canvas'),
  'manual cropping is gone');
 assert.ok(!scanSession.window.document.querySelector('#scan-mode'),
