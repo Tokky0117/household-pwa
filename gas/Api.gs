@@ -1,4 +1,5 @@
 /**
+ * v0.70.0: append-only inferred_name for photo-derived ChatGPT guesses; OCR evidence is unchanged.
  * くらしストック - 新しい家庭データ用の最小API（初期段階）
  * 新規GASの Setup.gs と同じプロジェクトに配置する。
  * 対応: bootstrap / item.* / product.* / product.reorder / store.create
