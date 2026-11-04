@@ -538,6 +538,29 @@ assert.equal(externalFixture.items.reduce((sum,x)=>sum+x.taxIncludedAmount,0),42
 assert.deepEqual(Array.from(externalFixture.items,x=>x.taxIncludedAmount),[95,124,210],
  'each ex-tax discounted row receives deterministic and auditable tax');
 assert.deepEqual(Array.from(externalFixture.items,x=>x.allocatedTax),[7,9,16]);
+// Anonymous 17-row external-tax receipt: the fixture mirrors only the
+// arithmetic and row/quantity pattern of the reported failure, not its names.
+const grossFixture=[98,302,98,128,498,148,158,98,129,199,398,208,218,158,216,278,216];
+const discountsFixture=[10,31,10,13,50,15,16,10,13,20,40,21,22,16,22,28,22];
+const lineFixture=grossFixture.flatMap((gross,i)=>{
+ const name='※ 架空商品'+String.fromCharCode(65+i)+' ! ¥'+gross;
+ const quantity=(i===14||i===16)?['2個 × @108']:[];
+ return [name,...quantity,'分類一括割引 10% -'+discountsFixture[i]];
+});
+const longExternal=structure.parse([...lineFixture,
+ '小計 ¥3,189','(外税 8%対象額 ¥3,189)','外税額 8% ¥255',
+ '買上点数 19点','合計 ¥3,444','※マークは軽減税率対象です。'].join('\n'));
+assert.equal(longExternal.items.length,17,'external-tax discount rows are not separate products');
+assert.equal(longExternal.printedCount,19,'two explicit quantity-two rows yield 19 purchased units');
+assert.equal(longExternal.reconciliation.netSum,3189);
+assert.equal(longExternal.taxTotal,255);
+assert.equal(longExternal.receiptTotal,3444);
+assert.equal(longExternal.taxAllocation.status,'allocated');
+assert.equal(longExternal.items.reduce((sum,item)=>sum+item.taxIncludedAmount,0),3444,
+ 'allocated per-item inclusive amounts reconcile exactly to the printed final total');
+assert.equal(longExternal.items.reduce((sum,item)=>sum+item.allocatedTax,0),255,
+ 'every allocated yen is accounted for once and only once');
+
 const separatePriceLayout=geometry.groupLines([
  observed('※ 野菜A',100,300,124),observed('! ¥98',292,311,60),
  observed('分類一括割引 10% -10',100,340,245),
