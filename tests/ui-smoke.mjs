@@ -17,7 +17,7 @@ const doc={
 const ctx={document:doc,localStorage:{getItem:k=>storage.get(k)??null,setItem:(k,v)=>storage.set(k,v),removeItem:k=>storage.delete(k)},
  navigator:{},window:{scrollTo(){},scrollY:0},crypto:{randomUUID:()=> 'test-id'},setTimeout:()=>0};
 const ui=vm.runInNewContext(source+`
-({listView,priceCompareView,pickerView,pickerResults,receiptView,receiptScanView,receiptChatGptView,recordDetailView,scanDuplicates,applyChatGptOcrAssistance,receiptOcrReference,receiptOcrRows,detachOcrLine,isUnconfirmedBarcodeLine,scanBulkProductsView,scanProductView,scanExistingProductView,scanChainForStore,scanAutolinkUnmatched,scanMatchProduct,render,initializeCompare,
+({listView,priceCompareView,pickerView,pickerResults,receiptView,receiptScanView,receiptChatGptView,recordDetailView,scanDuplicates,applyChatGptOcrAssistance,receiptOcrReference,receiptOcrRows,detachOcrLine,isUnconfirmedBarcodeLine,makeChatGptReceiptRebuildDraft,scanBulkProductsView,scanProductView,scanExistingProductView,scanChainForStore,scanAutolinkUnmatched,scanMatchProduct,render,initializeCompare,
  setProductGroup,reorderProducts,registeredProducts,convertQuantity,setOpenSwipe,
  chainMinima,priceCandidates,savePreviewRecord,periodStart,
  demoRecords,demoRecordItems,allPreviewRecords,allPreviewItems,
@@ -512,4 +512,71 @@ assert.equal(ui.isUnconfirmedBarcodeLine(codeOnly.items[0]),false,
 assert.equal(ui.isUnconfirmedBarcodeLine({ocrRawName:'2000211787545',savedOcrName:true}),false,
  'editing an existing historical receipt does not require rewriting its old OCR names');
 console.log('v68: barcode-only OCR cannot be automatically accepted or learned OK');
+
+const photoRebuild={
+ version:'kurashi-receipt-rebuild-1',receiptDate:'2026-10-12',storeName:'ユニクロ',
+ receiptTotal:11550,printedCount:5,items:[
+ {name:'エアリズムコットンクルーネックT',quantity:1,amount:1290},
+ {name:'メリノクルーネックカーディガン',quantity:1,amount:2990},
+ {name:'メリノクルーネックカーディガン',quantity:1,amount:2990},
+ {name:'メリノVネックカーディガン',quantity:1,amount:2990},
+ {name:'エアリズムコットンクルーネックT',quantity:1,amount:1290}
+]};
+const photoRebuildFenced='\`\`\`json\n'+JSON.stringify(photoRebuild)+'\n\`\`\`\n\nOCR診断\n別レシート混入';
+const reconstructed=imports.parseChatGptOcrResponse(photoRebuildFenced);
+assert.equal(reconstructed.version,'kurashi-receipt-rebuild-1');
+assert.equal(reconstructed.items.length,5,'5 real photo lines, not 9 guessed OCR lines');
+assert.equal(reconstructed.items.filter(x=>x.name==='メリノクルーネックカーディガン').length,2,
+ 'the two printed crew neck garments remain separate lines');
+assert.equal(reconstructed.items.filter(x=>x.name==='メリノVネックカーディガン').length,1,
+ 'the photo shows one, not three, V neck cardigans');
+const nineOcrDraft={source:'ocr',date:'',chainId:null,chainName:'',total:11550,
+ items:Array.from({length:9},(_,i)=>({
+  name:i<4?'背景レシート':'2000211787545',ocrRawName:i<4?'背景レシート':'2000211787545',
+  productId:'p-milk-1',ocrRowId:'ocr-'+i,quantity:1,amount:2990,issues:[]
+ }))};
+const replacement=ui.makeChatGptReceiptRebuildDraft(nineOcrDraft,reconstructed);
+assert.equal(replacement.source,'chatgpt-rebuild');
+assert.equal(replacement.items.length,5);
+assert.equal(replacement.ocrReplacedCount,9);
+assert.equal(replacement.date,'2026-10-12');
+assert.equal(replacement.chainName,'ユニクロ');
+assert.equal(replacement.items.reduce((sum,x)=>sum+x.amount,0),11550);
+assert.ok(replacement.items.every(x=>x.inputOrigin==='photo'&&x.productId===''&&
+ !Object.prototype.hasOwnProperty.call(x,'ocrRawName')),
+ 'a photo-rebuild may not teach OCR aliases or reuse stale auto-product IDs');
+assert.equal(nineOcrDraft.items.length,9,'rebuild preview does not mutate OCR before confirmation');
+ui.setScanDraft(replacement);
+const photoRebuildReview=ui.receiptScanView();
+assert.match(photoRebuildReview,/OCR明細9件は破棄しました/);
+assert.match(photoRebuildReview,/name="photoReviewOk"/);
+assert.equal((photoRebuildReview.match(/name="name-\d+"/g)||[]).length,5,
+ 'all five image-derived line names are editable');
+assert.equal(imports.parseChatGptOcrResponse(suggestionJson).version,'kurashi-receipt-assist-1',
+ 'old OCR name-only corrections remain compatible');
+assert.match(imports.makeChatGptOcrAssistPrompt(ocrRef),/2種類のJSON/);
+assert.match(imports.makeChatGptOcrAssistPrompt(ocrRef),/別レシートの混入/);
+assert.throws(()=>imports.parseChatGptOcrResponse(JSON.stringify({
+ ...photoRebuild,items:[{name:'2000211787545',quantity:1,amount:2990}]
+})),/NAME_OR_STORE_UNSAFE/,
+ 'product code cannot be disguised as a photo-derived product name');
+assert.throws(()=>imports.parseChatGptOcrResponse(JSON.stringify({
+ ...photoRebuild,items:[{name:'正しい商品',quantity:1,amount:2990,rowId:'ocr-1'}]
+})),/INVALID_REBUILD_ITEM/,
+ 'rebuild items must not bind to fabricated OCR IDs');
+assert.throws(()=>imports.parseChatGptOcrResponse(JSON.stringify({
+ ...photoRebuild,receiptDate:'2026-02-30'
+})),/REBUILD_DATE_INVALID/,
+ 'invalid photo dates cannot be used for historical purchases');
+const incompleteRebuild=imports.parseChatGptOcrResponse(JSON.stringify({
+ ...photoRebuild,items:[{name:'写真では数量が不明',quantity:null,amount:null}]
+}));
+const incompleteDraft=ui.makeChatGptReceiptRebuildDraft(nineOcrDraft,incompleteRebuild);
+assert.equal(incompleteDraft.items[0].quantity,1);
+assert.equal(incompleteDraft.items[0].quantityUncertain,true);
+assert.equal(incompleteDraft.items[0].amount,'');
+assert.ok(source.includes("scanDraft.source==='chatgpt-rebuild'&&!d.get('photoReviewOk')"),
+ 'server save is blocked before explicit review checkbox is checked');
+console.log('v69: photo-only rebuild, strict schema, 5 actual items, and manual review checks OK');
+
 

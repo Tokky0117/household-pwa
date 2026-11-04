@@ -230,6 +230,54 @@ function makeChatGptReceiptPrompt(ocrReference=''){
 }
 
 
+// OCR-assist and full-photo reconstruction are separate, versioned contracts.
+// Reconstructed items never acquire fake OCR IDs or OCR aliases.
+const REBUILD_VERSION='kurashi-receipt-rebuild-1';
+function parseChatGptOcrRebuildJson(source){
+ if(typeof source!=='string'||source.length>30000||!source.trim())
+  throw Error('JSON_SIZE_OR_EMPTY');
+ const raw=extractOcrAssistJson(source);
+ if(!isObject(raw)||Object.keys(raw).sort().join(',')!==
+     'items,printedCount,receiptDate,receiptTotal,storeName,version'||
+    raw.version!==REBUILD_VERSION||!Array.isArray(raw.items)||
+    raw.items.length<1||raw.items.length>100)
+  throw Error('INVALID_REBUILD_FORMAT');
+ let date=null;
+ if(raw.receiptDate!==null){
+  if(typeof raw.receiptDate!=='string'||!/^\d{4}-\d{2}-\d{2}$/.test(raw.receiptDate))
+   throw Error('REBUILD_DATE_INVALID');
+  const parsed=new Date(raw.receiptDate+'T00:00:00Z');
+  if(!Number.isFinite(parsed.getTime())||
+     parsed.toISOString().slice(0,10)!==raw.receiptDate||
+     parsed.getUTCFullYear()<2000||parsed.getUTCFullYear()>2100)
+   throw Error('REBUILD_DATE_INVALID');
+  date=raw.receiptDate;
+ }
+ const storeName=cleanText(raw.storeName,80,{optional:true});
+ if(!optionalInteger(raw.receiptTotal)||!optionalInteger(raw.printedCount,10000))
+  throw Error('REBUILD_TOTAL_INVALID');
+ const items=raw.items.map(line=>{
+  if(!isObject(line)||Object.keys(line).sort().join(',')!=='amount,name,quantity')
+   throw Error('INVALID_REBUILD_ITEM');
+  const name=line.name===null?null:cleanText(line.name,120);
+  if(!optionalInteger(line.quantity,999)||line.quantity===0||
+     !optionalInteger(line.amount)||(!name&&line.amount===null))
+   throw Error('INVALID_REBUILD_ITEM');
+  return {name,quantity:line.quantity,amount:line.amount};
+ });
+ return {version:REBUILD_VERSION,receiptDate:date,storeName,
+  receiptTotal:raw.receiptTotal,printedCount:raw.printedCount,items};
+}
+function parseChatGptOcrResponse(source){
+ if(typeof source!=='string'||source.length>30000||!source.trim())
+  throw Error('JSON_SIZE_OR_EMPTY');
+ const raw=extractOcrAssistJson(source);
+ if(raw?.version===REBUILD_VERSION)
+  return parseChatGptOcrRebuildJson(source);
+ if(raw?.version===ASSIST_VERSION)
+  return parseChatGptOcrAssistJson(source);
+ throw Error('INVALID_OCR_RESPONSE_VERSION');
+}
 // Receipt assistant v2: candidate names only, bound to existing PWA OCR IDs.
 const ASSIST_VERSION='kurashi-receipt-assist-1';
 // Parse only the first structured JSON; explanatory OCR diagnosis stays outside.
@@ -303,25 +351,32 @@ function makeChatGptOcrAssistPrompt(ocrReference){
  const output={version:ASSIST_VERSION,
   items:reference.items.map(x=>({rowId:x.rowId,ocrName:x.ocrName,nameCandidate:null}))};
  return [
-  "このメッセージにレシート画像が実際に添付され、あなたが画像を視覚的に閲覧できるかを最初に確認してください。画像がない／開けない場合は「レシート写真を添付してください。」とのみ返し、JSONも商品名候補も生成しないでください。OCRテキストだけから候補を推測してはいけません。",
-  "最初に添付写真そのものを目視で読み取り、レシート領域、店舗、購入商品の行、印字商品名、商品コード、数量、金額、値引きの位置と対応関係を把握してください。参考OCR結果を正解として先に補完してはいけません。",
-  "次に写真と参考OCR結果を行単位で比較してください。別レシート、背景文字、商品コードだけの行、値引き行、合計行などを商品と誤認識していないか、商品行数が一致するか確認してください。",
-  "写真上の商品行とOCRのrowIdが確実に対応できる場合にのみ、正式商品名候補をnameCandidateに入れてください。商品コードだけのOCR行や複数商品に分割されたOCR行は構造認識の失敗です。nameCandidateはnullにし、OCR診断へ改善課題を記載してください。写真とOCRが1対1で対応し、文字だけ誤読した商品に限り候補を入れ、正しい商品名はnullにしてください。",
-  "写真が5商品なのにOCRが9行のような場合、9個の商品を創作したり無理に割り当ててはいけません。別レシート・非商品行・特定できない行のnameCandidateはnullにしてください。推測したブランド・内容量・商品規格を確定名として断定しないでください。",
-  "JSONではOCR全行のrowIdとocrNameを一文字も変更せず、行の個数・順序を維持し、nameCandidateだけを編集してください。数量・金額・日付・店舗をJSONへ加えたり、OCR原表記を修正したりしないでください。",
-  "まず最初に、下の形式のJSONをjsonコードブロックで1個だけ出力してください。JSONには診断・補完理由など追加のキーを含めないでください。",
-  "次にコードブロックの外側に「OCR診断」という見出しを付け、写真上で確認した事実、OCRの認識間違い、商品名を補った根拠、不確実な推測、別レシートの混入、商品行数の不一致を簡潔に説明してください。問題がなければ「特記事項なし」としてください。",
-  "会員番号・決済・カード・レシート番号・電話番号・住所などの個人情報は、JSONや診断文に転記しないでください。JSONと診断文は混ぜず、アプリに貼り付けるのはJSONコードブロックだけです。",
-  'アプリ貼り付け用JSONのひな形（nameCandidateだけ変更）:',
+  "このメッセージにレシート画像が実際に添付され、画像を目視で確認できるか最初に検証してください。写真がない／見えない場合は「レシート写真を添付してください。」とのみ回答し、JSONは作成しないでください。OCR文字列だけから補完してはいけません。",
+  "まず写真上の対象レシートを背景・他のレシートから分離して目視で商品行・商品名・商品コード・数量・税込金額・購入日・店舗・印字合計を照合してください。参考OCRは後で比較し、正解として扱わないでください。",
+  "次に写真の購入明細と参考OCRの行数・対応を検証し、以下の【2種類のJSONのどちらか一つだけ】を選んでください。",
+  "【文字誤読のみ】OCRのすべての商品行と写真の商品行が1対1で確実に対応し、商品数・各数量・金額・日付に構造的な誤りがない場合だけ、従来のkurashi-receipt-assist-1を出力します。元のrowId・ocrName・行順と行数を1文字も変えず、文字誤読だけnameCandidateに修正候補を入れてください。元から正しい行はnullにしてください。",
+  "【明細構造の失敗】別レシートの混入、商品コードのみの行、商品行の欠落・余分・結合・分割、明細と金額の対応不明、商品点数の不一致が一つでもあるなら、kurashi-receipt-rebuild-1を選んでください。OCR行IDへ無理に商品を対応させず、写真の対象レシートに実際に印字されている購入明細だけを、印字順に1商品1行として出力してください。同じ商品が複数行印字されていたらまとめず行ごとに出力してください。",
+  "再解析のnameは写真上で読める商品名を記載し、読めない場合はnullにしてください。商品コードや背景のレシートを商品名にしないでください。quantityはその購入行の購入数量で、商品名中の内容量ではありません。amountはその行の税込明細合計です。写真から確定できない数量・金額・日付・店舗・合計・点数はnullにし、推測で埋めないでください。値引きと行ごとの金額対応も原本で確認してください。",
+  "写真上の各商品行の金額の和と印字合計、数量の和と印字点数をそれぞれ照合してください。一致しなければ、読み取り誤り・値引き・対象レシート違いを確認し、不明値を推測せず、OCR診断に不一致を記載してください。写真に明記されたクルーネックとVネックなど形状の異なる商品を混同しないでください。",
+  "両形式ともJSON以外のキーや個人情報（カード・会員・決済番号・電話番号・住所など）を入れないでください。JSONは必ず一つだけ最初のjsonコードブロックに出力し、その外にOCR診断を記載してください。診断には、今回選んだ形式・画像で確定した商品行数・誤読・構造的な失敗・次回のOCR改善課題を簡潔にまとめてください。診断文はアプリに保存されません。",
+  "形式1（文字誤読のみ。全OCR行のrowIdとocrNameは参考OCRに合わせ、nameCandidateだけ変更）:",
   '```json',
   JSON.stringify(output,null,2),
   '```',
+  "形式2（構造的な失敗。元のOCR行とrowIdを引き継がず、写真の購入商品行だけ）:",
+  '```json',
+  JSON.stringify({version:REBUILD_VERSION,receiptDate:null,storeName:null,
+   receiptTotal:null,printedCount:null,
+   items:[{name:null,quantity:null,amount:null}]},null,2),
+  '```',
+  "出力時にはどちらか一方のJSONコードブロックだけを含めてください。上の形式例二つを同時に回答してはいけません。",
   '参考OCR結果（原本ではなく照合対象）:',ocrReference
  ].join('\n');
 }
 
 root.KurashiReceiptImport={
- IMPORT_VERSION,ASSIST_VERSION,
+ IMPORT_VERSION,ASSIST_VERSION,REBUILD_VERSION,
+ parseChatGptOcrRebuildJson,parseChatGptOcrResponse,
  parseChatGptReceiptJson,editChatGptReceiptDraft,
  draftQuality,makeChatGptReceiptPrompt,
  parseChatGptOcrAssistJson,makeChatGptOcrAssistPrompt

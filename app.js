@@ -1,4 +1,4 @@
-const APP_VERSION='0.68.0';
+const APP_VERSION='0.69.0';
 const CATS=['飲食','キッチン','洗面・風呂','洗濯・掃除','その他'];
 const liveMode=!!window.KurashiLive; // Data source only; original Preview v46 UI components remain.
 const SEED=[['牛乳',0,true],['麦茶',0,false],['コーヒー',0,true],['卵',0,false],['キッチンペーパー',1,false],['ラップ',1,true],['食器用洗剤',1,true],['シャンプー',2,false],['歯磨き粉',2,true],['ハンドソープ',2,false],['洗濯洗剤',3,false],['柔軟剤',3,true],['トイレットペーパー',3,false],['乾電池',4,true],['ティッシュ',4,true]];
@@ -250,6 +250,26 @@ function applyChatGptOcrAssistance(draft,result){
  }
  return next;
 }
+// Replace an untrustworthy OCR item set with independently parsed photo rows.
+// None of these rows has an OCR name; saveReceiptDraft remains local-only.
+function makeChatGptReceiptRebuildDraft(previous,result){
+ if(!previous||previous.source!=='ocr'||
+    result?.version!=='kurashi-receipt-rebuild-1'||
+    !Array.isArray(result.items)||!result.items.length)
+  throw Error('写真からの明細再解析データを確認してください');
+ const match=result.storeName?scanChainForStore(result.storeName):null;
+ return {source:'chatgpt-rebuild',date:result.receiptDate||'',
+  chainId:match?.id||null,chainName:match?'':result.storeName||'',
+  branchName:previous.branchName||'',total:result.receiptTotal??null,
+  printedCount:result.printedCount??null,ocrReplacedCount:previous.items.length,
+  items:result.items.map(line=>({
+   name:line.name||'',inputOrigin:'photo',
+   quantity:line.quantity??1,quantityUncertain:line.quantity===null,
+   amount:line.amount===null?'':line.amount,
+   productId:'',manuallyLinked:false,autoLinked:false,
+   issues:['ChatGPTが写真から抽出した候補です。原本と照合してください']
+  }))}
+}
 function scanDuplicates(draft){
  if(!draft||!draft.chainId||!draft.date||!draft.items.length)return [];
  const sig=rows=>JSON.stringify(rows.map(x=>[
@@ -377,14 +397,14 @@ function scanExistingProductView(){
   </div>`});
 }
 function receiptChatGptView(){
- return head('ChatGPTの補助解析','OCR後の商品名候補',true)+
+ return head('ChatGPTの補助解析','OCR文字修正または写真から再解析',true)+
  '<main class="preview-record-page receipt-chatgpt-page">'+
- '<p class="hint">ChatGPTにはレシート写真を必ず手動で添付してください。写真がない場合、商品名候補は生成しない指示です。先に写真を確認し、OCR原表記との照合結果を返します。</p>'+
- '<p class="hint">返答は「貼り付け用JSON」と「OCR診断」の2つです。返答全文を貼り付けても、アプリに反映するのはJSONの商品名候補だけで、診断は保存しません。</p>'+
+ '<p class="hint">指示文をコピーし、ChatGPTに必ず元のレシート写真も添付してください。商品行・数量・金額の対応が正しい場合はOCR文字修正、構造が崩れている場合は写真の全明細再解析を返す指示です。</p>'+
+ '<p class="hint">最初のJSONを取り込みます。全明細再解析のときは、既存OCRの9行などを写真の商品行に置き換える前に確認画面を表示します。OCR診断は保存しません。</p>'+
  '<button type="button" class="secondary" data-act="chatGptCopyPrompt">OCR結果と指示文をコピー</button>'+
- '<label class="scan-field">ChatGPTの結果（JSON）<textarea id="chatgpt-input" rows="9" maxlength="30000" placeholder="OCR行IDと商品名候補を貼り付け"></textarea></label>'+
+ '<label class="scan-field">ChatGPTの解析結果（JSON）<textarea id="chatgpt-input" rows="9" maxlength="30000" placeholder="最初のJSONコードブロックを貼り付け"></textarea></label>'+
  '<p id="chatgpt-error" class="scan-warning" role="status">'+esc(chatGptError)+'</p>'+
- '<button type="button" class="primary" data-act="chatGptImport">商品名候補を取り込む</button></main>';
+ '<button type="button" class="primary" data-act="chatGptImport">解析結果を取り込む</button></main>';
 }
 function scanChainForStore(raw){
  const name=norm(raw);
@@ -541,6 +561,7 @@ function scanFormView(){
  return `<form id="scanConfirmForm" class="scan-review">
   <h2 class="sectiontitle">読み取り結果の確認</h2>
   <p class="hint">OCR・ChatGPTの文字・数量・金額には誤認識が残ります。必ず原本と照合してください。${scanDraft.source==='chatgpt-ocr'?' OCRとChatGPTの一意対応 '+scanDraft.matchedCount+'件、要確認 '+scanDraft.unmatchedCount+'件。':''}</p>
+  ${scanDraft.source==='chatgpt-rebuild'?'<p class="scan-warning">ChatGPTによる写真再解析です。OCR明細'+esc(scanDraft.ocrReplacedCount||0)+'件は破棄しました。商品名・数量・金額・購入日・店舗を写真と照合してください。AIの回答は誤ることがあります。</p>':''}
   ${scanDraft.source==='ocr'&&receiptOcrRows(scanDraft).length?'<button type="button" class="secondary" data-act="chatGptAssist">ChatGPTで商品名候補を確認</button>':''}
   <label class="scan-field">チェーン<select name="chain" id="scan-chain">${chains}</select></label>
   <label class="scan-field" id="scan-new-chain-wrap" ${scanDraft.chainId?'hidden':''}>新しいチェーン名<input name="chain_name" maxlength="80" placeholder="新しいチェーン名" value="${esc(scanDraft.chainName||'')}"></label>
@@ -580,6 +601,7 @@ function scanFormView(){
     <p class="scan-warning">同じ店舗・日付・明細のレシートが登録されています。</p>
     <label class="scan-check"><input type="checkbox" name="duplicateOk"> 重複登録の可能性を確認しました</label>
    </div>
+   ${scanDraft.source==='chatgpt-rebuild'?'<label class="scan-check"><input type="checkbox" name="photoReviewOk" required>写真と照合し、対象レシート・商品名・行数・数量・金額・日付・店舗を確認しました</label>':''}
    <p class="hint">「保存」を押すことで、内容の確認を確定します。</p>
   </div>
   <button class="primary" type="submit">${scanDraft.recordId?'修正したレシートを保存':'確認したレシートを一括保存'}</button>
@@ -1402,6 +1424,9 @@ app.addEventListener('submit',e=>{e.preventDefault();const form=e.target;const d
     category_id:null
    };
   });
+  if(scanDraft.source==='chatgpt-rebuild'&&!d.get('photoReviewOk')){
+   fieldNotice(form,'写真の全明細と店舗・日付・数量・金額を確認し、チェックしてください');return;
+  }
   if(scanDraft.items.some(isUnconfirmedBarcodeLine)){
    fieldNotice(form,'商品コードのみの明細はOCR名として保存できません。「OCRと紐付けず写真から明細を入力」で商品名を確認してください');return;
   }
@@ -1576,7 +1601,7 @@ if(el.dataset.pick){
  }else{setProductGroup(p,selected);page='compare';initializeCompare();render()}
  return;
 }
-if(el.dataset.dialog){if(el.dataset.dialog==='cancel'&&(dialog?.title==='変更を破棄しますか？'||dialog?.title==='比較単位について'||dialog?.title==='OCR下書きを破棄しますか？')){dialog=null;document.querySelector('.dialog-back')?.remove();return}const action=el.dataset.dialog,p=dialog?.pending;dialog=null;
+if(el.dataset.dialog){if(el.dataset.dialog==='cancel'&&(dialog?.title==='変更を破棄しますか？'||dialog?.title==='比較単位について'||dialog?.title==='OCR下書きを破棄しますか？'||dialog?.title==='OCR明細を写真再解析に置き換えますか？')){dialog=null;document.querySelector('.dialog-back')?.remove();return}const action=el.dataset.dialog,p=dialog?.pending;dialog=null;
 
 if(action==='confirmMasterProductUnlink'&&p){
  const product=catalogue.products.find(x=>x.id===p.productId);
@@ -1611,6 +1636,16 @@ if(action==='confirmProductMove'&&p){
   setProductGroup(product,selected);
  }
  page='compare';initializeCompare();render();return;
+}
+if(action==='confirmChatGptRebuild'&&p?.rebuild){
+ try{
+  scanDraft=makeChatGptReceiptRebuildDraft(scanDraft,p.rebuild);
+  saveScanDraft();
+  scanStatus='写真からの再解析結果'+scanDraft.items.length+
+   '行を確認中です。OCR明細は保存に使用しません。';
+  page='recordScan';render();
+ }catch(err){say(err.message||'再解析結果を適用できませんでした');}
+ return;
 }
 if(action==='confirmScanProductMove'&&p){
  const product=catalogue.products.find(x=>x.id===p.productId);
@@ -1692,21 +1727,41 @@ if(action==='chatGptImport'){
  try{
   if(!scanDraft||scanDraft.source!=='ocr')throw Error('先に写真をOCRで読み取ってください');
   if(!parser)throw Error('補助解析機能を読み込めません');
-  const response=parser.parseChatGptOcrAssistJson(document.getElementById('chatgpt-input')?.value||'');
+  const response=parser.parseChatGptOcrResponse(document.getElementById('chatgpt-input')?.value||'');
+  if(response.version===parser.REBUILD_VERSION){
+   const draft=makeChatGptReceiptRebuildDraft(scanDraft,response);
+   const values=draft.items.map(x=>x.amount).filter(Number.isSafeInteger);
+   const sum=values.length===draft.items.length?
+    values.reduce((a,b)=>a+b,0):null;
+   const mismatch=draft.total!==null&&sum!==null&&draft.total!==sum;
+   dialog={title:'OCR明細を写真再解析に置き換えますか？',
+    message:'現在のOCR '+scanDraft.items.length+'行を採用せず、ChatGPTが写真から抽出した'+
+     draft.items.length+'行に置き換えます。商品マスタやOCR名辞書へ自動登録しません。'+
+     (mismatch?'解析した明細金額と印字合計が一致していません。':'')+
+     '保存前に写真の全明細と数量・金額を確認してください。',
+    buttons:[{id:'cancel',label:'OCRを維持する'},
+     {id:'confirmChatGptRebuild',label:'写真解析'+draft.items.length+'行に置き換える',primary:true}],
+    pending:{rebuild:response}};
+   renderDialogOnly();return;
+  }
   scanDraft=applyChatGptOcrAssistance(scanDraft,response);
   saveScanDraft();
-  scanStatus='既存商品の自動照合と商品名候補の取り込みが完了しました。';
+  const changed=response.items.filter(i=>i.nameCandidate!==null).length;
+  scanStatus=changed?
+   '商品名候補'+changed+'件を取り込みました。原本を確認して採用してください。':
+   '商品名の修正候補はありません。商品行の分割・別レシート混入がある場合は、更新した指示文で写真の全明細再解析を依頼してください。';
   page='recordScan';render();
  }catch(e){
   const reason=String(e?.message||e);
   const readable=reason==='INVALID_OCR_ASSIST_ITEM'?
    'OCR行の形式が不正です。OCR原表記や商品名候補に余分な情報がないか確認してください。':
-   reason==='INVALID_OCR_ASSIST_FORMAT'?
-   'JSONの項目または形式が異なります。OCR結果からコピーした指示文を使用してください。':
+   reason==='INVALID_OCR_ASSIST_FORMAT'||reason==='INVALID_REBUILD_FORMAT'||
+    reason==='INVALID_OCR_RESPONSE_VERSION'?
+   'JSONの形式が異なります。アプリの最新の指示文をコピーし、形式1か形式2のどちらかだけ貼り付けてください。':
    reason==='ASSIST_JSON_BLOCK_REQUIRED'||reason==='ASSIST_JSON_FIRST_REQUIRED'?
    '解析結果の先頭にあるJSON部分を貼り付けてください。':
    reason;
-  chatGptError='商品名候補を取り込めません：'+readable;
+  chatGptError='解析結果を取り込めません：'+readable;
   const el=document.getElementById('chatgpt-error');if(el)el.textContent=chatGptError;
  }
  return;

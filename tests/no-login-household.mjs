@@ -1890,3 +1890,33 @@ const badBoth=recordFixture.call('record.create',{
 assert.equal(badBoth.ok,false,'one row cannot silently learn a wrong OCR barcode');
 
 console.log('v68: verified photo name is stored without an OCR alias OK');
+
+const fullPhotoRows=[
+ ['エアリズムコットンクルーネックT',1290],
+ ['メリノクルーネックカーディガン',2990],
+ ['メリノクルーネックカーディガン',2990],
+ ['メリノVネックカーディガン',2990],
+ ['エアリズムコットンクルーネックT',1290]
+];
+const aliasesBeforeFullPhoto=recordFixture.db.product_aliases.length;
+const rebuildSave=recordFixture.call('record.create',{
+ record_type:'receipt',chain_id:manualChain.data.entity.chain_id,
+ record_date:'2026-10-12',
+ items:fullPhotoRows.map(([name,amount])=>({
+  raw_name:'',confirmed_name:name,product_id:null,quantity:1,
+  amount_tax_included:amount,category_id:null
+ }))
+},'op-v69-photo-five-items-abcdefghijk');
+assert.equal(rebuildSave.ok,true,'5 photo-derived purchase items save through the existing GAS endpoint');
+const rebuiltSaved=recordFixture.call('bootstrap').data.record_items.filter(x=>
+ x.record_id===rebuildSave.data.record.record_id).sort((a,b)=>a.line_order-b.line_order);
+assert.equal(rebuiltSaved.length,5,'the nine invalid OCR rows are not added to purchase history');
+assert.equal(rebuiltSaved.reduce((sum,row)=>sum+Number(row.amount_tax_included),0),11550);
+assert.equal(rebuiltSaved.filter(x=>x.confirmed_name==='メリノクルーネックカーディガン').length,2);
+assert.equal(rebuiltSaved.filter(x=>x.confirmed_name==='メリノVネックカーディガン').length,1);
+assert.ok(rebuiltSaved.every(x=>!x.alias_id&&!x.raw_name&&!x.product_id),
+ 'photo parsing never creates fake OCR names or automatic master associations');
+assert.equal(recordFixture.db.product_aliases.length,aliasesBeforeFullPhoto,
+ 'GAS saves five validated photo rows without learning five OCR aliases');
+console.log('v69: five-photo-item UNIQLO receipt saved exactly without OCR aliases OK');
+
