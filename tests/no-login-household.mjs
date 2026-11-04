@@ -1784,7 +1784,8 @@ const legacyOriginalItems=legacyRecord.data.items.map((row,i)=>({
 legacy.db.product_aliases.length=1;
 legacy.db.product_aliases[0].pop();
 legacy.db.record_items[0].pop();
-legacy.db.record_items[0].pop(); // pre-v0.64 lacked alias_id; v0.68 also adds confirmed_name
+legacy.db.record_items[0].pop();
+legacy.db.record_items[0].pop(); // pre-v0.64 lacked alias_id; v0.68/v0.70 added confirmed_name and inferred_name
 for(let i=1;i<legacy.db.record_items.length;i++){
  const line=legacyOriginalItems[i-1];
  legacy.db.record_items[i][schema.record_items.indexOf('raw_name')]=line.raw_name;
@@ -1793,10 +1794,12 @@ for(let i=1;i<legacy.db.record_items.length;i++){
 legacy.failRecordItemWriteAfter(2); // new header, first linked row, then simulated failure
 assert.equal(legacy.call('bootstrap').ok,false,
  'interrupted schema migration does not claim completion');
-assert.equal(legacy.db.record_items[0].at(-1),'confirmed_name',
- 'both additive columns are now present');
-assert.equal(legacy.db.record_items[0].at(-2),'alias_id',
- 'existing record item sheet gains only the new trailing header');
+assert.equal(legacy.db.record_items[0].at(-1),'inferred_name',
+ 'new inferred name appended after historical columns');
+assert.equal(legacy.db.record_items[0].at(-2),'confirmed_name',
+ 'photo confirmed names remain at the original column');
+assert.equal(legacy.db.record_items[0].at(-3),'alias_id',
+ 'existing alias reference remains in place');
 assert.equal(legacy.db.product_aliases[0].at(-1),'ocr_name',
  'existing OCR dictionary gains only the new trailing header');
 const resumedLegacy=legacy.call('bootstrap');
