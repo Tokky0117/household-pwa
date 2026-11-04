@@ -28,16 +28,17 @@ export async function scanReceiptImage(file,{mode='gray',crop=null}={}){
  try{
   prepared=await prepareImage(file,mode,crop);
   const r=await (await reader()).readImage(prepared.image);
-  const japanese=normalizeJapaneseOcr(r.text);
+  const layout=window.KurashiReceiptLayout.joinSplitPriceColumns({text:r.text,lines:r.lines});
+   const japanese=normalizeJapaneseOcr(layout.text);
   const normalized=normalizeYenGrouping(japanese.text);
   const parsed=window.KurashiReceiptLayout.attachAdjacentCodeNames(
-   window.KurashiReceiptStructure.parse(normalized.text),{lines:r.lines});
+   window.KurashiReceiptStructure.parse(normalized.text),{lines:layout.lines});
   return {
    engine:'PP-OCRv6_small',
    parsed,originalText:r.text,text:normalized.text,
    metadata:prepared.metadata,
    metrics:{...(r.metrics||{}),observations:r.observations?.length||0,
-    lineCount:r.lines?.length||0,japaneseGlyphChanges:japanese.changes.length,
+    lineCount:layout.lines?.length||0,priceColumnJoins:(r.lines?.length||0)-(layout.lines?.length||0),japaneseGlyphChanges:japanese.changes.length,
     yenGroupingChanges:normalized.changes.length}
   };
  }finally{prepared?.release();active=false;}
