@@ -22,6 +22,43 @@
   return {text:lines.map(l=>l.text).join('\n'),lines,observations,angle};
  }
 
+ // OCR sometimes splits a right-aligned price into a separate row on curved paper.
+ // Only join it to an unpriced name with unique, close geometric evidence.
+ function joinSplitPriceColumns(layout){
+  if(!Array.isArray(layout?.lines))return layout;
+  const lines=layout.lines.map(line=>({...line,bounds:{...line.bounds}}));
+  const isPrice=text=>/^(?:[!！]\s*)?[¥￥]\s*[\d,]{1,9}$/.test(String(text||'').trim());
+  const isName=text=>{
+   const t=String(text||'').normalize('NFKC').trim();
+   return t.length>1&&/[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}]/u.test(t)&&
+    !/^(?:分類|一括|割引|値引|小計|合計|買上|お買上|税|内税|外税|対象|カード|現金|精算|レジ|領収|釣銭|お預)/.test(t)&&
+    !/[¥￥]/.test(t)&&!/-\s*[\d,]+\s*$/.test(t);
+  };
+  const used=new Set();
+  for(let i=0;i<lines.length;i++){
+   if(!isPrice(lines[i].text))continue;
+   const price=lines[i].bounds;
+   const candidates=lines.map((line,j)=>{
+    if(j===i||used.has(j)||!isName(line.text))return null;
+    const name=line.bounds,ph=Math.max(1,price.y1-price.y0),nh=Math.max(1,name.y1-name.y0);
+    const pc=(price.y0+price.y1)/2,nc=(name.y0+name.y1)/2;
+    const gap=price.x0-name.x1;
+    if(Math.abs(pc-nc)>0.85*Math.max(ph,nh)||gap< -0.25*Math.max(ph,nh)||
+     gap>7*Math.max(ph,nh)||price.x0<=name.x0)return null;
+    return {j,score:Math.abs(pc-nc)/Math.max(ph,nh)+Math.max(0,gap)/(7*Math.max(ph,nh))};
+   }).filter(Boolean).sort((a,b)=>a.score-b.score);
+   if(!candidates.length||candidates.length>1&&candidates[1].score-candidates[0].score<0.35)continue;
+   const j=candidates[0].j,old=lines[j];
+   old.text=old.text.trim()+' '+lines[i].text.trim();
+   old.observationIndices=[...(old.observationIndices||[]),...(lines[i].observationIndices||[])];
+   old.bounds={x0:Math.min(old.bounds.x0,price.x0),x1:Math.max(old.bounds.x1,price.x1),
+    y0:Math.min(old.bounds.y0,price.y0),y1:Math.max(old.bounds.y1,price.y1)};
+   used.add(i);
+  }
+  const merged=lines.filter((_,i)=>!used.has(i));
+  return {...layout,lines:merged,text:merged.map(line=>line.text).join('\n')};
+ }
+
  // An unpriced product name can be printed immediately above/below a priced
  // EAN-13. Attach it only with independent geometric evidence. Do not merge
  // two priced lines merely because their price or code happens to match.
@@ -71,5 +108,5 @@
   }
   return receipt;
  }
- root.KurashiReceiptLayout={groupLines,attachAdjacentCodeNames};
+ root.KurashiReceiptLayout={groupLines,joinSplitPriceColumns,attachAdjacentCodeNames};
 })(typeof window==='undefined'?globalThis:window);
