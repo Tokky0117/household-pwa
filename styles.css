@@ -2244,8 +2244,21 @@ main>.ui-search + .filterrow{margin-bottom:5px}
 .scan-file-input{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}
 .receipt-scan-page [data-act="scanAddPhotos"],.receipt-scan-page [data-act="scanStart"]{display:block;width:100%;margin:12px auto;min-height:48px}
 .receipt-scan-page .panel{margin-top:12px}
-.scan-photo-list{display:flex;gap:7px;flex-wrap:wrap;margin:12px 0}
-.scan-photo-list button{min-height:44px}
+/* Photos stay in browser memory and thumbnails never enter persistent drafts. */
+.receipt-photo-page .ui-section-heading{margin:2px 0 14px}
+.scan-photo-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin:0 0 16px}
+.scan-photo-tile{min-width:0}
+.scan-photo-thumb{position:relative;aspect-ratio:4/5;border:1px solid var(--line);border-radius:12px;overflow:hidden;background:var(--card);display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:14px}
+.scan-photo-thumb img{display:block;width:100%;height:100%;object-fit:contain}
+.scan-photo-remove{position:absolute;right:6px;top:6px;display:grid;place-items:center;width:44px;height:44px;min-width:44px;min-height:44px;border:1px solid var(--line);border-radius:50%;background:var(--card);color:var(--accent)}
+.scan-photo-remove svg{width:20px;height:20px}
+.scan-photo-label{display:block;font-size:13px;color:var(--muted);margin:6px 2px 0}
+.receipt-photo-page .scan-photo-add{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;min-height:48px;margin:10px 0 16px}
+.receipt-photo-page .scan-photo-add svg{width:18px;height:18px}
+.receipt-photo-page .scan-photo-start{display:block;width:100%;min-height:48px;margin:0 0 12px}
+.receipt-photo-page .scan-return-review{display:block;width:100%;margin:0 0 10px}
+.receipt-photo-page #scan-status{margin-top:12px;line-height:1.6}
+.receipt-review-page #scan-status{line-height:1.6;margin:0 0 12px}
 .scan-field{display:flex;flex-direction:column;gap:6px;font-size:14px;margin:12px 0}
 .scan-field input,.scan-field select{box-sizing:border-box;width:100%;min-height:44px;border:1px solid var(--line,#ccc);border-radius:10px;padding:9px 11px;font-size:16px;color:inherit;background:var(--card,#fff)}
 .scan-review .scan-quantity-uncertain{background:#fff0b3;color:#272316;border-color:#d8ad3c}
