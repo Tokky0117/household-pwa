@@ -522,6 +522,8 @@ const externalFixture=structure.parse([
  '小計 ¥397','外税額 8% ¥32','買上点数','4点','合計 ¥429'
 ].join('\n'));
 assert.equal(externalFixture.items.length,3,'discounts and a split printed-count label are not merchandise');
+assert.equal(structure.parse('品目A ¥100\n買上点数 ¥2\n合計 ¥100').items.length,1,
+ 'even an OCR-fragmented printed-count line with a price glyph is not merchandise');
 assert.equal(externalFixture.printedCount,4,'printed count can follow its label on a separate line');
 assert.deepEqual(Array.from(externalFixture.items,x=>x.netAmount),[88,115,194],
  'item net amounts include each adjacent category discount');
