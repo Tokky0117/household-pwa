@@ -1057,8 +1057,13 @@ assert.ok(editForm,'history edit reuses shared multi-line confirmation form');
 editForm.querySelector('[name="amount-0"]').value='345';
 online=false;
 editForm.dispatchEvent(new historyUI.window.Event('submit',{bubbles:true,cancelable:true}));
-await waitFor(()=>historyUI.window.KurashiLive.state().queued===1,
- 'editing is committed locally before background GAS write');
+try{
+ await waitFor(()=>historyUI.window.KurashiLive.state().queued===1,
+  'editing is committed locally before background GAS write');
+}catch(err){
+ throw Error(err.message+'; state='+JSON.stringify(historyUI.window.KurashiLive.state())+
+  '; screen='+historyUI.window.document.body.textContent.slice(-900));
+}
 historyUI.window.close();online=true;
 let historyRecovery=appSession();
 await waitFor(()=>historyRecovery.window.KurashiLive.state().loaded&&
