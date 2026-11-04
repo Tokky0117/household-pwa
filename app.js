@@ -557,7 +557,7 @@ function scanFormView(){
   '<option value="__new__"'+(!scanDraft.chainId?' selected':'')+'>＋ 新しいチェーン</option>'].join('');
  return `<form id="scanConfirmForm" class="scan-review">
   <h2 class="sectiontitle">読み取り結果の確認</h2>
-  ${scanDraft.taxBasis==='excluded'?'<p class="scan-warning">このレシートは外税方式です。認識した値引き後の税抜額を各明細に表示します。商品別の税込額への端数配分は確定できないため、自動入力せず確認してください。</p>':''}
+  ${scanDraft.taxBasis==='excluded'?(scanDraft.taxAllocationStatus==='allocated'?'<p class="hint">外税レシート：印字された税率別税額を各商品の値引き後税抜額に比例配分し、端数は合計が一致するよう調整しています。各行の税込額は計算値です。原本と照合してください。</p>':'<p class="scan-warning">外税レシート：明細・税率・税額・小計の対応が確定できないため、計算できない税込額は空欄です。原本を確認してください。</p>'):''}
   <p class="hint">OCR・ChatGPTの文字・数量・金額には誤認識が残ります。必ず原本と照合してください。${scanDraft.source==='chatgpt-ocr'?' OCRとChatGPTの一意対応 '+scanDraft.matchedCount+'件、要確認 '+scanDraft.unmatchedCount+'件。':''}</p>
   ${scanDraft.source==='chatgpt-rebuild'?'<p class="scan-warning">ChatGPTによる写真再解析です。OCR明細'+esc(scanDraft.ocrReplacedCount||0)+'件は破棄しました。商品名・数量・金額・購入日・店舗を写真と照合してください。AIの回答は誤ることがあります。</p>':''}
   ${scanDraft.source==='ocr'&&receiptOcrRows(scanDraft).length?'<button type="button" class="secondary" data-act="chatGptAssist">ChatGPTで商品名・金額を確認</button>':''}
@@ -586,7 +586,7 @@ function scanFormView(){
     </div>
     <div class="scan-input-pair"><label class="scan-field">購入数<input name="qty-${i}" type="number" min="1" step="1" required value="${esc(item.quantity)}" ${item.quantityUncertain?'class="scan-quantity-uncertain" aria-describedby="scan-quantity-hint-'+i+'"':''}>${item.quantityUncertain?'<span class="scan-quantity-hint" id="scan-quantity-hint-'+i+'">数量要確認（仮に1を表示）</span>':''}</label>
     <label class="scan-field">税込明細合計（円）<input name="amount-${i}" type="number" min="0" step="1" required value="${esc(item.amount)}" placeholder="確認して入力"></label></div>
-    ${Number.isSafeInteger(item.taxExcludedAmount)?'<p class="scan-tax-excluded">OCR税抜印字額（値引き後）：'+yen(item.taxExcludedAmount)+(Number.isSafeInteger(item.ocrDiscount)&&item.ocrDiscount>0?' ／ 値引き：'+yen(item.ocrDiscount):'')+'</p>':''}
+    ${Number.isSafeInteger(item.taxExcludedAmount)?'<p class="scan-tax-excluded">OCR税抜印字額（値引き後）：'+yen(item.taxExcludedAmount)+(Number.isSafeInteger(item.ocrDiscount)&&item.ocrDiscount>0?' ／ 値引き：'+yen(item.ocrDiscount):'')+(item.taxCalculation==='printed-total-proportional'?' ／ 配分税額：'+yen(item.allocatedTax)+'（'+item.taxRate+'%）':'')+'</p>':''}
    </div>`).join('')}
   <button type="button" class="secondary" data-act="scanAddItem">＋ 明細を追加</button>
   ${scanDraft.items.some(x=>!x.productId&&x.name.trim())?'<button type="button" class="secondary" data-act="scanBulkProducts">未照合商品をまとめて登録</button>':''}
@@ -710,14 +710,14 @@ async function runReceiptScan(){
  render();
  try{
   const engine=scanRuntime||(scanRuntime=await import('./ocr-engine/engine.js'));
-  const observations=[],allItems=[],receiptTotals=[],taxModes=[];let total=null,printedCount=null;
+  const observations=[],allItems=[],receiptTotals=[],taxModes=[],allocationModes=[];let total=null,printedCount=null;
   const scanWarnings=new Set();
   for(let i=0;i<scanPhotos.length;i++){
    if(token!==scanToken)return;
    scanStatus='写真 '+(i+1)+' / '+scanPhotos.length+' を解析しています…';
    const status=document.getElementById('scan-status');if(status)status.textContent=scanStatus;
    const out=await engine.scanReceiptImage(scanPhotos[i],{mode:'gray',crop:null});
-   observations.push(out.text);taxModes.push(out.parsed.taxBasis);
+   observations.push(out.text);taxModes.push(out.parsed.taxBasis);allocationModes.push(out.parsed.taxAllocation?.status||'unresolved');
    for(const item of out.parsed.items){
     const n=String(item.name||'').trim();
     const price=Number.isSafeInteger(item.taxIncludedAmount)&&item.taxIncludedAmount>=0?
@@ -729,6 +729,7 @@ async function runReceiptScan(){
     const taxExcludedAmount=out.parsed.taxBasis==='excluded'&&Number.isSafeInteger(item.netAmount)&&item.netAmount>=0?item.netAmount:null;
     allItems.push({name:n,ocrRawName:n,ocrRowId:'ocr-'+id(),quantity:quantityUncertain?1:item.quantity,
      quantityUncertain,amount:price,taxExcludedAmount,ocrDiscount:item.discount||0,
+     allocatedTax:item.allocatedTax??null,taxRate:item.taxRate??null,taxCalculation:item.taxCalculation||null,
      productId,autoLinked:!!productId,issues});
    }
    if(Number.isSafeInteger(out.parsed.receiptTotal)){total=out.parsed.receiptTotal;receiptTotals.push(total);}
@@ -746,7 +747,9 @@ async function runReceiptScan(){
   if(new Set(receiptTotals).size>1){total=null;scanWarnings.add('conflicting_receipt_totals');}
   const date=scanDate(raw);
   const chain=scanChainForStore(raw.slice(0,800));
-  scanDraft={items:allItems,total,printedCount,date,source:'ocr',taxBasis:taxModes.every(t=>t==='excluded')?'excluded':'unknown',
+  scanDraft={items:allItems,total,printedCount,date,source:'ocr',
+   taxBasis:taxModes.every(t=>t==='excluded')?'excluded':taxModes.every(t=>t==='included')?'included':'unknown',
+   taxAllocationStatus:allocationModes.every(t=>t==='allocated')?'allocated':'unresolved',
    chainId:chain?.id||null,chainName:''};
   scanDraft.items.forEach(item=>{
    item.productId=isUnconfirmedBarcodeLine(item)?'':scanMatchProduct(item.ocrRawName,scanDraft.chainId);
@@ -764,7 +767,11 @@ async function runReceiptScan(){
   ].filter(Boolean);
   scanStatus='読み取り完了：'+allItems.length+'明細。原本と照合して修正してください。'+
    (scanNotices.length?' '+scanNotices.join(' '):'');
- }catch(e){if(token===scanToken)scanStatus='読み取れませんでした：'+(e.message||String(e));}
+ }catch(e){
+  console.error('レシートOCR失敗',e);
+  if(token===scanToken){scanRuntime=null;scanStatus='読み取れませんでした：'+(e?.message||String(e))+
+   (e instanceof TypeError&&/fetch|module|network/i.test(String(e?.message||''))?' 通信を確認し、アプリを再読み込みしてください。':'');}
+ }
  finally{if(token===scanToken){scanBusy=false;render();}}
 }
 
