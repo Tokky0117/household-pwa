@@ -87,17 +87,13 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 }
 
 .secondary {
-  border: 1px solid var(--line);
+  border: 1px solid var(--accent);
   background: var(--card);
-  color: var(--ink);
+  color: var(--accent);
   border-radius: 12px;
   min-height: 44px;
   padding: 10px 16px;
   font-weight: 650;
-}
-
-.danger {
-  color: var(--red);
 }
 
 main {
@@ -620,14 +616,6 @@ body.reordering,body.reordering * {
   -webkit-user-select: none!important;
 }
 
-.primary.destructive {
-  border: 0;
-}
-
-.primary.destructive:active {
-  background: #922e33;
-}
-
 .favorite-row {
   min-height: 62px;
   margin-bottom: 8px;
@@ -697,10 +685,6 @@ body.reordering,body.reordering * {
   border-color: #f2cc9a;
   color: #995719;
   box-shadow: inset 0 0 0 2px #fff9f2;
-}
-
-.primary.destructive {
-  color: #fff;
 }
 
 @media (prefers-color-scheme:dark) {
@@ -1049,10 +1033,6 @@ html,body {
   min-height: 44px;
 }
 
-.primary.destructive {
-  background: var(--accent);
-}
-
 .alert {
   background: #f3f4f6;
   color: #60646d;
@@ -1189,14 +1169,6 @@ html,body {
   grid-column: 2;
 }
 
-.dialog-actions .confirm-caution {
-  background: var(--card);
-  color: var(--accent);
-  border: 1px solid var(--line);
-}
-.dialog-actions .confirm-caution:active {
-  background: var(--accent-soft);
-}
 .ui-inline-notice {
   padding: 12px;
   margin: 8px 0 4px;
@@ -1949,9 +1921,9 @@ html,body {
 }
 .swipe-peek{flex:0 0 8px;background:var(--line);opacity:.42}
 .swipe-actions{position:absolute;inset:0 0 0 auto;width:132px;display:flex;z-index:0}
-.swipe-actions button{width:66px;border:0;border-left:1px solid var(--line);color:var(--ink);background:var(--bg);display:flex;flex-direction:column;gap:4px;align-items:center;justify-content:center;font-size:12px;visibility:hidden}
+.swipe-actions button{width:66px;border:0;border-left:1px solid var(--line);color:var(--accent);background:var(--bg);display:flex;flex-direction:column;gap:4px;align-items:center;justify-content:center;font-size:12px;visibility:hidden}
 .swipe-item.swipe-open .swipe-actions button{visibility:visible}
-.swipe-actions .swipe-delete{background:color-mix(in srgb,var(--bg) 88%,var(--line))}
+.swipe-actions .swipe-delete{background:var(--bg)}
 .swipe-actions button svg{width:18px;height:18px}
 @media(prefers-reduced-motion:reduce){.swipe-front{transition:none}}
 /* v24: unified, less card-heavy price information view */
@@ -2043,7 +2015,7 @@ html,body {
 
 .comparison-main .price-heading-sub{display:block;color:var(--muted);font-size:12px;line-height:1.35}
 .tertiary{
- background:color-mix(in srgb,var(--bg) 86%,var(--line));
+ background:transparent;
  color:var(--accent);
  border:0;
  border-radius:10px;
@@ -2053,7 +2025,7 @@ html,body {
  font-weight:650;
  box-shadow:none;
 }
-.tertiary:active{background:color-mix(in srgb,var(--bg) 70%,var(--line))}
+.tertiary:active{background:var(--accent-soft)}
 .tertiary:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .comparison-main .product-register-action{
  display:flex;
