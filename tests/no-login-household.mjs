@@ -244,7 +244,10 @@ assert.equal(temp.db.processed_operations.length,afterCommit,
  'GAS did not create an extra processed operation');
 assert.equal(pill(c),'なし');
 c.window.document.querySelector('[data-tab="settings"]').click();
-assert.match(c.window.document.body.textContent,/試作 v0\.65\.0/);
+const appVersion=app.match(/^const APP_VERSION='(\d+\.\d+\.\d+)';/m)?.[1];
+assert.ok(appVersion,'app.js declares a semantic app version');
+assert.ok(c.window.document.body.textContent.includes('試作 v'+appVersion),
+ 'Settings shows the current app version without hard-coding an old release');
 
 // New item IDs can be referenced by edits/hides before the first GAS save.
 online=false;
