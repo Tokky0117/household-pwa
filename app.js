@@ -1,4 +1,4 @@
-const APP_VERSION='0.70.2';
+const APP_VERSION='0.70.3';
 const CATS=['飲食','キッチン','洗面・風呂','洗濯・掃除','その他'];
 const liveMode=!!window.KurashiLive; // Data source only; original Preview v46 UI components remain.
 const SEED=[['牛乳',0,true],['麦茶',0,false],['コーヒー',0,true],['卵',0,false],['キッチンペーパー',1,false],['ラップ',1,true],['食器用洗剤',1,true],['シャンプー',2,false],['歯磨き粉',2,true],['ハンドソープ',2,false],['洗濯洗剤',3,false],['柔軟剤',3,true],['トイレットペーパー',3,false],['乾電池',4,true],['ティッシュ',4,true]];
@@ -310,7 +310,7 @@ function recordDetailView(){
     ${x.confirmed_name?'<span>写真・手入力で確認した明細名：'+esc(x.confirmed_name)+'</span>':x.product_id&&aliasNameFor(x)?'<span>レシートの読み取り名：'+esc(aliasNameFor(x))+'</span>':''}
     <span>${esc(x.quantity)}個　税込 ${yen(Number(x.amount_tax_included))}</span>
     <span>${x.product_id?'照合商品：'+esc(catalogue.products.find(p=>p.id===x.product_id)?.name||'登録済み商品'):'商品未照合'}</span></div>`).join('')}
-  ${liveMode?'<div class="record-detail-actions"><button type="button" class="secondary" data-act="recordEdit">編集</button><button type="button" class="tertiary" data-act="recordDelete">削除</button></div>':''}
+  ${liveMode?'<div class="record-detail-actions"><button type="button" class="secondary" data-act="recordEdit">編集</button><button type="button" class="secondary" data-act="recordDelete">削除</button></div>':''}
  </main>${nav()}`;
 }
 
@@ -562,7 +562,7 @@ function scanFormView(){
   <label class="scan-field">購入日<input name="date" type="date" required value="${esc(scanDraft.date)}"></label>
    ${!scanDraft.date?'<p class="scan-warning">購入日をOCRで確定できませんでした。レシートを見て入力してください。</p>':''}
   ${scanDraft.items.map((item,i)=>`<div class="panel scan-review-item">
-    <div class="row" style="justify-content:space-between"><strong>明細 ${i+1}</strong><button type="button" class="tertiary" data-act="scanRemoveItem" data-scan-row="${i}">削除</button></div>
+    <div class="row" style="justify-content:space-between"><strong>明細 ${i+1}</strong><button type="button" class="secondary" data-act="scanRemoveItem" data-scan-row="${i}">削除</button></div>
     ${item.issues.length?'<p class="scan-warning">要確認：'+esc(item.issues.join('、'))+'</p>':''}
     ${['manual','photo'].includes(item.inputOrigin)||item.ocrRawName===undefined?
      '<label class="scan-field">'+(item.inputOrigin==='photo'?'写真で確認した明細名（OCR辞書に登録しません）':'手入力の明細名')+'<input name="name-'+i+'" maxlength="120" required value="'+esc(item.name)+'" placeholder="原本を見て入力"></label>':
@@ -604,7 +604,7 @@ function receiptScanView(){
  <p class="hint">PaddleOCR PP-OCRv6 smallで自動解析。画像処理は以前の最良設定を使用します。</p>
  ${scanPhotos.length?`<div class="panel"><strong>選択した写真 ${scanPhotos.length}枚</strong>
  <div class="scan-photo-list">${scanPhotos.map((file,i)=>`<button type="button" class="${i===scanIndex?'primary':'secondary'}" data-act="scanSelectPhoto" data-scan-row="${i}">写真${i+1}</button>`).join('')}</div>
- <button type="button" class="tertiary" data-act="scanRemovePhoto">選択中の写真を外す</button>
+ <button type="button" class="secondary" data-act="scanRemovePhoto">選択中の写真を外す</button>
  ${scanPhotos.length<6?'<button type="button" class="secondary" data-act="scanAddPhotos">＋ 写真を追加</button>':''}
  
  <button type="button" class="primary" data-act="scanStart" ${scanBusy?'disabled':''}>${scanBusy?'読み取り中…':'写真を解析する'}</button>
@@ -971,13 +971,13 @@ function settingsView(){
      s.loaded?'Google Sheets 接続済み':'読み込み中…');
   return `${head('設定','くらしストック_試作')}<main><div class="panel"><h2>データと同期</h2><div class="info-row row"><div><strong>同期状態</strong><div class="hint">${esc(syncStatus)}</div></div><span class="tag">${s.loaded?'接続済み':s.cached?'再接続中':'未接続'}</span></div>${s.loginRequired?(s.signedIn?'<button type="button" class="secondary" data-act="liveLogout">ログアウト</button>':'<div id="google-login-button"></div>') : ''}${s.error&&s.queued?'<p class="hint" role="alert">通信が回復すると自動で再送します。未反映の操作は端末に残っています。</p>':''}</div><div class="panel"><div class="info-row row"><div><strong>アプリバージョン</strong><div class="hint">試作 v${esc(APP_VERSION)}</div></div></div></div><div class="panel"><h2>商品マスタ</h2><p class="hint">日用品に未紐付けの商品も編集できます。</p><button type="button" class="secondary" data-act="masterProducts">商品マスタを管理</button></div><div class="panel"><h2>OCR名辞書</h2><p class="hint">読み取った明細名を登録商品に紐付けます。</p><button type="button" class="secondary" data-act="aliasManage">OCR名の紐付けを管理</button></div></main>${nav()}`;
  }
- return `${head('設定','くらしストック_試作')}<main><div class="panel"><h2>データと同期</h2><div class="info-row row"><div><strong>同期状態</strong><div class="hint">Google Sheets 接続前</div></div><span class="tag">未設定</span></div><button class="secondary" data-act="sync" style="width:100%">手動同期</button></div><div class="panel"><h2>試作版の操作</h2><p class="hint">変更内容はこの端末の localStorage のみに保存され、夫婦間では共有されません。</p><button class="secondary danger" data-act="reset">仮データを初期状態に戻す</button></div><div class="panel"><h2>今後の実装</h2><p class="hint">レシート／値札のチェーン照合、Google Apps Script 接続、認証、オフライン差分同期を追加予定です。</p></div></main>${nav()}`
+ return `${head('設定','くらしストック_試作')}<main><div class="panel"><h2>データと同期</h2><div class="info-row row"><div><strong>同期状態</strong><div class="hint">Google Sheets 接続前</div></div><span class="tag">未設定</span></div><button class="secondary" data-act="sync" style="width:100%">手動同期</button></div><div class="panel"><h2>試作版の操作</h2><p class="hint">変更内容はこの端末の localStorage のみに保存され、夫婦間では共有されません。</p><button class="secondary" data-act="reset">仮データを初期状態に戻す</button></div><div class="panel"><h2>今後の実装</h2><p class="hint">レシート／値札のチェーン照合、Google Apps Script 接続、認証、オフライン差分同期を追加予定です。</p></div></main>${nav()}`
 }
 // All confirmation dialogs share one DOM and CSS. A Japanese full stop ends a paragraph line.
 function dialogView(){
  if(!dialog)return '';
  const lines=String(dialog.message||'').replace(/。(?!$)/g,'。\n').split(/\n+/).filter(Boolean);
- return `<div class="dialog-back"><div role="dialog" aria-modal="true" aria-labelledby="dialogTitle" class="dialog"><h2 id="dialogTitle">${esc(dialog.title)}</h2><p class="dialog-description">${lines.map(line=>`<span class="dialog-line">${esc(line)}</span>`).join('')}</p><div class="dialog-actions">${dialog.buttons.map(b=>`<button class="${b.critical?'secondary confirm-caution':b.primary?'primary':'secondary'}" data-dialog="${esc(b.id)}">${esc(b.label)}</button>`).join('')}</div></div></div>`;
+ return `<div class="dialog-back"><div role="dialog" aria-modal="true" aria-labelledby="dialogTitle" class="dialog"><h2 id="dialogTitle">${esc(dialog.title)}</h2><p class="dialog-description">${lines.map(line=>`<span class="dialog-line">${esc(line)}</span>`).join('')}</p><div class="dialog-actions">${dialog.buttons.map(b=>`<button class="${b.primary&&!b.critical&&!b.danger?'primary':'secondary'}" data-dialog="${esc(b.id)}">${esc(b.label)}</button>`).join('')}</div></div></div>`;
 }
 // One DOM routing table: screens define content, shell owns navigation and overlays.
 function mainTabView(){
