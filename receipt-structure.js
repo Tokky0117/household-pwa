@@ -296,6 +296,18 @@
   if(new Set(receiptTotals).size>1){receiptTotal=null;warn('conflicting_receipt_totals',null);}
   if(new Set(printedCounts).size>1){printedCount=null;warn('conflicting_printed_counts',null);}
   if(taxTotal===null&&taxBreakdown.length)taxTotal=taxBreakdown.reduce((s,x)=>s+x.amount,0);
+  // If OCR misses the printed tax-yen row, a uniquely labeled tax-rate base
+  // and independently printed subtotal/total permit a mathematically checked
+  // fallback. Never use this when the receipt has several tax rates.
+  if(taxTotal===null&&taxBreakdown.length===0&&rateBases.size===1&&
+   subtotal!==null&&receiptTotal!==null&&receiptTotal>=subtotal){
+   const [rate,base]=[...rateBases.entries()][0],derived=receiptTotal-subtotal;
+   if(base===subtotal&&Math.abs(base*rate/100-derived)<=1){
+    taxTotal=derived;taxBreakdown.push({rate,amount:derived,sourceLine:null,
+     evidence:'difference-of-printed-total-and-subtotal'});
+    warn('tax_derived_from_printed_totals',null);
+   }
+  }
   const sum=items.reduce((s,x)=>s+x.netAmount,0);
   // Receipt-wide classification requires explicit tax evidence; never infer from total equality.
   const normalizedText=lines.map(norm).join('\n');
