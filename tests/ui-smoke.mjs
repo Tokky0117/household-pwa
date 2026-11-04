@@ -261,7 +261,7 @@ assert.equal(parsedCandidate.items[0].name,'キットカットコイマッチャ
  'printed name remains separate from canonical candidate');
 assert.equal(parsedCandidate.items[0].nameCandidate,'キットカット濃い抹茶10袋',
  'new ChatGPT JSON retains a noncommittal master-name candidate');
-assert.ok(source.includes('item.canonicalName||item.nameCandidate||item.name'),
+assert.ok(source.includes('item.canonicalName||item.inferredName||item.nameCandidate||item.name'),
  'canonical candidate only initializes editable master registration field');
 assert.equal(parsed.items[0].taxIncludedAmount,2638);
 assert.match(imports.makeChatGptReceiptPrompt('{"row":1,"name":"リンド一ル"}'),
