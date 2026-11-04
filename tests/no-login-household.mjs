@@ -908,7 +908,7 @@ online=false;
 recordForm.dispatchEvent(new recordUI.window.Event('submit',{bubbles:true,cancelable:true}));
 await waitFor(()=>recordUI.window.KurashiLive.state().queued===2,
  'store and record queued atomically offline');
-const projectedReceipt=recordUI.window.document.querySelector('.preview-record-row');
+const projectedReceipt=recordUI.window.document.querySelector('.ui-record-row');
 assert.ok(projectedReceipt,'receipt appears immediately in the real UI');
 recordUI.window.close();online=true;
 let recordReopened=appSession();
