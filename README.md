@@ -1,6 +1,6 @@
 # くらしストック｜Preview v29（v1.8試作）
  
-> **現行試作：v0.65.0（2026-11-04）**。開発ブランチ `preview-v46-clean-base`。3タブ（日用品／レシート／設定）、既存GAS・Google Sheets同期、写真OCRの原表記を表示専用化、数量不明時の黄色い「1」、OCR後のChatGPT商品名候補を実装。仕様は [画面仕様](./SCREEN_UI_SPEC.md)・[データモデル](./DATA_MODEL.md)・[同期・レシート設計](./OPERATION_QUEUE.md) を参照。実iPhoneでの写真OCR受入とGoogleログインによる利用者制限は未完了です。以下のv29の説明は履歴です。
+> **現行試作：v0.66.0（2026-11-04）**。開発ブランチ `preview-v46-clean-base`。3タブ（日用品／レシート／設定）、既存GAS・Google Sheets同期、写真OCRの原表記を表示専用化、数量不明時の黄色い「1」、OCR後のChatGPT商品名候補を実装。仕様は [画面仕様](./SCREEN_UI_SPEC.md)・[データモデル](./DATA_MODEL.md)・[同期・レシート設計](./OPERATION_QUEUE.md) を参照。実iPhoneでの写真OCR受入とGoogleログインによる利用者制限は未完了です。以下のv29の説明は履歴です。
 
 > **2026-10-18 時点の旧記録：** [基本設計 v1.8](./household_pwa_requirements_basic_design%281%29.md)／[データモデル v1.8](./DATA_MODEL.md)／[共通UIガイドライン v2.0](./UI_GUIDELINES.md)／[画面別UI仕様](./SCREEN_UI_SPEC.md)。[UI変更・検証履歴](./UI_CHANGELOG.md)は過去の経緯であり、現行の共通UI規則ではありません。以下の古い試作履歴は参考情報であり、現行設計と矛盾する旧記述は適用しません。
 
