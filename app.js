@@ -1,4 +1,4 @@
-const APP_VERSION='0.69.0';
+const APP_VERSION='0.70.0';
 const CATS=['飲食','キッチン','洗面・風呂','洗濯・掃除','その他'];
 const liveMode=!!window.KurashiLive; // Data source only; original Preview v46 UI components remain.
 const SEED=[['牛乳',0,true],['麦茶',0,false],['コーヒー',0,true],['卵',0,false],['キッチンペーパー',1,false],['ラップ',1,true],['食器用洗剤',1,true],['シャンプー',2,false],['歯磨き粉',2,true],['ハンドソープ',2,false],['洗濯洗剤',3,false],['柔軟剤',3,true],['トイレットペーパー',3,false],['乾電池',4,true],['ティッシュ',4,true]];
@@ -225,7 +225,7 @@ function applyChatGptOcrAssistance(draft,result){
   if(!original||proposed.has(entry.rowId)||
    String(original.ocrRawName||'')!==entry.ocrName)
    throw Error('OCR行IDまたは原表記が一致しません');
-  proposed.set(entry.rowId,entry.nameCandidate);
+  proposed.set(entry.rowId,entry);
  }
  const next={...draft,items:draft.items.map(x=>({...x})),
   matchedCount:0,unmatchedCount:0};
@@ -239,13 +239,19 @@ function applyChatGptOcrAssistance(draft,result){
    next.unmatchedCount++;continue;
   }
   const productId=item.productId||scanMatchProduct(item.ocrRawName||'',next.chainId);
+  const proposedLine=proposed.get(rowId);
+  item.nameCandidate=proposedLine.nameCandidate||'';
   if(productId){
-   item.productId=productId;item.autoLinked=!item.manuallyLinked;
-   item.nameCandidate='';next.matchedCount++;
+   item.productId=productId;item.autoLinked=!item.manuallyLinked;next.matchedCount++;
   }else{
-   item.productId='';
-   item.nameCandidate=proposed.get(rowId)||'';
-   next.unmatchedCount++;
+   item.productId='';next.unmatchedCount++;
+  }
+  if(Number.isSafeInteger(proposedLine.amount)){
+   item.amount=proposedLine.amount;
+   item.issues=(item.issues||[]).filter(x=>x!=='税込金額を原本で確認');
+  }
+  if(Number.isSafeInteger(proposedLine.quantity)&&proposedLine.quantity>0){
+   item.quantity=proposedLine.quantity;item.quantityUncertain=false;
   }
  }
  return next;
@@ -263,7 +269,7 @@ function makeChatGptReceiptRebuildDraft(previous,result){
   branchName:previous.branchName||'',total:result.receiptTotal??null,
   printedCount:result.printedCount??null,ocrReplacedCount:previous.items.length,
   items:result.items.map(line=>({
-   name:line.name||'',inputOrigin:'photo',
+   name:line.name||'',inferredName:line.name||'',inputOrigin:'photo',
    quantity:line.quantity??1,quantityUncertain:line.quantity===null,
    amount:line.amount===null?'':line.amount,
    productId:'',manuallyLinked:false,autoLinked:false,
@@ -300,6 +306,7 @@ function recordDetailView(){
     <p>明細数：${detail.length}件</p><strong>税込合計：${yen(total)}</strong></div>
   ${detail.map((x,i)=>`<div class="panel preview-record-row">
     <strong>${i+1}. ${esc(catalogue.products.find(p=>p.id===x.product_id)?.name||aliasNameFor(x)||'未特定')}</strong>
+    ${x.inferred_name?'<span>ChatGPT推測名：'+esc(x.inferred_name)+'</span>':''}
     ${x.confirmed_name?'<span>写真・手入力で確認した明細名：'+esc(x.confirmed_name)+'</span>':x.product_id&&aliasNameFor(x)?'<span>レシートの読み取り名：'+esc(aliasNameFor(x))+'</span>':''}
     <span>${esc(x.quantity)}個　税込 ${yen(Number(x.amount_tax_included))}</span>
     <span>${x.product_id?'照合商品：'+esc(catalogue.products.find(p=>p.id===x.product_id)?.name||'登録済み商品'):'商品未照合'}</span></div>`).join('')}
@@ -329,7 +336,7 @@ function scanProductView(){
  if(!item)return UI.sheet({title:'商品を登録',body:'<p>対象の明細が見つかりません。</p>'});
  const fields=[
   '<p class="hint">'+(item.inputOrigin==='photo'?'写真で確認した明細名':'OCR明細名（変更不可）')+'：<strong>'+esc(item.inputOrigin==='photo'?item.name:item.ocrRawName||item.name||'読み取り不可')+'</strong></p>',
-  UI.formField({id:'scan-product-name',name:'name',label:'商品マスタに登録する正式商品名',value:item.canonicalName||item.nameCandidate||item.name,maxlength:80,required:true}),
+  UI.formField({id:'scan-product-name',name:'name',label:'商品マスタに登録する正式商品名',value:item.canonicalName||item.inferredName||item.nameCandidate||item.name,maxlength:80,required:true}),
   '<label class="scan-field">日用品リストへの紐付け（任意）<select id="scan-product-group" name="group">'+scanGroupOptions()+'</select></label>',
   UI.formField({id:'scan-product-quantity',name:'package_quantity',label:'内容量（任意）',type:'number',value:'',extra:'min="0.001" step="any"'}),
   UI.formField({id:'scan-product-unit',name:'package_unit',label:'単位',control:'select',value:'個',options:UNIT_OPTIONS.map(v=>({label:v,value:v}))})
@@ -343,7 +350,7 @@ function scanBulkProductCandidates(){
  for(const item of scanDraft?.items||[]){
   const key=norm(item.name);
   if(item.productId||!item.name.trim()||seen.has(key))continue;
-  seen.add(key);candidates.push({name:item.name.trim(),canonicalName:item.canonicalName||item.nameCandidate||item.name.trim(),key});
+  seen.add(key);candidates.push({name:item.name.trim(),canonicalName:item.canonicalName||item.inferredName||item.nameCandidate||item.name.trim(),key});
  }
  return candidates;
 }
@@ -539,20 +546,6 @@ function scanResolvedProductId(item){
   (!item.canonicalGroupId||p.itemGroupId===item.canonicalGroupId));
  return matches.length===1?matches[0].id:current;
 }
-// Photo-confirmed lines keep their OCR evidence only in the local draft.
-function detachOcrLine(draft,index,{useCandidate=false}={}){
- const item=draft?.items?.[index];
- if(!item||item.ocrRawName===undefined||['manual','photo'].includes(item.inputOrigin))
-  throw Error('OCR明細を確認できません');
- const candidate=String(item.nameCandidate||'').trim();
- if(useCandidate&&!candidate)throw Error('適用する商品名候補がありません');
- item.inputOrigin='photo';
- item.name=useCandidate?candidate:'';
- item.productId='';item.autoLinked=false;item.manuallyLinked=false;
- item.nameCandidate='';
- item.issues=[...new Set([...(item.issues||[]),'写真の明細名を確認してください'])];
- return item;
-}
 function scanFormView(){
  if(!scanDraft)return '';
  const chains=[...catalogue.chains.map(c=>'<option value="'+esc(c.id)+'"'+
@@ -562,7 +555,7 @@ function scanFormView(){
   <h2 class="sectiontitle">読み取り結果の確認</h2>
   <p class="hint">OCR・ChatGPTの文字・数量・金額には誤認識が残ります。必ず原本と照合してください。${scanDraft.source==='chatgpt-ocr'?' OCRとChatGPTの一意対応 '+scanDraft.matchedCount+'件、要確認 '+scanDraft.unmatchedCount+'件。':''}</p>
   ${scanDraft.source==='chatgpt-rebuild'?'<p class="scan-warning">ChatGPTによる写真再解析です。OCR明細'+esc(scanDraft.ocrReplacedCount||0)+'件は破棄しました。商品名・数量・金額・購入日・店舗を写真と照合してください。AIの回答は誤ることがあります。</p>':''}
-  ${scanDraft.source==='ocr'&&receiptOcrRows(scanDraft).length?'<button type="button" class="secondary" data-act="chatGptAssist">ChatGPTで商品名候補を確認</button>':''}
+  ${scanDraft.source==='ocr'&&receiptOcrRows(scanDraft).length?'<button type="button" class="secondary" data-act="chatGptAssist">ChatGPTで商品名・金額を確認</button>':''}
   <label class="scan-field">チェーン<select name="chain" id="scan-chain">${chains}</select></label>
   <label class="scan-field" id="scan-new-chain-wrap" ${scanDraft.chainId?'hidden':''}>新しいチェーン名<input name="chain_name" maxlength="80" placeholder="新しいチェーン名" value="${esc(scanDraft.chainName||'')}"></label>
   <label class="scan-field">支店名（任意）<input name="branch_name" maxlength="80" placeholder="例：駅前店" value="${esc(scanDraft.branchName||'')}"></label>
@@ -574,9 +567,7 @@ function scanFormView(){
     ${['manual','photo'].includes(item.inputOrigin)||item.ocrRawName===undefined?
      '<label class="scan-field">'+(item.inputOrigin==='photo'?'写真で確認した明細名（OCR辞書に登録しません）':'手入力の明細名')+'<input name="name-'+i+'" maxlength="120" required value="'+esc(item.name)+'" placeholder="原本を見て入力"></label>':
      '<div class="scan-field"><span>OCR明細名（変更不可）</span><div class="scan-ocr-name" data-ocr-row="'+i+'">'+esc(item.ocrRawName||'読み取り不可')+'</div></div>'}
-    ${item.inputOrigin==='photo'?'<p class="hint">参考OCR（保存しません）：'+esc(item.ocrRawName||'')+'</p>':''}
-    ${item.inputOrigin!=='photo'&&item.inputOrigin!=='manual'&&item.ocrRawName!==undefined?'<button type="button" class="tertiary" data-act="scanDetachOcr" data-scan-row="'+i+'">OCRと紐付けず写真から明細を入力</button>':''}
-    ${!item.productId&&item.nameCandidate?'<p class="scan-name-candidate">ChatGPTの商品名候補：'+esc(item.nameCandidate)+'（写真で確認したら採用できます）</p><button type="button" class="tertiary" data-act="scanUsePhotoCandidate" data-scan-row="'+i+'">写真と一致することを確認して明細名に採用</button>':''}
+    ${(item.inferredName||item.nameCandidate)?'<p class="scan-name-candidate">ChatGPT推測名：'+esc(item.inferredName||item.nameCandidate)+'（OCR名は変更せず、商品登録時の初期値に使用）</p>':''}
     <input type="hidden" name="product-${i}" value="${esc(scanResolvedProductId(item))}">
     <div class="scan-product-association">
       <span class="scan-product-association-label">商品マスタとの紐付け</span>
@@ -1415,9 +1406,11 @@ app.addEventListener('submit',e=>{e.preventDefault();const form=e.target;const d
   const lines=scanDraft.items.map((item,i)=>{
    const verified=['manual','photo'].includes(item.inputOrigin)||item.ocrRawName===undefined;
    const confirmedName=verified?String(d.get('name-'+i)||'').trim():'';
+   const inferredName=String(item.inferredName||item.nameCandidate||'').trim();
    return {
     raw_name:verified?'':String(item.ocrRawName||'').trim(),
     ...(verified?{confirmed_name:confirmedName}:{}),
+    ...(inferredName?{inferred_name:inferredName}:{}),
     product_id:String(d.get('product-'+i)||'')||null,
     quantity:Number(d.get('qty-'+i)),
     amount_tax_included:String(d.get('amount-'+i)||'').trim()===''?NaN:Number(d.get('amount-'+i)),
@@ -1428,9 +1421,9 @@ app.addEventListener('submit',e=>{e.preventDefault();const form=e.target;const d
    fieldNotice(form,'写真の全明細と店舗・日付・数量・金額を確認し、チェックしてください');return;
   }
   if(scanDraft.items.some(isUnconfirmedBarcodeLine)){
-   fieldNotice(form,'商品コードのみの明細はOCR名として保存できません。「OCRと紐付けず写真から明細を入力」で商品名を確認してください');return;
+   fieldNotice(form,'商品コードのみの行は保存できません。写真からの全面再解析を使用するか、不要な行を削除してください');return;
   }
-  if(lines.some(x=>('confirmed_name' in x&&!x.confirmed_name)||
+  if(lines.some(x=>(!x.raw_name&&!x.confirmed_name)||
      !Number.isSafeInteger(x.quantity)||x.quantity<1||
      !Number.isSafeInteger(x.amount_tax_included)||x.amount_tax_included<0)){
    fieldNotice(form,'数量・税込明細合計をすべて確認してください');return;
@@ -1439,7 +1432,7 @@ app.addEventListener('submit',e=>{e.preventDefault();const form=e.target;const d
   const editedChain=String(d.get('chain')||'');
   const dup=scanDuplicates({...scanDraft,date:editedDate,
     chainId:editedChain==='__new__'?null:editedChain,
-    items:lines.map(x=>({name:x.raw_name,quantity:x.quantity,amount:x.amount_tax_included}))});
+    items:lines.map(x=>({name:x.confirmed_name||x.raw_name,quantity:x.quantity,amount:x.amount_tax_included}))});
   if(dup.length&&!d.get('duplicateOk')){
    document.getElementById('scan-duplicate-warning')?.removeAttribute('hidden');
    fieldNotice(form,'重複の可能性があります。確認してから登録してください');return;
@@ -1746,10 +1739,10 @@ if(action==='chatGptImport'){
   }
   scanDraft=applyChatGptOcrAssistance(scanDraft,response);
   saveScanDraft();
-  const changed=response.items.filter(i=>i.nameCandidate!==null).length;
-  scanStatus=changed?
-   '商品名候補'+changed+'件を取り込みました。原本を確認して採用してください。':
-   '商品名の修正候補はありません。商品行の分割・別レシート混入がある場合は、更新した指示文で写真の全明細再解析を依頼してください。';
+  const changed=response.items.filter(i=>i.nameCandidate).length;
+  const priced=response.items.filter(i=>Number.isSafeInteger(i.amount)).length;
+  scanStatus='ChatGPT推測名'+changed+'件、金額'+priced+'件を反映しました。原本で数量・金額を確認してください。'+
+   (!changed&&!priced?' 行の対応が崩れている場合は全面再解析を使用してください。':'');
   page='recordScan';render();
  }catch(e){
   const reason=String(e?.message||e);
@@ -1791,7 +1784,7 @@ if(action==='recordEdit'){
   chainName:'',branchName:r.branch_name||'',total:null,
   items:allPreviewItems().filter(x=>x.record_id===r.record_id&&!x.deleted_at)
    .sort((a,b)=>Number(a.line_order)-Number(b.line_order))
-   .map(x=>({name:aliasNameFor(x),
+   .map(x=>({name:aliasNameFor(x),inferredName:x.inferred_name||'',
     ...(x.confirmed_name?{inputOrigin:'photo'}:{ocrRawName:aliasNameFor(x),savedOcrName:true}),
     quantity:x.quantity,amount:x.amount_tax_included,
     productId:x.product_id||'',manuallyLinked:!!x.product_id,issues:[]}))
@@ -1876,12 +1869,6 @@ if(action==='scanRemovePhoto'){
  scanPhotos.splice(scanIndex,1);
  scanIndex=Math.max(0,Math.min(scanIndex,scanPhotos.length-1));
  scanDraft=null;scanToken++;render();return;
-}
-if((action==='scanDetachOcr'||action==='scanUsePhotoCandidate')&&scanDraft){
- syncScanReview();
- try{detachOcrLine(scanDraft,Number(el.dataset.scanRow),{useCandidate:action==='scanUsePhotoCandidate'});}
- catch(err){say(err.message);return;}
- saveScanDraft();render();return;
 }
 if(action==='scanRemoveItem'&&scanDraft){
  syncScanReview();scanDraft.items.splice(Number(el.dataset.scanRow),1);saveScanDraft();render();return;

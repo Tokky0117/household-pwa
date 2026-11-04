@@ -321,12 +321,14 @@ function parseChatGptOcrAssistJson(source){
   throw Error('INVALID_OCR_ASSIST_FORMAT');
  const seen=new Set();
  const items=raw.items.map(entry=>{
-  if(!isObject(entry)||Object.keys(entry).sort().join(',')!=='nameCandidate,ocrName,rowId'||
+  if(!isObject(entry)||!['nameCandidate,ocrName,rowId','amount,nameCandidate,ocrName,quantity,rowId'].includes(Object.keys(entry).sort().join(','))||
    typeof entry.rowId!=='string'||!(/^[A-Za-z0-9_-]{1,80}$/).test(entry.rowId)||
    typeof entry.ocrName!=='string'||entry.ocrName.length>120||
    /[\r\n\t<>]/.test(entry.ocrName)||privatePattern.test(entry.ocrName)||
    cardPattern.test(entry.ocrName)||
-   (entry.nameCandidate!==null&&typeof entry.nameCandidate!=='string'))
+   (entry.nameCandidate!==null&&typeof entry.nameCandidate!=='string')||
+   (entry.amount!==undefined&&!optionalInteger(entry.amount))||
+   (entry.quantity!==undefined&&(!optionalInteger(entry.quantity,999)||entry.quantity===0)))
    throw Error('INVALID_OCR_ASSIST_ITEM');
   if(seen.has(entry.rowId))throw Error('OCR_ROW_DUPLICATE');
   seen.add(entry.rowId);
@@ -334,7 +336,8 @@ function parseChatGptOcrAssistJson(source){
    rowId:entry.rowId,
    ocrName:entry.ocrName,
    nameCandidate:entry.nameCandidate===null?null:
-    cleanText(entry.nameCandidate,80,{optional:true})
+    cleanText(entry.nameCandidate,80,{optional:true}),
+   quantity:entry.quantity??null,amount:entry.amount??null
   };
  });
  return {version:ASSIST_VERSION,items};
@@ -349,17 +352,17 @@ function makeChatGptOcrAssistPrompt(ocrReference){
    typeof x.rowId!=='string'||typeof x.ocrName!=='string'))
   throw Error('OCR_REFERENCE_INVALID');
  const output={version:ASSIST_VERSION,
-  items:reference.items.map(x=>({rowId:x.rowId,ocrName:x.ocrName,nameCandidate:null}))};
+  items:reference.items.map(x=>({rowId:x.rowId,ocrName:x.ocrName,nameCandidate:null,quantity:null,amount:null}))};
  return [
   "このメッセージにレシート画像が実際に添付され、画像を目視で確認できるか最初に検証してください。画像がない／開けない場合は「レシート写真を添付してください。」とのみ回答し、JSONは作成しないでください。OCR文字列だけから補完してはいけません。",
   "まず写真そのものを目視で確認し、対象レシートを背景・他のレシートから分離して商品行・商品名・商品コード・数量・税込金額・購入日・店舗・印字合計を照合してください。参考OCRは後で比較し、正解として扱わないでください。",
   "次に写真と参考OCRの商品行数が一致するか・購入明細の対応を検証し、以下の【2種類のJSONのどちらか一つだけ】を選んでください。",
-  "【文字誤読のみ】OCRのすべての商品行と写真の商品行が1対1で確実に対応し、商品数・各数量・金額・日付に構造的な誤りがない場合だけ、従来のkurashi-receipt-assist-1を出力します。元のrowId・ocrName・行順と行数を1文字も変えず、文字誤読だけnameCandidateに修正候補を入れてください。元から正しい行はnullにしてください。",
+  "【行が1対1で対応】OCRの各商品行と写真の商品行が確実に対応する場合はkurashi-receipt-assist-1を出力します。元のrowId・ocrName・行順と行数は変えず、文字誤読だけnameCandidateに修正候補を入れ、正しい名前ならnullにしてください。quantityとamountには写真から確定できた購入数量と値引き後の税込明細合計を入れ、読めなければnullにしてください。OCR金額が未取得でも行対応が確実ならこの形式を使用できます。金額を推測してはいけません。",
   "【構造認識の失敗】別レシートの混入、商品コードのみの行、商品行の欠落・余分・結合・分割、明細と金額の対応不明、商品点数の不一致が一つでもあるなら、kurashi-receipt-rebuild-1を選んでください。OCR行IDへ無理に商品を対応させず、写真の対象レシートに実際に印字されている購入明細だけを、印字順に1商品1行として出力してください。同じ商品が複数行印字されていたらまとめず行ごとに出力してください。",
   "再解析のnameは写真上で読める商品名を記載し、読めない場合はnullにしてください。商品コードや背景のレシートを商品名にしないでください。quantityはその購入行の購入数量で、商品名中の内容量ではありません。amountはその行の税込明細合計です。写真から確定できない数量・金額・日付・店舗・合計・点数はnullにし、推測で埋めないでください。値引きと行ごとの金額対応も原本で確認してください。",
   "写真上の各商品行の金額の和と印字合計、数量の和と印字点数をそれぞれ照合してください。一致しなければ、読み取り誤り・値引き・対象レシート違いを確認し、不明値を推測せず、OCR診断に不一致を記載してください。写真に明記されたクルーネックとVネックなど形状の異なる商品を混同しないでください。",
   "両形式ともJSON以外のキーや個人情報（カード・会員・決済番号・電話番号・住所など）を入れないでください。JSONは必ず一つだけ最初のjsonコードブロックに出力し、その外にOCR診断を記載してください。診断には、今回選んだ形式・画像で確定した商品行数・誤読・構造的な失敗・次回のOCR改善課題を簡潔にまとめてください。診断文はアプリに保存されません。",
-  "形式1（文字誤読のみ。全OCR行のrowIdとocrNameは参考OCRに合わせ、nameCandidateだけ変更）:",
+  "形式1（商品行が1対1対応。rowIdとocrNameは維持し、名前候補・数量・税込明細合計を写真から確認）:",
   '```json',
   JSON.stringify(output,null,2),
   '```',

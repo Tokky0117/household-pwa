@@ -168,7 +168,7 @@ function kurashiSheet_(name,book) {
     const first=headers.findIndex((h,i)=>actual[i]!==h);
     const extension=headers.length-first;
     const allowed=name==='product_aliases'?extension===1:
-      name==='record_items'&&(extension===1||extension===2);
+      name==='record_items'&&(extension===1||extension===2||extension===3);
     if(first<0||!allowed||actual.slice(first).some(value=>value!==''))
       kurashiFail_('SCHEMA_ERROR','保存先の列構成が不正です');
     for(let i=first;i<headers.length;i++)
@@ -1069,7 +1069,9 @@ function kurashiCreateRecord_(user,payload,id){
       const lineItems=payload.items.map((line,n)=>{
         if(!line||![
           'amount_tax_included,category_id,product_id,quantity,raw_name',
-          'amount_tax_included,category_id,confirmed_name,product_id,quantity,raw_name'
+          'amount_tax_included,category_id,confirmed_name,product_id,quantity,raw_name',
+          'amount_tax_included,category_id,inferred_name,product_id,quantity,raw_name',
+          'amount_tax_included,category_id,confirmed_name,inferred_name,product_id,quantity,raw_name'
          ].includes(Object.keys(line).sort().join(',')))
           kurashiFail_('BAD_REQUEST','明細の形式が不正です');
         const prod=line.product_id;
@@ -1084,12 +1086,13 @@ function kurashiCreateRecord_(user,payload,id){
             cat!==null&&(!Number.isInteger(cat)||cat<0||cat>4)))
           kurashiFail_('BAD_REQUEST','数量・税込金額・カテゴリを確認してください');
         const confirmed=line.confirmed_name===undefined?'':kurashiRawName_(line.confirmed_name);
+        const inferred=line.inferred_name===undefined?'':kurashiRawName_(line.inferred_name);
         if(line.confirmed_name!==undefined&&(!confirmed||String(line.raw_name||'').trim()))
           kurashiFail_('BAD_REQUEST','写真確認名はOCR名と同時登録できません');
         const aliasId=confirmed?'':kurashiPlanAlias_(line.raw_name,payload.chain_id,prod,
           aliasIndex,newAliases,now);
         return {record_item_id:'recorditem-'+Utilities.getUuid(),
-          record_id:recordId,line_order:n+1,raw_name:'',alias_id:aliasId,confirmed_name:confirmed,
+          record_id:recordId,line_order:n+1,raw_name:'',alias_id:aliasId,confirmed_name:confirmed,inferred_name:inferred,
           product_id:prod||'',quantity:qty,amount_tax_included:amount,
           category_id:cat===null?'':cat,price_eligible:prod!==null,
           created_at:now,updated_at:now,version:1,deleted_at:''};
@@ -1176,7 +1179,9 @@ function kurashiMutateRecord_(user,action,payload,id){
     fresh=payload.items.map((line,n)=>{
      if(!line||![
        'amount_tax_included,category_id,product_id,quantity,raw_name',
-       'amount_tax_included,category_id,confirmed_name,product_id,quantity,raw_name'
+       'amount_tax_included,category_id,confirmed_name,product_id,quantity,raw_name',
+          'amount_tax_included,category_id,inferred_name,product_id,quantity,raw_name',
+          'amount_tax_included,category_id,confirmed_name,inferred_name,product_id,quantity,raw_name'
       ].includes(Object.keys(line).sort().join(',')))
        kurashiFail_('BAD_REQUEST','明細の形式が不正です');
      const prod=line.product_id,cat=line.category_id;
@@ -1190,12 +1195,13 @@ function kurashiMutateRecord_(user,action,payload,id){
           cat!==null&&(!Number.isInteger(cat)||cat<0||cat>4)))
        kurashiFail_('BAD_REQUEST','数量・税込金額を確認してください');
      const confirmed=line.confirmed_name===undefined?'':kurashiRawName_(line.confirmed_name);
+        const inferred=line.inferred_name===undefined?'':kurashiRawName_(line.inferred_name);
      if(line.confirmed_name!==undefined&&(!confirmed||String(line.raw_name||'').trim()))
        kurashiFail_('BAD_REQUEST','写真確認名はOCR名と同時登録できません');
      const aliasId=confirmed?'':kurashiPlanAlias_(line.raw_name,payload.chain_id,prod,
        aliasIndex,newAliases,now);
      return {record_item_id:'recorditem-'+Utilities.getUuid(),
-      record_id:recordId,line_order:n+1,raw_name:'',alias_id:aliasId,confirmed_name:confirmed,
+      record_id:recordId,line_order:n+1,raw_name:'',alias_id:aliasId,confirmed_name:confirmed,inferred_name:inferred,
       product_id:prod||'',quantity:line.quantity,
       amount_tax_included:line.amount_tax_included,
       category_id:cat===null?'':cat,price_eligible:prod!==null,
