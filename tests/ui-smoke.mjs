@@ -513,8 +513,8 @@ assert.equal(ordinary.receiptTotal,100);
 assert.equal(ordinary.printedCount,1);
 console.log('v67: geometric barcode-to-name linking and ambiguous multi-receipt totals/dates OK');
 
-// External-tax receipts: merchandise rows and discounts are recognizable, while
-// inclusive amounts must not be fabricated from an invoice-wide tax total.
+// The printed tax per rate is allocated proportionally to validated discounted rows.
+// No item is independently rounded: the distribution sums to the invoice's exact tax.
 const externalFixture=structure.parse([
  '※ 野菜A ! ¥98','分類一括割引 10% -10',
  '※ きのこB ! ¥128','分類一括割引 10%','-13',
@@ -532,8 +532,12 @@ assert.equal(externalFixture.subtotal,397);
 assert.equal(externalFixture.taxTotal,32);
 assert.equal(externalFixture.receiptTotal,429);
 assert.equal(externalFixture.reconciliation.totalMatches,true);
-assert.ok(externalFixture.items.every(x=>x.taxIncludedAmount===null),
- 'invoice-wide external tax does not authorize inventing per-item inclusive amounts');
+assert.equal(externalFixture.taxAllocation.status,'allocated');
+assert.equal(externalFixture.items.reduce((sum,x)=>sum+x.taxIncludedAmount,0),429,
+ 'largest-remainder distribution reconciles exactly with the invoice');
+assert.deepEqual(Array.from(externalFixture.items,x=>x.taxIncludedAmount),[95,124,210],
+ 'each ex-tax discounted row receives deterministic and auditable tax');
+assert.deepEqual(Array.from(externalFixture.items,x=>x.allocatedTax),[7,9,16]);
 const separatePriceLayout=geometry.groupLines([
  observed('※ 野菜A',100,300,124),observed('! ¥98',292,311,60),
  observed('分類一括割引 10% -10',100,340,245),
@@ -548,12 +552,32 @@ const unrelatedPrice=geometry.groupLines([
  observed('※ 野菜A',100,300,124),observed('! ¥98',740,311,60)]);
 assert.equal(geometry.joinSplitPriceColumns(unrelatedPrice).lines.length,2,
  'distant neighbouring receipt price is not linked by mere line order');
-ui.setScanDraft({source:'ocr',taxBasis:'excluded',date:'2026-10-12',chainId:'c-a',
+const mixedRates=structure.parse([
+ '※ 食品A ¥100','雑貨B ¥200','小計 ¥300',
+ '外税 8%対象額 ¥100','外税 10%対象額 ¥200',
+ '外税額 8% ¥8','外税額 10% ¥20','合計 ¥328',
+ '※マークは軽減税率対象です。'
+].join('\n'));
+assert.equal(mixedRates.taxAllocation.status,'allocated','distinct printed 8%/10% groups are supported');
+assert.deepEqual(Array.from(mixedRates.items,x=>x.taxIncludedAmount),[108,220]);
+const rateUnknown=structure.parse([
+ '食品A ¥100','雑貨B ¥200','小計 ¥300',
+ '外税額 8% ¥8','外税額 10% ¥20','合計 ¥328'
+].join('\n'));
+assert.equal(rateUnknown.taxAllocation.status,'unresolved','mixed groups without item tax evidence are not guessed');
+assert.ok(rateUnknown.items.every(x=>x.taxIncludedAmount===null));
+const amountMismatch=structure.parse([
+ '※ 食品A ¥100','小計 ¥100','外税額 8% ¥8','合計 ¥200'
+].join('\n'));
+assert.equal(amountMismatch.taxAllocation.status,'unresolved','contradicting printed total disallows allocation');
+assert.equal(amountMismatch.items[0].taxIncludedAmount,null);
+ui.setScanDraft({source:'ocr',taxBasis:'excluded',taxAllocationStatus:'allocated',date:'2026-10-12',chainId:'c-a',
  total:429,printedCount:4,items:[{name:'野菜A',ocrRawName:'野菜A',
-  quantity:1,amount:'',taxExcludedAmount:88,ocrDiscount:10,productId:'',issues:[]}]});
+  quantity:1,amount:95,taxExcludedAmount:88,ocrDiscount:10,taxRate:8,allocatedTax:7,
+  taxCalculation:'printed-total-proportional',productId:'',issues:[]}]});
 const externalReview=ui.receiptScanView();
-assert.ok(externalReview.includes('外税方式')&&externalReview.includes('OCR税抜印字額（値引き後）'),
- 'receipt review exposes printed net amounts without auto-filling unsupported inclusive amounts');
+assert.ok(externalReview.includes('外税レシート')&&externalReview.includes('OCR税抜印字額（値引き後）')&&externalReview.includes('配分税額'),
+ 'receipt review identifies allocated inclusive prices and their printed ex-tax provenance');
 
 // Photo-confirmed rows persist outside the OCR-name dictionary.
 const photoDraft={source:'ocr',date:'2026-10-12',chainId:'c-a',total:11550,items:[
