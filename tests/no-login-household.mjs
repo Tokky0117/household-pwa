@@ -1235,8 +1235,11 @@ await waitFor(()=>otherPhone.window.KurashiLive.state().loaded&&
 await waitFor(()=>!otherPhone.window.KurashiLive.state().cached,
  'other iPhone finished remote bootstrap');
 otherPhone.window.document.querySelector('[data-tab="receipt"]').click();
-assert.match(otherPhone.window.document.body.textContent,/キットカット濃い抹茶10袋/,
- 'second iPhone displays the first iPhone purchase history');
+const syncedKitLine=kitBaseline.record_items.find(x=>
+ aliasText(temp,x)===kitRaw&&x.product_id===kitSavedProduct.product_id);
+assert.ok(syncedKitLine&&otherPhone.window.document.querySelector(
+ '[data-record-id="'+syncedKitLine.record_id+'"]'),
+ 'second iPhone displays the first iPhone purchase record without product-name summary');
 prepareOcrImport(otherPhone);
 otherPhone.window.eval(importer);
 otherPhone.window.document.getElementById('chatgpt-input').value=JSON.stringify(kitJson);
