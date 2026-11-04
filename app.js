@@ -1449,7 +1449,7 @@ app.addEventListener('submit',e=>{e.preventDefault();const form=e.target;const d
   window.KurashiLive.saveRecord({
    record_type:input.type,chain_id:input.chainId,chain_name:input.chainName,
    record_date:input.date,
-   items:[{raw_name:'',confirmed_name:input.rawName,product_id:input.productId||null,quantity,
+   items:[{raw_name:'',...(input.rawName.trim()?{confirmed_name:input.rawName}:{}),product_id:input.productId||null,quantity,
      amount_tax_included:amount,category_id:null}]
   }).then(()=>{page='list';tab='receipt';render()}).catch(err=>{
    if(submit)submit.disabled=false;
