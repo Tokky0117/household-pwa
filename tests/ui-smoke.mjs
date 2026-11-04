@@ -17,7 +17,7 @@ const doc={
 const ctx={document:doc,localStorage:{getItem:k=>storage.get(k)??null,setItem:(k,v)=>storage.set(k,v),removeItem:k=>storage.delete(k)},
  navigator:{},window:{scrollTo(){},scrollY:0},crypto:{randomUUID:()=> 'test-id'},setTimeout:()=>0};
 const ui=vm.runInNewContext(source+`
-({listView,priceCompareView,pickerView,pickerResults,receiptView,receiptScanView,receiptChatGptView,recordDetailView,scanDuplicates,applyChatGptOcrAssistance,receiptOcrReference,receiptOcrRows,detachOcrLine,scanBulkProductsView,scanProductView,scanExistingProductView,scanChainForStore,scanAutolinkUnmatched,scanMatchProduct,render,initializeCompare,
+({listView,priceCompareView,pickerView,pickerResults,receiptView,receiptScanView,receiptChatGptView,recordDetailView,scanDuplicates,applyChatGptOcrAssistance,receiptOcrReference,receiptOcrRows,detachOcrLine,isUnconfirmedBarcodeLine,scanBulkProductsView,scanProductView,scanExistingProductView,scanChainForStore,scanAutolinkUnmatched,scanMatchProduct,render,initializeCompare,
  setProductGroup,reorderProducts,registeredProducts,convertQuantity,setOpenSwipe,
  chainMinima,priceCandidates,savePreviewRecord,periodStart,
  demoRecords,demoRecordItems,allPreviewRecords,allPreviewItems,
@@ -494,4 +494,22 @@ assert.ok(source.includes('confirmed_name:confirmedName'));
 assert.ok(source.includes('const aliasLines=lines.filter'));
 assert.match(imports.makeChatGptOcrAssistPrompt(ocrRef),/構造認識の失敗/);
 console.log('v68: confirmed receipt names are separate from untrusted OCR aliases OK');
+const codeOnly={source:'ocr',date:'2026-10-12',chainId:'c-a',items:[
+ {name:'2000211787545',ocrRawName:'2000211787545',ocrRowId:'barcode-1',
+  productId:'previous-auto-link',quantity:1,amount:2990,issues:[]}]};
+assert.equal(ui.isUnconfirmedBarcodeLine(codeOnly.items[0]),true);
+const fabricated=ui.applyChatGptOcrAssistance(codeOnly,{items:[
+ {rowId:'barcode-1',ocrName:'2000211787545',nameCandidate:'メリノクルーネックカーディガン'}]});
+assert.equal(fabricated.items[0].nameCandidate,'',
+ 'AI may not convert an isolated barcode into a named merchandise row');
+assert.equal(fabricated.items[0].productId,'',
+ 'a stale automatic barcode product link is not authoritative');
+assert.ok(source.includes('scanDraft.items.some(isUnconfirmedBarcodeLine)'),
+ 'unchecked barcode rows are blocked before they reach the Sheets save queue');
+ui.detachOcrLine(codeOnly,0);
+assert.equal(ui.isUnconfirmedBarcodeLine(codeOnly.items[0]),false,
+ 'photo-confirmed lines can save without barcode alias learning');
+assert.equal(ui.isUnconfirmedBarcodeLine({ocrRawName:'2000211787545',savedOcrName:true}),false,
+ 'editing an existing historical receipt does not require rewriting its old OCR names');
+console.log('v68: barcode-only OCR cannot be automatically accepted or learned OK');
 
