@@ -1920,3 +1920,23 @@ assert.equal(recordFixture.db.product_aliases.length,aliasesBeforeFullPhoto,
  'GAS saves five validated photo rows without learning five OCR aliases');
 console.log('v69: five-photo-item UNIQLO receipt saved exactly without OCR aliases OK');
 
+
+const v70Ocr=recordFixture.call('record.create',{record_type:'receipt',chain_id:newChainId,record_date:'2026-11-04',items:[
+ {raw_name:'リント・ール',inferred_name:'リンドール',product_id:null,quantity:2,amount_tax_included:598,category_id:null}
+]},'op-v70-ocr-inference-abcdef');
+assert.equal(v70Ocr.ok,true);
+const v70OcrLine=recordFixture.call('bootstrap').data.record_items.find(x=>x.record_id===v70Ocr.data.record.record_id);
+assert.equal(v70OcrLine.inferred_name,'リンドール');
+assert.equal(v70OcrLine.confirmed_name,'');
+assert.equal(v70OcrLine.amount_tax_included,598);
+assert.ok(v70OcrLine.alias_id);
+assert.equal(recordFixture.call('bootstrap').data.product_aliases.find(x=>x.alias_id===v70OcrLine.alias_id).ocr_name,'リント・ール');
+const v70Photo=recordFixture.call('record.create',{record_type:'receipt',chain_id:newChainId,record_date:'2026-11-04',items:[
+ {raw_name:'',confirmed_name:'メリノクルーネックカーディガン',inferred_name:'メリノVネックカーディガン',product_id:null,quantity:1,amount_tax_included:2990,category_id:null}
+]},'op-v70-photo-inference-abcdef');
+assert.equal(v70Photo.ok,true);
+const v70PhotoLine=recordFixture.call('bootstrap').data.record_items.find(x=>x.record_id===v70Photo.data.record.record_id);
+assert.equal(v70PhotoLine.confirmed_name,'メリノクルーネックカーディガン');
+assert.equal(v70PhotoLine.inferred_name,'メリノVネックカーディガン');
+assert.ok(!v70PhotoLine.raw_name&&!v70PhotoLine.alias_id);
+console.log('v70: separate inferred/confirmed/OCR names persist without false aliases OK');

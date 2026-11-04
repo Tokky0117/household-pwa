@@ -17,7 +17,7 @@ const doc={
 const ctx={document:doc,localStorage:{getItem:k=>storage.get(k)??null,setItem:(k,v)=>storage.set(k,v),removeItem:k=>storage.delete(k)},
  navigator:{},window:{scrollTo(){},scrollY:0},crypto:{randomUUID:()=> 'test-id'},setTimeout:()=>0};
 const ui=vm.runInNewContext(source+`
-({listView,priceCompareView,pickerView,pickerResults,receiptView,receiptScanView,receiptChatGptView,recordDetailView,scanDuplicates,applyChatGptOcrAssistance,receiptOcrReference,receiptOcrRows,detachOcrLine,isUnconfirmedBarcodeLine,makeChatGptReceiptRebuildDraft,scanBulkProductsView,scanProductView,scanExistingProductView,scanChainForStore,scanAutolinkUnmatched,scanMatchProduct,render,initializeCompare,
+({listView,priceCompareView,pickerView,pickerResults,receiptView,receiptScanView,receiptChatGptView,recordDetailView,scanDuplicates,applyChatGptOcrAssistance,receiptOcrReference,receiptOcrRows,isUnconfirmedBarcodeLine,makeChatGptReceiptRebuildDraft,scanBulkProductsView,scanProductView,scanExistingProductView,scanChainForStore,scanAutolinkUnmatched,scanMatchProduct,render,initializeCompare,
  setProductGroup,reorderProducts,registeredProducts,convertQuantity,setOpenSwipe,
  chainMinima,priceCandidates,savePreviewRecord,periodStart,
  demoRecords,demoRecordItems,allPreviewRecords,allPreviewItems,
@@ -290,7 +290,7 @@ const suggestionJson=JSON.stringify({version:'kurashi-receipt-assist-1',items:[
 const suggested=imports.parseChatGptOcrAssistJson(suggestionJson);
 const merged=ui.applyChatGptOcrAssistance(rowOcr,suggested);
 assert.equal(merged.items[0].productId,'p1','existing product remains linked');
-assert.equal(merged.items[0].nameCandidate,'','AI cannot replace known product');
+assert.equal(merged.items[0].nameCandidate,'トリデン 美容液','AI inference preserved despite existing master link');
 assert.equal(merged.items[1].name,'リンド一ルピンク450G');
 assert.equal(merged.items[1].ocrRawName,'リンド一ルピンク450G','OCR spelling is immutable');
 assert.equal(merged.items[1].nameCandidate,'リンドールピンク450G',
@@ -481,19 +481,13 @@ const photoDraft={source:'ocr',date:'2026-10-12',chainId:'c-a',total:11550,items
   ocrRowId:'ocr-typo',quantity:1,amount:1290,productId:'',
   nameCandidate:'エアリズムコットンクルーネックT',issues:[]}]};
 ui.setScanDraft(photoDraft);
-assert.ok(ui.receiptScanView().includes('data-act="scanDetachOcr"'));
-assert.equal(ui.detachOcrLine(photoDraft,0).inputOrigin,'photo');
-assert.equal(photoDraft.items[0].ocrRawName,'2000211787545');
-assert.equal(photoDraft.items[0].productId,'');
-assert.equal(photoDraft.items[0].amount,2990);
-assert.equal(ui.receiptOcrRows(photoDraft).length,1);
-assert.ok(ui.receiptScanView().includes('写真で確認した明細名（OCR辞書に登録しません）'));
-assert.equal(ui.detachOcrLine(photoDraft,1,{useCandidate:true}).name,'エアリズムコットンクルーネックT');
-assert.equal(ui.receiptOcrRows(photoDraft).length,0);
-assert.ok(source.includes('confirmed_name:confirmedName'));
+assert.ok(!ui.receiptScanView().includes('scanDetachOcr'));
+assert.ok(!ui.receiptScanView().includes('scanUsePhotoCandidate'));
+assert.ok(ui.receiptScanView().includes('ChatGPT推測名'));
+assert.ok(source.includes('inferred_name:inferredName'));
 assert.ok(source.includes('const aliasLines=lines.filter'));
 assert.match(imports.makeChatGptOcrAssistPrompt(ocrRef),/構造認識の失敗/);
-console.log('v68: confirmed receipt names are separate from untrusted OCR aliases OK');
+console.log('v70: obsolete OCR adoption/detachment buttons removed OK');
 const codeOnly={source:'ocr',date:'2026-10-12',chainId:'c-a',items:[
  {name:'2000211787545',ocrRawName:'2000211787545',ocrRowId:'barcode-1',
   productId:'previous-auto-link',quantity:1,amount:2990,issues:[]}]};
@@ -506,9 +500,6 @@ assert.equal(fabricated.items[0].productId,'',
  'a stale automatic barcode product link is not authoritative');
 assert.ok(source.includes('scanDraft.items.some(isUnconfirmedBarcodeLine)'),
  'unchecked barcode rows are blocked before they reach the Sheets save queue');
-ui.detachOcrLine(codeOnly,0);
-assert.equal(ui.isUnconfirmedBarcodeLine(codeOnly.items[0]),false,
- 'photo-confirmed lines can save without barcode alias learning');
 assert.equal(ui.isUnconfirmedBarcodeLine({ocrRawName:'2000211787545',savedOcrName:true}),false,
  'editing an existing historical receipt does not require rewriting its old OCR names');
 console.log('v68: barcode-only OCR cannot be automatically accepted or learned OK');
@@ -538,6 +529,8 @@ const nineOcrDraft={source:'ocr',date:'',chainId:null,chainName:'',total:11550,
 const replacement=ui.makeChatGptReceiptRebuildDraft(nineOcrDraft,reconstructed);
 assert.equal(replacement.source,'chatgpt-rebuild');
 assert.equal(replacement.items.length,5);
+assert.equal(replacement.items[1].inferredName,'メリノクルーネックカーディガン');
+assert.equal(replacement.items.reduce((acc,row)=>acc+Number(row.amount),0),11550);
 assert.equal(replacement.ocrReplacedCount,9);
 assert.equal(replacement.date,'2026-10-12');
 assert.equal(replacement.chainName,'ユニクロ');
@@ -580,3 +573,19 @@ assert.ok(source.includes("scanDraft.source==='chatgpt-rebuild'&&!d.get('photoRe
 console.log('v69: photo-only rebuild, strict schema, 5 actual items, and manual review checks OK');
 
 
+
+const v70WithPrices=imports.parseChatGptOcrAssistJson(JSON.stringify({version:'kurashi-receipt-assist-1',items:[
+ {rowId:'row-1',ocrName:'TORRIDEN SERUM',nameCandidate:null,quantity:1,amount:2638},
+ {rowId:'row-2',ocrName:'リンド一ルピンク450G',nameCandidate:'リンドールピンク450G',quantity:2,amount:2380}
+]}));
+const missingPrices={...rowOcr,items:rowOcr.items.map(x=>({...x,amount:'',issues:['税込金額を原本で確認']}))};
+const filled=ui.applyChatGptOcrAssistance(missingPrices,v70WithPrices);
+assert.equal(filled.items[0].amount,2638);
+assert.equal(filled.items[1].amount,2380);
+assert.equal(filled.items[1].quantity,2);
+assert.equal(filled.items[1].ocrRawName,'リンド一ルピンク450G');
+assert.match(imports.makeChatGptOcrAssistPrompt(ocrRef),/税込明細合計/);
+assert.throws(()=>imports.parseChatGptOcrAssistJson(JSON.stringify({version:'kurashi-receipt-assist-1',items:[
+ {rowId:'row-1',ocrName:'TORRIDEN SERUM',nameCandidate:null,quantity:1,amount:-100}
+]})),/INVALID_OCR_ASSIST_ITEM/);
+console.log('v70: Photo amount fills missing OCR value; unchanged OCR spelling OK');
