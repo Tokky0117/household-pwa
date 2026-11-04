@@ -129,7 +129,7 @@
    }
    const tax=l.match(/^(?:\(?(?:内|税)\s*(8|10)%(?: 対象 [¥]?[\d,]+)?\s*[¥]([\d,]+)\)?|内消費税 (8|10)\.00% ¥([\d,]+)|(?:8|10)%\s*対象\s+[¥]?[\d,]+\s*\(\s*消費税\s*[¥]?([\d,]+)\s*\))$/);
    const targetTax=l.match(/^\(\s*(8|10)%\s*対象消費税\s*[¥]?([\d,]+)\s*\)$/);
-   if(tax){const amount=num(tax[2]||tax[4]||tax[5]);taxBreakdown.push({rate:Number(tax[1]||tax[3]||l.match(/^(8|10)/)[1]),amount,sourceLine:ix});}
+   if(tax&&!/^税\s*(?:8|10)\s*%/.test(l)){const amount=num(tax[2]||tax[4]||tax[5]);taxBreakdown.push({rate:Number(tax[1]||tax[3]||l.match(/^(8|10)/)[1]),amount,sourceLine:ix});}
    if(targetTax)taxBreakdown.push({rate:+targetTax[1],amount:num(targetTax[2]),sourceLine:ix});
    if(m=l.match(/^(?:\*+\s*)?(?:合\s*計|お買上)\s*[¥\\]?\s*([\d,]+)$/)){recordTotal(num(m[1]));summary=true;pending=null;janPending=null;continue;}
    // "合 33 ¥1,985": OCR merges summary label and count.
