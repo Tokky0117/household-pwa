@@ -156,7 +156,11 @@ assert.ok(!ui.savePreviewRecord({type:'receipt',chainId:'c-life',date:month+'-01
 assert.ok(ui.savePreviewRecord({type:'receipt',chainId:'c-life',date:ui.demoRecords[0].record_date,quantity:2,amount:476,productId:'',category:''}),'Unmatched receipt can be stored locally');
 assert.equal(ui.allPreviewRecords().length,ui.demoRecords.length+1,'Saved header in preview storage');
 assert.equal(ui.allPreviewItems().length,ui.demoRecordItems.length+1,'Saved child with same record');
-assert.ok(ui.receiptView().includes('この端末の記録'));
+assert.ok(ui.receiptView().includes('明細を登録'));
+assert.ok(ui.receiptView().includes('明細一覧'));
+assert.ok(ui.receiptView().includes('すべて表示'));
+assert.ok(ui.receiptView().includes('レシート入力'));
+assert.ok(ui.receiptView().includes('値札入力'));
 assert.ok(!ui.receiptView().includes('家計簿'),'retired budget tab stays absent');
 const cls=(id)=>{const c=new Set();return {dataset:{productId:id},classList:{toggle(k,b){b?c.add(k):c.delete(k)}},querySelectorAll(){return [{tabIndex:-1}]},state:c}};
 const a=cls('p-milk-1'),b=cls('p-milk-2');mockSwipeRows=[a,b];
