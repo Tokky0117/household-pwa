@@ -186,7 +186,14 @@
     pending=null;continue;
    }
    if(m=l.match(/^(.+?)\s*¥([\d,]+)$/)||l.match(/^(.+?)\s+([\d,]+)(?:円)?$/)){
-    if(!/税|対象|クレジット/.test(m[1]))add(lines[i].replace(/(?:[¥￥\\]\s*[0-9０-９,，]+|[\s　]+[0-9０-９,，]+(?:円)?)\s*$/,''),1,null,num(m[2]),[ix]);
+    const raw=lines[i].replace(/(?:[¥￥\\]\s*[0-9０-９,，]+|[\s　]+[0-9０-９,，]+(?:円)?)\s*$/,'');
+    const candidate=name(raw);
+    // A stand-alone OCR fragment like "! ¥98" is a price, not a product.
+    // A barcode may still stand alone as a name until geometry resolves it.
+    if(!/税|対象|クレジット/.test(m[1])&&
+     (/[\p{Letter}]/u.test(candidate)||/^\d{13}$/.test(candidate)))
+     add(raw,1,null,num(m[2]),[ix]);
+    else warn('unassigned_price',ix);
     continue;
    }
    if(/^\(特売価格\)$/.test(l))continue;
