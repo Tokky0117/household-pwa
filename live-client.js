@@ -131,7 +131,7 @@
      branch_name:'',raw_store_name:'',version:1,deleted_at:''});
     op.items.forEach((line,i)=>snap.record_items.push({
      record_item_id:op.itemIds[i],record_id:op.clientId,line_order:i+1,
-     raw_name:line.raw_name,product_id:line.product_id||'',
+     raw_name:line.raw_name,confirmed_name:line.confirmed_name||'',product_id:line.product_id||'',
      quantity:line.quantity,amount_tax_included:line.amount_tax_included,
      category_id:line.category_id===null?'':line.category_id,
      price_eligible:!!line.product_id,version:1,deleted_at:''
@@ -146,7 +146,7 @@
     snap.record_items=snap.record_items.filter(i=>i.record_id!==op.targetId);
     op.items.forEach((line,i)=>snap.record_items.push({
      record_item_id:op.itemIds[i],record_id:op.targetId,line_order:i+1,
-     raw_name:line.raw_name,product_id:line.product_id||'',
+     raw_name:line.raw_name,confirmed_name:line.confirmed_name||'',product_id:line.product_id||'',
      quantity:line.quantity,amount_tax_included:line.amount_tax_included,
      category_id:line.category_id===null?'':line.category_id,
      price_eligible:!!line.product_id,version:1,deleted_at:''
@@ -594,6 +594,9 @@
   const lines=raw.map(line=>{
    const productId=line.product_id??null,cat=line.category_id??null;
    const rawName=String(line.raw_name||'').trim();
+   const confirmed=line.confirmed_name===undefined?'':String(line.confirmed_name||'').trim();
+   if(line.confirmed_name!==undefined&&(!confirmed||rawName))throw Error('写真確認名とOCR名を同時に保存できません');
+   if(confirmed.length>120||/^[=+@\-]/.test(confirmed)||/[\x00-\x1f\x7f<>]/.test(confirmed))throw Error('写真で確認した明細名を確認してください');
    if(rawName.length>120||/^[=+@\-]/.test(rawName)||
       /[\x00-\x1f\x7f<>]/.test(rawName))
     throw Error('明細の商品名を確認してください');
@@ -606,7 +609,7 @@
       (kind==='shelf'?cat!==null:
        cat!==null&&(!Number.isInteger(cat)||cat<0||cat>4)))
     throw Error('数量・税込金額・家計簿カテゴリを確認してください');
-   return {raw_name:rawName,product_id:productId,
+   return {raw_name:rawName,...(confirmed?{confirmed_name:confirmed}:{}),product_id:productId,
     quantity:line.quantity,amount_tax_included:line.amount_tax_included,
     category_id:cat};
   });

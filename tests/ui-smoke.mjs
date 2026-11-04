@@ -17,7 +17,7 @@ const doc={
 const ctx={document:doc,localStorage:{getItem:k=>storage.get(k)??null,setItem:(k,v)=>storage.set(k,v),removeItem:k=>storage.delete(k)},
  navigator:{},window:{scrollTo(){},scrollY:0},crypto:{randomUUID:()=> 'test-id'},setTimeout:()=>0};
 const ui=vm.runInNewContext(source+`
-({listView,priceCompareView,pickerView,pickerResults,receiptView,receiptScanView,receiptChatGptView,recordDetailView,scanDuplicates,applyChatGptOcrAssistance,receiptOcrReference,scanBulkProductsView,scanProductView,scanExistingProductView,scanChainForStore,scanAutolinkUnmatched,scanMatchProduct,render,initializeCompare,
+({listView,priceCompareView,pickerView,pickerResults,receiptView,receiptScanView,receiptChatGptView,recordDetailView,scanDuplicates,applyChatGptOcrAssistance,receiptOcrReference,receiptOcrRows,detachOcrLine,scanBulkProductsView,scanProductView,scanExistingProductView,scanChainForStore,scanAutolinkUnmatched,scanMatchProduct,render,initializeCompare,
  setProductGroup,reorderProducts,registeredProducts,convertQuantity,setOpenSwipe,
  chainMinima,priceCandidates,savePreviewRecord,periodStart,
  demoRecords,demoRecordItems,allPreviewRecords,allPreviewItems,
@@ -473,4 +473,25 @@ const ordinary=structure.parse('商品A ¥100\n内税10% ¥9\n合計 ¥100\nお�
 assert.equal(ordinary.receiptTotal,100);
 assert.equal(ordinary.printedCount,1);
 console.log('v67: geometric barcode-to-name linking and ambiguous multi-receipt totals/dates OK');
+// Photo-confirmed rows persist outside the OCR-name dictionary.
+const photoDraft={source:'ocr',date:'2026-10-12',chainId:'c-a',total:11550,items:[
+ {name:'2000211787545',ocrRawName:'2000211787545',ocrRowId:'code-only',
+  quantity:1,amount:2990,productId:'p-milk-1',issues:[]},
+ {name:'エアリスムコットンクルーネックT',ocrRawName:'エアリスムコットンクルーネックT',
+  ocrRowId:'ocr-typo',quantity:1,amount:1290,productId:'',
+  nameCandidate:'エアリズムコットンクルーネックT',issues:[]}]};
+ui.setScanDraft(photoDraft);
+assert.ok(ui.receiptScanView().includes('data-act="scanDetachOcr"'));
+assert.equal(ui.detachOcrLine(photoDraft,0).inputOrigin,'photo');
+assert.equal(photoDraft.items[0].ocrRawName,'2000211787545');
+assert.equal(photoDraft.items[0].productId,'');
+assert.equal(photoDraft.items[0].amount,2990);
+assert.equal(ui.receiptOcrRows(photoDraft).length,1);
+assert.ok(ui.receiptScanView().includes('写真で確認した明細名（OCR辞書に登録しません）'));
+assert.equal(ui.detachOcrLine(photoDraft,1,{useCandidate:true}).name,'エアリズムコットンクルーネックT');
+assert.equal(ui.receiptOcrRows(photoDraft).length,0);
+assert.ok(source.includes('confirmed_name:confirmedName'));
+assert.ok(source.includes('const aliasLines=lines.filter'));
+assert.match(imports.makeChatGptOcrAssistPrompt(ocrRef),/構造認識の失敗/);
+console.log('v68: confirmed receipt names are separate from untrusted OCR aliases OK');
 

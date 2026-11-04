@@ -1,4 +1,4 @@
-const APP_VERSION='0.67.0';
+const APP_VERSION='0.68.0';
 const CATS=['飲食','キッチン','洗面・風呂','洗濯・掃除','その他'];
 const liveMode=!!window.KurashiLive; // Data source only; original Preview v46 UI components remain.
 const SEED=[['牛乳',0,true],['麦茶',0,false],['コーヒー',0,true],['卵',0,false],['キッチンペーパー',1,false],['ラップ',1,true],['食器用洗剤',1,true],['シャンプー',2,false],['歯磨き粉',2,true],['ハンドソープ',2,false],['洗濯洗剤',3,false],['柔軟剤',3,true],['トイレットペーパー',3,false],['乾電池',4,true],['ティッシュ',4,true]];
@@ -146,7 +146,7 @@ function chainMinima(productId,periodValue,records=allPreviewRecords(),details=a
  })).sort((a,b)=>a.price-b.price||a.chainId.localeCompare(b.chainId));
 }
 // Keep each pre-migration receipt's original printed spelling; the shared OCR dictionary may normalize it.
-const aliasNameFor=line=>line?.raw_name||catalogue.productAliases?.find(a=>a.aliasId===line?.alias_id)?.ocrName||'';
+const aliasNameFor=line=>line?.confirmed_name||line?.raw_name||catalogue.productAliases?.find(a=>a.aliasId===line?.alias_id)?.ocrName||'';
 const chainLabel=id=>catalogue.chains.find(c=>c.id===id)?.name||'チェーン未設定';
 const listPriceText=item=>{
  const first=registeredProducts(item.id)[0];
@@ -192,7 +192,7 @@ function resetScan({keepDraft=false}={}){
 function receiptOcrRows(draft){
  if(!draft||draft.source!=='ocr')return [];
  return (draft.items||[]).map((item,i)=>({item,i}))
-  .filter(({item})=>item.inputOrigin!=='manual'&&item.ocrRawName!==undefined);
+  .filter(({item})=>!['manual','photo'].includes(item.inputOrigin)&&item.ocrRawName!==undefined);
 }
 function receiptOcrReference(draft){
  return JSON.stringify({
@@ -269,7 +269,7 @@ function recordDetailView(){
     <p>明細数：${detail.length}件</p><strong>税込合計：${yen(total)}</strong></div>
   ${detail.map((x,i)=>`<div class="panel preview-record-row">
     <strong>${i+1}. ${esc(catalogue.products.find(p=>p.id===x.product_id)?.name||aliasNameFor(x)||'未特定')}</strong>
-    ${x.product_id&&aliasNameFor(x)?'<span>レシートの読み取り名：'+esc(aliasNameFor(x))+'</span>':''}
+    ${x.confirmed_name?'<span>写真・手入力で確認した明細名：'+esc(x.confirmed_name)+'</span>':x.product_id&&aliasNameFor(x)?'<span>レシートの読み取り名：'+esc(aliasNameFor(x))+'</span>':''}
     <span>${esc(x.quantity)}個　税込 ${yen(Number(x.amount_tax_included))}</span>
     <span>${x.product_id?'照合商品：'+esc(catalogue.products.find(p=>p.id===x.product_id)?.name||'登録済み商品'):'商品未照合'}</span></div>`).join('')}
   ${liveMode?'<div class="record-detail-actions"><button type="button" class="secondary" data-act="recordEdit">編集</button><button type="button" class="tertiary" data-act="recordDelete">削除</button></div>':''}
@@ -297,7 +297,7 @@ function scanProductView(){
  const item=scanDraft?.items[scanProductRow];
  if(!item)return UI.sheet({title:'商品を登録',body:'<p>対象の明細が見つかりません。</p>'});
  const fields=[
-  '<p class="hint">OCR明細名（変更不可）：<strong>'+esc(item.ocrRawName||item.name||'読み取り不可')+'</strong></p>',
+  '<p class="hint">'+(item.inputOrigin==='photo'?'写真で確認した明細名':'OCR明細名（変更不可）')+'：<strong>'+esc(item.inputOrigin==='photo'?item.name:item.ocrRawName||item.name||'読み取り不可')+'</strong></p>',
   UI.formField({id:'scan-product-name',name:'name',label:'商品マスタに登録する正式商品名',value:item.canonicalName||item.nameCandidate||item.name,maxlength:80,required:true}),
   '<label class="scan-field">日用品リストへの紐付け（任意）<select id="scan-product-group" name="group">'+scanGroupOptions()+'</select></label>',
   UI.formField({id:'scan-product-quantity',name:'package_quantity',label:'内容量（任意）',type:'number',value:'',extra:'min="0.001" step="any"'}),
@@ -320,7 +320,7 @@ function scanBulkProductsView(){
  const candidates=scanBulkProductCandidates();
  const body=!candidates.length?'<p>未照合の商品はありません。</p>':
   `<form id="scanBulkProductsForm">
-   <p class="hint">正式商品名を修正し、「商品だけ登録」または日用品への紐付けを選択してください。読み取り名はOCR辞書に保存し、後から編集しません。</p>
+   <p class="hint">正式商品名を修正し、「商品だけ登録」または日用品への紐付けを選択してください。写真から確定した明細名はOCR辞書に登録しません。</p>
    ${candidates.map((item,i)=>`<div class="panel scan-bulk-entry">
      <p class="hint">レシート表記：${esc(item.name)}</p>
      <label class="scan-field">正式商品名<input type="text" name="name-${i}" value="${esc(item.canonicalName)}" maxlength="80" required></label>
@@ -389,6 +389,7 @@ function scanAutolinkUnmatched(){
  if(!scanDraft)return 0;
  let added=0;
  for(const item of scanDraft.items){
+  if(['manual','photo'].includes(item.inputOrigin))continue;
   if(item.productId||!item.name)continue;
   const match=scanMatchProduct(item.name,scanDraft.chainId);
   if(match){item.productId=match;item.autoLinked=true;added++}
@@ -396,6 +397,7 @@ function scanAutolinkUnmatched(){
  return added;
 }
 function learnConfirmedReceiptLine(item,chainId){
+ if(['manual','photo'].includes(item?.inputOrigin))return;
  if(!liveMode||!chainId||!item?.productId||!item.name||
     !window.KurashiLive?.learnAliases)return;
  const lines=[{raw_name:String(item.name).trim(),product_id:item.productId}];
@@ -506,6 +508,20 @@ function scanResolvedProductId(item){
   (!item.canonicalGroupId||p.itemGroupId===item.canonicalGroupId));
  return matches.length===1?matches[0].id:current;
 }
+// Photo-confirmed lines keep their OCR evidence only in the local draft.
+function detachOcrLine(draft,index,{useCandidate=false}={}){
+ const item=draft?.items?.[index];
+ if(!item||item.ocrRawName===undefined||['manual','photo'].includes(item.inputOrigin))
+  throw Error('OCR明細を確認できません');
+ const candidate=String(item.nameCandidate||'').trim();
+ if(useCandidate&&!candidate)throw Error('適用する商品名候補がありません');
+ item.inputOrigin='photo';
+ item.name=useCandidate?candidate:'';
+ item.productId='';item.autoLinked=false;item.manuallyLinked=false;
+ item.nameCandidate='';
+ item.issues=[...new Set([...(item.issues||[]),'写真の明細名を確認してください'])];
+ return item;
+}
 function scanFormView(){
  if(!scanDraft)return '';
  const chains=[...catalogue.chains.map(c=>'<option value="'+esc(c.id)+'"'+
@@ -523,10 +539,12 @@ function scanFormView(){
   ${scanDraft.items.map((item,i)=>`<div class="panel scan-review-item">
     <div class="row" style="justify-content:space-between"><strong>明細 ${i+1}</strong><button type="button" class="tertiary" data-act="scanRemoveItem" data-scan-row="${i}">削除</button></div>
     ${item.issues.length?'<p class="scan-warning">要確認：'+esc(item.issues.join('、'))+'</p>':''}
-    ${item.inputOrigin==='manual'||item.ocrRawName===undefined?
-     '<label class="scan-field">追加した明細名<input name="name-'+i+'" maxlength="120" value="'+esc(item.name)+'" placeholder="明細名を入力"></label>':
+    ${['manual','photo'].includes(item.inputOrigin)||item.ocrRawName===undefined?
+     '<label class="scan-field">'+(item.inputOrigin==='photo'?'写真で確認した明細名（OCR辞書に登録しません）':'手入力の明細名')+'<input name="name-'+i+'" maxlength="120" required value="'+esc(item.name)+'" placeholder="原本を見て入力"></label>':
      '<div class="scan-field"><span>OCR明細名（変更不可）</span><div class="scan-ocr-name" data-ocr-row="'+i+'">'+esc(item.ocrRawName||'読み取り不可')+'</div></div>'}
-    ${!item.productId&&item.nameCandidate?'<p class="scan-name-candidate">ChatGPTの商品名候補：'+esc(item.nameCandidate)+'（商品登録時に使用）</p>':''}
+    ${item.inputOrigin==='photo'?'<p class="hint">参考OCR（保存しません）：'+esc(item.ocrRawName||'')+'</p>':''}
+    ${item.inputOrigin!=='photo'&&item.inputOrigin!=='manual'&&item.ocrRawName!==undefined?'<button type="button" class="tertiary" data-act="scanDetachOcr" data-scan-row="'+i+'">OCRと紐付けず写真から明細を入力</button>':''}
+    ${!item.productId&&item.nameCandidate?'<p class="scan-name-candidate">ChatGPTの商品名候補：'+esc(item.nameCandidate)+'（写真で確認したら採用できます）</p><button type="button" class="tertiary" data-act="scanUsePhotoCandidate" data-scan-row="'+i+'">写真と一致することを確認して明細名に採用</button>':''}
     <input type="hidden" name="product-${i}" value="${esc(scanResolvedProductId(item))}">
     <div class="scan-product-association">
       <span class="scan-product-association-label">商品マスタとの紐付け</span>
@@ -1222,7 +1240,7 @@ function syncScanReview(){
  for(let i=0;i<scanDraft.items.length;i++){
   const it=scanDraft.items[i],previousName=it.name;
   const previousId=String(it.productId||'');
-  const nextName=it.inputOrigin==='manual'||it.ocrRawName===undefined?
+  const nextName=['manual','photo'].includes(it.inputOrigin)||it.ocrRawName===undefined?
    String(d.get('name-'+i)||''):String(it.ocrRawName||'');
   const wasAutomatic=!it.manuallyLinked&&!!previousId&&
    (it.autoLinked===true||scanMatchProduct(previousName,previousChainId)===previousId);
@@ -1230,7 +1248,7 @@ function syncScanReview(){
   it.name=nextName;
   // Retailer/printed-name corrections invalidate automatic links only;
   // explicit user choices must not be overwritten.
-  if(needsMatch&&!it.manuallyLinked&&(wasAutomatic||!previousId)){
+  if(needsMatch&&!it.manuallyLinked&&it.inputOrigin!=='photo'&&(wasAutomatic||!previousId)){
    it.productId=scanMatchProduct(nextName,nextChainId);
    it.autoLinked=!!it.productId;
    const hidden=form.querySelector('[name="product-'+i+'"]');
@@ -1361,15 +1379,20 @@ app.addEventListener('submit',e=>{e.preventDefault();const form=e.target;const d
  if(form.id==='scanConfirmForm'){
   if(!liveMode){fieldNotice(form,'正式保存はSheets接続時に利用できます');return;}
   if(!scanDraft||!scanDraft.items.length){fieldNotice(form,'保存する明細がありません');return;}
-  const lines=scanDraft.items.map((item,i)=>({
-   raw_name:String(item.inputOrigin==='manual'||item.ocrRawName===undefined?
-    d.get('name-'+i)||'':item.ocrRawName||'').trim(),
-   product_id:String(d.get('product-'+i)||'')||null,
-   quantity:Number(d.get('qty-'+i)),
-   amount_tax_included:String(d.get('amount-'+i)||'').trim()===''?NaN:Number(d.get('amount-'+i)),
-   category_id:null
-  }));
-  if(lines.some(x=>!Number.isSafeInteger(x.quantity)||x.quantity<1||
+  const lines=scanDraft.items.map((item,i)=>{
+   const verified=['manual','photo'].includes(item.inputOrigin)||item.ocrRawName===undefined;
+   const confirmedName=verified?String(d.get('name-'+i)||'').trim():'';
+   return {
+    raw_name:verified?'':String(item.ocrRawName||'').trim(),
+    ...(verified?{confirmed_name:confirmedName}:{}),
+    product_id:String(d.get('product-'+i)||'')||null,
+    quantity:Number(d.get('qty-'+i)),
+    amount_tax_included:String(d.get('amount-'+i)||'').trim()===''?NaN:Number(d.get('amount-'+i)),
+    category_id:null
+   };
+  });
+  if(lines.some(x=>('confirmed_name' in x&&!x.confirmed_name)||
+     !Number.isSafeInteger(x.quantity)||x.quantity<1||
      !Number.isSafeInteger(x.amount_tax_included)||x.amount_tax_included<0)){
    fieldNotice(form,'数量・税込明細合計をすべて確認してください');return;
   }
@@ -1400,8 +1423,9 @@ app.addEventListener('submit',e=>{e.preventDefault();const form=e.target;const d
     }).catch(err=>console.warn('購入店舗の別名を保存できません',err));
    // Product-specific aliases are synchronized through the preexisting queue.
    // Include the exact original OCR name after explicit confirmation.
-   const aliasLines=lines;
-   if(window.KurashiLive.learnAliases&&learnedChain&&learnedChain!=='__new__')
+   const aliasLines=lines.filter((_,i)=>!['manual','photo'].includes(scanDraft.items[i].inputOrigin)&&
+    scanDraft.items[i].ocrRawName!==undefined);
+   if(aliasLines.length&&window.KurashiLive.learnAliases&&learnedChain&&learnedChain!=='__new__')
     void window.KurashiLive.learnAliases({chain_id:learnedChain,items:aliasLines})
      .catch(e=>console.warn('別名学習を保存できませんでした',e));
    resetScan();page='list';tab='receipt';render();
@@ -1425,7 +1449,7 @@ app.addEventListener('submit',e=>{e.preventDefault();const form=e.target;const d
   window.KurashiLive.saveRecord({
    record_type:input.type,chain_id:input.chainId,chain_name:input.chainName,
    record_date:input.date,
-   items:[{raw_name:input.rawName,product_id:input.productId||null,quantity,
+   items:[{raw_name:'',confirmed_name:input.rawName,product_id:input.productId||null,quantity,
      amount_tax_included:amount,category_id:null}]
   }).then(()=>{page='list';tab='receipt';render()}).catch(err=>{
    if(submit)submit.disabled=false;
@@ -1781,6 +1805,12 @@ if(action==='scanRemovePhoto'){
  scanPhotos.splice(scanIndex,1);
  scanIndex=Math.max(0,Math.min(scanIndex,scanPhotos.length-1));
  scanDraft=null;scanToken++;render();return;
+}
+if((action==='scanDetachOcr'||action==='scanUsePhotoCandidate')&&scanDraft){
+ syncScanReview();
+ try{detachOcrLine(scanDraft,Number(el.dataset.scanRow),{useCandidate:action==='scanUsePhotoCandidate'});}
+ catch(err){say(err.message);return;}
+ saveScanDraft();render();return;
 }
 if(action==='scanRemoveItem'&&scanDraft){
  syncScanReview();scanDraft.items.splice(Number(el.dataset.scanRow),1);saveScanDraft();render();return;
