@@ -193,7 +193,7 @@
     if(!/税|対象|クレジット/.test(m[1])&&
      (/[\p{Letter}]/u.test(candidate)||/^\d{13}$/.test(candidate)))
      add(raw,1,null,num(m[2]),[ix]);
-    else warn('unassigned_price',ix);
+    else {warn('unassigned_price',ix);if(pending)warn('unpriced_name',pending.line);pending=null;last=null;}
     continue;
    }
    if(/^\(特売価格\)$/.test(l))continue;
