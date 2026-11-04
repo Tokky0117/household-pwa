@@ -1,4 +1,4 @@
-const APP_VERSION='0.70.6';
+const APP_VERSION='0.70.7';
 const CATS=['飲食','キッチン','洗面・風呂','洗濯・掃除','その他'];
 const liveMode=!!window.KurashiLive; // Data source only; original Preview v46 UI components remain.
 const SEED=[['牛乳',0,true],['麦茶',0,false],['コーヒー',0,true],['卵',0,false],['キッチンペーパー',1,false],['ラップ',1,true],['食器用洗剤',1,true],['シャンプー',2,false],['歯磨き粉',2,true],['ハンドソープ',2,false],['洗濯洗剤',3,false],['柔軟剤',3,true],['トイレットペーパー',3,false],['乾電池',4,true],['ティッシュ',4,true]];
@@ -557,6 +557,7 @@ function scanFormView(){
   '<option value="__new__"'+(!scanDraft.chainId?' selected':'')+'>＋ 新しいチェーン</option>'].join('');
  return `<form id="scanConfirmForm" class="scan-review">
   <h2 class="sectiontitle">読み取り結果の確認</h2>
+  ${scanDraft.taxBasis==='excluded'?'<p class="scan-warning">このレシートは外税方式です。認識した値引き後の税抜額を各明細に表示します。商品別の税込額への端数配分は確定できないため、自動入力せず確認してください。</p>':''}
   <p class="hint">OCR・ChatGPTの文字・数量・金額には誤認識が残ります。必ず原本と照合してください。${scanDraft.source==='chatgpt-ocr'?' OCRとChatGPTの一意対応 '+scanDraft.matchedCount+'件、要確認 '+scanDraft.unmatchedCount+'件。':''}</p>
   ${scanDraft.source==='chatgpt-rebuild'?'<p class="scan-warning">ChatGPTによる写真再解析です。OCR明細'+esc(scanDraft.ocrReplacedCount||0)+'件は破棄しました。商品名・数量・金額・購入日・店舗を写真と照合してください。AIの回答は誤ることがあります。</p>':''}
   ${scanDraft.source==='ocr'&&receiptOcrRows(scanDraft).length?'<button type="button" class="secondary" data-act="chatGptAssist">ChatGPTで商品名・金額を確認</button>':''}
@@ -585,6 +586,7 @@ function scanFormView(){
     </div>
     <div class="scan-input-pair"><label class="scan-field">購入数<input name="qty-${i}" type="number" min="1" step="1" required value="${esc(item.quantity)}" ${item.quantityUncertain?'class="scan-quantity-uncertain" aria-describedby="scan-quantity-hint-'+i+'"':''}>${item.quantityUncertain?'<span class="scan-quantity-hint" id="scan-quantity-hint-'+i+'">数量要確認（仮に1を表示）</span>':''}</label>
     <label class="scan-field">税込明細合計（円）<input name="amount-${i}" type="number" min="0" step="1" required value="${esc(item.amount)}" placeholder="確認して入力"></label></div>
+    ${Number.isSafeInteger(item.taxExcludedAmount)?'<p class="scan-tax-excluded">OCR税抜印字額（値引き後）：'+yen(item.taxExcludedAmount)+(Number.isSafeInteger(item.ocrDiscount)&&item.ocrDiscount>0?' ／ 値引き：'+yen(item.ocrDiscount):'')+'</p>':''}
    </div>`).join('')}
   <button type="button" class="secondary" data-act="scanAddItem">＋ 明細を追加</button>
   ${scanDraft.items.some(x=>!x.productId&&x.name.trim())?'<button type="button" class="secondary" data-act="scanBulkProducts">未照合商品をまとめて登録</button>':''}
@@ -708,14 +710,14 @@ async function runReceiptScan(){
  render();
  try{
   const engine=scanRuntime||(scanRuntime=await import('./ocr-engine/engine.js'));
-  const observations=[],allItems=[],receiptTotals=[];let total=null,printedCount=null;
+  const observations=[],allItems=[],receiptTotals=[],taxModes=[];let total=null,printedCount=null;
   const scanWarnings=new Set();
   for(let i=0;i<scanPhotos.length;i++){
    if(token!==scanToken)return;
    scanStatus='写真 '+(i+1)+' / '+scanPhotos.length+' を解析しています…';
    const status=document.getElementById('scan-status');if(status)status.textContent=scanStatus;
    const out=await engine.scanReceiptImage(scanPhotos[i],{mode:'gray',crop:null});
-   observations.push(out.text);
+   observations.push(out.text);taxModes.push(out.parsed.taxBasis);
    for(const item of out.parsed.items){
     const n=String(item.name||'').trim();
     const price=Number.isSafeInteger(item.taxIncludedAmount)&&item.taxIncludedAmount>=0?
@@ -724,8 +726,10 @@ async function runReceiptScan(){
     if(price==='')issues.push('税込金額を原本で確認');
     const quantityUncertain=item.quantity==null||item.quantitySource==='default'||item.quantitySource==='inferred_candidate';
     const productId='';
+    const taxExcludedAmount=out.parsed.taxBasis==='excluded'&&Number.isSafeInteger(item.netAmount)&&item.netAmount>=0?item.netAmount:null;
     allItems.push({name:n,ocrRawName:n,ocrRowId:'ocr-'+id(),quantity:quantityUncertain?1:item.quantity,
-     quantityUncertain,amount:price,productId,autoLinked:!!productId,issues});
+     quantityUncertain,amount:price,taxExcludedAmount,ocrDiscount:item.discount||0,
+     productId,autoLinked:!!productId,issues});
    }
    if(Number.isSafeInteger(out.parsed.receiptTotal)){total=out.parsed.receiptTotal;receiptTotals.push(total);}
    for(const w of out.parsed.warnings||[])if(w.code==='conflicting_receipt_totals'||w.code==='conflicting_printed_counts')scanWarnings.add(w.code);
@@ -737,7 +741,7 @@ async function runReceiptScan(){
   if(new Set(receiptTotals).size>1){total=null;scanWarnings.add('conflicting_receipt_totals');}
   const date=scanDate(raw);
   const chain=scanChainForStore(raw.slice(0,800));
-  scanDraft={items:allItems,total,printedCount,date,source:'ocr',
+  scanDraft={items:allItems,total,printedCount,date,source:'ocr',taxBasis:taxModes.every(t=>t==='excluded')?'excluded':'unknown',
    chainId:chain?.id||null,chainName:''};
   scanDraft.items.forEach(item=>{
    item.productId=isUnconfirmedBarcodeLine(item)?'':scanMatchProduct(item.ocrRawName,scanDraft.chainId);
