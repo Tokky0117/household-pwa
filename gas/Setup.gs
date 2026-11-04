@@ -14,7 +14,7 @@ const KURASHI_NEW_SCHEMA = {
   products: ['product_id', 'household_id', 'item_group_id', 'name', 'normalized_name', 'package_quantity', 'package_unit', 'item_group_order', 'version', 'created_at', 'updated_at', 'deleted_at'],
   product_aliases: ['alias_id', 'product_id', 'chain_id', 'normalized_alias', 'version', 'updated_at', 'ocr_name'],
   records: ['record_id', 'household_id', 'record_type', 'chain_id', 'branch_name', 'raw_store_name', 'record_date', 'created_at', 'updated_at', 'version', 'deleted_at'],
-  record_items: ['record_item_id', 'record_id', 'line_order', 'raw_name', 'product_id', 'quantity', 'amount_tax_included', 'category_id', 'price_eligible', 'created_at', 'updated_at', 'version', 'deleted_at', 'alias_id'],
+  record_items: ['record_item_id', 'record_id', 'line_order', 'raw_name', 'product_id', 'quantity', 'amount_tax_included', 'category_id', 'price_eligible', 'created_at', 'updated_at', 'version', 'deleted_at', 'alias_id', 'confirmed_name'],
   change_log: ['change_id', 'sequence_no', 'household_id', 'entity_type', 'entity_id', 'action', 'occurred_at'],
   processed_operations: ['household_id', 'operation_id', 'request_hash', 'result', 'processed_at'],
   receipt_rules: ['rule_id', 'chain_id', 'pattern', 'priority', 'enabled', 'version', 'updated_at']
@@ -66,13 +66,16 @@ function setupNewWorkbook() {
         sheet.setFrozenRows(1);
         range.setFontWeight('bold');
       } else if (JSON.stringify(existing) !== JSON.stringify(headers)) {
-        // v0.64: Existing receipts and OCR aliases retain all rows and column positions.
-        // Only the single new trailing column may be added to the original schema.
-        const additive = ['product_aliases', 'record_items'].includes(name) &&
-          JSON.stringify(existing.slice(0, -1)) === JSON.stringify(headers.slice(0, -1)) &&
-          existing[headers.length - 1] === '';
-        if (!additive) throw new Error(name + ': シート列が規定と一致しません。');
-        sheet.getRange(1, headers.length, 1, 1).setValues([[headers[headers.length - 1]]]);
+        // Preserve v0.63 and v0.64 columns in place, append known trailing columns only.
+        const first=headers.findIndex((h,i)=>existing[i]!==h);
+        const extension=headers.length-first;
+        const additive=first>=0&&
+          (name==='product_aliases'&&extension===1||
+           name==='record_items'&&(extension===1||extension===2))&&
+          existing.slice(first).every(value=>value==='');
+        if(!additive)throw new Error(name+': シート列が規定と一致しません。');
+        for(let i=first;i<headers.length;i++)
+          sheet.getRange(1,i+1,1,1).setValues([[headers[i]]]);
       }
     });
 

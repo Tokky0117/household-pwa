@@ -1779,6 +1779,7 @@ const legacyOriginalItems=legacyRecord.data.items.map((row,i)=>({
 legacy.db.product_aliases.length=1;
 legacy.db.product_aliases[0].pop();
 legacy.db.record_items[0].pop();
+legacy.db.record_items[0].pop(); // pre-v0.64 lacked alias_id; v0.68 also adds confirmed_name
 for(let i=1;i<legacy.db.record_items.length;i++){
  const line=legacyOriginalItems[i-1];
  legacy.db.record_items[i][schema.record_items.indexOf('raw_name')]=line.raw_name;
@@ -1787,7 +1788,9 @@ for(let i=1;i<legacy.db.record_items.length;i++){
 legacy.failRecordItemWriteAfter(2); // new header, first linked row, then simulated failure
 assert.equal(legacy.call('bootstrap').ok,false,
  'interrupted schema migration does not claim completion');
-assert.equal(legacy.db.record_items[0].at(-1),'alias_id',
+assert.equal(legacy.db.record_items[0].at(-1),'confirmed_name',
+ 'both additive columns are now present');
+assert.equal(legacy.db.record_items[0].at(-2),'alias_id',
  'existing record item sheet gains only the new trailing header');
 assert.equal(legacy.db.product_aliases[0].at(-1),'ocr_name',
  'existing OCR dictionary gains only the new trailing header');
@@ -1853,3 +1856,32 @@ qtySession.window.close();
 console.log('v65: quantity unknown defaults to yellow one; re-entering one clears warning OK');
 
 console.log('v64: non-destructive legacy Sheets column upgrade, partial migration retry, OCR unlink and price history OK');
+
+// v68: photos with unreliable OCR can still be saved, without poisoning OCR aliases.
+const manualChain=recordFixture.call('store.create',{name:'OCR保存分離検証店'},
+ 'op-v68-manual-chain-abcdefghijk');
+assert.equal(manualChain.ok,true);
+const manualBefore=recordFixture.db.product_aliases.length;
+const photographed=recordFixture.call('record.create',{
+ record_type:'receipt',chain_id:manualChain.data.entity.chain_id,
+ record_date:'2026-10-12',
+ items:[{raw_name:'',confirmed_name:'メリノクルーネックカーディガン',
+  product_id:null,quantity:1,amount_tax_included:2990,category_id:null}]
+},'op-v68-photo-confirmed-abcdefghijk');
+assert.equal(photographed.ok,true,'photo confirmed row can be saved without product registration');
+assert.equal(photographed.data.items[0].confirmed_name,'メリノクルーネックカーディガン');
+assert.equal(photographed.data.items[0].alias_id,'','photo confirmed record has no OCR alias');
+assert.equal(recordFixture.db.product_aliases.length,manualBefore,'manual row never teaches OCR aliases');
+assert.equal(recordFixture.call('bootstrap').data.record_items.find(
+ x=>x.record_id===photographed.data.record.record_id).confirmed_name,
+ 'メリノクルーネックカーディガン',
+ 'confirmed name survives bootstrap without changing existing workbook');
+const badBoth=recordFixture.call('record.create',{
+ record_type:'receipt',chain_id:manualChain.data.entity.chain_id,
+ record_date:'2026-10-12',
+ items:[{raw_name:'2000211787545',confirmed_name:'メリノクルーネックカーディガン',
+  product_id:null,quantity:1,amount_tax_included:2990,category_id:null}]
+},'op-v68-mixed-name-abcdefghijk');
+assert.equal(badBoth.ok,false,'one row cannot silently learn a wrong OCR barcode');
+
+console.log('v68: verified photo name is stored without an OCR alias OK');

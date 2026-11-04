@@ -164,12 +164,15 @@ function kurashiSheet_(name,book) {
   if (!headers || !sheet) kurashiFail_('SCHEMA_ERROR','保存先のシート構成が不正です');
   const actual = sheet.getRange(1,1,1,headers.length).getValues()[0];
   if (JSON.stringify(actual) !== JSON.stringify(headers)) {
-    // v2: only an additive, trailing column is allowed; never reorder data.
-    if (!['product_aliases','record_items'].includes(name) ||
-        JSON.stringify(actual.slice(0,-1))!==JSON.stringify(headers.slice(0,-1)) ||
-        actual[headers.length-1] !== '')
+    // Only known historical trailing headers can be appended; never reorder.
+    const first=headers.findIndex((h,i)=>actual[i]!==h);
+    const extension=headers.length-first;
+    const allowed=name==='product_aliases'?extension===1:
+      name==='record_items'&&(extension===1||extension===2);
+    if(first<0||!allowed||actual.slice(first).some(value=>value!==''))
       kurashiFail_('SCHEMA_ERROR','保存先の列構成が不正です');
-    sheet.getRange(1,headers.length,1,1).setValues([[headers[headers.length-1]]]);
+    for(let i=first;i<headers.length;i++)
+      sheet.getRange(1,i+1,1,1).setValues([[headers[i]]]);
   }
   return sheet;
 }
@@ -1064,8 +1067,10 @@ function kurashiCreateRecord_(user,payload,id){
       const now=new Date().toISOString(),recordId='record-'+Utilities.getUuid();
       const aliasIndex=kurashiAliasIndex_(book),newAliases=[];
       const lineItems=payload.items.map((line,n)=>{
-        if(!line||Object.keys(line).sort().join(',')!==
-          'amount_tax_included,category_id,product_id,quantity,raw_name')
+        if(!line||![
+          'amount_tax_included,category_id,product_id,quantity,raw_name',
+          'amount_tax_included,category_id,confirmed_name,product_id,quantity,raw_name'
+         ].includes(Object.keys(line).sort().join(',')))
           kurashiFail_('BAD_REQUEST','明細の形式が不正です');
         const prod=line.product_id;
         if(prod!==null&&(typeof prod!=='string'||!productIds.has(prod)))
@@ -1078,10 +1083,13 @@ function kurashiCreateRecord_(user,payload,id){
            (payload.record_type==='shelf'?cat!==null:
             cat!==null&&(!Number.isInteger(cat)||cat<0||cat>4)))
           kurashiFail_('BAD_REQUEST','数量・税込金額・カテゴリを確認してください');
-        const aliasId=kurashiPlanAlias_(line.raw_name,payload.chain_id,prod,
+        const confirmed=line.confirmed_name===undefined?'':kurashiRawName_(line.confirmed_name);
+        if(line.confirmed_name!==undefined&&(!confirmed||String(line.raw_name||'').trim()))
+          kurashiFail_('BAD_REQUEST','写真確認名はOCR名と同時登録できません');
+        const aliasId=confirmed?'':kurashiPlanAlias_(line.raw_name,payload.chain_id,prod,
           aliasIndex,newAliases,now);
         return {record_item_id:'recorditem-'+Utilities.getUuid(),
-          record_id:recordId,line_order:n+1,raw_name:'',alias_id:aliasId,
+          record_id:recordId,line_order:n+1,raw_name:'',alias_id:aliasId,confirmed_name:confirmed,
           product_id:prod||'',quantity:qty,amount_tax_included:amount,
           category_id:cat===null?'':cat,price_eligible:prod!==null,
           created_at:now,updated_at:now,version:1,deleted_at:''};
@@ -1166,8 +1174,10 @@ function kurashiMutateRecord_(user,action,payload,id){
      .map(x=>String(x.value.product_id)));
     const aliasIndex=kurashiAliasIndex_(book),newAliases=[];
     fresh=payload.items.map((line,n)=>{
-     if(!line||Object.keys(line).sort().join(',')!==
-       'amount_tax_included,category_id,product_id,quantity,raw_name')
+     if(!line||![
+       'amount_tax_included,category_id,product_id,quantity,raw_name',
+       'amount_tax_included,category_id,confirmed_name,product_id,quantity,raw_name'
+      ].includes(Object.keys(line).sort().join(',')))
        kurashiFail_('BAD_REQUEST','明細の形式が不正です');
      const prod=line.product_id,cat=line.category_id;
      if(prod!==null&&(!known.has(prod)||typeof prod!=='string'))
@@ -1179,10 +1189,13 @@ function kurashiMutateRecord_(user,action,payload,id){
         (original.record_type==='shelf'?cat!==null:
           cat!==null&&(!Number.isInteger(cat)||cat<0||cat>4)))
        kurashiFail_('BAD_REQUEST','数量・税込金額を確認してください');
-     const aliasId=kurashiPlanAlias_(line.raw_name,payload.chain_id,prod,
+     const confirmed=line.confirmed_name===undefined?'':kurashiRawName_(line.confirmed_name);
+     if(line.confirmed_name!==undefined&&(!confirmed||String(line.raw_name||'').trim()))
+       kurashiFail_('BAD_REQUEST','写真確認名はOCR名と同時登録できません');
+     const aliasId=confirmed?'':kurashiPlanAlias_(line.raw_name,payload.chain_id,prod,
        aliasIndex,newAliases,now);
      return {record_item_id:'recorditem-'+Utilities.getUuid(),
-      record_id:recordId,line_order:n+1,raw_name:'',alias_id:aliasId,
+      record_id:recordId,line_order:n+1,raw_name:'',alias_id:aliasId,confirmed_name:confirmed,
       product_id:prod||'',quantity:line.quantity,
       amount_tax_included:line.amount_tax_included,
       category_id:cat===null?'':cat,price_eligible:prod!==null,
