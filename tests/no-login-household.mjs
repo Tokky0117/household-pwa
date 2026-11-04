@@ -122,7 +122,7 @@ const mockFetch=async(url,options)=>{
  return {ok:true,text:async()=>JSON.stringify(response)};
 };
 function appSession(idbFactory=factory){
- const dom=new JSDOM('<!doctype html><html lang="ja"><head></head><body><div id="app"></div></body></html>',{
+ const dom=new JSDOM('<!doctype html><html lang="ja"><head></head><body><div id="app"></div><input id="receipt-source-picker" type="file" accept="image/*"><input id="scan-add-picker" type="file" accept="image/*"></body></html>',{
   url:'https://tokky0117.github.io/household-pwa/previews/preview-v46-clean-base/',
   runScripts:'outside-only',pretendToBeVisual:true
  });
@@ -975,7 +975,7 @@ scanSession.window.document.querySelector('[data-tab="receipt"]').click();
 const picker=scanSession.window.document.getElementById('receipt-source-picker');
 assert.ok(picker,'native photo picker is present on receipt tab');
 assert.equal(picker.type,'file');assert.equal(picker.accept,'image/*');
-assert.equal(picker.multiple,true);assert.equal(picker.hasAttribute('capture'),false);
+assert.equal(picker.multiple,false);assert.equal(picker.hasAttribute('capture'),false);
 let opens=0;picker.click=()=>{opens++};
 scanSession.window.document.querySelector('[data-act="receiptScan"]').click();
 assert.equal(opens,1,'one tap opens iPhone native selector directly');
@@ -993,7 +993,7 @@ assert.ok(!scanSession.window.document.querySelector('#scan-crop-canvas'),
 assert.ok(!scanSession.window.document.querySelector('#scan-mode'),
  'image processing settings are hidden and fixed');
 const addPicker=scanSession.window.document.getElementById('scan-add-picker');
-assert.ok(addPicker&&addPicker.multiple);
+assert.ok(addPicker&&!addPicker.multiple);
 let adds=0;addPicker.click=()=>{adds++};
 scanSession.window.document.querySelector('[data-act="scanAddPhotos"]').click();
 assert.equal(adds,1,'adding a second photo also opens native chooser in one tap');
