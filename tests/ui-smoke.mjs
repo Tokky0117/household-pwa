@@ -328,6 +328,14 @@ assert.throws(()=>imports.parseChatGptOcrAssistJson(JSON.stringify({
  {rowId:'row-1',ocrName:'2000211787545',nameCandidate:'会員番号を商品名として保存'}
  ]})),/NAME_OR_STORE_UNSAFE/,'sensitive personal patterns remain prohibited in candidate names');
 const newPrompt=imports.makeChatGptOcrAssistPrompt(ocrRef);
+assert.match(newPrompt,/独立した検算/);
+assert.match(newPrompt,/JSONコードブロックは出さず/);
+assert.match(newPrompt,/何番目の商品/);
+assert.match(newPrompt,/ユーザー確認後/);
+assert.match(newPrompt,/商品別税込額が印字されず/);
+assert.match(newPrompt,/値引きやクーポンを商品として数えず/);
+assert.match(newPrompt,/停止せず全面再解析/);
+
 assert.match(newPrompt,/画像がない／開けない場合/,'no photo means no JSON');
 assert.match(newPrompt,/写真そのものを目視/,'visual reading must precede OCR comparison');
 assert.match(newPrompt,/OCR診断/,'correction reasoning must be separate from JSON');
