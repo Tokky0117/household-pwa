@@ -27,9 +27,81 @@
   return (10-sum%10)%10===Number(value[12]);
  };
  const name=s=>norm(s).replace(/^[※*]\s*/,'').replace(/^委\)\s*/,'').replace(/\s*!$/,'').trim();
+ // Allocate an invoice's printed tax per rate to merchandise rows. A receipt
+ // may round tax once per rate rather than once per line: never compute and
+ // round every item independently. Largest remainders produce integer yen and
+ // guarantee the allocated tax adds to the printed tax exactly.
+ function allocateExternalTax(items,details){
+  const unresolved=reason=>({status:'unresolved',reason});
+  const {taxBasis,taxBreakdown,taxTotal,subtotal,receiptTotal,rateBases,rawText}=details;
+  if(taxBasis!=='excluded')return {status:'not-applicable'};
+  if(!items.length||items.some(it=>!Number.isSafeInteger(it.netAmount)||it.netAmount<0))
+   return unresolved('invalid_item_amount');
+  const netSum=items.reduce((sum,it)=>sum+it.netAmount,0);
+  if(subtotal!==null&&subtotal!==netSum)return unresolved('subtotal_mismatch');
+  if(taxTotal===null||!Number.isSafeInteger(taxTotal)||taxTotal<0)return unresolved('missing_printed_tax');
+  if(receiptTotal!==null&&receiptTotal!==netSum+taxTotal)return unresolved('receipt_total_mismatch');
+  const groups=new Map();
+  for(const tax of taxBreakdown){
+   if(!Number.isFinite(tax.rate)||!Number.isSafeInteger(tax.amount)||tax.amount<0)
+    return unresolved('invalid_tax_breakdown');
+   if(groups.has(tax.rate))return unresolved('duplicate_tax_rate');
+   groups.set(tax.rate,{rate:tax.rate,tax:tax.amount,rows:[]});
+  }
+  if(!groups.size)return unresolved('missing_tax_rate');
+  if([...groups.values()].reduce((sum,g)=>sum+g.tax,0)!==taxTotal)
+   return unresolved('tax_breakdown_mismatch');
+
+  const rates=[...groups.keys()];
+  // Recognize reduced-rate merchandise only when the paper explicitly states
+  // the symbol's meaning. No store-name or product-category assumptions.
+  const markedReduced=/[※＊*].{0,14}(?:軽減税率|軽減税|8\s*%)/.test(rawText)||
+   /(?:軽減税率|軽減税|8\s*%).{0,14}[※＊*]/.test(rawText);
+  for(let i=0;i<items.length;i++){
+   const it=items[i];let rate=null;
+   if(rates.length===1)rate=rates[0];
+   else if(rates.length===2&&groups.has(8)&&groups.has(10)&&markedReduced)
+    rate=/^\s*[※＊*]/.test(it.rawName||'')?8:10;
+   if(rate===null||!groups.has(rate))return unresolved('uncertain_item_tax_rate');
+   groups.get(rate).rows.push({item:it,index:i});
+  }
+
+  const allocated=new Map();
+  for(const group of groups.values()){
+   const base=group.rows.reduce((sum,row)=>sum+row.item.netAmount,0);
+   const printedBase=rateBases.get(group.rate);
+   if(printedBase!==undefined&&printedBase!==base)return unresolved('tax_rate_base_mismatch');
+   // Where no tax-rate base is printed, check the tax is plausible at this rate.
+   if(printedBase===undefined&&Math.abs(base*group.rate/100-group.tax)>1)
+    return unresolved('tax_rate_sum_mismatch');
+   if(!base){
+    if(group.tax!==0)return unresolved('tax_without_base');
+    for(const row of group.rows)allocated.set(row.index,{tax:0,rate:group.rate});
+    continue;
+   }
+   const parts=group.rows.map(row=>{
+    const numerator=row.item.netAmount*group.tax;
+    const floor=Math.floor(numerator/base);
+    return {index:row.index,tax:floor,remainder:numerator%base};
+   });
+   const residual=group.tax-parts.reduce((sum,p)=>sum+p.tax,0);
+   if(residual<0||residual>parts.length)return unresolved('tax_allocation_failed');
+   const ranked=[...parts].sort((a,b)=>b.remainder-a.remainder||a.index-b.index);
+   for(let i=0;i<residual;i++)ranked[i].tax++;
+   for(const part of parts)allocated.set(part.index,{tax:part.tax,rate:group.rate});
+  }
+  if(allocated.size!==items.length)return unresolved('unallocated_item');
+  for(let i=0;i<items.length;i++){
+   const result=allocated.get(i),it=items[i];
+   it.taxRate=result.rate;it.allocatedTax=result.tax;
+   it.taxIncludedAmount=it.netAmount+result.tax;
+   it.taxCalculation='printed-total-proportional';
+  }
+  return {status:'allocated',method:'largest-remainder',tax:taxTotal};
+ }
  function parse(source){
   const rawText=String(source||''), items=[], warnings=[], adjustments=[];
-  const taxBreakdown=[];
+  const taxBreakdown=[],rateBases=new Map();
   const lines=rawText.split(/\r?\n/);let pending=null,last=null,janPending=null,coupon=false,summary=false,discountPending=null,countPending=false;
   let receiptTotal=null,subtotal=null,taxTotal=null,printedCount=null;
   const receiptTotals=[],printedCounts=[];
@@ -75,7 +147,18 @@
    if(/^(?:(?:お|御)?買上(?:げ)?点数|買上品数)(?:\s*[:：]?)?$/.test(l)){
     warn('unreadable_printed_count',ix);countPending=true;pending=null;continue;
    }
-   if(m=l.match(/^(?:税(?:8|10)%|外税額 (?:8|10)%)\s*¥([\d,]+)$/)){taxTotal=(taxTotal||0)+num(m[1]);continue;}
+   if(m=l.match(/^(?:税\s*(8|10)\s*%|外税(?:額)?\s*(8|10)\s*%|消費税\s*(8|10)\s*%)\s*[¥￥]([\d,]+)$/)){
+    const rate=Number(m[1]||m[2]||m[3]),amount=num(m[4]);
+    taxTotal=(taxTotal||0)+amount;
+    taxBreakdown.push({rate,amount,sourceLine:ix});
+    continue;
+   }
+   // Per-rate taxable base can be printed separately from the rate's tax.
+   if(m=l.match(/^\(?\s*(?:外税|内税)?\s*(8|10)\s*%\s*対象(?:額)?\s*[¥￥]([\d,]+)\s*\)?$/)){
+    const rate=+m[1],base=num(m[2]);
+    if(rateBases.has(rate)&&rateBases.get(rate)!==base)warn('conflicting_tax_rate_bases',ix);
+    rateBases.set(rate,base);continue;
+   }
    if(summary)continue;
    // Some OCR layouts split "分類一括割引 10%" and its negative amount.
    // Pair only the immediately following standalone negative number.
@@ -220,6 +303,8 @@
   const included=/内税|内消費税|内\s*(?:8|10)%|消費税.*\)/.test(normalizedText)||items.some(x=>x.taxBasis==='included');
   const taxBasis=external?'excluded':included?'included':'unknown';
   for(const item of items){item.taxBasis=taxBasis;item.taxIncludedAmount=taxBasis==='included'?item.netAmount:null;}
+  const taxAllocation=allocateExternalTax(items,{taxBasis,taxBreakdown,taxTotal,subtotal,receiptTotal,rateBases,rawText:normalizedText});
+  if(taxBasis==='excluded'&&taxAllocation.status!=='allocated')warn('unresolved_tax_allocation',null);
   const expected=taxBasis==='excluded'&&taxTotal!==null?sum+taxTotal:taxBasis==='included'?sum:null;
   if(taxBasis==='unknown')warn('unknown_tax_basis',null);
   const quantity=items.reduce((s,x)=>s+x.quantity,0);
@@ -229,7 +314,7 @@
    x.quantitySource==='inferred_candidate'||
    x.issues.includes('quantity_ocr_ambiguous')||x.issues.includes('unit_quantity_mismatch'));
   const candidateCountMatches=printedCount===null?null:printedCount===quantity;
-  return {rawText,items,adjustments,warnings,receiptTotal,subtotal,taxTotal,taxBreakdown,taxBasis,printedCount,reconciliation:{
+  return {rawText,items,adjustments,warnings,receiptTotal,subtotal,taxTotal,taxBreakdown,taxBasis,taxAllocation,printedCount,reconciliation:{
    itemCount:items.length,
    // Used only for consistency calculations, NOT confirmed inventory count.
    quantity,
