@@ -606,7 +606,7 @@ function receiptScanView(){
  <div class="scan-photo-list">${scanPhotos.map((file,i)=>`<button type="button" class="${i===scanIndex?'primary':'secondary'}" data-act="scanSelectPhoto" data-scan-row="${i}">写真${i+1}</button>`).join('')}</div>
  <button type="button" class="tertiary" data-act="scanRemovePhoto">選択中の写真を外す</button>
  ${scanPhotos.length<6?'<button type="button" class="secondary" data-act="scanAddPhotos">＋ 写真を追加</button>':''}
- <input id="scan-add-picker" class="scan-file-input" type="file" accept="image/*" multiple>
+ 
  <button type="button" class="primary" data-act="scanStart" ${scanBusy?'disabled':''}>${scanBusy?'読み取り中…':'写真を解析する'}</button>
  </div>`:''}
  <p id="scan-status" role="status" class="hint">${esc(scanStatus||'写真を選択してください。')}</p>${scanFormView()}
@@ -936,7 +936,7 @@ function receiptView(){
  <span>${esc(chainLabel(r.chain_id))}／${esc(p?.name||aliasNameFor(first)||'未照合')}${details.length>1?' ほか'+(details.length-1)+'件':''}</span>
  <span>${yen(total)} · ${details.length}明細</span></button>`;
  }).join('')||'<div class="empty">記録はまだありません</div>';
- return `${head('レシート','くらしストック_試作')}<main class="preview-record-page"><p class="sample-price-notice">${liveMode?'レシート写真から自動解析できます。OCR結果は保存前に必ず確認してください。':'※ 手入力の試作機能。OCR・Sheets・夫婦間同期は未接続です。'}</p><div class="record-entry-actions">${liveMode?'<button class="primary" data-act="receiptScan">'+miniIcon('plus')+'<span>写真からレシートを読み取る</span></button><input id="receipt-source-picker" class="scan-file-input" type="file" accept="image/*" multiple>':''}${scanDraftAvailable?'<button class="secondary" data-act="resumeScanDraft">下書きを再開</button>':''}<button class="secondary" data-act="newReceipt">${miniIcon('plus')}<span>レシート明細</span></button><button class="secondary" data-act="newShelf">${miniIcon('plus')}<span>値札</span></button></div><h2 class="sectiontitle">${liveMode?'保存した記録':'この端末の記録'}</h2>${rows}</main>${nav()}`;
+ return `${head('レシート','くらしストック_試作')}<main class="preview-record-page"><p class="sample-price-notice">${liveMode?'レシート写真から自動解析できます。OCR結果は保存前に必ず確認してください。':'※ 手入力の試作機能。OCR・Sheets・夫婦間同期は未接続です。'}</p><div class="record-entry-actions">${liveMode?'<button class="primary" data-act="receiptScan">'+miniIcon('plus')+'<span>写真からレシートを読み取る</span></button>':''}${scanDraftAvailable?'<button class="secondary" data-act="resumeScanDraft">下書きを再開</button>':''}<button class="secondary" data-act="newReceipt">${miniIcon('plus')}<span>レシート明細</span></button><button class="secondary" data-act="newShelf">${miniIcon('plus')}<span>値札</span></button></div><h2 class="sectiontitle">${liveMode?'保存した記録':'この端末の記録'}</h2>${rows}</main>${nav()}`;
 }
 function stub(title,icon,desc){return `${head(title,'くらしストック_試作')}<main><div class="panel placeholder"><div class="bubble">${icon}</div><h2>${title}画面</h2><p>${desc}</p></div><div class="alert">この画面は共通UIの確認用です。データ処理や同期はまだ行いません。</div></main>${nav()}`}
 function settingsView(){
@@ -1214,19 +1214,27 @@ function updateComparisonPrices(){
   if(heading&&updatedHeading)heading.textContent=updatedHeading.textContent;
  }
 }
-app.addEventListener('change',e=>{
- if(e.target.id==='receipt-source-picker'||e.target.id==='scan-add-picker'){
-  const files=[...(e.target.files||[])].filter(f=>f.type.startsWith('image/'));
-  if(scanPhotos.length+files.length>6){
-   scanStatus='一度に読み込める写真は最大6枚です。';render();return;
-  }
-  if(!files.length)return;
-  if(e.target.id==='receipt-source-picker')resetScan();
-  scanPhotos.push(...files);scanIndex=scanPhotos.length-1;
-  if(files.length)page='recordScan';
-  scanDraft=null;scanToken++;scanStatus=files.length+'枚の写真を追加しました。';
-  render();return;
+// Native iOS photo pickers live outside #app to survive re-renders while
+// the Photos library is active, including its first permission prompt.
+function acceptReceiptPhotos(picker){
+ const files=[...(picker.files||[])].filter(f=>f.type.startsWith('image/'));
+ if(!files.length)return; // Cancel does not navigate or discard existing photos.
+ if(picker.id==='receipt-source-picker')resetScan();
+ if(scanPhotos.length+files.length>6){
+  scanStatus='一度に読み込める写真は最大6枚です。';
+  picker.value='';render();return;
  }
+ scanPhotos.push(...files);scanIndex=scanPhotos.length-1;
+ page='recordScan';scanDraft=null;scanToken++;
+ scanStatus=files.length+'枚の写真を追加しました。';
+ picker.value=''; // Same photo can be selected again.
+ render();
+}
+document.addEventListener('change',e=>{
+ if(e.target.id==='receipt-source-picker'||e.target.id==='scan-add-picker')
+  acceptReceiptPhotos(e.target);
+});
+app.addEventListener('change',e=>{
  if(e.target.id==='scan-chain'){
   document.getElementById('scan-new-chain-wrap').hidden=e.target.value!=='__new__';
   if(scanDraft){

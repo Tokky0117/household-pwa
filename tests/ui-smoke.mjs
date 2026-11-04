@@ -212,10 +212,17 @@ assert.ok(ui.receiptScanView().includes('id="scan-status"')&&
  !ui.receiptScanView().includes('scan-crop-canvas')&&
  !ui.receiptScanView().includes('scan-mode'),'No crop and preprocessing selector');
 assert.ok(source.includes('data-act="receiptScan"')&&
- source.includes('id="receipt-source-picker"'),
+ source.includes("document.getElementById('receipt-source-picker')?.click()"),
  'Native chooser is available in the live receipt tab; offline preview remains unchanged');
 assert.ok(source.includes("document.getElementById('receipt-source-picker')?.click()"),
  'Source chooser is opened synchronously on user tap');
+const indexHtml=readFileSync(new URL('../index.html',import.meta.url),'utf8');
+assert.equal((indexHtml.match(/id="receipt-source-picker"/g)||[]).length,1);
+assert.equal((indexHtml.match(/id="scan-add-picker"/g)||[]).length,1);
+assert.ok(!ui.receiptScanView().includes('id="scan-add-picker"'));
+assert.ok(source.includes("document.addEventListener('change',e=>{"));
+assert.ok(source.includes("picker.value=''"));
+assert.ok(source.includes("if(!files.length)return"));
 assert.ok(source.includes('type="file" accept="image/*" multiple'),
  'Native picker offers photo library, camera or files');
 assert.ok(!source.includes('getUserMedia(')&&!source.includes('scanFromCamera'),
