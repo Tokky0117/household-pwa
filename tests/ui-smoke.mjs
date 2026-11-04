@@ -164,6 +164,11 @@ assert.ok(ui.receiptView().includes('値札入力'));
 assert.ok(ui.receiptView().includes('ui-section-heading')&&ui.receiptView().includes('ui-text-action'),'Receipt home reuses section heading and backgroundless link');
 assert.ok(ui.receiptView().includes('ui-record-row')&&!ui.receiptView().includes('ほか'),'Receipt rows omit product summaries');
 assert.ok(ui.receiptView().includes('くらしストック'),'Receipt header uses the daily-item subtitle');
+assert.ok(css.includes('border: 1px solid var(--accent);')&&css.includes('color: var(--accent);'),'Secondary uses the shared blue outline and text');
+assert.ok(css.includes('.tertiary{\n background:transparent;'),'Tertiary is transparent');
+assert.ok(!source.includes('secondary confirm-caution')&&!source.includes('class="secondary danger"'),'Shared dialog no longer uses per-danger colors');
+assert.ok(source.includes("b.primary&&!b.critical&&!b.danger?'primary':'secondary'"),'Dangerous dialog controls retain non-primary treatment');
+
 assert.ok(source.includes('function getRecordSummary(')&&source.includes('UI.recordRow(getRecordSummary(r))'),'History summary and shared row renderer');
 assert.ok(css.includes('.record-entry-actions{display:grid;grid-template-columns:repeat(3'),'Receipt registration has three equal columns');
 assert.ok(!ui.receiptView().includes('家計簿'),'retired budget tab stays absent');
