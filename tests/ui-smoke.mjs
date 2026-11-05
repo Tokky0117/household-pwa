@@ -266,8 +266,12 @@ assert.ok(source.includes("if(!files.length){picker.value='';return;}"),
  'Cancelled or empty file selection never reaches the receipt draft');
 assert.ok(source.includes("document.addEventListener('cancel',e=>"),
  'Native Photos cancellation clears the file input without discarding committed photos');
-assert.ok(source.includes("resetScan();page='list';tab='receipt';render();return;"),
- 'Removing the last image leaves the empty scanner and returns to receipts');
+assert.ok(source.includes("resetScan();page='recordScan';render();return;"),
+ 'Removing the last image stays on the empty OCR screen');
+assert.ok(ui.receiptScanView().includes('data-act="scanAddPhotos"'),
+ 'Empty OCR screen has a direct photo picker button');
+assert.equal((ui.receiptScanView().match(/写真を選択してください。/g)||[]).length,1,
+ 'Empty OCR screen displays one instruction only');
 assert.equal((indexHtml.match(/type="file" accept="image\/\*"/g)||[]).length,2,
  'Both photo inputs use native single-photo selection');
 assert.ok(!indexHtml.includes('accept="image/*" multiple'),

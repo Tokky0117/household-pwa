@@ -1021,20 +1021,25 @@ assert.equal(adds,1,'adding a second photo also opens native chooser in one tap'
 addPicker.dispatchEvent(new scanSession.window.Event('cancel',{bubbles:false}));
 assert.equal(scanSession.window.document.querySelectorAll('.scan-photo-tile').length,1,
  'cancelled extra photo does not remove the already chosen photo');
-// Removing the only selected photo must return to the receipt tab, not an
-// orphan scan page with duplicated "写真を選択してください" notices.
+// Clearing the only photo keeps the OCR page visible and provides an
+// immediate picker action; there must be only one empty-state instruction.
 scanSession.window.document.querySelector('[data-act="scanRemovePhoto"][data-scan-row="0"]').click();
-assert.equal(scanSession.window.document.querySelector('.receipt-scan-page'),null,
- 'removing last photo exits the empty scanner');
-assert.ok(scanSession.window.document.querySelector('[data-act="receiptScan"]'),
- 'receipt tab offers normal photo selection again after clearing');
-assert.equal(scanSession.window.document.body.textContent.includes('写真を選択してください。'),false,
- 'the empty scan page and duplicate notices are not left behind');
-// Reopen with the same photo; changing a file input works after cancel/reset.
-scanSession.window.document.querySelector('[data-act="receiptScan"]').click();
-picker.dispatchEvent(new scanSession.window.Event('change',{bubbles:true}));
+assert.ok(scanSession.window.document.querySelector('.receipt-scan-page'),
+ 'removing the final photo stays on the OCR screen');
+assert.equal(scanSession.window.document.querySelectorAll('.scan-photo-tile').length,0,
+ 'no photo remains selected');
+assert.equal((scanSession.window.document.querySelector('.receipt-scan-page').textContent.match(/写真を選択してください。/g)||[]).length,1,
+ 'one empty-state instruction remains');
+assert.ok(scanSession.window.document.querySelector('.scan-photo-empty [data-act="scanAddPhotos"]'),
+ 'the empty OCR screen has a visible photo selection button');
+assert.equal(scanSession.window.document.querySelector('[data-act="scanStart"]'),null,
+ 'analysis cannot start with zero photos');
+scanSession.window.document.querySelector('.scan-photo-empty [data-act="scanAddPhotos"]').click();
+assert.equal(adds,2,'photo selection can reopen directly from the empty OCR screen');
+Object.defineProperty(addPicker,'files',{configurable:true,value:[libraryFile]});
+addPicker.dispatchEvent(new scanSession.window.Event('change',{bubbles:true}));
 assert.equal(scanSession.window.document.querySelectorAll('.scan-photo-tile').length,1,
- 'photo chooser can be used again after cancel and last-photo removal');
+ 'same photo can be selected again after cancel and final-photo removal');
 scanSession.window.document.querySelector('[data-act="back"]').click();
 assert.ok(scanSession.window.document.querySelector('[data-dialog="discardScan"]'),
  'unsaved OCR input is protected');

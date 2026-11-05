@@ -1,4 +1,4 @@
-const APP_VERSION='0.72.1';
+const APP_VERSION='0.72.2';
 const CATS=['飲食','キッチン','洗面・風呂','洗濯・掃除','その他'];
 const liveMode=!!window.KurashiLive; // Data source only; original Preview v46 UI components remain.
 const SEED=[['牛乳',0,true],['麦茶',0,false],['コーヒー',0,true],['卵',0,false],['キッチンペーパー',1,false],['ラップ',1,true],['食器用洗剤',1,true],['シャンプー',2,false],['歯磨き粉',2,true],['ハンドソープ',2,false],['洗濯洗剤',3,false],['柔軟剤',3,true],['トイレットペーパー',3,false],['乾電池',4,true],['ティッシュ',4,true]];
@@ -543,7 +543,8 @@ function scanFormView(){
 }
 function scanPhotoSection(){
  if(!scanPhotos.length){
-  return scanDraft?'<p class="hint scan-photo-unavailable">写真は端末に保存されていません。レシート原本を見て内容を確認してください。</p>':'';
+  return scanDraft?'<p class="hint scan-photo-unavailable">写真は端末に保存されていません。レシート原本を見て内容を確認してください。</p>':
+   '<section class="scan-photo-section scan-photo-empty"><button type="button" class="secondary scan-photo-add" data-act="scanAddPhotos">'+miniIcon('plus')+'<span>写真を選択</span></button></section>';
  }
  const editing=!scanDraft&&!scanBusy;
  return `<section class="scan-photo-section">
@@ -1979,9 +1980,9 @@ if(action==='scanRemovePhoto'){
  if(!Number.isInteger(index)||index<0||index>=scanPhotos.length)return;
  const removed=scanPhotos.splice(index,1)[0];releaseScanThumbnail(removed);
  if(!scanPhotos.length){
-  // There is no scan to review. Return to the receipt tab, rather than
-  // displaying two identical empty-state notices on the scan page.
-  resetScan();page='list';tab='receipt';render();return;
+  // Keep the OCR screen open with one empty-state message and a
+  // usable picker button. Do not navigate away after clearing one photo.
+  resetScan();page='recordScan';render();return;
  }
  scanIndex=Math.max(0,Math.min(scanIndex,scanPhotos.length-1));
  scanDraft=null;scanToken++;scanStatus='写真を削除しました。';
