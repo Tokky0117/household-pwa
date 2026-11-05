@@ -486,9 +486,11 @@ assert.equal(ui.scanDate('2026/02/30\n2026/11/03'),'',
 
 const layoutScript=readFileSync(new URL('../receipt-layout.js',import.meta.url),'utf8');
 const amountsScript=readFileSync(new URL('../receipt-amounts.js',import.meta.url),'utf8');
+const rolesScript=readFileSync(new URL('../receipt-line-rules.js',import.meta.url),'utf8');
+const assemblerScript=readFileSync(new URL('../receipt-item-assembler.js',import.meta.url),'utf8');
 const structureScript=readFileSync(new URL('../receipt-structure.js',import.meta.url),'utf8');
-const {geometry,structure,amounts,validation}=vm.runInNewContext(layoutScript+'\n'+amountsScript+'\n'+validatorScript+'\n'+structureScript+
- ';({geometry:KurashiReceiptLayout,structure:KurashiReceiptStructure,amounts:KurashiReceiptAmounts,validation:KurashiReceiptValidation})');
+const {geometry,structure,amounts,validation,roles,assembler}=vm.runInNewContext(layoutScript+'\n'+rolesScript+'\n'+assemblerScript+'\n'+amountsScript+'\n'+validatorScript+'\n'+structureScript+
+ ';({geometry:KurashiReceiptLayout,structure:KurashiReceiptStructure,amounts:KurashiReceiptAmounts,validation:KurashiReceiptValidation,roles:KurashiReceiptLineRules,assembler:KurashiReceiptItemAssembler})');
 const observed=(value,x,y,w=200)=>({text:value,poly:[[x,y],[x+w,y],[x+w,y+16],[x,y+16]]});
 const geomLines=geometry.groupLines([
  observed('メリノクルーネックカーディガン',105,100,250),
@@ -910,3 +912,29 @@ assert.throws(()=>imports.parseChatGptOcrAssistJson(JSON.stringify({version:'kur
  {rowId:'row-1',ocrName:'TORRIDEN SERUM',nameCandidate:null,quantity:1,amount:-100}
 ]})),/INVALID_OCR_ASSIST_ITEM/);
 console.log('v70: Photo amount fills missing OCR value; unchanged OCR spelling OK');
+
+
+// P3a: independent pattern and assembly contracts; geometric links retain
+// the underlying OCR observations even when a split price line is merged.
+assert.equal(roles.classifyLine('123456 1@ 100 100 E').role,'sku');
+assert.equal(roles.classifyLine('分類一括割引 10% -10').role,'discount');
+assert.equal(roles.classifyLine('商品A ¥100').role,'priced_candidate');
+const p3Original=assembler.makeItem('品目A',2,100,200,[1],['品目A']);
+const p3Discounted=assembler.applyDiscount(p3Original,10,2,'値引 -10');
+assert.equal(p3Original.netAmount,200,'P3 assembler must not mutate input evidence');
+assert.equal(p3Discounted.netAmount,190);
+assert.deepEqual(Array.from(p3Discounted.sourceLines),[1,2]);
+assert.deepEqual(Array.from(stitched.lines[0].sourceLineIndices),[1,2],
+ 'split right-hand price retains original OCR line IDs');
+assert.equal(stitched.lines[0].priceLinks[0].sourceLineIndex,2);
+const p3Linked=geometry.attachSourceGeometry(structure.parse(stitched.text),stitched);
+assert.deepEqual(Array.from(p3Linked.items[0].layoutEvidence.observationIndices),[0,1,2]);
+assert.equal(p3Linked.items[0].layoutEvidence.priceLinks.length,1);
+const p3Unresolved=structure.parse('商品A ¥100\n未確定の商品名\n商品B ¥200\n小計 ¥300\n合計 ¥300');
+assert.ok(p3Unresolved.unresolvedRows.some(row=>row.line===2&&row.role==='name_candidate'),
+ 'unresolved merchandise-region names remain available as evidence');
+assert.equal(longExternal.items.length,17,'P3 retains all 17 existing merchandise rows');
+assert.deepEqual(Array.from(longExternal.items,x=>x.taxIncludedAmount),
+ [95,293,95,124,484,144,153,95,125,193,387,202,212,153,210,270,209],
+ 'P3 must not change product-by-product allocated tax totals');
+console.log('P3a: store-independent line patterns, item assembly and layout provenance OK');

@@ -26,7 +26,9 @@
  // Only join it to an unpriced name with unique, close geometric evidence.
  function joinSplitPriceColumns(layout){
   if(!Array.isArray(layout?.lines))return layout;
-  const lines=layout.lines.map(line=>({...line,bounds:{...line.bounds}}));
+  const lines=layout.lines.map((line,index)=>({...line,bounds:{...line.bounds},
+   sourceLineIndices:Array.isArray(line.sourceLineIndices)?[...line.sourceLineIndices]:[index+1],
+   priceLinks:Array.isArray(line.priceLinks)?[...line.priceLinks]:[]}));
   const isPrice=text=>/^(?:[!！]\s*)?[¥￥]\s*[\d,]{1,9}$/.test(String(text||'').trim());
   const isName=text=>{
    const t=String(text||'').normalize('NFKC').trim();
@@ -51,6 +53,9 @@
    const j=candidates[0].j,old=lines[j];
    old.text=old.text.trim()+' '+lines[i].text.trim();
    old.observationIndices=[...(old.observationIndices||[]),...(lines[i].observationIndices||[])];
+   old.sourceLineIndices=[...old.sourceLineIndices,...lines[i].sourceLineIndices];
+   old.priceLinks.push({sourceLineIndex:i+1,targetLineIndex:j+1,
+    reason:'right_price_unique_geometry',score:candidates[0].score});
    old.bounds={x0:Math.min(old.bounds.x0,price.x0),x1:Math.max(old.bounds.x1,price.x1),
     y0:Math.min(old.bounds.y0,price.y0),y1:Math.max(old.bounds.y1,price.y1)};
    used.add(i);
@@ -108,5 +113,38 @@
   }
   return receipt;
  }
- root.KurashiReceiptLayout={groupLines,joinSplitPriceColumns,attachAdjacentCodeNames};
+
+ // Attach geometry only if normalized text still has a 1:1 line mapping.
+ // The source observations and original pre-join OCR line IDs remain available
+ // even if the price/name line was merged; do not persist these in Sheets.
+ function attachSourceGeometry(receipt,layout){
+  if(!Array.isArray(receipt?.items)||!Array.isArray(layout?.lines))return receipt;
+  const lineCount=String(receipt.rawText||'').split(/\r?\n/).length;
+  if(lineCount!==layout.lines.length)return receipt;
+  const evidenceFor=numbers=>{
+   const sourceLines=numbers.map(n=>layout.lines[n-1]).filter(Boolean);
+   if(sourceLines.length!==numbers.length)return null;
+   const bounds=sourceLines.map(line=>line.bounds).filter(Boolean);
+   return {
+    sourceLineIndices:[...new Set(sourceLines.flatMap(line=>line.sourceLineIndices||[]))].sort((a,b)=>a-b),
+    observationIndices:[...new Set(sourceLines.flatMap(line=>line.observationIndices||[]))].sort((a,b)=>a-b),
+    priceLinks:sourceLines.flatMap(line=>line.priceLinks||[]),
+    bounds:bounds.length?{
+     x0:Math.min(...bounds.map(x=>x.x0)),y0:Math.min(...bounds.map(x=>x.y0)),
+     x1:Math.max(...bounds.map(x=>x.x1)),y1:Math.max(...bounds.map(x=>x.y1))
+    }:null
+   };
+  };
+  for(const item of receipt.items){
+   if(!Array.isArray(item.sourceLines)||!item.sourceLines.length)continue;
+   const evidence=evidenceFor(item.sourceLines);
+   if(evidence)item.layoutEvidence=evidence;
+  }
+  for(const unresolved of receipt.unresolvedRows||[]){
+   const evidence=evidenceFor([unresolved.line]);
+   if(evidence)unresolved.layoutEvidence=evidence;
+  }
+  return receipt;
+ }
+ root.KurashiReceiptLayout={groupLines,joinSplitPriceColumns,attachAdjacentCodeNames,attachSourceGeometry};
 })(typeof window==='undefined'?globalThis:window);

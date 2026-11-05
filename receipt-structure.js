@@ -1,59 +1,33 @@
 /* Recognition-independent receipt extraction. No I/O, persistence or product matching. */
 (function(root){
  'use strict';
- const norm=s=>String(s).normalize('NFKC').replace(/\s+/g,' ').trim();
- const num=s=>Number(s.replace(/,/g,''));
- // Only treat a dot as a thousands separator in clearly typed numeric SKU price columns.
- // Product names, quantities, weights and arbitrary decimal numbers are not rewritten.
- const skuAmount=s=>Number(/^(?:\d+|\d{1,3}(?:[,.]\d{3})+)$/.test(s)?s.replace(/[,.]/g,''):NaN);
- // A warehouse SKU row can contain an OCR-deformed quantity marker, but the total
- // must still be consistent. Never silently treat an uncertain quantity as printed fact.
- const skuRow=/^(?:CPN\s+)?(\d{4,8})\s+(\d{1,2}[●@eEoO]?)\s+([\d,.]+)\s+([\d,.]+)(-)?\s*([ET])$/i;
- const ambiguousUnitRow=/^(\d{2,3})\s*[x×]\s*単\s*([\d,]+)\s*[¥]?\s*([\d,]+)$/i;
- // Register/checkout identifiers are not products even when OCR flattens
- // their right-hand terminal number into a trailing price-like column.
- // Keep this narrow: a numbered register label, not arbitrary names that
- // happen to contain "レジ" or a real retail product/price.
- const registerMetadata=/^(?:\d{2,8}\s*)?(?:精算機|精算器|レジ(?:番号|端末)|POS端末)\s*#?\d{1,4}(?:\s+[¥]?#?\d{1,8})?$/i;
- // Home centers may print barcode, name and price on separate lines.
- const janHeader=/^#\d{1,4}\s+JAN\s*([0-9]{13})$/i;
- const janTaxPrice=/^[¥￥]?([\d,]+)\s*(?:内|込)$/;
- // JAN/EAN-13 contains a final checksum digit. A valid OCR shape alone
- // is insufficient evidence that the number was recognized correctly.
- const validJan13=value=>{
-  if(typeof value!=='string'||!/^\d{13}$/.test(value))return false;
-  const sum=[...value.slice(0,12)].reduce((total,digit,index)=>
-   total+Number(digit)*(index%2?3:1),0);
-  return (10-sum%10)%10===Number(value[12]);
- };
- const name=s=>norm(s).replace(/^[※*]\s*/,'').replace(/^委\)\s*/,'').replace(/\s*!$/,'').trim();
+ const lineRules=root.KurashiReceiptLineRules;
+ const itemAssembler=root.KurashiReceiptItemAssembler;
+ const {norm,num,skuRow,ambiguousUnitRow,registerMetadata,janHeader,janTaxPrice,
+  quantityUnit,quantityPrice,janQuantityPrice,pricedWithYen,pricedPlain,name,validJan13}=lineRules;
  function parse(source){
   const rawText=String(source||''), items=[], warnings=[], adjustments=[];
   const taxBreakdown=[],rateBases=new Map();
-  const lines=rawText.split(/\r?\n/);let pending=null,last=null,janPending=null,coupon=false,summary=false,discountPending=null,countPending=false;
+  const lines=rawText.split(/\r?\n/);
+  const lineTokens=lines.map((raw,i)=>({...lineRules.classifyLine(raw),line:i+1}));
+  let pending=null,last=null,janPending=null,coupon=false,summary=false,discountPending=null,countPending=false;
   let receiptTotal=null,subtotal=null,taxTotal=null,printedCount=null;
   const receiptTotals=[],printedCounts=[];
   const recordTotal=value=>{receiptTotals.push(value);receiptTotal=value;};
   const warn=(code,line)=>warnings.push({code,line});
   const add=(rawName,q,unit,amount,indices)=>{
    if(!Number.isSafeInteger(amount)||amount<0||amount>1000000||q<1||q>99){warn('invalid_item',indices[0]);return;}
-   // A standalone unpriced text line must not vanish when the next paid
-   // merchandise row is recognized. Keep it as a potential missing product
-   // unless the next row is explicitly the corresponding price/quantity line.
    if(pending&&norm(pending.raw)!==norm(rawName)&&
     !indices.includes(pending.line))warn('unpriced_name',pending.line);
-   last={rawName,name:name(rawName),quantity:q,quantitySource:q===1?'default':'printed',unitPrice:unit,grossAmount:amount,discount:0,netAmount:amount,taxBasis:'unknown',taxIncludedAmount:null,sourceLines:indices,rawLines:indices.map(i=>lines[i-1]),issues:[]};
-   if(unit!==null&&unit*q!==amount)last.issues.push('unit_quantity_mismatch');
-   if(!last.name||(/^[A-Za-z]$/.test(last.name)))last.issues.push('missing_product_name');
+   last=itemAssembler.makeItem(rawName,q,unit,amount,indices,lines);
    items.push(last);pending=null;return last;
   };
   const discount=(amount,i)=>{
    if(!last){adjustments.push({amount:-amount,sourceLine:i});warn('unassigned_discount',i);return;}
-   last.discount+=amount;last.netAmount=last.grossAmount-last.discount;last.sourceLines.push(i);last.rawLines.push(lines[i-1]);
-   if(last.netAmount<0)last.issues.push('negative_net');
+   Object.assign(last,itemAssembler.applyDiscount(last,amount,i,lines[i-1]));
   };
   for(let i=0;i<lines.length;i++){
-   const l=norm(lines[i]).replace(/\\(?=\s*\d)/g,'¥').replace(/[¥￥]\s+(?=\d)/g,'¥');if(!l)continue;const ix=i+1;let m;
+   const l=lineTokens[i].text;if(!l)continue;const ix=i+1;let m;
    if(countPending){
     countPending=false;
     if(m=l.match(/^(\d{1,3})\s*点?$/)){
@@ -133,24 +107,9 @@
    }
    if(/^CPN$/i.test(l)){coupon=true;pending=null;continue;}
    if(m=l.match(skuRow)){
-    const unit=skuAmount(m[3]),total=skuAmount(m[4]);
-    if(!Number.isSafeInteger(unit)||!Number.isSafeInteger(total)||unit<=0||total<0){warn('invalid_sku_amount',ix);pending=null;coupon=false;continue;}
-    const originalQtyToken=m[2],rawQty=Number(originalQtyToken.match(/^\d+/)[0]),ratio=total/unit;
-    let q=rawQty,qtyIssue=null;
-    if(!m[5]&&(!Number.isSafeInteger(rawQty)||rawQty<1||rawQty>99||rawQty*unit!==total)){
-     // "10" may REALLY mean ten items. Unit/total reconciliation can
-     // suggest another number but never turn that suggestion into fact.
-     qtyIssue='quantity_ocr_ambiguous';
-     if(Number.isSafeInteger(ratio)&&ratio>=1&&ratio<=99&&originalQtyToken.startsWith(String(ratio)))
-      q=ratio;
-    }
-    // Costco's "1@" is an explicit unit-count marker on the paper.
-    // The @ form is trusted only if the integer quantity reconciles with
-    // the printed unit price AND line total; otherwise review is mandatory.
-    // Ambiguous OCR suffixes (e/o) are always reviewable.
-    if(!m[5]&&/[eEoO]$/.test(originalQtyToken))qtyIssue='quantity_ocr_ambiguous';
-    // A printed @ only supplies credible numeric evidence when arithmetic
-    // matches: the mismatch check above remains in force.
+    const sku=lineRules.interpretWarehouseRow(m);
+    if(sku.status!=='valid'){warn('invalid_sku_amount',ix);pending=null;coupon=false;continue;}
+    const {unit,total,quantity:q,quantityIssue:qtyIssue,originalQtyToken}=sku;
     if(m[5]){
      discount(total,ix);
      if(last){last.discountCodes=last.discountCodes||[];last.discountCodes.push(m[1]);}
@@ -176,7 +135,7 @@
     // Discount rows never count as products.
     pending=null;continue;
    }
-   if(m=l.match(/^\(?\s*(\d+)個\s*[x×]\s*@([\d,]+)\s*\)?$/i)){
+   if(m=l.match(quantityUnit)){
     if(+m[1]<1||+m[1]>99){warn('invalid_quantity',ix);continue;}
     if(last){last.quantity=+m[1];last.quantitySource='printed';last.unitPrice=num(m[2]);last.sourceLines.push(ix);last.rawLines.push(lines[i]);if(last.quantity*last.unitPrice!==last.grossAmount)last.issues.push('unit_quantity_mismatch');}
     else warn('orphan_quantity',ix);continue;
@@ -189,19 +148,19 @@
     }else warn('ambiguous_quantity_row',ix);
     pending=null;continue;
    }
-   if(m=l.match(/^(\d+)(?:コ|個)\s*[x×]\s*単\s*(-?[\d,]+)\s*[¥]?\s*(-?[\d,]+)$/i)){
+   if(m=l.match(quantityPrice)){
     if(num(m[3])<0){if(num(m[2])*(+m[1])!==num(m[3]))warn('discount_quantity_mismatch',ix);discount(-num(m[3]),ix);}
     else if(pending){const item=add(pending.raw,+m[1],num(m[2]),num(m[3]),[pending.line,ix]);if(item)item.quantitySource='printed';}
     else warn('orphan_quantity_price',ix);continue;
    }
-   if(m=l.match(/^(\d{13})\s+(\d+)\s*¥([\d,]+)$/)){
+   if(m=l.match(janQuantityPrice)){
     if(pending){const item=add(pending.raw,+m[2],num(m[3])/(+m[2]),num(m[3]),[pending.line,ix]);if(item){item.quantitySource='printed';item.productCode=m[1];}}
     else warn('orphan_product_code',ix);continue;
    }
    if(/^(?:現金|お預|預り|お釣|釣銭|クレジット|カード|支払|税|外税|内税|対象|ポイント|TEL|電話|会員|楽天(?:ペイ|Pay|ポイント)|PayPay|d払い|au ?PAY|決済|取引(?:ID|ICD|番号)|受付番号|お(?:支払|預かり|釣り)|電子マネー(?:決済|支払)|QUICPay|交通系IC(?:決済|支払)|iD決済|QR(?:コード)?決済|(?:利用ポイント|ポイント利用))/i.test(l)){
     pending=null;continue;
    }
-   if(m=l.match(/^(.+?)\s*¥([\d,]+)$/)||l.match(/^(.+?)\s+([\d,]+)(?:円)?$/)){
+   if(m=l.match(pricedWithYen)||l.match(pricedPlain)){
     const raw=lines[i].replace(/(?:[¥￥\\]\s*[0-9０-９,，]+|[\s　]+[0-9０-９,，]+(?:円)?)\s*$/,'');
     const candidate=name(raw);
     if(/^(?:(?:お|御)?買上(?:げ)?点数|買上品数)/.test(candidate)){
@@ -252,9 +211,18 @@
    items,adjustments,warnings,receiptTotal,subtotal,taxTotal,
    taxBreakdown,taxBasis,taxAllocation,printedCount
   });
+  // Optional, non-persistent candidate-role evidence for future review logic.
+  // No unknown line is removed here and no extra save blocker is introduced.
+  const usedLines=new Set(items.flatMap(item=>item.sourceLines));
+  const allItemLines=[...usedLines],first=allItemLines.length?Math.min(...allItemLines):null;
+  const lastLine=allItemLines.length?Math.max(...allItemLines):null;
+  const candidateRoles=new Set(['name_candidate','priced_candidate','discount','negative_amount','quantity','sku','jan_header','jan_price']);
+  const unresolvedRows=lineTokens.filter(t=>first!==null&&t.line>=first&&t.line<=lastLine&&
+   candidateRoles.has(t.role)&&!usedLines.has(t.line)).map(t=>({line:t.line,role:t.role}));
+  const lineRoles=lineTokens.map(t=>({line:t.line,role:t.role}));
   return {rawText,items,adjustments,warnings,receiptTotal,subtotal,taxTotal,
    taxBreakdown,taxBasis,taxAllocation,printedCount,
-   reconciliation:validation.reconciliation,validation};
+   reconciliation:validation.reconciliation,validation,lineRoles,unresolvedRows};
  }
  // Backward-compatible public adapter: all warning scope decisions are shared.
  function warningScopes(receipt){
