@@ -620,6 +620,17 @@ assert.equal(missingRateDigits.taxBreakdown[0].rate,8);
 assert.equal(missingRateDigits.taxBreakdown[0].evidence,'rate-candidate-from-printed-totals');
 assert.equal(missingRateDigits.items.reduce((sum,x)=>sum+x.taxIncludedAmount,0),3444);
 assert.ok(missingRateDigits.warnings.some(w=>w.code==='tax_rate_calculated_not_printed'));
+const footerNoisy=structure.parse([
+ '店頭限定サービス','お会計券','架空商品A ¥100',
+ '架空商品B ¥200','小計','外税額','合計 ¥324','ご利用ありがとうございました'
+].join('\n'));
+assert.equal(footerNoisy.taxAllocation.status,'allocated',
+ 'unpriced header/footer text cannot block otherwise reconciled item amounts');
+const inBlockUnknown=structure.parse([
+ '架空商品A ¥100','内容不明の商品','架空商品B ¥200','小計','外税額','合計 ¥324'
+].join('\n'));
+assert.equal(inBlockUnknown.taxAllocation.status,'unresolved',
+ 'unpriced text within the merchandise region is still a blocker');
 const noExternalEvidence=structure.parse([
  '商品A ¥100','商品B ¥200','合計 ¥324'
 ].join('\n'));
