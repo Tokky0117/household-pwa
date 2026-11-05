@@ -128,5 +128,21 @@
    blockers,individuallyConfirmed:false
   };
  }
- root.KurashiReceiptValidation={validateReceipt,evaluateDraft,warningScopes};
+const describeTaxFailure=reason=>({
+ invalid_item_amount:'商品の金額を正常に抽出できませんでした',
+ subtotal_mismatch:'OCRの税抜明細合計とレシート印字小計が一致しません',
+ missing_printed_tax:'レシートに印字された消費税額を取得できません',
+ receipt_total_mismatch:'明細・税額とレシート印字合計が一致しません',
+ invalid_tax_breakdown:'印字税額の数値が不正です',
+ duplicate_tax_rate:'同一税率の税額印字を複数検出しました',
+ missing_tax_rate:'消費税の税率が認識できません',
+ tax_breakdown_mismatch:'税率別税額と印字税額が一致しません',
+ uncertain_item_tax_rate:'商品ごとの税率が特定できません',
+ tax_rate_base_mismatch:'税率別の課税対象額と商品の金額が一致しません',
+ tax_rate_sum_mismatch:'税抜明細合計と税率別の印字税額が一致しません',
+ tax_without_base:'課税対象商品なしで税額が検出されました',
+ tax_allocation_failed:'税額の端数配分が成立しません',
+ unallocated_item:'税額を配分できない商品があります',
+ unknown_tax_basis:'内税・外税の区別ができません'
+})[reason]||'OCRで必要な金額・税区分が確定していません';  root.KurashiReceiptValidation={validateReceipt,evaluateDraft,warningScopes,describeTaxFailure};
 })(typeof window==='undefined'?globalThis:window);
