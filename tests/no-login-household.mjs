@@ -8,6 +8,7 @@ const setup=readFileSync(new URL('../gas/Setup.gs',import.meta.url),'utf8');
 const api=readFileSync(new URL('../gas/Api.gs',import.meta.url),'utf8');
 const client=readFileSync(new URL('../live-client.js',import.meta.url),'utf8');
 const app=readFileSync(new URL('../app.js',import.meta.url),'utf8');
+const validator=readFileSync(new URL('../receipt-validation.js',import.meta.url),'utf8');
 const schema=vm.runInNewContext(setup+'; KURASHI_NEW_SCHEMA',{});
 
 function fixture(code) {
@@ -131,6 +132,7 @@ function appSession(idbFactory=factory){
  dom.window.HTMLElement.prototype.scrollIntoView=()=>{}; // supported by iOS Safari, absent in jsdom
  dom.window.console=console;
  dom.window.eval(client);
+ dom.window.eval(validator);
  dom.window.eval(app);
  dom.window.document.dispatchEvent(new dom.window.Event('DOMContentLoaded',{bubbles:true}));
  return dom;
