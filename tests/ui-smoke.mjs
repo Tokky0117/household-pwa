@@ -684,6 +684,53 @@ const explicitMixedRates=structure.parse([
 assert.equal(explicitMixedRates.taxAllocation.status,'unresolved',
  'multiple tax rates cannot be inferred as one mixed rate from receipt difference');
 
+// P2: one validator owns parser warnings, receipt arithmetic and live edits.
+// A correct sum does not claim that all source lines or quantities were verified.
+assert.equal(longExternal.validation.checks.subtotal,'match');
+assert.equal(longExternal.validation.checks.total,'match');
+assert.equal(longExternal.validation.checks.taxAllocation,'match');
+assert.equal(longExternal.validation.checks.count,'match');
+assert.equal(longExternal.validation.checks.printedQuantity,'unknown',
+ 'default quantities still require original-photo review');
+assert.equal(longExternal.validation.reconciliation.netSum,longExternal.reconciliation.netSum);
+assert.equal(longExternal.validation.reconciliation.printedCountMatches,null);
+assert.equal(longExternal.validation.individuallyConfirmed,false);
+const truncatedSubtotal=structure.parse('商品A ¥100\\n小計 ¥120\\n外税額 8% ¥8\\n合計 ¥128');
+assert.equal(truncatedSubtotal.validation.checks.subtotal,'mismatch',
+ 'validator catches subtotal mismatch independently from final total');
+assert.ok(truncatedSubtotal.validation.blockers.some(x=>x.code==='subtotal_mismatch'));
+assert.ok(truncatedSubtotal.validation.notices.some(x=>x.code==='subtotal_mismatch'));
+const quantityMismatch=structure.parse('商品A ¥100\\n買上点数 2点\\n合計 ¥100');
+assert.equal(quantityMismatch.validation.checks.count,'mismatch');
+assert.ok(quantityMismatch.validation.notices.some(x=>x.code==='candidate_count_mismatch'));
+const draftValid=validation.evaluateDraft({printedCount:3,total:324,items:[
+ {quantity:'1',amount:'108',taxExcludedAmount:100,allocatedTax:8},
+ {quantity:'2',amount:'216',taxExcludedAmount:200,allocatedTax:16}
+]});
+assert.equal(draftValid.quantitySum,3);
+assert.equal(draftValid.amountSum,324);
+assert.equal(draftValid.checks.count,'match');
+assert.equal(draftValid.checks.total,'match');
+assert.equal(draftValid.blockers.length,0);
+assert.equal(draftValid.individuallyConfirmed,false);
+const draftEdited=validation.evaluateDraft({printedCount:3,total:324,items:[
+ {quantity:'1',amount:'120',taxExcludedAmount:100,allocatedTax:8},
+ {quantity:'3',amount:'216',taxExcludedAmount:200,allocatedTax:16}
+]});
+assert.equal(draftEdited.checks.count,'mismatch');
+assert.equal(draftEdited.checks.total,'mismatch');
+assert.equal(draftEdited.amountDelta,12);
+assert.ok(draftEdited.blockers.some(x=>x.code==='edited_calculated_amount'));
+const draftPartial=validation.evaluateDraft({printedCount:3,total:324,items:[
+ {quantity:'',amount:'108'},{quantity:'2',amount:''}
+]});
+assert.equal(draftPartial.quantitySum,null);
+assert.equal(draftPartial.amountSum,null);
+assert.equal(draftPartial.checks.count,'unknown');
+assert.equal(draftPartial.checks.total,'unknown');
+assert.ok(draftPartial.blockers.some(x=>x.code==='unconfirmed_amount'));
+assert.ok(!draftPartial.blockers.some(x=>x.code==='candidate_count_mismatch'));
+
 const separatePriceLayout=geometry.groupLines([
  observed('※ 野菜A',100,300,124),observed('! ¥98',292,311,60),
  observed('分類一括割引 10% -10',100,340,245),
