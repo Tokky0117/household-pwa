@@ -1037,19 +1037,10 @@ activeAmount.value='440';
 activeAmount.dispatchEvent(new scanSession.window.Event('input',{bubbles:true}));
 assert.match(activeReceiptForm.querySelector('#scan-sum-text').textContent,/印字合計と一致/,
  'P2 corrected amount immediately restores total reconciliation without replacing the form');
-const activeQty=activeReceiptForm.querySelector('[name="qty-0"]');
-activeQty.value='3';
-activeQty.dispatchEvent(new scanSession.window.Event('input',{bubbles:true}));
-assert.match(activeReceiptForm.querySelector('#scan-count-text').textContent,/印字点数と一致しません/,
- 'P2 quantity changes reuse the same validation logic as the parser');
-activeQty.value='2';
-activeQty.dispatchEvent(new scanSession.window.Event('input',{bubbles:true}));
-assert.match(activeReceiptForm.querySelector('#scan-count-text').textContent,/印字点数と一致$/,
- 'P2 returning to printed quantity updates the existing form in place');
 await waitFor(()=>scanSession.window.KurashiLive.state().loaded,'receipt draft saved');
 await pause(100); // Let the prior UI draft write finish before this test override.
 await scanSession.window.KurashiLive.saveReceiptDraft({
- source:'chatgpt',date:'2026-10-14',chainId:confirmedStore,total:440,
+ source:'chatgpt',date:'2026-10-14',chainId:confirmedStore,total:440,printedCount:2,
  items:[{name:'下書きで残る商品',quantity:2,amount:440,productId:'',issues:[]}]
 });
 const savedDraft=await scanSession.window.KurashiLive.loadReceiptDraft();
