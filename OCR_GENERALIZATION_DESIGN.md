@@ -2,7 +2,7 @@
 
 - 作成：2026-11-05
 - 対象：`Tokky0117/household-pwa` の `preview-v46-clean-base`、基準版 v0.71.1
-- 状態：**P0基準試験固定・P1税額計算分離を実装済み（v0.71.2）**。P2以降は未実装。
+- 状態：**P0基準試験固定・P1税額計算分離・P2検算共通化を実装済み（v0.71.3）**。P3以降は未実装。
 - 正本の既存契約：`DATA_MODEL.md` の現行節、`SCREEN_UI_SPEC.md`、`OPERATION_QUEUE.md`。古い v1.8 の「OCR未実装／4タブ／家計簿」記述は現行仕様ではない。
 
 ## 1. 到達目標と不変条件
@@ -118,9 +118,19 @@
 - 引き続き明細と値引きの対応付け、検算・エラー表示はP2・P3の対象。P1は税計算の**責務分離**でありOCRの画像認識精度を改善したという意味ではない。
 - 既存の写真・下書き・ChatGPT補助解析・GAS・Sheets・操作キュー、`main` は変更しない。実機の再撮影・読取は自動テストとは別途確認する。
 
-## 8. 次の着手範囲（P2）
+## 8. 実施履歴：P2（2026-11-05）
 
-**P0・P1の実装は完了**。次は **P2：検算とエラー判定の独立化**に着手する。
+- 新規 `receipt-validation.js` に、`validateReceipt()`、`evaluateDraft()`、`warningScopes()`、`describeTaxFailure()` を集約。検算はOCR解析・DOM・外部サービスに依存しない純粋関数とする。
+- 解析後の `reconciliation`（数量・数量の印字確実性・税抜小計・税額加算後合計など）の**既存形式と値を維持**。同時に `validation.checks`（`match` / `mismatch` / `unknown`）、`validation.blockers`、`validation.notices`、`validation.warningScopes` を追加。各明細の原本確認状態は未確認のままとし、合計一致を印字の完全な認識と誤認しない。
+- `runReceiptScan()` の点数・小計・合計・孤立価格・競合合計の警告判定は新モジュールの `validation.notices` を参照。警告文言・OCR商品行・値引き・税額計算アルゴリズムは変更しない。
+- `refreshScanTotalUI()` は同じ検算モジュールの `evaluateDraft()` を呼ぶ。ユーザーが数量・税込額を修正したら**現時点のフォーム値**で再計算し、入力欄のDOMを再生成しない。税額配分の計算値との差が生じた場合は内部の `edited_calculated_amount` として記録できるが、今回のUI操作・保存ルールは変更しない。
+- OCRビルドは `receipt-amounts.js` → `receipt-validation.js` → `receipt-structure.js` の順に読み込む。アプリでは `receipt-validation.js` を `app.js` より前に読み込み、Service Workerでもキャッシュする。iPhoneの写真選択・ChatGPT補助・既存下書き／操作キュー／Google Sheetsのスキーマは変更しない。
+- `tests/ui-smoke.mjs` にパーサーの検算結果、コード化した不一致、未確定入力、明細を編集した後の差額を追加。`tests/no-login-household.mjs` に実際のフォームで数量・金額の不一致／修正を即時反映する回帰テストを追加。
+- P2の `blockers` は**診断コード**であり、新しい一律保存禁止条件ではない。保存フローに影響するルール変更は別途設計・実機検証してから行う。
+
+## 9. 次の着手範囲（P3）
+
+**P0〜P2の実装は完了**。次は **P3：商品・金額・値引きのレイアウト・明細解析の分離**に着手する。
 
 - 数値の採用根拠を変えず、まずファイル分割・純粋関数化する（機能追加を同時にしない）。
 - コノミヤの匿名化17行／19点／税抜3,189円／外税255円／合計3,444円、税率数字の読取欠落、数量2行、右端価格分離等のテストを保持する。
