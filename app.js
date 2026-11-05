@@ -757,12 +757,8 @@ async function runReceiptScan(){
      productId,autoLinked:!!productId,issues});
    }
    if(Number.isSafeInteger(out.parsed.receiptTotal)){total=out.parsed.receiptTotal;receiptTotals.push(total);}
-   for(const w of out.parsed.warnings||[]){
-    if(['conflicting_receipt_totals','conflicting_printed_counts','unassigned_price'].includes(w.code))scanWarnings.add(w.code);
-   }
-   if(out.parsed.reconciliation?.candidateCountMatches===false)scanWarnings.add('candidate_count_mismatch');
-   if(out.parsed.reconciliation?.subtotalMatches===false)scanWarnings.add('subtotal_mismatch');
-   if(out.parsed.reconciliation?.totalMatches===false)scanWarnings.add('receipt_total_mismatch');
+   // One common validator supplies all structural and arithmetic notices.
+   for(const notice of out.parsed.validation?.notices||[])scanWarnings.add(notice.code);
    if(scanPhotos.length===1&&Number.isSafeInteger(out.parsed.printedCount))printedCount=out.parsed.printedCount;
   }
   if(token!==scanToken)return;
@@ -2397,31 +2393,36 @@ function refreshScanTotalUI(){
  const node=document.getElementById('scan-sum-text');
  if(!form||!node||!scanDraft)return;
  const d=new FormData(form);
+ // Same validator as OCR parse(): always use the live form values, not the
+ // old OCR calculation stored in the draft. Do not re-render active inputs.
+ const result=window.KurashiReceiptValidation.evaluateDraft({
+  items:scanDraft.items.map((item,i)=>({
+   quantity:String(d.get('qty-'+i)||'').trim(),
+   amount:String(d.get('amount-'+i)||'').trim(),
+   quantityUncertain:!!item.quantityUncertain,
+   taxExcludedAmount:item.taxExcludedAmount,
+   allocatedTax:item.allocatedTax
+  })),
+  printedCount:scanDraft.printedCount,total:scanDraft.total
+ });
  const countNode=document.getElementById('scan-count-text');
  if(countNode){
-  const quantities=scanDraft.items.map((_,i)=>String(d.get('qty-'+i)||'').trim());
-  const valid=quantities.every(v=>/^\d+$/.test(v)&&Number.isSafeInteger(Number(v))&&Number(v)>0);
-  const count=valid?quantities.reduce((sum,v)=>sum+Number(v),0):null;
-  const mismatch=count!==null&&count!==scanDraft.printedCount;
+  const count=result.quantitySum;
+  const mismatch=result.checks.count==='mismatch';
   countNode.textContent=count===null?'購入点数：数量未確定の行があります。':
    '購入点数：'+count+'点'+(mismatch?'／印字点数と一致しません。明細の過不足を確認してください。':'／印字点数と一致');
   countNode.classList.toggle('scan-warning',mismatch);
  }
- let sum=0;
- for(let i=0;i<scanDraft.items.length;i++){
-  const raw=String(d.get('amount-'+i)||'').trim();
-  const value=Number(raw);
-  if(raw===''||!Number.isSafeInteger(value)||value<0){
-   node.textContent='明細合計：金額未確定の行があります。';node.classList.remove('scan-warning');return;
-  }
-  sum+=value;
+ const sum=result.amountSum;
+ if(sum===null){
+  node.textContent='明細合計：金額未確定の行があります。';
+  node.classList.remove('scan-warning');return;
  }
- const total=scanDraft.total;
- if(total===null){
+ if(result.receiptTotal===null){
   node.textContent='明細合計：'+yen(sum)+'（印字合計は未検出）';
   node.classList.remove('scan-warning');return;
  }
- const diff=sum-total;
+ const diff=result.amountDelta;
  node.textContent='明細合計：'+yen(sum)+(diff===0?
   '／印字合計と一致':
   '／印字合計との差額：'+yen(Math.abs(diff))+
