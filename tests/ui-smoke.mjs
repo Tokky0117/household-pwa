@@ -516,6 +516,31 @@ console.log('v67: geometric barcode-to-name linking and ambiguous multi-receipt 
 
 // The printed tax per rate is allocated proportionally to validated discounted rows.
 // No item is independently rounded: the distribution sums to the invoice's exact tax.
+// P1: extraction is computation-only; neither the item evidence nor tax
+// breakdown is modified by the pure API. The legacy parse output remains.
+const pureItems=[{rawName:'※ 合成食品A',netAmount:100},{rawName:'※ 合成食品B',netAmount:200}];
+const pureBreakdown=[{rate:8,amount:24}];
+const pureResult=amounts.calculateExternalTax(pureItems,{
+ taxBasis:'excluded',taxBreakdown:pureBreakdown,taxTotal:24,
+ subtotal:300,receiptTotal:324,rateBases:new Map([[8,300]]),
+ rawText:'※マークは軽減税率対象です。'
+});
+assert.equal(pureResult.status,'allocated','P1 pure calculator can allocate 8%');
+assert.deepEqual(Array.from(pureResult.allocations,x=>x.taxIncludedAmount),[108,216]);
+assert.ok(pureItems.every(x=>!Object.hasOwn(x,'taxIncludedAmount')&&!Object.hasOwn(x,'allocatedTax')),
+ 'P1 pure tax calculation does not mutate observed merchandise rows');
+assert.equal(pureBreakdown.length,1,'P1 pure calculator does not mutate printed tax evidence');
+const pureRecoverInput={items:[{netAmount:100,sourceLines:[1]},{netAmount:200,sourceLines:[2]}],
+ netSum:300,lines:['※ 合成食品A ¥100','※ 合成食品B ¥200','外税額','合計 ¥324'],
+ receiptTotal:324,subtotal:null,taxTotal:null,taxBreakdown:[],
+ rateBases:new Map(),adjustments:[],warnings:[]};
+const recoveredCandidate=amounts.inferMissingExternalTax(pureRecoverInput);
+assert.equal(recoveredCandidate.taxTotal,24);
+assert.equal(recoveredCandidate.taxLine.rate,8);
+assert.equal(recoveredCandidate.taxLine.evidence,'rate-candidate-from-printed-totals');
+assert.equal(pureRecoverInput.taxBreakdown.length,0,
+ 'P1 tax recovery reports a candidate without mutating extracted evidence');
+
 const externalFixture=structure.parse([
  '※ 野菜A ! ¥98','分類一括割引 10% -10',
  '※ きのこB ! ¥128','分類一括割引 10%','-13',
