@@ -603,6 +603,38 @@ const withUnassignedDiscount=structure.parse([
 ].join('\n'));
 assert.equal(withUnassignedDiscount.taxAllocation.status,'unresolved','discount or net inconsistencies must not be hidden');
 
+// Actual reported failure shape: 17 priced merchandise lines, discounts,
+// 3,189 ex-tax item sum, 3,444 printed total, but footer numeric tax and
+// tax-rate digits not recognized. No store-specific parsing or hardcoded sums.
+const missingRateDigits=structure.parse([
+ ...lineFixture,'小計','外税額','買上点数','19点','合計 ¥3,444'
+].join('\n'));
+assert.equal(missingRateDigits.items.length,17);
+assert.equal(missingRateDigits.reconciliation.netSum,3189);
+assert.equal(missingRateDigits.receiptTotal,3444);
+assert.equal(missingRateDigits.taxAllocation.status,'allocated',
+ 'single plausible 8% rate can be calculated from matching net and printed total');
+assert.equal(missingRateDigits.taxTotal,255);
+assert.equal(missingRateDigits.taxBreakdown[0].rate,8);
+assert.equal(missingRateDigits.taxBreakdown[0].evidence,'rate-candidate-from-printed-totals');
+assert.equal(missingRateDigits.items.reduce((sum,x)=>sum+x.taxIncludedAmount,0),3444);
+assert.ok(missingRateDigits.warnings.some(w=>w.code==='tax_rate_calculated_not_printed'));
+const noExternalEvidence=structure.parse([
+ '商品A ¥100','商品B ¥200','合計 ¥324'
+].join('\n'));
+assert.equal(noExternalEvidence.taxAllocation.status,'not-applicable',
+ 'net/total difference is not enough without any external-tax evidence');
+const ambiguousRate=structure.parse([
+ '商品A ¥50','小計','外税額','合計 ¥54'
+].join('\n'));
+assert.equal(ambiguousRate.taxAllocation.status,'unresolved',
+ 'both possible rates within rounding tolerance must remain unresolved');
+const explicitMixedRates=structure.parse([
+ '商品A ¥100','商品B ¥200','小計','外税額 8%','外税額 10%','合計 ¥328'
+].join('\n'));
+assert.equal(explicitMixedRates.taxAllocation.status,'unresolved',
+ 'multiple tax rates cannot be inferred as one mixed rate from receipt difference');
+
 const separatePriceLayout=geometry.groupLines([
  observed('※ 野菜A',100,300,124),observed('! ¥98',292,311,60),
  observed('分類一括割引 10% -10',100,340,245),
