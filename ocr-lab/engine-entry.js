@@ -35,6 +35,10 @@ export async function scanReceiptImage(file,{mode='gray',crop=null}={}){
   const normalized=normalizeYenGrouping(japanese.text);
   const parsed=window.KurashiReceiptLayout.attachAdjacentCodeNames(
    window.KurashiReceiptStructure.parse(normalized.text),{lines:layout.lines});
+  // Positional barcode/name linking may change item issues and suppress an
+  // orphan-name warning; validate the final assembled items, not stale ones.
+  parsed.validation=window.KurashiReceiptValidation.validateReceipt(parsed);
+  parsed.reconciliation=parsed.validation.reconciliation;
   return {
    engine:'PP-OCRv6_small',
    parsed,originalText:r.text,text:normalized.text,
