@@ -102,7 +102,7 @@
   const amounts=lines.map(item=>String(item.amount??'').trim());
   const quantityValid=quantities.every(value=>/^\d+$/.test(value)&&
    Number.isSafeInteger(Number(value))&&Number(value)>0);
-  const amountValid=amounts.every(value=>/^\d+$/.test(value)&&
+  const amountValid=amounts.every(value=>value!==''&&
    Number.isSafeInteger(Number(value))&&Number(value)>=0);
   const quantitySum=quantityValid?quantities.reduce((sum,v)=>sum+Number(v),0):null;
   const amountSum=amountValid?amounts.reduce((sum,v)=>sum+Number(v),0):null;
