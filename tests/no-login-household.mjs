@@ -1057,6 +1057,18 @@ await waitFor(()=>!!resumedScan.window.document.querySelector('#scanConfirmForm'
  'resumed draft editable');
 assert.equal(resumedScan.window.document.querySelector('[name="name-0"]').value,
  '下書きで残る商品');
+const resumedForm=resumedScan.window.document.getElementById('scanConfirmForm');
+assert.ok(resumedForm.querySelector('#scan-count-text'),
+ 'P2 saved printed-count metadata is restored with the same review form');
+const resumedQty=resumedForm.querySelector('[name="qty-0"]');
+resumedQty.value='3';
+resumedQty.dispatchEvent(new resumedScan.window.Event('input',{bubbles:true}));
+assert.match(resumedForm.querySelector('#scan-count-text').textContent,/印字点数と一致しません/,
+ 'P2 quantity mismatch is recomputed immediately after editing the draft');
+resumedQty.value='2';
+resumedQty.dispatchEvent(new resumedScan.window.Event('input',{bubbles:true}));
+assert.match(resumedForm.querySelector('#scan-count-text').textContent,/印字点数と一致$/,
+ 'P2 restoring printed quantity recomputes without rerendering the form');
 await resumedScan.window.KurashiLive.saveReceiptDraft(null);
 resumedScan.window.close();
 
