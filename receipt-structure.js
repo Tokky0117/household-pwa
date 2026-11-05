@@ -109,6 +109,11 @@
   const warn=(code,line)=>warnings.push({code,line});
   const add=(rawName,q,unit,amount,indices)=>{
    if(!Number.isSafeInteger(amount)||amount<0||amount>1000000||q<1||q>99){warn('invalid_item',indices[0]);return;}
+   // A standalone unpriced text line must not vanish when the next paid
+   // merchandise row is recognized. Keep it as a potential missing product
+   // unless the next row is explicitly the corresponding price/quantity line.
+   if(pending&&norm(pending.raw)!==norm(rawName)&&
+    !indices.includes(pending.line))warn('unpriced_name',pending.line);
    last={rawName,name:name(rawName),quantity:q,quantitySource:q===1?'default':'printed',unitPrice:unit,grossAmount:amount,discount:0,netAmount:amount,taxBasis:'unknown',taxIncludedAmount:null,sourceLines:indices,rawLines:indices.map(i=>lines[i-1]),issues:[]};
    if(unit!==null&&unit*q!==amount)last.issues.push('unit_quantity_mismatch');
    if(!last.name||(/^[A-Za-z]$/.test(last.name)))last.issues.push('missing_product_name');
