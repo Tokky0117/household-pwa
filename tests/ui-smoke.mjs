@@ -238,6 +238,16 @@ assert.ok(source.includes("action:'receiptScan'")&&
 assert.ok(source.includes("document.getElementById('receipt-source-picker')?.click()"),
  'Source chooser is opened synchronously on user tap');
 const indexHtml=readFileSync(new URL('../index.html',import.meta.url),'utf8');
+const previewWorkflow=readFileSync(new URL('../.github/workflows/pages-previews.yml',import.meta.url),'utf8');
+const serviceWorker=readFileSync(new URL('../sw.js',import.meta.url),'utf8');
+assert.ok(indexHtml.includes('src="receipt-validation.js?v=71-p2"'),
+ 'P2 validator is loaded before app entry on the iPhone preview');
+assert.ok(indexHtml.indexOf('src="receipt-validation.js')<indexHtml.indexOf('src="app.js'),
+ 'P2 validator initializes before app.js');
+assert.ok(previewWorkflow.includes('receipt-chatgpt-import.js receipt-validation.js)'),
+ 'P2 shared validator is actually copied into each static preview');
+assert.ok(serviceWorker.includes("'./receipt-validation.js'"),
+ 'P2 offline cache preloads the shared validation script');
 assert.equal((indexHtml.match(/id="receipt-source-picker"/g)||[]).length,1);
 assert.equal((indexHtml.match(/id="scan-add-picker"/g)||[]).length,1);
 assert.ok(!ui.receiptScanView().includes('id="scan-add-picker"'));
