@@ -3,6 +3,8 @@ import {readFileSync} from 'node:fs';
 import vm from 'node:vm';
 const source=readFileSync(new URL('../app.js',import.meta.url),'utf8');
 const css=readFileSync(new URL('../styles.css',import.meta.url),'utf8');
+const validatorScript=readFileSync(new URL('../receipt-validation.js',import.meta.url),'utf8');
+const validator=vm.runInNewContext(validatorScript+';KurashiReceiptValidation');
 const handlers={};
 const documentHandlers={};
 let mockSwipeRows=[];
@@ -17,7 +19,7 @@ const doc={
  body:{append(){}}
 };
 const ctx={document:doc,localStorage:{getItem:k=>storage.get(k)??null,setItem:(k,v)=>storage.set(k,v),removeItem:k=>storage.delete(k)},
- navigator:{},window:{scrollTo(){},scrollY:0},crypto:{randomUUID:()=> 'test-id'},setTimeout:()=>0};
+ navigator:{},window:{scrollTo(){},scrollY:0,KurashiReceiptValidation:validator},crypto:{randomUUID:()=> 'test-id'},setTimeout:()=>0};
 const ui=vm.runInNewContext(source+`
 ({listView,priceCompareView,pickerView,pickerResults,receiptView,receiptScanView,receiptChatGptView,recordDetailView,scanDuplicates,applyChatGptOcrAssistance,receiptOcrReference,receiptOcrRows,isUnconfirmedBarcodeLine,makeChatGptReceiptRebuildDraft,scanBulkProductsView,scanProductView,scanExistingProductView,scanChainForStore,scanAutolinkUnmatched,scanMatchProduct,render,initializeCompare,
  setProductGroup,reorderProducts,registeredProducts,convertQuantity,setOpenSwipe,
@@ -475,8 +477,8 @@ assert.equal(ui.scanDate('2026/02/30\n2026/11/03'),'',
 const layoutScript=readFileSync(new URL('../receipt-layout.js',import.meta.url),'utf8');
 const amountsScript=readFileSync(new URL('../receipt-amounts.js',import.meta.url),'utf8');
 const structureScript=readFileSync(new URL('../receipt-structure.js',import.meta.url),'utf8');
-const {geometry,structure,amounts}=vm.runInNewContext(layoutScript+'\n'+amountsScript+'\n'+structureScript+
- ';({geometry:KurashiReceiptLayout,structure:KurashiReceiptStructure,amounts:KurashiReceiptAmounts})');
+const {geometry,structure,amounts,validation}=vm.runInNewContext(layoutScript+'\n'+amountsScript+'\n'+validatorScript+'\n'+structureScript+
+ ';({geometry:KurashiReceiptLayout,structure:KurashiReceiptStructure,amounts:KurashiReceiptAmounts,validation:KurashiReceiptValidation})');
 const observed=(value,x,y,w=200)=>({text:value,poly:[[x,y],[x+w,y],[x+w,y+16],[x,y+16]]});
 const geomLines=geometry.groupLines([
  observed('メリノクルーネックカーディガン',105,100,250),
