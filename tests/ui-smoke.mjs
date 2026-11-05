@@ -578,6 +578,31 @@ const unsafeTax=structure.parse([
 assert.equal(unsafeTax.taxAllocation.status,'unresolved',
  'inconsistent invoice tax cannot be constructed from a difference');
 
+// OCR footer without numeric subtotal/tax observations: independent item sum
+// and the printed total can identify tax only when a unique tax rate survives.
+const missingFooterAmounts=structure.parse([
+ '※ 食品A ¥100','分類一括割引 10% -10',
+ '※ 食品B ¥200','分類一括割引 10% -20',
+ '小計','外税額 8%','合計 ¥292'
+].join('\n'));
+assert.equal(missingFooterAmounts.subtotal,null);
+assert.equal(missingFooterAmounts.taxAllocation.status,'allocated');
+assert.equal(missingFooterAmounts.taxTotal,22);
+assert.deepEqual(Array.from(missingFooterAmounts.items,x=>x.taxIncludedAmount),[98,194]);
+assert.ok(missingFooterAmounts.warnings.some(w=>w.code==='tax_derived_from_printed_totals'));
+const missingRate=structure.parse([
+ '食品A ¥100','食品B ¥200','小計','外税額','合計 ¥324'
+].join('\n'));
+assert.equal(missingRate.taxAllocation.status,'unresolved','never invent a missing rate');
+const wrongRate=structure.parse([
+ '食品A ¥100','食品B ¥200','小計','外税額 8%','合計 ¥355'
+].join('\n'));
+assert.equal(wrongRate.taxAllocation.status,'unresolved','no forced tax when total difference violates rate');
+const withUnassignedDiscount=structure.parse([
+ '食品A ¥100','値引 -10','食品B ¥200','小計','外税額 8%','合計 ¥324'
+].join('\n'));
+assert.equal(withUnassignedDiscount.taxAllocation.status,'unresolved','discount or net inconsistencies must not be hidden');
+
 const separatePriceLayout=geometry.groupLines([
  observed('※ 野菜A',100,300,124),observed('! ¥98',292,311,60),
  observed('分類一括割引 10% -10',100,340,245),
