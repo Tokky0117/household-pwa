@@ -317,13 +317,26 @@
    const footerRates=[...new Set([...originalText.matchAll(/(?:外税(?:額)?|税額|消費税)\s*(8|10)\s*%/g)]
     .map(m=>Number(m[1])))];
    const printedRates=[...new Set([...rateBases.keys(),...footerRates])];
-   if(printedRates.length===1){
-    const rate=printedRates[0],base=rateBases.get(rate);
-    const derived=receiptTotal-sum;
-    if((base===undefined||base===sum)&&Math.abs(sum*rate/100-derived)<=1){
-     taxTotal=derived;taxBreakdown.push({rate,amount:derived,sourceLine:null,
-      evidence:'printed-total-minus-verified-net-items'});
-     warn('tax_derived_from_printed_totals',null);
+   const derived=receiptTotal-sum;
+   // When the tax rate's digits are missing, test BOTH supported Japanese
+   // consumption-tax rates against the independently obtained receipt total.
+   // This is a *calculated candidate*, not a claim that the rate was read.
+   // Require explicit external-tax evidence and a unique matching rate.
+   // Invoices with competing or mixed printed rates are never forced into one.
+   const externalEvidence=/(?:外税|税抜)/.test(originalText)&&
+    !/(?:内税|税込価格|税込み価格)/.test(originalText);
+   const hasMixedRateEvidence=rateBases.size>1||footerRates.length>1;
+   const inferredRates=printedRates.length===0&&externalEvidence&&!hasMixedRateEvidence&&sum>0?
+    [8,10].filter(rate=>Math.abs(sum*rate/100-derived)<=1):[];
+   const chosenRate=printedRates.length===1?printedRates[0]:
+    inferredRates.length===1?inferredRates[0]:null;
+   if(chosenRate!==null){
+    const base=rateBases.get(chosenRate);
+    if((base===undefined||base===sum)&&Math.abs(sum*chosenRate/100-derived)<=1){
+     const inferred=printedRates.length===0;
+     taxTotal=derived;taxBreakdown.push({rate:chosenRate,amount:derived,sourceLine:null,
+      evidence:inferred?'rate-candidate-from-printed-totals':'printed-total-minus-verified-net-items'});
+     warn(inferred?'tax_rate_calculated_not_printed':'tax_derived_from_printed_totals',null);
     }
    }
   }
