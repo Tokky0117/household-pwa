@@ -19,5 +19,12 @@
    sourceLines:[...item.sourceLines,line],rawLines:[...item.rawLines,rawLine],
    issues:netAmount<0?[...item.issues,'negative_net']:[...item.issues]};
  }
- root.KurashiReceiptItemAssembler={makeItem,applyDiscount};
+
+ function applyQuantity(item,quantity,unitPrice,line,rawLine){
+  const mismatch=quantity*unitPrice!==item.grossAmount;
+  return {...item,quantity,quantitySource:'printed',unitPrice,
+   sourceLines:[...item.sourceLines,line],rawLines:[...item.rawLines,rawLine],
+   issues:mismatch?[...item.issues,'unit_quantity_mismatch']:[...item.issues]};
+ }
+ root.KurashiReceiptItemAssembler={makeItem,applyDiscount,applyQuantity};
 })(typeof window==='undefined'?globalThis:window);

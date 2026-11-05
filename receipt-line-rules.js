@@ -72,7 +72,31 @@
   else if(/[\p{Letter}]/u.test(text))role='name_candidate';
   return {text,role};
  }
+
+ // Recognition only: these patterns cannot assign a price or a discount to
+ // an item without an adjacent merchandise assembly state.
+ const standaloneNegative=/^[-−－]\s*[¥￥]?\s*([\d,]+)(?:円)?$/;
+ const inlineNegative=/[-−－]\s*[¥￥]?\s*([\d,]+)$/;
+ const readNegativeAmount=(text,standalone)=> {
+  const m=text.match(standalone?standaloneNegative:inlineNegative);
+  return m?num(m[1]):null;
+ };
+ const isDiscountLabel=text=>/値引|割引/.test(text);
+ const isPossibleName=text=>/^(?:※|\*)/.test(text)||
+  (/[A-Za-z\p{Script=Han}\p{Script=Katakana}\p{Script=Hiragana}]/u.test(text)&&
+  !/^\d{4}[年/.-]/.test(text)&&
+  !/(?:COSTCO|コノミヤ|コストコ|アカカベ|ユニクロ|関西スーパー|売上|領収)/i.test(text));
+ const paymentFooterPattern=/^(?:現金|お預|預り|お釣|釣銭|クレジット|カード|支払|税|外税|内税|対象|ポイント|TEL|電話|会員|楽天(?:ペイ|Pay|ポイント)|PayPay|d払い|au ?PAY|決済|取引(?:ID|ICD|番号)|受付番号|お(?:支払|預かり|釣り)|電子マネー(?:決済|支払)|QUICPay|交通系IC(?:決済|支払)|iD決済|QR(?:コード)?決済|(?:利用ポイント|ポイント利用))/i;
+ const isPaymentOrFooter=text=>paymentFooterPattern.test(text);
+
+ function recognizePricedName(normalizedLine,printedLine){
+  const m=normalizedLine.match(pricedWithYen)||normalizedLine.match(pricedPlain);
+  if(!m)return null;
+  const raw=printedLine.replace(/(?:[¥￥\\]\s*[0-9０-９,，]+|[\s　]+[0-9０-９,，]+(?:円)?)\s*$/,'');
+  return {raw,candidate:name(raw),amount:num(m[2]),firstGroup:m[1]};
+ }
  root.KurashiReceiptLineRules={norm,num,skuAmount,skuRow,ambiguousUnitRow,registerMetadata,
   janHeader,janTaxPrice,quantityUnit,quantityPrice,janQuantityPrice,pricedWithYen,
-  pricedPlain,name,validJan13,interpretWarehouseRow,classifyLine};
+  pricedPlain,name,validJan13,interpretWarehouseRow,classifyLine,readNegativeAmount,
+  isDiscountLabel,isPaymentOrFooter,isPossibleName,recognizePricedName};
 })(typeof window==='undefined'?globalThis:window);

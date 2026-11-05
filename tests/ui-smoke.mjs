@@ -938,3 +938,21 @@ assert.deepEqual(Array.from(longExternal.items,x=>x.taxIncludedAmount),
  [95,293,95,124,484,144,153,95,125,193,387,202,212,153,210,270,209],
  'P3 must not change product-by-product allocated tax totals');
 console.log('P3a: store-independent line patterns, item assembly and layout provenance OK');
+
+
+// P3b: a trailing unpriced product candidate is not silently dropped when
+// the parser enters the receipt footer. Warning-backed earlier rows survive.
+const trailingUnknown=structure.parse('商品A ¥100\n名前を確認する商品\n小計 ¥100\n合計 ¥100');
+assert.ok(trailingUnknown.unresolvedRows.some(x=>x.line===2&&x.role==='name_candidate'),
+ 'product candidates immediately before a printed subtotal remain traceable');
+const orphanPrice=structure.parse('! ¥88\n商品A ¥100\n合計 ¥100');
+assert.ok(orphanPrice.unresolvedRows.some(x=>x.line===1&&x.reasons.includes('unassigned_price')),
+ 'an unassigned price before merchandise is retained as an unresolved observation');
+const quantityCorrection=structure.parse('商品A ¥200\n2個 × @100\n合計 ¥200');
+assert.equal(quantityCorrection.items[0].quantity,2);
+assert.equal(quantityCorrection.items[0].unitPrice,100);
+assert.deepEqual(Array.from(quantityCorrection.items[0].sourceLines),[1,2]);
+const splitDiscountP3=structure.parse('商品A ¥100\n分類一括割引 10%\n-10\n合計 ¥90');
+assert.equal(splitDiscountP3.items[0].netAmount,90,
+ 'a next-line discount still attaches to the preceding paid item');
+console.log('P3b: quantity, discount and price readers isolated; unknown-row evidence preserved OK');

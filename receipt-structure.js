@@ -70,8 +70,9 @@
    // Some OCR layouts split "分類一括割引 10%" and its negative amount.
    // Pair only the immediately following standalone negative number.
    if(discountPending!==null){
-    if(m=l.match(/^[-−－]\s*[¥￥]?\s*([\d,]+)(?:円)?$/)){
-     discount(num(m[1]),ix);discountPending=null;continue;
+    const negative=lineRules.readNegativeAmount(l,true);
+    if(negative!==null){
+     discount(negative,ix);discountPending=null;continue;
     }
     discountPending=null;
    }
@@ -129,15 +130,16 @@
     coupon=false;pending=null;continue;
    }
    if(coupon){continue;}
-   if(/値引|割引/.test(l)){
-    if(m=l.match(/[-−－]\s*[¥￥]?\s*([\d,]+)$/))discount(num(m[1]),ix);
+   if(lineRules.isDiscountLabel(l)){
+    const inlineDiscount=lineRules.readNegativeAmount(l,false);
+    if(inlineDiscount!==null)discount(inlineDiscount,ix);
     else if(last)discountPending=ix;
     // Discount rows never count as products.
     pending=null;continue;
    }
    if(m=l.match(quantityUnit)){
     if(+m[1]<1||+m[1]>99){warn('invalid_quantity',ix);continue;}
-    if(last){last.quantity=+m[1];last.quantitySource='printed';last.unitPrice=num(m[2]);last.sourceLines.push(ix);last.rawLines.push(lines[i]);if(last.quantity*last.unitPrice!==last.grossAmount)last.issues.push('unit_quantity_mismatch');}
+    if(last)Object.assign(last,itemAssembler.applyQuantity(last,+m[1],num(m[2]),ix,lines[i]));
     else warn('orphan_quantity',ix);continue;
    }
    if(m=l.match(ambiguousUnitRow)){
@@ -157,25 +159,25 @@
     if(pending){const item=add(pending.raw,+m[2],num(m[3])/(+m[2]),num(m[3]),[pending.line,ix]);if(item){item.quantitySource='printed';item.productCode=m[1];}}
     else warn('orphan_product_code',ix);continue;
    }
-   if(/^(?:現金|お預|預り|お釣|釣銭|クレジット|カード|支払|税|外税|内税|対象|ポイント|TEL|電話|会員|楽天(?:ペイ|Pay|ポイント)|PayPay|d払い|au ?PAY|決済|取引(?:ID|ICD|番号)|受付番号|お(?:支払|預かり|釣り)|電子マネー(?:決済|支払)|QUICPay|交通系IC(?:決済|支払)|iD決済|QR(?:コード)?決済|(?:利用ポイント|ポイント利用))/i.test(l)){
+   if(lineRules.isPaymentOrFooter(l)){
     pending=null;continue;
    }
-   if(m=l.match(pricedWithYen)||l.match(pricedPlain)){
-    const raw=lines[i].replace(/(?:[¥￥\\]\s*[0-9０-９,，]+|[\s　]+[0-9０-９,，]+(?:円)?)\s*$/,'');
-    const candidate=name(raw);
+   const priced=lineRules.recognizePricedName(l,lines[i]);
+   if(priced){
+    const {raw,candidate,amount,firstGroup}=priced;
     if(/^(?:(?:お|御)?買上(?:げ)?点数|買上品数)/.test(candidate)){
      warn('unreadable_printed_count',ix);pending=null;continue;
     }
     // A stand-alone OCR fragment like "! ¥98" is a price, not a product.
     // A barcode may still stand alone as a name until geometry resolves it.
-    if(!/税|対象|クレジット/.test(m[1])&&
+    if(!/税|対象|クレジット/.test(firstGroup)&&
      (/[\p{Letter}]/u.test(candidate)||/^\d{13}$/.test(candidate)))
-     add(raw,1,null,num(m[2]),[ix]);
+     add(raw,1,null,amount,[ix]);
     else {warn('unassigned_price',ix);if(pending)warn('unpriced_name',pending.line);pending=null;last=null;}
     continue;
    }
    if(/^\(特売価格\)$/.test(l))continue;
-   if(/^(?:※|\*)/.test(l)||(/[A-Za-z\p{Script=Han}\p{Script=Katakana}\p{Script=Hiragana}]/u.test(l)&&!/^\d{4}[年/.-]/.test(l)&&!/(?:COSTCO|コノミヤ|コストコ|アカカベ|ユニクロ|関西スーパー|売上|領収)/i.test(l))){
+   if(lineRules.isPossibleName(l)){
     if(pending)warn('unpriced_name',pending.line);
     pending={raw:lines[i],line:ix};
    }else {pending=null;}
@@ -216,9 +218,32 @@
   const usedLines=new Set(items.flatMap(item=>item.sourceLines));
   const allItemLines=[...usedLines],first=allItemLines.length?Math.min(...allItemLines):null;
   const lastLine=allItemLines.length?Math.max(...allItemLines):null;
+  // Unrecognized merchandise candidates immediately before the footer were
+  // previously hidden by "summary=true". Preserve the row reference.
+  const firstFooter=lineTokens.find(t=>lastLine!==null&&t.line>lastLine&&
+   (t.role==='subtotal'||t.role==='total'))?.line??lineTokens.length+1;
   const candidateRoles=new Set(['name_candidate','priced_candidate','discount','negative_amount','quantity','sku','jan_header','jan_price']);
-  const unresolvedRows=lineTokens.filter(t=>first!==null&&t.line>=first&&t.line<=lastLine&&
-   candidateRoles.has(t.role)&&!usedLines.has(t.line)).map(t=>({line:t.line,role:t.role}));
+  const unresolvedByLine=new Map();
+  for(const t of lineTokens){
+   if(first!==null&&t.line>=first&&t.line<firstFooter&&
+    candidateRoles.has(t.role)&&!usedLines.has(t.line))
+    unresolvedByLine.set(t.line,{line:t.line,role:t.role,reasons:[]});
+  }
+  // Warning-backed rows outside this interval (e.g. an orphan price before
+  // the first product) also remain traceable, without promoting them to items.
+  const issueCodes=new Set(['unpriced_name','unassigned_price','unassigned_discount',
+   'orphan_quantity','orphan_quantity_price','orphan_product_code','orphan_sku',
+   'ambiguous_quantity_row','jan_incomplete_item','jan_missing_price',
+   'jan_missing_product_name','coupon_positive_without_item']);
+  for(const w of warnings){
+   if(!issueCodes.has(w.code)||!Number.isInteger(w.line)||w.line<1||
+    w.line>lineTokens.length||usedLines.has(w.line))continue;
+   const t=lineTokens[w.line-1];
+   if(!unresolvedByLine.has(w.line))
+    unresolvedByLine.set(w.line,{line:w.line,role:t.role,reasons:[]});
+   unresolvedByLine.get(w.line).reasons.push(w.code);
+  }
+  const unresolvedRows=[...unresolvedByLine.values()].sort((a,b)=>a.line-b.line);
   const lineRoles=lineTokens.map(t=>({line:t.line,role:t.role}));
   return {rawText,items,adjustments,warnings,receiptTotal,subtotal,taxTotal,
    taxBreakdown,taxBasis,taxAllocation,printedCount,
