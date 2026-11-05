@@ -695,12 +695,12 @@ assert.equal(longExternal.validation.checks.printedQuantity,'unknown',
 assert.equal(longExternal.validation.reconciliation.netSum,longExternal.reconciliation.netSum);
 assert.equal(longExternal.validation.reconciliation.printedCountMatches,null);
 assert.equal(longExternal.validation.individuallyConfirmed,false);
-const truncatedSubtotal=structure.parse('商品A ¥100\\n小計 ¥120\\n外税額 8% ¥8\\n合計 ¥128');
+const truncatedSubtotal=structure.parse('商品A ¥100\n小計 ¥120\n外税額 8% ¥8\n合計 ¥128');
 assert.equal(truncatedSubtotal.validation.checks.subtotal,'mismatch',
  'validator catches subtotal mismatch independently from final total');
 assert.ok(truncatedSubtotal.validation.blockers.some(x=>x.code==='subtotal_mismatch'));
 assert.ok(truncatedSubtotal.validation.notices.some(x=>x.code==='subtotal_mismatch'));
-const quantityMismatch=structure.parse('商品A ¥100\\n買上点数 2点\\n合計 ¥100');
+const quantityMismatch=structure.parse('商品A ¥100\n買上点数 2点\n合計 ¥100');
 assert.equal(quantityMismatch.validation.checks.count,'mismatch');
 assert.ok(quantityMismatch.validation.notices.some(x=>x.code==='candidate_count_mismatch'));
 const draftValid=validation.evaluateDraft({printedCount:3,total:324,items:[
