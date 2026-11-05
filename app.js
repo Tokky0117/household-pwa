@@ -486,6 +486,7 @@ function scanResolvedProductId(item){
 const scanTaxFailureDescription=reason=>window.KurashiReceiptValidation.describeTaxFailure(reason);
 function scanFormView(){
  if(!scanDraft)return '';
+ const reviewModel=window.KurashiReceiptReview.buildReviewModel(scanDraft);
  const chains=[...catalogue.chains.map(c=>'<option value="'+esc(c.id)+'"'+
   (c.id===scanDraft.chainId?' selected':'')+'>'+esc(c.name)+'</option>'),
   '<option value="__new__"'+(!scanDraft.chainId?' selected':'')+'>＋ 新しいチェーン</option>'].join('');
@@ -506,8 +507,8 @@ function scanFormView(){
     ${item.issues.length?'<p class="scan-warning">要確認：'+esc(item.issues.join('、'))+'</p>':''}
     ${['manual','photo'].includes(item.inputOrigin)||item.ocrRawName===undefined?
      '<label class="scan-field">'+(item.inputOrigin==='photo'?'写真で確認した明細名（OCR辞書に登録しません）':'手入力の明細名')+'<input name="name-'+i+'" maxlength="120" required value="'+esc(item.name)+'" placeholder="原本を見て入力"></label>':
-     '<div class="scan-field"><span>OCR明細名（変更不可）</span><div class="scan-ocr-name" data-ocr-row="'+i+'">'+esc(item.ocrRawName||'読み取り不可')+'</div></div>'}
-    ${(item.inferredName||item.nameCandidate)?'<p class="scan-name-candidate">ChatGPT推測名：'+esc(item.inferredName||item.nameCandidate)+'（OCR名は変更せず、商品登録時の初期値に使用）</p>':''}
+     '<div class="scan-field"><span>OCR明細名（変更不可）</span><div class="scan-ocr-name" data-ocr-row="'+i+'">'+esc(reviewModel.items[i].originalOcrName||'読み取り不可')+'</div></div>'}
+    ${reviewModel.items[i].proposedName?'<p class="scan-name-candidate">ChatGPT推測名：'+esc(reviewModel.items[i].proposedName)+'（OCR名は変更せず、商品登録時の初期値に使用）</p>':''}
     <input type="hidden" name="product-${i}" value="${esc(scanResolvedProductId(item))}">
     <div class="scan-product-association">
       <span class="scan-product-association-label">商品マスタとの紐付け</span>

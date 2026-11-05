@@ -133,7 +133,7 @@
     lineOrder:i+1,
     originalOcrName:ocr?item.ocrRawName:null,
     photoName:item.inputOrigin==='photo'?item.name||null:null,
-    proposedName:item.nameCandidate||item.inferredName||null,
+    proposedName:item.inferredName||item.nameCandidate||null,
     displayName:item.name||'',
     productId:item.productId||null,
     quantity:{value:quantity,origin:item.quantityOrigin||(

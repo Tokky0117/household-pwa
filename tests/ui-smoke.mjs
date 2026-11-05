@@ -983,6 +983,8 @@ const p4Draft={source:'ocr',date:'2026-11-05',chainId:'sample',total:216,
 const p4Review=review.buildReviewModel(p4Draft);
 assert.equal(p4Review.version,'kurashi-review-1');
 assert.equal(p4Review.items[0].originalOcrName,'品目A');
+assert.ok(source.includes('const reviewModel=window.KurashiReceiptReview.buildReviewModel(scanDraft)'),
+ 'P4 confirm page consumes the unified review projection');
 assert.equal(p4Review.items[0].amount.origin,'allocated');
 assert.equal(p4Review.items[0].photoConfirmed,false);
 assert.equal(p4Review.validation.checks.total,'match');
