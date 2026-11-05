@@ -5,6 +5,7 @@
 import '../receipt-layout.js';
 import '../receipt-paddle.js';
 import '../receipt-amounts.js';
+import '../receipt-validation.js';
 import '../receipt-structure.js';
 import {PaddleOCR} from '@paddleocr/paddleocr-js';
 import {prepareImage} from './prepare-image.js';
