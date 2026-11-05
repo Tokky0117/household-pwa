@@ -1027,6 +1027,25 @@ await completeOcrImport(scanSession);
 assert.ok(scanSession.window.document.getElementById('scanConfirmForm'),
  'ChatGPT JSON uses the same edit and confirmation form as OCR');
 assert.equal(scanSession.window.document.querySelector('.scan-ocr-name').textContent,'新しいレシート品');
+const activeReceiptForm=scanSession.window.document.getElementById('scanConfirmForm');
+const activeAmount=activeReceiptForm.querySelector('[name="amount-0"]');
+activeAmount.value='420';
+activeAmount.dispatchEvent(new scanSession.window.Event('input',{bubbles:true}));
+assert.match(activeReceiptForm.querySelector('#scan-sum-text').textContent,/差額：20/,
+ 'P2 edited amount immediately shows a mismatch from the printed total');
+activeAmount.value='440';
+activeAmount.dispatchEvent(new scanSession.window.Event('input',{bubbles:true}));
+assert.match(activeReceiptForm.querySelector('#scan-sum-text').textContent,/印字合計と一致/,
+ 'P2 corrected amount immediately restores total reconciliation without replacing the form');
+const activeQty=activeReceiptForm.querySelector('[name="qty-0"]');
+activeQty.value='3';
+activeQty.dispatchEvent(new scanSession.window.Event('input',{bubbles:true}));
+assert.match(activeReceiptForm.querySelector('#scan-count-text').textContent,/印字点数と一致しません/,
+ 'P2 quantity changes reuse the same validation logic as the parser');
+activeQty.value='2';
+activeQty.dispatchEvent(new scanSession.window.Event('input',{bubbles:true}));
+assert.match(activeReceiptForm.querySelector('#scan-count-text').textContent,/印字点数と一致$/,
+ 'P2 returning to printed quantity updates the existing form in place');
 await waitFor(()=>scanSession.window.KurashiLive.state().loaded,'receipt draft saved');
 await pause(100); // Let the prior UI draft write finish before this test override.
 await scanSession.window.KurashiLive.saveReceiptDraft({
