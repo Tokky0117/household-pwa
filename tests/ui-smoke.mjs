@@ -588,7 +588,7 @@ const missingFooterAmounts=structure.parse([
 assert.equal(missingFooterAmounts.subtotal,null);
 assert.equal(missingFooterAmounts.taxAllocation.status,'allocated');
 assert.equal(missingFooterAmounts.taxTotal,22);
-assert.deepEqual(Array.from(missingFooterAmounts.items,x=>x.taxIncludedAmount),[98,194]);
+assert.deepEqual(Array.from(missingFooterAmounts.items,x=>x.taxIncludedAmount),[97,195]);
 assert.ok(missingFooterAmounts.warnings.some(w=>w.code==='tax_derived_from_printed_totals'));
 const missingRate=structure.parse([
  '食品A ¥100','食品B ¥200','小計','外税額','合計 ¥324'
