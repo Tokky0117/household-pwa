@@ -1,4 +1,4 @@
-const APP_VERSION='0.71.0';
+const APP_VERSION='0.71.1';
 const CATS=['飲食','キッチン','洗面・風呂','洗濯・掃除','その他'];
 const liveMode=!!window.KurashiLive; // Data source only; original Preview v46 UI components remain.
 const SEED=[['牛乳',0,true],['麦茶',0,false],['コーヒー',0,true],['卵',0,false],['キッチンペーパー',1,false],['ラップ',1,true],['食器用洗剤',1,true],['シャンプー',2,false],['歯磨き粉',2,true],['ハンドソープ',2,false],['洗濯洗剤',3,false],['柔軟剤',3,true],['トイレットペーパー',3,false],['乾電池',4,true],['ティッシュ',4,true]];
@@ -575,7 +575,7 @@ function scanFormView(){
  return `<form id="scanConfirmForm" class="scan-review">
   <h2 class="sectiontitle">読み取り結果の確認</h2>
   ${scanDraft.taxBasis==='unknown'&&scanDraft.source==='ocr'?'<p class="scan-warning">OCRで内税・外税の区分を特定できませんでした。税込明細合計を自動計算するには、印字税率・税額・商品価格の確認が必要です。</p>':''}
-  ${scanDraft.taxBasis==='excluded'?(scanDraft.taxAllocationStatus==='allocated'?'<p class="hint">外税レシート：'+(scanDraft.taxDerivedFromTotals?'OCRで税額が読めないため、明細税抜合計・印字合計・印字税率の一致から税額を算出しました。':'印字された税率別税額を用い、')+'値引き後税抜金額に比例配分しています。各行の税込額は計算値です。原本と照合してください。</p>':'<div class="scan-warning">外税レシートの税込額を計算できません：'+esc(scanTaxFailureDescription(scanDraft.taxAllocationReason))+'。'+(scanDraft.taxDiagnostics?'<p>抽出した税抜明細合計：'+esc(scanDraft.taxDiagnostics.netSum)+'円 ／ 印字小計：'+(scanDraft.taxDiagnostics.subtotal===null?'未取得':esc(scanDraft.taxDiagnostics.subtotal)+'円')+' ／ 印字税額：'+(scanDraft.taxDiagnostics.taxTotal===null?'未取得':esc(scanDraft.taxDiagnostics.taxTotal)+'円')+' ／ 印字合計：'+(scanDraft.taxDiagnostics.receiptTotal===null?'未取得':esc(scanDraft.taxDiagnostics.receiptTotal)+'円')+'</p>':'')+'原本と照合してください。</div>'):''}
+  ${scanDraft.taxBasis==='excluded'?(scanDraft.taxAllocationStatus==='allocated'?'<p class="hint">外税レシート：'+(scanDraft.taxRateCalculated?'税率の数字がOCRで読めなかったため、税抜明細合計と印字合計から、8%・10%のうち唯一整合する税率を候補として計算しました。税率は原本で確認してください。':scanDraft.taxDerivedFromTotals?'OCRで税額が読めないため、明細税抜合計・印字合計・印字税率の一致から税額を算出しました。':'印字された税率別税額を用い、')+'値引き後税抜金額に比例配分しています。各行の税込額は計算値です。原本と照合してください。</p>':'<div class="scan-warning">外税レシートの税込額を計算できません：'+esc(scanTaxFailureDescription(scanDraft.taxAllocationReason))+'。'+(scanDraft.taxDiagnostics?'<p>抽出した税抜明細合計：'+esc(scanDraft.taxDiagnostics.netSum)+'円 ／ 印字小計：'+(scanDraft.taxDiagnostics.subtotal===null?'未取得':esc(scanDraft.taxDiagnostics.subtotal)+'円')+' ／ 印字税額：'+(scanDraft.taxDiagnostics.taxTotal===null?'未取得':esc(scanDraft.taxDiagnostics.taxTotal)+'円')+' ／ 印字合計：'+(scanDraft.taxDiagnostics.receiptTotal===null?'未取得':esc(scanDraft.taxDiagnostics.receiptTotal)+'円')+'</p>':'')+'原本と照合してください。</div>'):''}
   <p class="hint">OCR・ChatGPTの文字・数量・金額には誤認識が残ります。必ず原本と照合してください。${scanDraft.source==='chatgpt-ocr'?' OCRとChatGPTの一意対応 '+scanDraft.matchedCount+'件、要確認 '+scanDraft.unmatchedCount+'件。':''}</p>
   ${scanDraft.source==='chatgpt-rebuild'?'<p class="scan-warning">ChatGPTによる写真再解析です。OCR明細'+esc(scanDraft.ocrReplacedCount||0)+'件は破棄しました。商品名・数量・金額・購入日・店舗を写真と照合してください。AIの回答は誤ることがあります。</p>':''}
   ${scanDraft.source==='ocr'&&receiptOcrRows(scanDraft).length?'<button type="button" class="secondary" data-act="chatGptAssist">ChatGPTで商品名・金額を確認</button>':''}
@@ -728,7 +728,7 @@ async function runReceiptScan(){
  render();
  try{
   const engine=scanRuntime||(scanRuntime=await import('./ocr-engine/engine.js'));
-  const observations=[],allItems=[],receiptTotals=[],taxModes=[],allocationModes=[],allocationReasons=[],taxDiagnostics=[],taxInferredModes=[];let total=null,printedCount=null;
+  const observations=[],allItems=[],receiptTotals=[],taxModes=[],allocationModes=[],allocationReasons=[],taxDiagnostics=[],taxInferredModes=[],taxRateCandidateModes=[];let total=null,printedCount=null;
   const scanWarnings=new Set();
   for(let i=0;i<scanPhotos.length;i++){
    if(token!==scanToken)return;
@@ -738,7 +738,8 @@ async function runReceiptScan(){
    observations.push(out.text);taxModes.push(out.parsed.taxBasis);
    allocationModes.push(out.parsed.taxAllocation?.status||'unresolved');
    allocationReasons.push(out.parsed.taxAllocation?.reason||null);
-   taxInferredModes.push(out.parsed.taxBreakdown?.some(t=>t.evidence==='printed-total-minus-verified-net-items'||t.evidence==='difference-of-printed-total-and-subtotal')||false);
+   taxInferredModes.push(out.parsed.taxBreakdown?.some(t=>t.evidence==='printed-total-minus-verified-net-items'||t.evidence==='difference-of-printed-total-and-subtotal'||t.evidence==='rate-candidate-from-printed-totals')||false);
+   taxRateCandidateModes.push(out.parsed.taxBreakdown?.some(t=>t.evidence==='rate-candidate-from-printed-totals')||false);
    taxDiagnostics.push({netSum:out.parsed.reconciliation.netSum,subtotal:out.parsed.subtotal,
     taxTotal:out.parsed.taxTotal,receiptTotal:out.parsed.receiptTotal});
    for(const item of out.parsed.items){
@@ -774,6 +775,7 @@ async function runReceiptScan(){
    taxBasis:taxModes.every(t=>t==='excluded')?'excluded':taxModes.every(t=>t==='included')?'included':'unknown',
    taxAllocationStatus:allocationModes.every(t=>t==='allocated')?'allocated':'unresolved',
    taxDerivedFromTotals:taxInferredModes.some(Boolean),
+   taxRateCalculated:taxRateCandidateModes.some(Boolean),
    taxAllocationReason:allocationReasons.find(Boolean)||null,
    taxDiagnostics:taxDiagnostics.length===1?taxDiagnostics[0]:null,
    chainId:chain?.id||null,chainName:''};
