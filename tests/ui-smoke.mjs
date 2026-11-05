@@ -272,10 +272,8 @@ assert.ok(ui.receiptScanView().includes('data-act="scanAddPhotos"'),
  'Empty OCR screen has a direct photo picker button');
 assert.equal((ui.receiptScanView().match(/写真を選択してください。/g)||[]).length,1,
  'Empty OCR screen displays one instruction only');
-assert.equal((indexHtml.match(/type="file" accept="image\/\*"/g)||[]).length,2,
- 'Both photo inputs use native single-photo selection');
-assert.ok(!indexHtml.includes('accept="image/*" multiple'),
- 'Avoid the iOS multi-photo picker first-selection failure');
+assert.equal((indexHtml.match(/type="file" accept="image\/\*" multiple/g)||[]).length,2,
+ 'Both photo inputs restore the previous native multi-selection UI');
 assert.ok(source.includes("scanPhotos.push(...files)"),
  'Subsequent single-photo selections accumulate in the existing scan');
 assert.ok(!source.includes('getUserMedia(')&&!source.includes('scanFromCamera'),
