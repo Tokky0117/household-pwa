@@ -1,4 +1,4 @@
-const APP_VERSION='0.72.0';
+const APP_VERSION='0.72.1';
 const CATS=['飲食','キッチン','洗面・風呂','洗濯・掃除','その他'];
 const liveMode=!!window.KurashiLive; // Data source only; original Preview v46 UI components remain.
 const SEED=[['牛乳',0,true],['麦茶',0,false],['コーヒー',0,true],['卵',0,false],['キッチンペーパー',1,false],['ラップ',1,true],['食器用洗剤',1,true],['シャンプー',2,false],['歯磨き粉',2,true],['ハンドソープ',2,false],['洗濯洗剤',3,false],['柔軟剤',3,true],['トイレットペーパー',3,false],['乾電池',4,true],['ティッシュ',4,true]];
@@ -572,7 +572,7 @@ function receiptScanView(){
  ${scanPhotoSection()}
  ${!scanPhotos.length&&!reviewing?'<p class="hint">写真を選択してください。</p>':''}
  ${!reviewing&&scanPhotos.length?`<button type="button" class="primary scan-photo-start" data-act="scanStart" ${scanBusy?'disabled':''}>${scanBusy?'読み取り中…':'写真を解析する'}</button>`:''}
- <p id="scan-status" role="status" class="hint">${esc(scanStatus||(!reviewing&&scanPhotos.length?'解析後、商品名・数量・金額を確認できます。':''))}</p>
+ <p id="scan-status" role="status" class="hint">${esc(!reviewing&&!scanPhotos.length?'':scanStatus||(!reviewing&&scanPhotos.length?'解析後、商品名・数量・金額を確認できます。':''))}</p>
  ${scanFormView()}
  </main>`;
 }
@@ -1297,9 +1297,16 @@ function updateComparisonPrices(){
 }
 // Native iOS photo pickers live outside #app to survive re-renders while
 // the Photos library is active, including its first permission prompt.
+function openReceiptPhotoPicker(picker){
+ if(!picker)return;
+ // The native Photos picker has its own temporary selection state.
+ // Start every invocation with an empty file input, and only accept 'change'.
+ picker.value='';
+ picker.click();
+}
 function acceptReceiptPhotos(picker){
  const files=[...(picker.files||[])].filter(f=>f.type.startsWith('image/'));
- if(!files.length)return; // Cancel does not navigate or discard existing photos.
+ if(!files.length){picker.value='';return;} // Cancel never adds or discards photos.
  if(picker.id==='receipt-source-picker')resetScan();
  if(scanPhotos.length+files.length>6){
   scanStatus='一度に読み込める写真は最大6枚です。';
@@ -1315,6 +1322,12 @@ document.addEventListener('change',e=>{
  if(e.target.id==='receipt-source-picker'||e.target.id==='scan-add-picker')
   acceptReceiptPhotos(e.target);
 });
+// Safari's native Photo Library may report cancellation separately from
+// 'change'. Reset only the chooser's temporary value, not committed photos.
+document.addEventListener('cancel',e=>{
+ if(e.target.id==='receipt-source-picker'||e.target.id==='scan-add-picker')
+  e.target.value='';
+},true);
 app.addEventListener('change',e=>{
  if(e.target.id==='scan-chain'){
   document.getElementById('scan-new-chain-wrap').hidden=e.target.value!=='__new__';
@@ -1785,7 +1798,7 @@ if(action==='productCreate'){
  page='productCreate';openSwipeId=null;
 }if(action==='shopToggle'){shopExpanded=!shopExpanded;priceScope=shopExpanded?'unit':'product';if(!shopExpanded)compareQuantity=null;render();return}
 if(action==='catalogueList'){pickerAll=!pickerAll;const heading=document.querySelector('.catalogue-list-heading');if(heading)heading.textContent=pickerAll?'登録一覧':'候補（最大3件）';const target=document.getElementById('catalogue-results');if(target)target.innerHTML=pickerResults();el.textContent=pickerAll?'候補に戻る':'登録一覧から選ぶ';return}if(action==='hide'){menu=false;dialog={title:'日用品を削除',message:'日用品リストから削除します',buttons:[{id:'cancel',label:'キャンセル'},{id:'confirmHide',label:'削除',primary:true}]}}if(action==='copyList'){const txt=CATS.map((cat,idx)=>{const rows=visible().filter(i=>i.category===idx&&!i.inStock).sort((a,b)=>a.order-b.order);return rows.length?cat+'\n'+rows.map(i=>'- '+i.name).join('\n'):''}).filter(Boolean).join('\n\n');menu=false;render();if(!txt){inlineActionNotice(document.querySelector('[data-act="copyList"]'),'在庫なしの日用品はありません');return}navigator.clipboard.writeText(txt).then(()=>say('在庫なしをコピーしました',{anchor:'[data-act="copyList"]'})).catch(()=>inlineActionNotice(document.querySelector('[data-act="copyList"]'),'コピーできませんでした'));return}if(action==='receiptScan'){
- document.getElementById('receipt-source-picker')?.click();return;
+ openReceiptPhotoPicker(document.getElementById('receipt-source-picker'));return;
 }
 
 if(action==='chatGptAssist'){
@@ -1858,7 +1871,7 @@ if(action==='resumeScanDraft'){
  }).catch(e=>say(e?.message||'下書きを再開できません'));return;
 }
 if(action==='scanAddPhotos'){
- if(!scanBusy)document.getElementById('scan-add-picker')?.click();return;
+ if(!scanBusy)openReceiptPhotoPicker(document.getElementById('scan-add-picker'));return;
 }
 if(action==='recordDetail'){
  recordDetailOrigin=page==='receiptAll'?'receiptAll':'list';recordDetailId=el.dataset.recordId;page='recordDetail';render();return;
@@ -1965,8 +1978,13 @@ if(action==='scanRemovePhoto'){
  const index=Number(el.dataset.scanRow);
  if(!Number.isInteger(index)||index<0||index>=scanPhotos.length)return;
  const removed=scanPhotos.splice(index,1)[0];releaseScanThumbnail(removed);
+ if(!scanPhotos.length){
+  // There is no scan to review. Return to the receipt tab, rather than
+  // displaying two identical empty-state notices on the scan page.
+  resetScan();page='list';tab='receipt';render();return;
+ }
  scanIndex=Math.max(0,Math.min(scanIndex,scanPhotos.length-1));
- scanDraft=null;scanToken++;scanStatus=scanPhotos.length?'写真を削除しました。':'写真を選択してください。';
+ scanDraft=null;scanToken++;scanStatus='写真を削除しました。';
  render();return;
 }
 if(action==='scanRemoveItem'&&scanDraft){

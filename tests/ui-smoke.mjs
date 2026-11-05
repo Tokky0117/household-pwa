@@ -237,10 +237,10 @@ assert.ok(ui.receiptScanView().includes('id="scan-status"')&&
  !ui.receiptScanView().includes('scan-crop-canvas')&&
  !ui.receiptScanView().includes('scan-mode'),'No crop and preprocessing selector');
 assert.ok(source.includes("action:'receiptScan'")&&
- source.includes("document.getElementById('receipt-source-picker')?.click()"),
- 'Live receipt registration maps to the existing native chooser; offline preview remains unchanged');
-assert.ok(source.includes("document.getElementById('receipt-source-picker')?.click()"),
- 'Source chooser is opened synchronously on user tap');
+ source.includes("openReceiptPhotoPicker(document.getElementById('receipt-source-picker'))"),
+ 'Live receipt registration uses the existing native chooser; offline preview remains unchanged');
+assert.ok(source.includes("picker.value='';\n picker.click();"),
+ 'Clear stale native Photos selection before the synchronous user-initiated picker tap');
 const indexHtml=readFileSync(new URL('../index.html',import.meta.url),'utf8');
 const previewWorkflow=readFileSync(new URL('../.github/workflows/pages-previews.yml',import.meta.url),'utf8');
 const serviceWorker=readFileSync(new URL('../sw.js',import.meta.url),'utf8');
@@ -262,7 +262,12 @@ assert.ok(!ui.receiptScanView().includes('id="scan-add-picker"'));
 assert.ok(source.includes("document.addEventListener('change',e=>{"));
 assert.ok(documentHandlers.change?.length,'Native photo change is registered on stable document');
 assert.ok(source.includes("picker.value=''"));
-assert.ok(source.includes("if(!files.length)return"));
+assert.ok(source.includes("if(!files.length){picker.value='';return;}"),
+ 'Cancelled or empty file selection never reaches the receipt draft');
+assert.ok(source.includes("document.addEventListener('cancel',e=>"),
+ 'Native Photos cancellation clears the file input without discarding committed photos');
+assert.ok(source.includes("resetScan();page='list';tab='receipt';render();return;"),
+ 'Removing the last image leaves the empty scanner and returns to receipts');
 assert.equal((indexHtml.match(/type="file" accept="image\/\*"/g)||[]).length,2,
  'Both photo inputs use native single-photo selection');
 assert.ok(!indexHtml.includes('accept="image/*" multiple'),

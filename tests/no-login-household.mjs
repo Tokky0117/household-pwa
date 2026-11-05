@@ -987,6 +987,13 @@ assert.equal(scanSession.window.document.querySelector('.receipt-source-sheet'),
  'extra custom source half-modal has been removed');
 assert.equal(scanSession.window.document.querySelector('#scan-video'),null,
  'extra in-app camera has been removed');
+// The native preview may close without committing a file. Neither cancel nor
+// an empty change event may navigate to the scanner or record a photo.
+picker.value='';
+picker.dispatchEvent(new scanSession.window.Event('cancel',{bubbles:false}));
+picker.dispatchEvent(new scanSession.window.Event('change',{bubbles:true}));
+assert.equal(scanSession.window.document.querySelector('.receipt-scan-page'),null,
+ 'native Photos cancel does not create an OCR scan or empty screen');
 const libraryFile=new scanSession.window.File(['synthetic receipt pixels'],
  'receipt.png',{type:'image/png'});
 Object.defineProperty(picker,'files',{configurable:true,value:[libraryFile]});
@@ -1011,6 +1018,23 @@ assert.ok(addPicker&&!addPicker.multiple);
 let adds=0;addPicker.click=()=>{adds++};
 scanSession.window.document.querySelector('[data-act="scanAddPhotos"]').click();
 assert.equal(adds,1,'adding a second photo also opens native chooser in one tap');
+addPicker.dispatchEvent(new scanSession.window.Event('cancel',{bubbles:false}));
+assert.equal(scanSession.window.document.querySelectorAll('.scan-photo-tile').length,1,
+ 'cancelled extra photo does not remove the already chosen photo');
+// Removing the only selected photo must return to the receipt tab, not an
+// orphan scan page with duplicated "写真を選択してください" notices.
+scanSession.window.document.querySelector('[data-act="scanRemovePhoto"][data-scan-row="0"]').click();
+assert.equal(scanSession.window.document.querySelector('.receipt-scan-page'),null,
+ 'removing last photo exits the empty scanner');
+assert.ok(scanSession.window.document.querySelector('[data-act="receiptScan"]'),
+ 'receipt tab offers normal photo selection again after clearing');
+assert.equal(scanSession.window.document.body.textContent.includes('写真を選択してください。'),false,
+ 'the empty scan page and duplicate notices are not left behind');
+// Reopen with the same photo; changing a file input works after cancel/reset.
+scanSession.window.document.querySelector('[data-act="receiptScan"]').click();
+picker.dispatchEvent(new scanSession.window.Event('change',{bubbles:true}));
+assert.equal(scanSession.window.document.querySelectorAll('.scan-photo-tile').length,1,
+ 'photo chooser can be used again after cancel and last-photo removal');
 scanSession.window.document.querySelector('[data-act="back"]').click();
 assert.ok(scanSession.window.document.querySelector('[data-dialog="discardScan"]'),
  'unsaved OCR input is protected');
