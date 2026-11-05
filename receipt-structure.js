@@ -247,43 +247,18 @@
   for(const item of items){item.taxBasis=taxBasis;item.taxIncludedAmount=taxBasis==='included'?item.netAmount:null;}
   const taxAllocation=root.KurashiReceiptAmounts.allocateExternalTax(items,{taxBasis,taxBreakdown,taxTotal,subtotal,receiptTotal,rateBases,rawText:normalizedText});
   if(taxBasis==='excluded'&&taxAllocation.status!=='allocated')warn('unresolved_tax_allocation',null);
-  const expected=taxBasis==='excluded'&&taxTotal!==null?sum+taxTotal:taxBasis==='included'?sum:null;
   if(taxBasis==='unknown')warn('unknown_tax_basis',null);
-  const quantity=items.reduce((s,x)=>s+x.quantity,0);
-  // A missing quantity marker defaults to one for arithmetic only. A sum
-  // including those defaults is not proof of individual printed quantities.
-  const hasUnverifiedQuantity=items.some(x=>x.quantitySource==='default'||
-   x.quantitySource==='inferred_candidate'||
-   x.issues.includes('quantity_ocr_ambiguous')||x.issues.includes('unit_quantity_mismatch'));
-  const candidateCountMatches=printedCount===null?null:printedCount===quantity;
-  return {rawText,items,adjustments,warnings,receiptTotal,subtotal,taxTotal,taxBreakdown,taxBasis,taxAllocation,printedCount,reconciliation:{
-   itemCount:items.length,
-   // Used only for consistency calculations, NOT confirmed inventory count.
-   quantity,
-   quantityVerified:!hasUnverifiedQuantity,
-   candidateCountMatches,
-   // A matching sum of guessed quantities does not prove the counts.
-   printedCountMatches:hasUnverifiedQuantity?null:candidateCountMatches,
-   netSum:sum,expectedTotal:expected,totalMatches:expected===null||receiptTotal===null?null:expected===receiptTotal,
-   subtotalMatches:subtotal===null?null:sum===subtotal,individualItemsVerified:false
-  }};
+  const validation=root.KurashiReceiptValidation.validateReceipt({
+   items,adjustments,warnings,receiptTotal,subtotal,taxTotal,
+   taxBreakdown,taxBasis,taxAllocation,printedCount
+  });
+  return {rawText,items,adjustments,warnings,receiptTotal,subtotal,taxTotal,
+   taxBreakdown,taxBasis,taxAllocation,printedCount,
+   reconciliation:validation.reconciliation,validation};
  }
- // Warnings from a neighbouring receipt or payment slip must not be
- // presented as though a recognized merchandise row had failed.
- // Keep every warning; classify location only (never silently suppress it).
+ // Backward-compatible public adapter: all warning scope decisions are shared.
  function warningScopes(receipt){
-  const items=Array.isArray(receipt?.items)?receipt.items:[];
-  const lines=items.flatMap(item=>Array.isArray(item.sourceLines)?item.sourceLines:[])
-   .filter(n=>Number.isInteger(n)&&n>0);
-  const first=lines.length?Math.min(...lines):null;
-  const last=lines.length?Math.max(...lines):null;
-  const out={merchandise:0,outside:0,global:0};
-  for(const warning of receipt?.warnings||[]){
-   if(!warning||!Number.isInteger(warning.line)||warning.line<1){out.global++;continue;}
-   if(first!==null&&warning.line>=first&&warning.line<=last)out.merchandise++;
-   else out.outside++;
-  }
-  return out;
+  return root.KurashiReceiptValidation.warningScopes(receipt);
  }
  // Export an explicitly user-reviewed shopping excerpt instead of the
  // surrounding payment/card/account text. A source item line is preserved
