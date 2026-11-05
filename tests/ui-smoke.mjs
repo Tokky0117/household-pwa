@@ -6,8 +6,9 @@ const css=readFileSync(new URL('../styles.css',import.meta.url),'utf8');
 const validatorScript=readFileSync(new URL('../receipt-validation.js',import.meta.url),'utf8');
 const validator=vm.runInNewContext(validatorScript+';KurashiReceiptValidation');
 const reviewScript=readFileSync(new URL('../receipt-review-model.js',import.meta.url),'utf8');
-const review=vm.runInNewContext(reviewScript+';KurashiReceiptReview',
- {window:{KurashiReceiptValidation:validator}});
+const reviewContext={window:{KurashiReceiptValidation:validator}};
+vm.runInNewContext(reviewScript,reviewContext);
+const review=reviewContext.window.KurashiReceiptReview;
 const handlers={};
 const documentHandlers={};
 let mockSwipeRows=[];
