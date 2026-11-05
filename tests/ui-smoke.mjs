@@ -473,9 +473,10 @@ assert.equal(ui.scanDate('2026/02/30\n2026/11/03'),'',
  'An invalid date alongside a valid date still needs review');
 
 const layoutScript=readFileSync(new URL('../receipt-layout.js',import.meta.url),'utf8');
+const amountsScript=readFileSync(new URL('../receipt-amounts.js',import.meta.url),'utf8');
 const structureScript=readFileSync(new URL('../receipt-structure.js',import.meta.url),'utf8');
-const {geometry,structure}=vm.runInNewContext(layoutScript+'\n'+structureScript+
- ';({geometry:KurashiReceiptLayout,structure:KurashiReceiptStructure})');
+const {geometry,structure,amounts}=vm.runInNewContext(layoutScript+'\n'+amountsScript+'\n'+structureScript+
+ ';({geometry:KurashiReceiptLayout,structure:KurashiReceiptStructure,amounts:KurashiReceiptAmounts})');
 const observed=(value,x,y,w=200)=>({text:value,poly:[[x,y],[x+w,y],[x+w,y+16],[x,y+16]]});
 const geomLines=geometry.groupLines([
  observed('メリノクルーネックカーディガン',105,100,250),
