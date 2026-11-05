@@ -299,16 +299,34 @@
   // If OCR misses the printed tax-yen row, a uniquely labeled tax-rate base
   // and independently printed subtotal/total permit a mathematically checked
   // fallback. Never use this when the receipt has several tax rates.
-  if(taxTotal===null&&taxBreakdown.length===0&&rateBases.size===1&&
-   subtotal!==null&&receiptTotal!==null&&receiptTotal>=subtotal){
-   const [rate,base]=[...rateBases.entries()][0],derived=receiptTotal-subtotal;
-   if(base===subtotal&&Math.abs(base*rate/100-derived)<=1){
-    taxTotal=derived;taxBreakdown.push({rate,amount:derived,sourceLine:null,
-     evidence:'difference-of-printed-total-and-subtotal'});
-    warn('tax_derived_from_printed_totals',null);
+  const sum=items.reduce((s,x)=>s+x.netAmount,0);
+  // Source OCR may omit the monetary value of a footer line while still
+  // recognizing its explicitly printed single tax rate and the final total.
+  // Reconstruct only if the (possibly missing) subtotal equals parsed item
+  // net amounts, there are no receipt-wide adjustments or orphaned amounts,
+  // and the tax difference agrees with the explicitly printed rate.
+  // This is receipt-independent mathematical reconciliation, not a store rule.
+  if(taxTotal===null&&taxBreakdown.length===0&&receiptTotal!==null&&
+   items.length>0&&receiptTotal>=sum&&
+   (subtotal===null||subtotal===sum)&&
+   adjustments.length===0&&!warnings.some(w=>[
+    'unassigned_discount','unassigned_price','unpriced_name','invalid_item',
+    'conflicting_receipt_totals','conflicting_tax_rate_bases'
+   ].includes(w.code))){
+   const originalText=lines.map(norm).join('\n');
+   const footerRates=[...new Set([...originalText.matchAll(/(?:外税(?:額)?|税額|消費税)\s*(8|10)\s*%/g)]
+    .map(m=>Number(m[1])))];
+   const printedRates=[...new Set([...rateBases.keys(),...footerRates])];
+   if(printedRates.length===1){
+    const rate=printedRates[0],base=rateBases.get(rate);
+    const derived=receiptTotal-sum;
+    if((base===undefined||base===sum)&&Math.abs(sum*rate/100-derived)<=1){
+     taxTotal=derived;taxBreakdown.push({rate,amount:derived,sourceLine:null,
+      evidence:'printed-total-minus-verified-net-items'});
+     warn('tax_derived_from_printed_totals',null);
+    }
    }
   }
-  const sum=items.reduce((s,x)=>s+x.netAmount,0);
   // Receipt-wide classification requires explicit tax evidence; never infer from total equality.
   const normalizedText=lines.map(norm).join('\n');
   const external=/外税|^税(?:8|10)%/m.test(normalizedText);
