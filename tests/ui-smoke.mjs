@@ -496,6 +496,13 @@ assert.equal(structured.items[0].productCode,'2000211787545');
 assert.equal(structured.items[0].sourceLines.join(','),'1,2',
  'The original code and name source lines are both traceable');
 assert.ok(structured.items[0].issues.includes('商品コードと商品名の対応を確認'));
+const afterGeometry=validation.validateReceipt(structured);
+assert.equal(afterGeometry.checks.itemIntegrity,'unknown',
+ 'P2 revalidation detects barcode/name linking review issue after geometry changes');
+assert.ok(afterGeometry.blockers.some(x=>x.code==='商品コードと商品名の対応を確認'));
+const engineEntry=readFileSync(new URL('../ocr-lab/engine-entry.js',import.meta.url),'utf8');
+assert.ok(engineEntry.includes('parsed.validation=window.KurashiReceiptValidation.validateReceipt(parsed)'),
+ 'OCR engine must refresh validation after layout linking');
 const distantLayout=geometry.groupLines([
  observed('別レシートのカーディガン',550,100,230),
  observed('2000211787545 ¥2,990',110,129,260),
@@ -694,6 +701,11 @@ assert.equal(longExternal.validation.checks.printedQuantity,'unknown',
  'default quantities still require original-photo review');
 assert.equal(longExternal.validation.reconciliation.netSum,longExternal.reconciliation.netSum);
 assert.equal(longExternal.validation.reconciliation.printedCountMatches,null);
+assert.deepEqual(JSON.parse(JSON.stringify(longExternal.reconciliation)),{
+ itemCount:17,quantity:19,quantityVerified:false,candidateCountMatches:true,
+ printedCountMatches:null,netSum:3189,expectedTotal:3444,totalMatches:true,
+ subtotalMatches:true,individualItemsVerified:false
+},'P2 legacy reconciliation shape and values must remain byte-compatible');
 assert.equal(longExternal.validation.individuallyConfirmed,false);
 const truncatedSubtotal=structure.parse('商品A ¥100\n小計 ¥120\n外税額 8% ¥8\n合計 ¥128');
 assert.equal(truncatedSubtotal.validation.checks.subtotal,'mismatch',
