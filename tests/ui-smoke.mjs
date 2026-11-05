@@ -248,8 +248,12 @@ assert.ok(indexHtml.includes('src="receipt-validation.js?v=71-p2"'),
  'P2 validator is loaded before app entry on the iPhone preview');
 assert.ok(indexHtml.indexOf('src="receipt-validation.js')<indexHtml.indexOf('src="app.js'),
  'P2 validator initializes before app.js');
-assert.ok(previewWorkflow.includes('receipt-chatgpt-import.js receipt-validation.js)'),
- 'P2 shared validator is actually copied into each static preview');
+assert.ok(previewWorkflow.includes('receipt-chatgpt-import.js receipt-validation.js receipt-review-model.js)'),
+ 'P2 validator and P4 review adapter are copied into each static preview');
+assert.ok(indexHtml.indexOf('src="receipt-review-model.js')<indexHtml.indexOf('src="app.js'),
+ 'P4 review adapter loads before app.js');
+assert.ok(serviceWorker.includes("'./receipt-review-model.js'"),
+ 'P4 offline cache preloads the review adapter');
 assert.ok(serviceWorker.includes("'./receipt-validation.js'"),
  'P2 offline cache preloads the shared validation script');
 assert.equal((indexHtml.match(/id="receipt-source-picker"/g)||[]).length,1);
