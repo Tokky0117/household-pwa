@@ -560,6 +560,15 @@ assert.equal(longExternal.items.reduce((sum,item)=>sum+item.taxIncludedAmount,0)
  'allocated per-item inclusive amounts reconcile exactly to the printed final total');
 assert.equal(longExternal.items.reduce((sum,item)=>sum+item.allocatedTax,0),255,
  'every allocated yen is accounted for once and only once');
+assert.deepEqual(Array.from(longExternal.items,item=>item.netAmount),
+ [88,271,88,115,448,133,142,88,116,179,358,187,196,142,194,250,194],
+ 'P0: freeze all 17 discounted net item amounts before extraction');
+assert.deepEqual(Array.from(longExternal.items,item=>item.allocatedTax),
+ [7,22,7,9,36,11,11,7,9,14,29,15,16,11,16,20,15],
+ 'P0: freeze invoice-tax distribution and deterministic rounding');
+assert.deepEqual(Array.from(longExternal.items,item=>item.taxIncludedAmount),
+ [95,293,95,124,484,144,153,95,125,193,387,202,212,153,210,270,209],
+ 'P0: freeze all item-level inclusive totals, not only overall total');
 
 // Ex-tax amount absent from OCR: recover only with explicit single-rate base,
  // an independent printed subtotal/total, and exact reconciliation.
