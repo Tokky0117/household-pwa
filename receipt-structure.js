@@ -306,13 +306,24 @@
   // net amounts, there are no receipt-wide adjustments or orphaned amounts,
   // and the tax difference agrees with the explicitly printed rate.
   // This is receipt-independent mathematical reconciliation, not a store rule.
+  const merchandiseLines=items.flatMap(it=>it.sourceLines||[]).filter(Number.isInteger);
+  const firstMerchandiseLine=merchandiseLines.length?Math.min(...merchandiseLines):null;
+  const lastMerchandiseLine=merchandiseLines.length?Math.max(...merchandiseLines):null;
+  const blocksTaxReconciliation=warning=>{
+   const fatal=['unassigned_discount','invalid_item','conflicting_receipt_totals',
+    'conflicting_tax_rate_bases','conflicting_printed_counts'];
+   if(fatal.includes(warning.code))return true;
+   if(!['unassigned_price','unpriced_name'].includes(warning.code))return false;
+   // Unpriced text from shop headers or footer descriptions is not an
+   // unrecognized merchandise row. Keep unidentified rows in the merchandise
+   // block as blockers rather than silently ignoring them.
+   return firstMerchandiseLine===null||lastMerchandiseLine===null||
+    !Number.isInteger(warning.line)||warning.line>=firstMerchandiseLine&&warning.line<=lastMerchandiseLine;
+  };
   if(taxTotal===null&&taxBreakdown.length===0&&receiptTotal!==null&&
    items.length>0&&receiptTotal>=sum&&
    (subtotal===null||subtotal===sum)&&
-   adjustments.length===0&&!warnings.some(w=>[
-    'unassigned_discount','unassigned_price','unpriced_name','invalid_item',
-    'conflicting_receipt_totals','conflicting_tax_rate_bases'
-   ].includes(w.code))){
+   adjustments.length===0&&!warnings.some(blocksTaxReconciliation)){
    const originalText=lines.map(norm).join('\n');
    const footerRates=[...new Set([...originalText.matchAll(/(?:外税(?:額)?|税額|消費税)\s*(8|10)\s*%/g)]
     .map(m=>Number(m[1])))];
