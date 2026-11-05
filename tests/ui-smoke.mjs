@@ -593,7 +593,8 @@ assert.ok(missingFooterAmounts.warnings.some(w=>w.code==='tax_derived_from_print
 const missingRate=structure.parse([
  '食品A ¥100','食品B ¥200','小計','外税額','合計 ¥324'
 ].join('\n'));
-assert.equal(missingRate.taxAllocation.status,'unresolved','never invent a missing rate');
+assert.equal(missingRate.taxAllocation.status,'allocated','unique 8 percent candidate with external evidence');
+assert.equal(missingRate.taxBreakdown[0].evidence,'rate-candidate-from-printed-totals');
 const wrongRate=structure.parse([
  '食品A ¥100','食品B ¥200','小計','外税額 8%','合計 ¥355'
 ].join('\n'));
