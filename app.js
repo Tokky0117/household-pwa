@@ -1,4 +1,4 @@
-const APP_VERSION='0.71.5';
+const APP_VERSION='0.72.0';
 const CATS=['飲食','キッチン','洗面・風呂','洗濯・掃除','その他'];
 const liveMode=!!window.KurashiLive; // Data source only; original Preview v46 UI components remain.
 const SEED=[['牛乳',0,true],['麦茶',0,false],['コーヒー',0,true],['卵',0,false],['キッチンペーパー',1,false],['ラップ',1,true],['食器用洗剤',1,true],['シャンプー',2,false],['歯磨き粉',2,true],['ハンドソープ',2,false],['洗濯洗剤',3,false],['柔軟剤',3,true],['トイレットペーパー',3,false],['乾電池',4,true],['ティッシュ',4,true]];
@@ -199,86 +199,19 @@ function isUnconfirmedBarcodeLine(item){
   /^\d{13}$/.test(String(item.ocrRawName||'').trim());
 }
 function receiptOcrRows(draft){
- if(!draft||draft.source!=='ocr')return [];
- return (draft.items||[]).map((item,i)=>({item,i}))
-  .filter(({item})=>!['manual','photo'].includes(item.inputOrigin)&&item.ocrRawName!==undefined);
+ return window.KurashiReceiptReview.ocrRows(draft);
 }
 function receiptOcrReference(draft){
- return JSON.stringify({
-  receiptDate:draft?.date||null,
-  store:draft?.chainId?chainLabel(draft.chainId):draft?.chainName||null,
-  receiptTotal:draft?.total??null,
-  items:receiptOcrRows(draft).map(({item,i})=>({
-   rowId:item.ocrRowId||'row-'+(i+1),
-   ocrName:String(item.ocrRawName||''),
-   quantity:Number(item.quantity)||null,
-   taxIncludedAmount:String(item.amount)===''?null:Number(item.amount)
-  }))
- },null,2);
+ return window.KurashiReceiptReview.ocrReference(draft,chainLabel);
 }
 function applyChatGptOcrAssistance(draft,result){
- if(!draft||draft.source!=='ocr')throw Error('先に写真をOCRで読み取ってください');
- const rows=receiptOcrRows(draft);
- if(!rows.length)throw Error('対応するOCR明細がありません');
- const known=new Map(rows.map(({item,i})=>[item.ocrRowId||'row-'+(i+1),item]));
- if(known.size!==rows.length||result.items.length!==rows.length)
-  throw Error('OCR明細の行数またはIDが一致しません');
- const proposed=new Map();
- for(const entry of result.items){
-  const original=known.get(entry.rowId);
-  if(!original||proposed.has(entry.rowId)||
-   String(original.ocrRawName||'')!==entry.ocrName)
-   throw Error('OCR行IDまたは原表記が一致しません');
-  proposed.set(entry.rowId,entry);
- }
- const next={...draft,items:draft.items.map(x=>({...x})),
-  matchedCount:0,unmatchedCount:0};
- for(const {i} of rows){
-  const item=next.items[i],rowId=item.ocrRowId||'row-'+(i+1);
-  if(!proposed.has(rowId))throw Error('OCR行IDが不足しています');
-  if(isUnconfirmedBarcodeLine(item)){
-   // A barcode can identify a source line, but is not the printed product name.
-   // Ignore even a hallucinated AI candidate or previously learned auto-link.
-   item.productId='';item.autoLinked=false;item.nameCandidate='';
-   next.unmatchedCount++;continue;
-  }
-  const productId=item.productId||scanMatchProduct(item.ocrRawName||'',next.chainId);
-  const proposedLine=proposed.get(rowId);
-  item.nameCandidate=proposedLine.nameCandidate||'';
-  if(productId){
-   item.productId=productId;item.autoLinked=!item.manuallyLinked;next.matchedCount++;
-  }else{
-   item.productId='';next.unmatchedCount++;
-  }
-  if(Number.isSafeInteger(proposedLine.amount)){
-   item.amount=proposedLine.amount;
-   item.issues=(item.issues||[]).filter(x=>x!=='税込金額を原本で確認');
-  }
-  if(Number.isSafeInteger(proposedLine.quantity)&&proposedLine.quantity>0){
-   item.quantity=proposedLine.quantity;item.quantityUncertain=false;
-  }
- }
- return next;
+ return window.KurashiReceiptReview.applyAssistance(draft,result,{
+  findProduct:scanMatchProduct,isUnconfirmedBarcodeLine
+ });
 }
-// Replace an untrustworthy OCR item set with independently parsed photo rows.
-// None of these rows has an OCR name; saveReceiptDraft remains local-only.
+// Photo-rebuilt rows cannot inherit OCR row IDs or OCR dictionary names.
 function makeChatGptReceiptRebuildDraft(previous,result){
- if(!previous||previous.source!=='ocr'||
-    result?.version!=='kurashi-receipt-rebuild-1'||
-    !Array.isArray(result.items)||!result.items.length)
-  throw Error('写真からの明細再解析データを確認してください');
- const match=result.storeName?scanChainForStore(result.storeName):null;
- return {source:'chatgpt-rebuild',date:result.receiptDate||'',
-  chainId:match?.id||null,chainName:match?'':result.storeName||'',
-  branchName:previous.branchName||'',total:result.receiptTotal??null,
-  printedCount:result.printedCount??null,ocrReplacedCount:previous.items.length,
-  items:result.items.map(line=>({
-   name:line.name||'',inferredName:line.name||'',inputOrigin:'photo',
-   quantity:line.quantity??1,quantityUncertain:line.quantity===null,
-   amount:line.amount===null?'':line.amount,
-   productId:'',manuallyLinked:false,autoLinked:false,
-   issues:['ChatGPTが写真から抽出した候補です。原本と照合してください']
-  }))}
+ return window.KurashiReceiptReview.fromChatGptRebuild(previous,result,scanChainForStore);
 }
 function scanDuplicates(draft){
  if(!draft||!draft.chainId||!draft.date||!draft.items.length)return [];
@@ -714,6 +647,7 @@ async function runReceiptScan(){
   const engine=scanRuntime||(scanRuntime=await import('./ocr-engine/engine.js'));
   const observations=[],allItems=[],receiptTotals=[],taxModes=[],allocationModes=[],allocationReasons=[],taxDiagnostics=[],taxInferredModes=[],taxRateCandidateModes=[];let total=null,printedCount=null;
   const scanWarnings=new Set();
+  const reviewEvidence={itemSources:[],unresolvedRows:[]};
   for(let i=0;i<scanPhotos.length;i++){
    if(token!==scanToken)return;
    scanStatus='写真 '+(i+1)+' / '+scanPhotos.length+' を解析しています…';
@@ -727,18 +661,19 @@ async function runReceiptScan(){
    taxDiagnostics.push({netSum:out.parsed.reconciliation.netSum,subtotal:out.parsed.subtotal,
     taxTotal:out.parsed.taxTotal,receiptTotal:out.parsed.receiptTotal});
    for(const item of out.parsed.items){
-    const n=String(item.name||'').trim();
-    const price=Number.isSafeInteger(item.taxIncludedAmount)&&item.taxIncludedAmount>=0?
-      item.taxIncludedAmount:'';
-    const issues=[...(item.issues||[])];
-    if(price==='')issues.push('税込金額を原本で確認');
-    const quantityUncertain=item.quantity==null||item.quantitySource==='default'||item.quantitySource==='inferred_candidate';
-    const productId='';
-    const taxExcludedAmount=out.parsed.taxBasis==='excluded'&&Number.isSafeInteger(item.netAmount)&&item.netAmount>=0?item.netAmount:null;
-    allItems.push({name:n,ocrRawName:n,ocrRowId:'ocr-'+id(),quantity:quantityUncertain?1:item.quantity,
-     quantityUncertain,amount:price,taxExcludedAmount,ocrDiscount:item.discount||0,
-     allocatedTax:item.allocatedTax??null,taxRate:item.taxRate??null,taxCalculation:item.taxCalculation||null,
-     productId,autoLinked:!!productId,issues});
+    const rowId='ocr-'+id();
+    allItems.push(window.KurashiReceiptReview.fromOcrItem(item,{
+     rowId,taxBasis:out.parsed.taxBasis
+    }));
+    // Numeric-only observation references; no raw OCR text or photo bytes.
+    reviewEvidence.itemSources.push({rowId,imageIndex:i,
+     sourceLines:[...(item.sourceLines||[])],
+     observationIndices:[...(item.layoutEvidence?.observationIndices||[])],
+     priceLinks:[...(item.layoutEvidence?.priceLinks||[])]});
+   }
+   for(const row of out.parsed.unresolvedRows||[]){
+    reviewEvidence.unresolvedRows.push({imageIndex:i,line:row.line,role:row.role,
+     reasons:[...(row.reasons||[])]});
    }
    if(Number.isSafeInteger(out.parsed.receiptTotal)){total=out.parsed.receiptTotal;receiptTotals.push(total);}
    // One common validator supplies all structural and arithmetic notices.
@@ -758,7 +693,7 @@ async function runReceiptScan(){
    taxRateCalculated:taxRateCandidateModes.some(Boolean),
    taxAllocationReason:allocationReasons.find(Boolean)||null,
    taxDiagnostics:taxDiagnostics.length===1?taxDiagnostics[0]:null,
-   chainId:chain?.id||null,chainName:''};
+   chainId:chain?.id||null,chainName:'',reviewEvidence};
   scanDraft.items.forEach(item=>{
    item.productId=isUnconfirmedBarcodeLine(item)?'':scanMatchProduct(item.ocrRawName,scanDraft.chainId);
    item.autoLinked=!!item.productId;
@@ -2379,16 +2314,16 @@ function refreshScanTotalUI(){
  const d=new FormData(form);
  // Same validator as OCR parse(): always use the live form values, not the
  // old OCR calculation stored in the draft. Do not re-render active inputs.
- const result=window.KurashiReceiptValidation.evaluateDraft({
-  items:scanDraft.items.map((item,i)=>({
-   quantity:String(d.get('qty-'+i)||'').trim(),
-   amount:String(d.get('amount-'+i)||'').trim(),
-   quantityUncertain:!!item.quantityUncertain,
-   taxExcludedAmount:item.taxExcludedAmount,
-   allocatedTax:item.allocatedTax
-  })),
-  printedCount:scanDraft.printedCount,total:scanDraft.total
- });
+ const formItems=scanDraft.items.map((item,i)=>({
+  quantity:String(d.get('qty-'+i)||'').trim(),
+  amount:String(d.get('amount-'+i)||'').trim(),
+  quantityUncertain:!!item.quantityUncertain,
+  taxExcludedAmount:item.taxExcludedAmount,
+  allocatedTax:item.allocatedTax
+ }));
+ // A single adapter projects both OCR and ChatGPT drafts into the same
+ // P2 arithmetic validation, including changes currently visible in the form.
+ const result=window.KurashiReceiptReview.evaluateDraft(scanDraft,formItems);
  const countNode=document.getElementById('scan-count-text');
  if(countNode){
   const count=result.quantitySum;

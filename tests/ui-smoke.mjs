@@ -5,6 +5,9 @@ const source=readFileSync(new URL('../app.js',import.meta.url),'utf8');
 const css=readFileSync(new URL('../styles.css',import.meta.url),'utf8');
 const validatorScript=readFileSync(new URL('../receipt-validation.js',import.meta.url),'utf8');
 const validator=vm.runInNewContext(validatorScript+';KurashiReceiptValidation');
+const reviewScript=readFileSync(new URL('../receipt-review-model.js',import.meta.url),'utf8');
+const review=vm.runInNewContext(reviewScript+';KurashiReceiptReview',
+ {window:{KurashiReceiptValidation:validator}});
 const handlers={};
 const documentHandlers={};
 let mockSwipeRows=[];
@@ -19,7 +22,7 @@ const doc={
  body:{append(){}}
 };
 const ctx={document:doc,localStorage:{getItem:k=>storage.get(k)??null,setItem:(k,v)=>storage.set(k,v),removeItem:k=>storage.delete(k)},
- navigator:{},window:{scrollTo(){},scrollY:0,KurashiReceiptValidation:validator},crypto:{randomUUID:()=> 'test-id'},setTimeout:()=>0};
+ navigator:{},window:{scrollTo(){},scrollY:0,KurashiReceiptValidation:validator,KurashiReceiptReview:review},crypto:{randomUUID:()=> 'test-id'},setTimeout:()=>0};
 const ui=vm.runInNewContext(source+`
 ({listView,priceCompareView,pickerView,pickerResults,receiptView,receiptScanView,receiptChatGptView,recordDetailView,scanDuplicates,applyChatGptOcrAssistance,receiptOcrReference,receiptOcrRows,isUnconfirmedBarcodeLine,makeChatGptReceiptRebuildDraft,scanBulkProductsView,scanProductView,scanExistingProductView,scanChainForStore,scanAutolinkUnmatched,scanMatchProduct,render,initializeCompare,
  setProductGroup,reorderProducts,registeredProducts,convertQuantity,setOpenSwipe,
@@ -956,3 +959,58 @@ const splitDiscountP3=structure.parse('商品A ¥100\n分類一括割引 10%\n-1
 assert.equal(splitDiscountP3.items[0].netAmount,90,
  'a next-line discount still attaches to the preceding paid item');
 console.log('P3b: quantity, discount and price readers isolated; unknown-row evidence preserved OK');
+
+
+// P4 unified review contract: OCR printed data, photo candidate and calculated
+// amount provenance coexist but must never imply confirmation.
+const p4OcrItem=review.fromOcrItem({name:'品目A',quantity:2,quantitySource:'printed',
+ netAmount:200,discount:20,taxIncludedAmount:216,allocatedTax:16,
+ taxCalculation:'printed-total-proportional',issues:[],sourceLines:[1,2]},
+ {rowId:'ocr-p4',taxBasis:'excluded'});
+assert.equal(p4OcrItem.ocrRawName,'品目A');
+assert.equal(p4OcrItem.amountOrigin,'allocated');
+assert.equal(p4OcrItem.quantity,2);
+const p4Draft={source:'ocr',date:'2026-11-05',chainId:'sample',total:216,
+ printedCount:2,reviewEvidence:{itemSources:[{rowId:'ocr-p4',imageIndex:0,
+  sourceLines:[1,2],observationIndices:[0,1,2],priceLinks:[]}],
+  unresolvedRows:[{imageIndex:0,line:3,role:'name_candidate',reasons:[]}]},
+ items:[p4OcrItem]};
+const p4Review=review.buildReviewModel(p4Draft);
+assert.equal(p4Review.version,'kurashi-review-1');
+assert.equal(p4Review.items[0].originalOcrName,'品目A');
+assert.equal(p4Review.items[0].amount.origin,'allocated');
+assert.equal(p4Review.items[0].photoConfirmed,false);
+assert.equal(p4Review.validation.checks.total,'match');
+assert.equal(p4Review.unresolvedRows[0].line,3);
+const p4Edit=review.evaluateDraft(p4Draft,[{quantity:'2',amount:'217',
+ taxExcludedAmount:200,allocatedTax:16}]);
+assert.equal(p4Edit.checks.total,'mismatch',
+ 'P4 uses P2 validation after form changes, including a one-yen mismatch');
+const p4Assist=review.applyAssistance(p4Draft,{
+ items:[{rowId:'ocr-p4',ocrName:'品目A',
+  nameCandidate:'写真の商品A',quantity:3,amount:324}]},{
+ findProduct:()=>'',isUnconfirmedBarcodeLine:()=>false});
+assert.equal(p4Assist.items[0].ocrRawName,'品目A');
+assert.equal(p4Assist.items[0].ocrRowId,'ocr-p4');
+assert.equal(p4Assist.items[0].amountOrigin,'chatgpt-photo-candidate');
+assert.equal(p4Assist.items[0].quantityOrigin,'chatgpt-photo-candidate');
+assert.equal(p4Draft.items[0].amount,216,'ChatGPT merges never mutate the original draft');
+assert.equal(review.buildReviewModel(p4Assist).validation.checks.total,'mismatch');
+assert.equal(review.buildReviewModel(p4Assist).unresolvedRows.length,1);
+assert.throws(()=>review.applyAssistance(p4Draft,{
+ items:[{rowId:'ocr-p4',ocrName:'改変したOCR原文',nameCandidate:'候補'}]},{
+ findProduct:()=>'',isUnconfirmedBarcodeLine:()=>false}),/OCR行IDまたは原表記/);
+const p4Rebuild=review.fromChatGptRebuild(p4Draft,{
+ version:'kurashi-receipt-rebuild-1',receiptDate:'2026-11-05',
+ storeName:'不明な店舗',receiptTotal:80,printedCount:1,
+ items:[{name:'写真上の品目',quantity:1,amount:80}]
+ },()=>null);
+const p4RebuildModel=review.buildReviewModel(p4Rebuild);
+assert.equal(p4RebuildModel.items[0].originalOcrName,null);
+assert.equal(p4RebuildModel.items[0].rowId,null);
+assert.equal(p4RebuildModel.items[0].amount.origin,'chatgpt-photo-candidate');
+assert.equal(p4RebuildModel.unresolvedRows.length,0);
+assert.equal(p4RebuildModel.individuallyConfirmed,false);
+assert.ok(!JSON.stringify(p4Rebuild).includes('ocr-p4'),
+ 'full photo rebuild cannot recycle OCR source identifiers');
+console.log('P4 common review adapter, provenance, row identity and P2 validation OK');
