@@ -2387,6 +2387,8 @@ html,body{touch-action:pan-x pan-y}
 .scan-review-item .scan-field{margin:6px 0;gap:4px;min-width:0}
 .scan-review-item .scan-ocr-name{padding:0;line-height:1.35}
 .scan-review-item .scan-name-candidate{margin:3px 0}
+.scan-review-item .scan-name-warning{font-size:12px;font-weight:600;line-height:1.4;color:#A97800;margin:4px 0}
+.scan-review-item .scan-name-warning::before{content:"⚠";margin-right:5px}
 .scan-review-item .scan-input-pair{gap:8px;min-width:0}
 .scan-review-item .scan-input-pair>.scan-field{min-width:0;max-width:100%}
 .scan-review-item .scan-tax-excluded{font-size:12px;margin:5px 0;overflow-wrap:anywhere}
