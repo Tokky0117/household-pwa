@@ -198,3 +198,11 @@
 - キャンセル／写真0枚のイベントは何も登録せず、再オープン時に完了状態を初期化する。最初のキャンセル後に初めて画像が返るケース、`input`→`change`、写真0枚からの再追加をDOM回帰テストする。
 - iPhone実機のOS内部で写真選択が確定しなかった場合は`input`/ `change`のいずれも保証されず、Webアプリから検出・補完できない。今回の対応は「ファイルがブラウザーに渡ったがchangeイベントを取りこぼす」場合の補強であり、**初回の実機不具合が確実に解消するとはまだ言えない**。写真タップ時のネイティブプレビュー有無もiOS依存。
 - UI、写真6枚上限、OCR解析、保存・操作キュー、GAS/Sheetsは変更しない。初回選択のiPhone実機確認は別途必要。
+
+## 17. 写真選択の操作性比較（実験ブランチ・v0.72.4）
+
+- 参考サイト [pokefuta.com/visits](https://pokefuta.com/visits) の公開ソース [src/app/upload/page.tsx](https://github.com/nishiokya/pokefuta/blob/main/src/app/upload/page.tsx) に、`react-dropzone` の `maxFiles: 1, multiple: false` がある。これはOS標準の単一画像選択UIを開く実装で、特別な写真ライブラリ制御APIではない。
+- 既存 `preview-v46-clean-base` は **`multiple=true` の安定版として維持**。別ブランチ `preview-v46-photo-preview-test` の2つの写真入力のみ `multiple` を無効化し、写真プレビューの挙動をiPhone実機で比較する。
+- 初回選択の取りこぼし対応：再描画されない固定input、`input`/`change` 両イベント、一度の選択の二重取込み防止、`cancel` 無取込みはそのまま保持。
+- 想定評価：写真タップ→拡大プレビュー→チェック確定でアプリに戻るか、最初の1回で取り込めるか、キャンセル時に写真が混入しないか。標準UIの写真プレビューやチェック位置をHTMLから強制制御できないため、実機結果で可否を判断する。
+- 試験結果が満足でなければ実験ブランチを採用せず、既存ブランチの複数選択を継続する。GAS/Sheets、OCR、保存処理は変更しない。
