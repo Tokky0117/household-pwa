@@ -1075,12 +1075,12 @@ const activeReceiptForm=scanSession.window.document.getElementById('scanConfirmF
 const activeAmount=activeReceiptForm.querySelector('[name="amount-0"]');
 activeAmount.value='420';
 activeAmount.dispatchEvent(new scanSession.window.Event('input',{bubbles:true}));
-assert.match(activeReceiptForm.querySelector('#scan-sum-text').textContent,/差額：20/,
+assert.match(activeReceiptForm.querySelector('#scan-total-warning').textContent,/差額：20/,
  'P2 edited amount immediately shows a mismatch from the printed total');
 activeAmount.value='440';
 activeAmount.dispatchEvent(new scanSession.window.Event('input',{bubbles:true}));
-assert.match(activeReceiptForm.querySelector('#scan-sum-text').textContent,/印字合計と一致/,
- 'P2 corrected amount immediately restores total reconciliation without replacing the form');
+assert.equal(activeReceiptForm.querySelector('#scan-total-warning').hidden,true,
+ 'P2 corrected amount immediately clears the reconciliation warning');
 await waitFor(()=>scanSession.window.KurashiLive.state().loaded,'receipt draft saved');
 await pause(100); // Let the prior UI draft write finish before this test override.
 await scanSession.window.KurashiLive.saveReceiptDraft({
@@ -1107,12 +1107,12 @@ assert.ok(resumedForm.querySelector('#scan-count-text'),
 const resumedQty=resumedForm.querySelector('[name="qty-0"]');
 resumedQty.value='3';
 resumedQty.dispatchEvent(new resumedScan.window.Event('input',{bubbles:true}));
-assert.match(resumedForm.querySelector('#scan-count-text').textContent,/印字点数と一致しません/,
+assert.match(resumedForm.querySelector('#scan-count-warning').textContent,/購入点数を確認/,
  'P2 quantity mismatch is recomputed immediately after editing the draft');
 resumedQty.value='2';
 resumedQty.dispatchEvent(new resumedScan.window.Event('input',{bubbles:true}));
-assert.match(resumedForm.querySelector('#scan-count-text').textContent,/印字点数と一致$/,
- 'P2 restoring printed quantity recomputes without rerendering the form');
+assert.equal(resumedForm.querySelector('#scan-count-warning').hidden,true,
+ 'P2 restoring printed quantity clears comparison warning');
 await resumedScan.window.KurashiLive.saveReceiptDraft(null);
 resumedScan.window.close();
 
@@ -1557,7 +1557,7 @@ assert.equal(matchedReview.querySelector('[name="product-0"]').value,
  're-read automatically selects canonical product via chain-scoped abbreviation');
 assert.match(matchedReview.textContent,/日用品未紐付け/);
 const totalText=matchedReview.querySelector('#scan-sum-text').textContent;
-assert.match(totalText,/印字合計と一致/,'total comparison is visible without a checkbox');
+assert.match(totalText,/合計金額：/,'one calculated total is visible without a checkbox');
 matchedReview.dispatchEvent(new readAgain.window.Event('submit',{
  bubbles:true,cancelable:true
 }));
@@ -1933,14 +1933,14 @@ qtySession.window.document.getElementById('chatgpt-input').value=JSON.stringify(
 await completeOcrImport(qtySession);
 const qtyField=qtySession.window.document.querySelector('#scanConfirmForm [name="qty-0"]');
 assert.equal(qtyField.value,'1','unconfirmed OCR quantity defaults to one');
-assert.ok(qtyField.classList.contains('scan-quantity-uncertain'));
-assert.match(qtySession.window.document.querySelector('#scanConfirmForm').textContent,/数量要確認/);
+assert.ok(qtyField.closest('label').classList.contains('scan-state-warning'));
+assert.match(qtySession.window.document.querySelector('#scanConfirmForm').textContent,/数量を確認/);
 qtyField.value='1';
 qtyField.dispatchEvent(new qtySession.window.Event('input',{bubbles:true}));
-assert.ok(!qtyField.classList.contains('scan-quantity-uncertain'),
+assert.ok(!qtyField.closest('label').classList.contains('scan-state-warning'),
  'even confirming one by re-entry clears the yellow field');
-assert.ok(!qtySession.window.document.querySelector('.scan-quantity-hint'),
- 'yellow warning and explanatory label are cleared together');
+assert.equal(qtySession.window.document.querySelector('[data-scan-hint="qty-0"]').hidden,true,
+ 'yellow inline note clears after quantity entry');
 qtySession.window.close();
 console.log('v65: quantity unknown defaults to yellow one; re-entering one clears warning OK');
 
