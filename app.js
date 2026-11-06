@@ -1,4 +1,4 @@
-const APP_VERSION='0.73.0';
+const APP_VERSION='0.74.0';
 const CATS=['飲食','キッチン','洗面・風呂','洗濯・掃除','その他'];
 const liveMode=!!window.KurashiLive; // Data source only; original Preview v46 UI components remain.
 const SEED=[['牛乳',0,true],['麦茶',0,false],['コーヒー',0,true],['卵',0,false],['キッチンペーパー',1,false],['ラップ',1,true],['食器用洗剤',1,true],['シャンプー',2,false],['歯磨き粉',2,true],['ハンドソープ',2,false],['洗濯洗剤',3,false],['柔軟剤',3,true],['トイレットペーパー',3,false],['乾電池',4,true],['ティッシュ',4,true]];
@@ -492,10 +492,9 @@ function scanFormView(){
   '<option value="__new__"'+(!scanDraft.chainId?' selected':'')+'>＋ 新しいチェーン</option>'].join('');
  return `<form id="scanConfirmForm" class="scan-review">
   <h2 class="sectiontitle">読み取り結果の確認</h2>
-  ${scanDraft.taxBasis==='unknown'&&scanDraft.source==='ocr'?'<p class="scan-warning">OCRで内税・外税の区分を特定できませんでした。税込明細合計を自動計算するには、印字税率・税額・商品価格の確認が必要です。</p>':''}
-  ${scanDraft.taxBasis==='excluded'?(scanDraft.taxAllocationStatus==='allocated'?'<p class="hint">外税レシート：'+(scanDraft.taxRateCalculated?'税率の数字がOCRで読めなかったため、税抜明細合計と印字合計から、8%・10%のうち唯一整合する税率を候補として計算しました。税率は原本で確認してください。':scanDraft.taxDerivedFromTotals?'OCRで税額が読めないため、明細税抜合計・印字合計・印字税率の一致から税額を算出しました。':'印字された税率別税額を用い、')+'値引き後税抜金額に比例配分しています。各行の税込額は計算値です。原本と照合してください。</p>':'<div class="scan-warning">外税レシートの税込額を計算できません：'+esc(scanTaxFailureDescription(scanDraft.taxAllocationReason))+'。'+(scanDraft.taxDiagnostics?'<p>抽出した税抜明細合計：'+esc(scanDraft.taxDiagnostics.netSum)+'円 ／ 印字小計：'+(scanDraft.taxDiagnostics.subtotal===null?'未取得':esc(scanDraft.taxDiagnostics.subtotal)+'円')+' ／ 印字税額：'+(scanDraft.taxDiagnostics.taxTotal===null?'未取得':esc(scanDraft.taxDiagnostics.taxTotal)+'円')+' ／ 印字合計：'+(scanDraft.taxDiagnostics.receiptTotal===null?'未取得':esc(scanDraft.taxDiagnostics.receiptTotal)+'円')+'</p>':'')+'原本と照合してください。</div>'):''}
-  <p class="hint">OCR・ChatGPTの文字・数量・金額には誤認識が残ります。必ず原本と照合してください。${scanDraft.source==='chatgpt-ocr'?' OCRとChatGPTの一意対応 '+scanDraft.matchedCount+'件、要確認 '+scanDraft.unmatchedCount+'件。':''}</p>
-  ${scanDraft.source==='chatgpt-rebuild'?'<p class="scan-warning">ChatGPTによる写真再解析です。OCR明細'+esc(scanDraft.ocrReplacedCount||0)+'件は破棄しました。商品名・数量・金額・購入日・店舗を写真と照合してください。AIの回答は誤ることがあります。</p>':''}
+  <p class="hint">写真と内容を確認してください。</p>
+  ${scanDraft.taxBasis==='unknown'&&scanDraft.source==='ocr'?'<p class="scan-state-note scan-state-warning">税率を確認</p>':''}
+  ${scanDraft.taxBasis==='excluded'&&scanDraft.taxAllocationStatus!=='allocated'?'<p class="scan-state-note scan-state-warning">税込金額を確認</p>':''}
   ${scanDraft.source==='ocr'&&receiptOcrRows(scanDraft).length?'<button type="button" class="secondary" data-act="chatGptAssist">ChatGPTで商品名・金額を確認</button>':''}
   <section class="scan-receipt-meta" aria-label="購入情報">
   ${UI.sectionHeading({title:'購入情報'})}
@@ -503,52 +502,50 @@ function scanFormView(){
   <label class="scan-field" id="scan-new-chain-wrap" ${scanDraft.chainId?'hidden':''}>新しいチェーン名<input name="chain_name" maxlength="80" placeholder="新しいチェーン名" value="${esc(scanDraft.chainName||'')}"></label>
   <label class="scan-field">支店名（任意）<input name="branch_name" maxlength="80" placeholder="例：駅前店" value="${esc(scanDraft.branchName||'')}"></label>
   <label class="scan-field">購入日<input name="date" type="date" required value="${esc(scanDraft.date)}"></label>
-   ${!scanDraft.date?'<p class="scan-warning">購入日をOCRで確定できませんでした。レシートを見て入力してください。</p>':''}
+   <span class="scan-field-hint" data-scan-hint="date" hidden></span>
   </section>
   ${UI.sectionHeading({title:'購入明細',subtitle:scanDraft.items.length+'件'})}
   ${scanDraft.items.map((item,i)=>`<div class="panel scan-review-item">
     <div class="row" style="justify-content:space-between"><strong>明細 ${i+1}</strong><button type="button" class="secondary" data-act="scanRemoveItem" data-scan-row="${i}">削除</button></div>
-    ${item.issues.length?'<p class="scan-warning">要確認：'+esc(item.issues.join('、'))+'</p>':''}
+    ${item.issues.length?'<p class="scan-state-note scan-state-warning">明細を確認</p>':''}
     ${['manual','photo'].includes(item.inputOrigin)||item.ocrRawName===undefined?
-     '<label class="scan-field">'+(item.inputOrigin==='photo'?'写真で確認した明細名（OCR辞書に登録しません）':'手入力の明細名')+'<input name="name-'+i+'" maxlength="120" required value="'+esc(item.name)+'" placeholder="原本を見て入力"></label>':
-     '<div class="scan-field"><span>OCR明細名（変更不可）</span><div class="scan-ocr-name" data-ocr-row="'+i+'">'+esc(reviewModel.items[i].originalOcrName||'読み取り不可')+'</div></div>'}
-    ${reviewModel.items[i].proposedName?'<p class="scan-name-candidate">ChatGPT推測名：'+esc(reviewModel.items[i].proposedName)+'（OCR名は変更せず、商品登録時の初期値に使用）</p>':''}
+     '<label class="scan-field">商品名<input name="name-'+i+'" maxlength="120" required value="'+esc(item.name)+'" placeholder="商品名"><span class="scan-field-hint" data-scan-hint="name-'+i+'" hidden></span></label>':
+     '<div class="scan-field"><span>商品名</span><div class="scan-ocr-name" data-ocr-row="'+i+'">'+esc(reviewModel.items[i].originalOcrName||'読み取り不可')+'</div></div>'}
+    ${reviewModel.items[i].proposedName?'<p class="scan-name-candidate">候補：'+esc(reviewModel.items[i].proposedName)+'</p>':''}
     <input type="hidden" name="product-${i}" value="${esc(scanResolvedProductId(item))}">
     <div class="scan-product-association">
-      <span class="scan-product-association-label">商品マスタとの紐付け</span>
+      <span class="scan-product-association-label">商品照合</span>
       <strong>${(()=>{const p=catalogue.products.find(x=>x.id===scanResolvedProductId(item));
-       return p?esc(productTitle(p))+' ／ 日用品：'+esc(linkedItemName(p)):'未照合（レシートだけの保存も可能）'})()}</strong>
+       return p?esc(productTitle(p))+' ／ 日用品：'+esc(linkedItemName(p)) :'商品未照合'})()}</strong>
       <div class="scan-product-actions">
        <button type="button" class="secondary" data-act="scanPickExisting" data-scan-row="${i}">既存商品と照合</button>
        <button type="button" class="tertiary" data-act="scanNewProduct" data-scan-row="${i}">＋ 新しい商品を登録</button>
       </div>
       <div class="scan-product-candidates">${scanSuggestionButtons(item,i)}</div>
     </div>
-    <div class="scan-input-pair"><label class="scan-field">購入数<input name="qty-${i}" type="number" min="1" step="1" required value="${esc(item.quantity)}" ${item.quantityUncertain?'class="scan-quantity-uncertain" aria-describedby="scan-quantity-hint-'+i+'"':''}>${item.quantityUncertain?'<span class="scan-quantity-hint" id="scan-quantity-hint-'+i+'">数量要確認（仮に1を表示）</span>':''}</label>
-    <label class="scan-field">税込明細合計（円）<input name="amount-${i}" type="number" min="0" step="1" required value="${esc(item.amount)}" placeholder="確認して入力"></label></div>
-    ${Number.isSafeInteger(item.taxExcludedAmount)?'<p class="scan-tax-excluded">OCR税抜印字額（値引き後）：'+yen(item.taxExcludedAmount)+(Number.isSafeInteger(item.ocrDiscount)&&item.ocrDiscount>0?' ／ 値引き：'+yen(item.ocrDiscount):'')+(item.taxCalculation==='printed-total-proportional'?' ／ 配分税額：'+yen(item.allocatedTax)+'（'+item.taxRate+'%）':'')+'</p>':''}
+    <div class="scan-input-pair"><label class="scan-field">数量<input name="qty-${i}" type="number" min="1" step="1" required value="${esc(item.quantity)}"><span class="scan-field-hint" data-scan-hint="qty-${i}" hidden></span></label>
+    <label class="scan-field">税込金額（円）<input name="amount-${i}" type="number" min="0" step="1" required value="${esc(item.amount)}" placeholder="金額を入力"><span class="scan-field-hint" data-scan-hint="amount-${i}" hidden></span></label></div>
+    ${Number.isSafeInteger(item.taxExcludedAmount)?'<p class="scan-tax-excluded">税抜金額：'+yen(item.taxExcludedAmount)+(Number.isSafeInteger(item.ocrDiscount)&&item.ocrDiscount>0?' ／ 値引き：'+yen(item.ocrDiscount):'')+(item.taxCalculation==='printed-total-proportional'?' ／ '+(scanDraft.taxDerivedFromTotals||scanDraft.taxRateCalculated?'計算税額':'税額')+'：'+yen(item.allocatedTax):'')+'</p>':''}
    </div>`).join('')}
   <button type="button" class="secondary" data-act="scanAddItem">＋ 明細を追加</button>
   ${scanDraft.items.some(x=>!x.productId&&x.name.trim())?'<button type="button" class="secondary" data-act="scanBulkProducts">未照合商品をまとめて登録</button>':''}
   <div class="panel scan-review-total">
    ${UI.sectionHeading({title:'合計の確認'})}
-   <p>印字合計：${scanDraft.total===null?'未検出':yen(scanDraft.total)}</p>
-    ${Number.isSafeInteger(scanDraft.printedCount)?'<p>印字点数：'+scanDraft.printedCount+'点</p><p id="scan-count-text" class="hint"></p>':''}
-   <p id="scan-sum-text" class="hint">明細合計を表示します。レシート原本と照合してから保存してください。</p>
+   <p id="scan-sum-text" class="scan-total-figure" aria-live="polite">合計金額：—</p>
+   <p id="scan-count-text" class="scan-total-count">購入点数：—</p>
+   <div id="scan-total-warning" class="scan-state-note scan-state-warning" hidden></div>
+   <div id="scan-count-warning" class="scan-state-note scan-state-warning" hidden></div>
    <div id="scan-duplicate-warning" ${scanDuplicates(scanDraft).length?'':'hidden'}>
-    <p class="scan-warning">同じ店舗・日付・明細のレシートが登録されています。</p>
+    <p class="scan-warning">同じレシートが登録されている可能性があります。</p>
     <label class="scan-check"><input type="checkbox" name="duplicateOk"> 重複登録の可能性を確認しました</label>
    </div>
-   ${scanDraft.source==='chatgpt-rebuild'?'<label class="scan-check"><input type="checkbox" name="photoReviewOk" required>写真と照合し、対象レシート・商品名・行数・数量・金額・日付・店舗を確認しました</label>':''}
-   <p class="hint">「保存」を押すことで、内容の確認を確定します。</p>
   </div>
-  <button class="primary" type="submit">${scanDraft.recordId?'修正したレシートを保存':'確認したレシートを一括保存'}</button>
-  <p class="hint">写真やOCR全文は保存しません。現在のGASはログインを使わない共有接続のため、個人情報を含む記録の扱いには注意してください。</p>
+  <button class="primary" type="submit">${scanDraft.recordId?'修正したレシートを保存':'保存'}</button>
  </form>`;
 }
 function scanPhotoSection(){
  if(!scanPhotos.length){
-  return scanDraft?'<p class="hint scan-photo-unavailable">写真は端末に保存されていません。レシート原本を見て内容を確認してください。</p>':
+  return scanDraft?'<p class="hint scan-photo-unavailable">写真は残っていません。元のレシートを確認してください。</p>':
    '<section class="scan-photo-section scan-photo-empty"><button type="button" class="secondary scan-photo-add" data-act="scanAddPhotos">'+miniIcon('plus')+'<span>写真を選択</span></button></section>';
  }
  const editing=!scanDraft&&!scanBusy;
@@ -558,7 +555,7 @@ function scanPhotoSection(){
    <span class="scan-photo-heading-right">${scanPhotosExpanded?'閉じる':'開く'} ${chevron(scanPhotosExpanded?'up':'down')}</span>
   </button>
   <div id="scan-photo-content" ${scanPhotosExpanded?'':'hidden'}>
-   <p class="hint scan-photo-instruction">写真をタップして拡大確認できます。</p>
+   
    <div class="scan-photo-grid">${scanPhotos.map((file,i)=>`
     <div class="scan-photo-tile">
      <div class="scan-photo-thumb">
@@ -715,7 +712,7 @@ async function runReceiptScan(){
    scanWarnings.has('unassigned_price')?'商品に対応付けられない金額を検出しました。':'',
    !date?'購入日は原本を見て確認してください。':''
   ].filter(Boolean);
-  scanStatus='読み取り完了：'+allItems.length+'明細。原本と照合して修正してください。'+
+  scanStatus=allItems.length+'件の明細を読み取りました。'+
    (scanNotices.length?' '+scanNotices.join(' '):'');
  }catch(e){
   console.error('レシートOCR失敗',e);
@@ -1529,16 +1526,13 @@ app.addEventListener('submit',e=>{e.preventDefault();const form=e.target;const d
     category_id:null
    };
   });
-  if(scanDraft.source==='chatgpt-rebuild'&&!d.get('photoReviewOk')){
-   fieldNotice(form,'写真の全明細と店舗・日付・数量・金額を確認し、チェックしてください');return;
-  }
   if(scanDraft.items.some(isUnconfirmedBarcodeLine)){
    fieldNotice(form,'商品コードのみの行は保存できません。写真からの全面再解析を使用するか、不要な行を削除してください');return;
   }
   if(lines.some(x=>(!x.raw_name&&!x.confirmed_name)||
      !Number.isSafeInteger(x.quantity)||x.quantity<1||
      !Number.isSafeInteger(x.amount_tax_included)||x.amount_tax_included<0)){
-   fieldNotice(form,'数量・税込明細合計をすべて確認してください');return;
+   refreshScanTotalUI();fieldNotice(form,'赤い項目を修正してください');return;
   }
   const editedDate=String(d.get('date')||'');
   const editedChain=String(d.get('chain')||'');
