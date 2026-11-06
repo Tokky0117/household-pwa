@@ -949,12 +949,12 @@ function recordAddView(){
  const optsCategory=[{value:'',label:'未分類'},...CATS.map((label,index)=>({label,value:String(index)}))];
  const today=daysFromDate(new Date());
  const chainOptions=catalogue.chains.map(c=>({value:c.id,label:c.name}));
- if(liveMode)chainOptions.push({value:'__new__',label:'＋ 新しいチェーンを登録'});
+ if(liveMode)chainOptions.push({value:'__new__',label:'＋ 新しい店舗を追加'});
  const chainValue=catalogue.chains[0]?.id||(liveMode?'__new__':'');
  const fields=[
-  UI.formField({id:'record-chain',name:'chain',label:'チェーン',control:'select',value:chainValue,options:chainOptions}),
+  UI.formField({id:'record-chain',name:'chain',label:'店舗',control:'select',value:chainValue,options:chainOptions}),
   ...(liveMode?['<div id="record-new-chain-row"'+(chainValue==='__new__'?'':' hidden')+'>'+
-    UI.formField({id:'record-new-chain',name:'chain_name',label:'新しいチェーン名',maxlength:80,placeholder:'例：スーパー名'})+'</div>']:[]),
+    UI.formField({id:'record-new-chain',name:'chain_name',label:'店舗名',maxlength:80,placeholder:'例：スーパー名'})+'</div>']:[]),
   UI.formField({id:'record-date',name:'date',label:type==='receipt'?'購入日':'値札確認日',type:'date',value:today,required:true}),
   UI.formField({id:'record-product',name:'product',label:'商品',control:'select',value:'',options:optsProduct}),
   UI.formField({id:'record-raw',name:'raw',label:'明細の商品名',value:'',placeholder:'例：牛乳'}),
