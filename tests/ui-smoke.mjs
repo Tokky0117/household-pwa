@@ -274,10 +274,12 @@ assert.ok(ui.receiptScanView().includes('data-act="scanAddPhotos"'),
  'Empty OCR screen has a direct photo picker button');
 assert.equal((ui.receiptScanView().match(/写真を選択してください。/g)||[]).length,1,
  'Empty OCR screen displays one instruction only');
-assert.equal((indexHtml.match(/type="file" accept="image\/\*" multiple/g)||[]).length,2,
- 'Both photo inputs restore the previous native multi-selection UI');
+assert.equal((indexHtml.match(/type="file" accept="image\/\*"/g)||[]).length,2,
+ 'Both native photo inputs use confirmed single-photo selection');
+assert.ok(!indexHtml.includes('accept="image/*" multiple'),
+ 'Single-photo selection avoids the native multi-selection confirmation step');
 assert.ok(source.includes("scanPhotos.push(...files)"),
- 'Subsequent single-photo selections accumulate in the existing scan');
+ 'Repeated single-photo selections accumulate through the existing add-photo action');
 assert.ok(!source.includes('getUserMedia(')&&!source.includes('scanFromCamera'),
  'Custom camera and custom two-choice UI are gone');
 assert.ok(source.includes("mode:'gray',crop:null"),'Best OCR preprocessing is fixed internally');
