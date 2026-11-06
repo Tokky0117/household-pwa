@@ -2331,45 +2331,60 @@ app.addEventListener('touchcancel',e=>{
 
 // Update the possible-duplicate warning as form fields change.
 function refreshScanTotalUI(){
- const form=document.getElementById('scanConfirmForm');
- const node=document.getElementById('scan-sum-text');
- if(!form||!node||!scanDraft)return;
+ const form=document.getElementById('scanConfirmForm');if(!form||!scanDraft)return;
  const d=new FormData(form);
- // Same validator as OCR parse(): always use the live form values, not the
- // old OCR calculation stored in the draft. Do not re-render active inputs.
- const formItems=scanDraft.items.map((item,i)=>({
-  quantity:String(d.get('qty-'+i)||'').trim(),
-  amount:String(d.get('amount-'+i)||'').trim(),
+ const rows=scanDraft.items.map((item,i)=>({
+  quantity:String(d.get('qty-'+i)||'').trim(),amount:String(d.get('amount-'+i)||'').trim(),
   quantityUncertain:!!item.quantityUncertain,
-  taxExcludedAmount:item.taxExcludedAmount,
-  allocatedTax:item.allocatedTax
+  taxExcludedAmount:item.taxExcludedAmount,allocatedTax:item.allocatedTax
  }));
- // A single adapter projects both OCR and ChatGPT drafts into the same
- // P2 arithmetic validation, including changes currently visible in the form.
- const result=window.KurashiReceiptReview.evaluateDraft(scanDraft,formItems);
- const countNode=document.getElementById('scan-count-text');
- if(countNode){
-  const count=result.quantitySum;
-  const mismatch=result.checks.count==='mismatch';
-  countNode.textContent=count===null?'購入点数：数量未確定の行があります。':
-   '購入点数：'+count+'点'+(mismatch?'／印字点数と一致しません。明細の過不足を確認してください。':'／印字点数と一致');
-  countNode.classList.toggle('scan-warning',mismatch);
+ const result=window.KurashiReceiptReview.evaluateDraft(scanDraft,rows);
+ function mark(name,status,message){
+  const input=form.elements.namedItem(name);if(!input)return;
+  const label=input.closest('.scan-field');
+  label?.classList.toggle('scan-state-error',status==='error');
+  label?.classList.toggle('scan-state-warning',status==='warning');
+  input.setAttribute('aria-invalid',String(status==='error'));
+  const hint=form.querySelector('[data-scan-hint="'+name+'"]');
+  if(hint){hint.hidden=!message;hint.textContent=message||'';}
  }
- const sum=result.amountSum;
- if(sum===null){
-  node.textContent='明細合計：金額未確定の行があります。';
-  node.classList.remove('scan-warning');return;
+ const date=String(d.get('date')||'');
+ const parsed=/^\d{4}-\d{2}-\d{2}$/.test(date)?new Date(date+'T12:00:00'):null;
+ const dateOk=!!parsed&&!Number.isNaN(parsed.getTime())&&
+  [parsed.getFullYear(),String(parsed.getMonth()+1).padStart(2,'0'),String(parsed.getDate()).padStart(2,'0')].join('-')===date;
+ mark('date',dateOk?'':'error',dateOk?'':'購入日を入力してください。');
+ scanDraft.items.forEach((item,i)=>{
+  const q=rows[i].quantity,v=rows[i].amount;
+  const validQty=/^\d+$/.test(q)&&Number.isSafeInteger(Number(q))&&Number(q)>0;
+  const validAmount=/^\d+$/.test(v)&&Number.isSafeInteger(Number(v))&&Number(v)>=0;
+  mark('qty-'+i,!validQty?'error':item.quantityUncertain?'warning':'',
+   !validQty?'数量を確認':item.quantityUncertain?'数量を確認':'');
+  const uncertain=!!item.issues?.some(code=>/amount|price|tax|discount/.test(code))||
+   scanDraft.taxBasis==='excluded'&&scanDraft.taxAllocationStatus!=='allocated';
+  mark('amount-'+i,!validAmount?'error':uncertain?'warning':'',
+   !validAmount?'金額を入力':uncertain?'金額を確認':'');
+  if(form.elements.namedItem('name-'+i)){
+   const name=String(d.get('name-'+i)||'').trim();
+   mark('name-'+i,name?'':'error',name?'':'商品名を入力');
+  }
+ });
+ const sum=document.getElementById('scan-sum-text'),count=document.getElementById('scan-count-text');
+ if(sum)sum.textContent='合計金額：'+(result.amountSum===null?'—':yen(result.amountSum));
+ if(count)count.textContent='購入点数：'+(result.quantitySum===null?'—':result.quantitySum+'点');
+ const totalWarning=document.getElementById('scan-total-warning');
+ const countWarning=document.getElementById('scan-count-warning');
+ const codes=(scanDraft.warnings||[]).map(w=>typeof w==='string'?w:w?.code);
+ const tm=result.checks.total==='mismatch',cm=result.checks.count==='mismatch';
+ if(totalWarning){
+  totalWarning.hidden=!(tm||codes.includes('conflicting_receipt_totals'));
+  totalWarning.textContent=tm?'合計金額を確認 ／ レシートの合計：'+yen(result.receiptTotal)+
+   ' ／ 差額：'+yen(Math.abs(result.amountDelta)):'レシートの合計を確認';
  }
- if(result.receiptTotal===null){
-  node.textContent='明細合計：'+yen(sum)+'（印字合計は未検出）';
-  node.classList.remove('scan-warning');return;
+ if(countWarning){
+  countWarning.hidden=!(cm||codes.includes('conflicting_printed_counts'));
+  countWarning.textContent=cm?'購入点数を確認 ／ レシートの点数：'+result.printedCount+
+   '点 ／ 差：'+Math.abs(result.quantitySum-result.printedCount)+'点':'レシートの点数を確認';
  }
- const diff=result.amountDelta;
- node.textContent='明細合計：'+yen(sum)+(diff===0?
-  '／印字合計と一致':
-  '／印字合計との差額：'+yen(Math.abs(diff))+
-   (diff>0?'（明細が多い）':'（明細が少ない）')+'。原本を確認してください。');
- node.classList.toggle('scan-warning',diff!==0);
 }
 function refreshScanDuplicateUI(){
  const form=document.getElementById('scanConfirmForm'),warn=document.getElementById('scan-duplicate-warning');
@@ -2397,9 +2412,6 @@ app.addEventListener('input',e=>{
    const index=Number(qty.name.slice(4)),item=scanDraft?.items[index];
    if(item?.quantityUncertain){
     item.quantityUncertain=false;
-    qty.classList.remove('scan-quantity-uncertain');
-    qty.removeAttribute('aria-describedby');
-    qty.closest('label')?.querySelector('.scan-quantity-hint')?.remove();
    }
   }
   syncScanReview();saveScanDraft();refreshScanDuplicateUI();refreshScanTotalUI();
