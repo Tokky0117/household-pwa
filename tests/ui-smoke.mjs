@@ -259,8 +259,10 @@ assert.ok(serviceWorker.includes("'./receipt-validation.js'"),
 assert.equal((indexHtml.match(/id="receipt-source-picker"/g)||[]).length,1);
 assert.equal((indexHtml.match(/id="scan-add-picker"/g)||[]).length,1);
 assert.ok(!ui.receiptScanView().includes('id="scan-add-picker"'));
-assert.ok(source.includes("document.addEventListener('change',e=>{"));
-assert.ok(documentHandlers.change?.length,'Native photo change is registered on stable document');
+assert.ok(source.includes("for(const type of ['input','change'])document.addEventListener(type,e=>"),
+ 'Native file selection listens for both input and change on the stable document');
+assert.ok(source.includes('completedPhotoPickers.has(picker)'),
+ 'A single photo selection cannot be applied twice on input and change');
 assert.ok(source.includes("picker.value=''"));
 assert.ok(source.includes("if(!files.length){picker.value='';return;}"),
  'Cancelled or empty file selection never reaches the receipt draft');

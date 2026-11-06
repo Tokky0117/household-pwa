@@ -1,4 +1,4 @@
-const APP_VERSION='0.72.2';
+const APP_VERSION='0.72.3';
 const CATS=['飲食','キッチン','洗面・風呂','洗濯・掃除','その他'];
 const liveMode=!!window.KurashiLive; // Data source only; original Preview v46 UI components remain.
 const SEED=[['牛乳',0,true],['麦茶',0,false],['コーヒー',0,true],['卵',0,false],['キッチンペーパー',1,false],['ラップ',1,true],['食器用洗剤',1,true],['シャンプー',2,false],['歯磨き粉',2,true],['ハンドソープ',2,false],['洗濯洗剤',3,false],['柔軟剤',3,true],['トイレットペーパー',3,false],['乾電池',4,true],['ティッシュ',4,true]];
@@ -1298,16 +1298,20 @@ function updateComparisonPrices(){
 }
 // Native iOS photo pickers live outside #app to survive re-renders while
 // the Photos library is active, including its first permission prompt.
+// Browsers may report photo selection via 'input' before 'change'.
+ // Make both signals equivalent but commit a picker result at most once per tap.
+const completedPhotoPickers=new WeakSet();
 function openReceiptPhotoPicker(picker){
  if(!picker)return;
- // The native Photos picker has its own temporary selection state.
- // Start every invocation with an empty file input, and only accept 'change'.
- picker.value='';
- picker.click();
+ completedPhotoPickers.delete(picker);
+ picker.value=''; // Forget the previous native selection before reopening.
+ picker.click(); // Must remain synchronous inside the user's tap handler.
 }
 function acceptReceiptPhotos(picker){
+ if(completedPhotoPickers.has(picker))return;
  const files=[...(picker.files||[])].filter(f=>f.type.startsWith('image/'));
- if(!files.length){picker.value='';return;} // Cancel never adds or discards photos.
+ if(!files.length){picker.value='';return;} // Cancel is never a selection.
+ completedPhotoPickers.add(picker);
  if(picker.id==='receipt-source-picker')resetScan();
  if(scanPhotos.length+files.length>6){
   scanStatus='一度に読み込める写真は最大6枚です。';
@@ -1319,7 +1323,7 @@ function acceptReceiptPhotos(picker){
  picker.value=''; // Same photo can be selected again.
  render();
 }
-document.addEventListener('change',e=>{
+for(const type of ['input','change'])document.addEventListener(type,e=>{
  if(e.target.id==='receipt-source-picker'||e.target.id==='scan-add-picker')
   acceptReceiptPhotos(e.target);
 });

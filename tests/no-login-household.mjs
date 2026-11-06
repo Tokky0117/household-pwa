@@ -9,6 +9,11 @@ const api=readFileSync(new URL('../gas/Api.gs',import.meta.url),'utf8');
 const client=readFileSync(new URL('../live-client.js',import.meta.url),'utf8');
 const app=readFileSync(new URL('../app.js',import.meta.url),'utf8');
 const validator=readFileSync(new URL('../receipt-validation.js',import.meta.url),'utf8');
+const html=readFileSync(new URL('../index.html',import.meta.url),'utf8');
+const pickerMarkup=[...html.matchAll(/<input id="(?:receipt-source-picker|scan-add-picker)"[^>]*>/g)]
+ .map(match=>match[0]).join('');
+assert.equal((pickerMarkup.match(/type="file"/g)||[]).length,2,
+ 'DOM tests must mirror the real iPhone photo input elements from index.html');
 const reviewModel=readFileSync(new URL('../receipt-review-model.js',import.meta.url),'utf8');
 const schema=vm.runInNewContext(setup+'; KURASHI_NEW_SCHEMA',{});
 
@@ -124,7 +129,7 @@ const mockFetch=async(url,options)=>{
  return {ok:true,text:async()=>JSON.stringify(response)};
 };
 function appSession(idbFactory=factory){
- const dom=new JSDOM('<!doctype html><html lang="ja"><head></head><body><div id="app"></div><input id="receipt-source-picker" type="file" accept="image/*"><input id="scan-add-picker" type="file" accept="image/*"></body></html>',{
+ const dom=new JSDOM('<!doctype html><html lang="ja"><head></head><body><div id="app"></div>'+pickerMarkup+'</body></html>',{
   url:'https://tokky0117.github.io/household-pwa/previews/preview-v46-clean-base/',
   runScripts:'outside-only',pretendToBeVisual:true
  });
@@ -994,11 +999,19 @@ picker.dispatchEvent(new scanSession.window.Event('cancel',{bubbles:false}));
 picker.dispatchEvent(new scanSession.window.Event('change',{bubbles:true}));
 assert.equal(scanSession.window.document.querySelector('.receipt-scan-page'),null,
  'native Photos cancel does not create an OCR scan or empty screen');
+// The first successful selection after a cancelled picker must work. Some
+// iOS Safari versions emit 'input' but do not deliver the first 'change'.
+scanSession.window.document.querySelector('[data-act="receiptScan"]').click();
+assert.equal(opens,2,'file selector can reopen after the first cancelled attempt');
 const libraryFile=new scanSession.window.File(['synthetic receipt pixels'],
  'receipt.png',{type:'image/png'});
 Object.defineProperty(picker,'files',{configurable:true,value:[libraryFile]});
+picker.dispatchEvent(new scanSession.window.Event('input',{bubbles:true}));
+assert.match(scanSession.window.document.body.textContent,/選択した写真 1枚/,
+ 'first native input event commits the selected image');
 picker.dispatchEvent(new scanSession.window.Event('change',{bubbles:true}));
-assert.match(scanSession.window.document.body.textContent,/選択した写真 1枚/);
+assert.equal(scanSession.window.document.querySelectorAll('.scan-photo-tile').length,1,
+ 'input then change for the same native selection cannot import twice');
 assert.ok(scanSession.window.document.querySelector('.scan-photo-grid'),'photo selection shows thumbnail grid');
 assert.ok(scanSession.window.document.querySelector('[data-act="scanRemovePhoto"][data-scan-row="0"]'),'photo can be removed directly by index');
 assert.ok(scanSession.window.document.querySelector('[data-act="scanStart"]'),'scan remains the primary action');
