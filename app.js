@@ -687,7 +687,7 @@ async function runReceiptScan(){
   });
   saveScanDraft();
   scanPhotosExpanded=false;
-  scanStatus=allItems.length+'件の明細を読み取りました。';
+  scanStatus=allItems.length+'件の購入明細を読み取りました。';
  }catch(e){
   console.error('レシートOCR失敗',e);
   if(token===scanToken){scanRuntime=null;scanStatus='読み取れませんでした：'+(e?.message||String(e))+
