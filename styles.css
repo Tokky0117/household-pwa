@@ -2329,3 +2329,10 @@ html,body{touch-action:pan-x pan-y}
 .half-sheet.receipt-product-modal .formfield select{
  font-size:16px
 }
+
+/* Receipt confirmation sections: spacing only. Keep shared heading/form styles. */
+.scan-review>.ui-section-heading{margin:22px 0 10px}
+.scan-receipt-meta>.ui-section-heading{margin:20px 0 9px}
+.scan-receipt-meta>.scan-field:first-of-type{margin-top:8px}
+.scan-review-total>.ui-section-heading{margin:0 0 8px}
+.scan-review-total>p:first-of-type{margin-top:0}

@@ -1032,3 +1032,10 @@ assert.equal(p4RebuildModel.individuallyConfirmed,false);
 assert.ok(!JSON.stringify(p4Rebuild).includes('ocr-p4'),
  'full photo rebuild cannot recycle OCR source identifiers');
 console.log('P4 common review adapter, provenance, row identity and P2 validation OK');
+
+// v0.73: Receipt OCR review information hierarchy; preserve validation/confirmation.
+assert.ok(source.includes("const APP_VERSION='0.73.0'"), 'UI review revision version is current');
+assert.ok(source.includes("UI.sectionHeading({title:'購入情報'})"), 'Receipt OCR review groups store and purchase date');
+assert.ok(source.includes("UI.sectionHeading({title:'購入明細',subtitle:scanDraft.items.length+'件'})"), 'Receipt OCR review identifies item list and count');
+assert.ok(source.includes("UI.sectionHeading({title:'合計の確認'})"), 'Receipt OCR review makes reconciliation distinct');
+assert.ok(source.includes("name=\"photoReviewOk\" required"), 'Photo reconstruction confirmation remains required');

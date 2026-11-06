@@ -1,4 +1,4 @@
-const APP_VERSION='0.72.4';
+const APP_VERSION='0.73.0';
 const CATS=['飲食','キッチン','洗面・風呂','洗濯・掃除','その他'];
 const liveMode=!!window.KurashiLive; // Data source only; original Preview v46 UI components remain.
 const SEED=[['牛乳',0,true],['麦茶',0,false],['コーヒー',0,true],['卵',0,false],['キッチンペーパー',1,false],['ラップ',1,true],['食器用洗剤',1,true],['シャンプー',2,false],['歯磨き粉',2,true],['ハンドソープ',2,false],['洗濯洗剤',3,false],['柔軟剤',3,true],['トイレットペーパー',3,false],['乾電池',4,true],['ティッシュ',4,true]];
@@ -497,11 +497,15 @@ function scanFormView(){
   <p class="hint">OCR・ChatGPTの文字・数量・金額には誤認識が残ります。必ず原本と照合してください。${scanDraft.source==='chatgpt-ocr'?' OCRとChatGPTの一意対応 '+scanDraft.matchedCount+'件、要確認 '+scanDraft.unmatchedCount+'件。':''}</p>
   ${scanDraft.source==='chatgpt-rebuild'?'<p class="scan-warning">ChatGPTによる写真再解析です。OCR明細'+esc(scanDraft.ocrReplacedCount||0)+'件は破棄しました。商品名・数量・金額・購入日・店舗を写真と照合してください。AIの回答は誤ることがあります。</p>':''}
   ${scanDraft.source==='ocr'&&receiptOcrRows(scanDraft).length?'<button type="button" class="secondary" data-act="chatGptAssist">ChatGPTで商品名・金額を確認</button>':''}
+  <section class="scan-receipt-meta" aria-label="購入情報">
+  ${UI.sectionHeading({title:'購入情報'})}
   <label class="scan-field">チェーン<select name="chain" id="scan-chain">${chains}</select></label>
   <label class="scan-field" id="scan-new-chain-wrap" ${scanDraft.chainId?'hidden':''}>新しいチェーン名<input name="chain_name" maxlength="80" placeholder="新しいチェーン名" value="${esc(scanDraft.chainName||'')}"></label>
   <label class="scan-field">支店名（任意）<input name="branch_name" maxlength="80" placeholder="例：駅前店" value="${esc(scanDraft.branchName||'')}"></label>
   <label class="scan-field">購入日<input name="date" type="date" required value="${esc(scanDraft.date)}"></label>
    ${!scanDraft.date?'<p class="scan-warning">購入日をOCRで確定できませんでした。レシートを見て入力してください。</p>':''}
+  </section>
+  ${UI.sectionHeading({title:'購入明細',subtitle:scanDraft.items.length+'件'})}
   ${scanDraft.items.map((item,i)=>`<div class="panel scan-review-item">
     <div class="row" style="justify-content:space-between"><strong>明細 ${i+1}</strong><button type="button" class="secondary" data-act="scanRemoveItem" data-scan-row="${i}">削除</button></div>
     ${item.issues.length?'<p class="scan-warning">要確認：'+esc(item.issues.join('、'))+'</p>':''}
@@ -526,7 +530,8 @@ function scanFormView(){
    </div>`).join('')}
   <button type="button" class="secondary" data-act="scanAddItem">＋ 明細を追加</button>
   ${scanDraft.items.some(x=>!x.productId&&x.name.trim())?'<button type="button" class="secondary" data-act="scanBulkProducts">未照合商品をまとめて登録</button>':''}
-  <div class="panel">
+  <div class="panel scan-review-total">
+   ${UI.sectionHeading({title:'合計の確認'})}
    <p>印字合計：${scanDraft.total===null?'未検出':yen(scanDraft.total)}</p>
     ${Number.isSafeInteger(scanDraft.printedCount)?'<p>印字点数：'+scanDraft.printedCount+'点</p><p id="scan-count-text" class="hint"></p>':''}
    <p id="scan-sum-text" class="hint">明細合計を表示します。レシート原本と照合してから保存してください。</p>
@@ -553,7 +558,7 @@ function scanPhotoSection(){
    <span class="scan-photo-heading-right">${scanPhotosExpanded?'閉じる':'開く'} ${chevron(scanPhotosExpanded?'up':'down')}</span>
   </button>
   <div id="scan-photo-content" ${scanPhotosExpanded?'':'hidden'}>
-   <p class="hint scan-photo-instruction">写真をタップすると拡大して確認できます。</p>
+   <p class="hint scan-photo-instruction">写真をタップして拡大確認できます。</p>
    <div class="scan-photo-grid">${scanPhotos.map((file,i)=>`
     <div class="scan-photo-tile">
      <div class="scan-photo-thumb">
