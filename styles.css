@@ -2366,3 +2366,13 @@ html,body{touch-action:pan-x pan-y}
  .scan-input-pair{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
  .scan-product-actions{grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}
 }
+
+/* Equal treatment of red/yellow: the icon and note inherit the border color. */
+.scan-state-note::before{content:"⚠";display:inline-block;margin-right:6px;color:inherit}
+.scan-field.scan-state-warning .scan-field-hint::before,
+.scan-field.scan-state-error .scan-field-hint::before{content:"⚠";margin-right:5px}
+.scan-field.scan-state-error + .scan-field-hint{color:#C53F3F}
+.scan-field.scan-state-warning + .scan-field-hint{color:#A97800}
+.scan-review-item .scan-product-association{min-width:0}
+.scan-review-item .scan-product-candidates{min-width:0;overflow-wrap:anywhere}
+.scan-review-item input[type="number"]{width:100%;min-width:0;max-width:100%}
