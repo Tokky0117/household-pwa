@@ -492,6 +492,7 @@ function scanFormView(){
      '<label class="scan-field">商品名<input name="name-'+i+'" maxlength="120" required value="'+esc(item.name)+'" placeholder="商品名"><span class="scan-field-hint" data-scan-hint="name-'+i+'" hidden></span></label>':
      '<div class="scan-field"><span>商品名</span><div class="scan-ocr-name" data-ocr-row="'+i+'">'+esc(reviewModel.items[i].originalOcrName||'読み取り不可')+'</div></div>'}
     ${reviewModel.items[i].proposedName?'<p class="scan-name-candidate">候補：'+esc(reviewModel.items[i].proposedName)+'</p>':''}
+    ${(item.issues||[]).some(reason=>/商品名|商品コード|名称|名前/.test(String(reason)))?'<p class="scan-name-warning">商品名を確認</p>':''}
     <input type="hidden" name="product-${i}" value="${esc(scanResolvedProductId(item))}">
     <details class="scan-product-association">
       <summary class="scan-product-status">
@@ -2269,7 +2270,7 @@ function refreshScanTotalUI(){
   const validAmount=/^\d+$/.test(v)&&Number.isSafeInteger(Number(v))&&Number(v)>=0;
   mark('qty-'+i,!validQty?'error':item.quantityUncertain?'warning':'',
    !validQty?'数量を確認':item.quantityUncertain?'数量を確認':'');
-  const uncertain=!!item.issues?.some(code=>/amount|price|tax|discount/.test(code))||
+  const uncertain=!!item.issues?.some(code=>/amount|price|tax|discount|金額|値引き|税/i.test(code))||
    scanDraft.taxBasis==='excluded'&&scanDraft.taxAllocationStatus!=='allocated';
   mark('amount-'+i,!validAmount?'error':uncertain?'warning':'',
    !validAmount?'金額を入力':uncertain?'金額を確認':'');
