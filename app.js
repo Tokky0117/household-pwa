@@ -485,25 +485,27 @@ function scanFormView(){
   <label class="scan-field">購入日<input name="date" type="date" required value="${esc(scanDraft.date)}"></label>
    <span class="scan-field-hint" data-scan-hint="date" hidden></span>
   </section>
-  ${UI.sectionHeading({title:'購入明細',subtitle:scanDraft.items.length+'件'})}
+  ${UI.sectionHeading({title:'購入明細',subtitle:scanDraft.items.length+'件'+(scanDraft.items.filter(x=>!scanResolvedProductId(x)&&x.name?.trim()).length?'・商品未照合'+scanDraft.items.filter(x=>!scanResolvedProductId(x)&&x.name?.trim()).length+'件':'')})}
   ${scanDraft.items.map((item,i)=>`<div class="panel scan-review-item">
     <div class="row" style="justify-content:space-between"><strong>明細 ${i+1}</strong><button type="button" class="secondary" data-act="scanRemoveItem" data-scan-row="${i}">削除</button></div>
-    ${item.issues.length?'<p class="scan-state-note scan-state-warning">明細を確認</p>':''}
     ${['manual','photo'].includes(item.inputOrigin)||item.ocrRawName===undefined?
      '<label class="scan-field">商品名<input name="name-'+i+'" maxlength="120" required value="'+esc(item.name)+'" placeholder="商品名"><span class="scan-field-hint" data-scan-hint="name-'+i+'" hidden></span></label>':
      '<div class="scan-field"><span>商品名</span><div class="scan-ocr-name" data-ocr-row="'+i+'">'+esc(reviewModel.items[i].originalOcrName||'読み取り不可')+'</div></div>'}
     ${reviewModel.items[i].proposedName?'<p class="scan-name-candidate">候補：'+esc(reviewModel.items[i].proposedName)+'</p>':''}
     <input type="hidden" name="product-${i}" value="${esc(scanResolvedProductId(item))}">
-    <div class="scan-product-association">
-      <span class="scan-product-association-label">商品照合</span>
-      <strong>${(()=>{const p=catalogue.products.find(x=>x.id===scanResolvedProductId(item));
-       return p?esc(productTitle(p))+' ／ 日用品：'+esc(linkedItemName(p)) :'商品未照合'})()}</strong>
+    <details class="scan-product-association">
+      <summary class="scan-product-status">
+       <span class="scan-product-status-label">${scanResolvedProductId(item)?'照合済み':'商品未照合'}</span>
+       <strong>${(()=>{const p=catalogue.products.find(x=>x.id===scanResolvedProductId(item));
+        return p?esc(productTitle(p))+' ／ 日用品：'+esc(linkedItemName(p)):''})()}</strong>
+       <span class="scan-product-toggle">${scanResolvedProductId(item)?'変更':'照合・登録'}</span>
+      </summary>
       <div class="scan-product-actions">
        <button type="button" class="secondary" data-act="scanPickExisting" data-scan-row="${i}">既存商品と照合</button>
        <button type="button" class="tertiary" data-act="scanNewProduct" data-scan-row="${i}">＋ 新しい商品を登録</button>
       </div>
       <div class="scan-product-candidates">${scanSuggestionButtons(item,i)}</div>
-    </div>
+    </details>
     <div class="scan-input-pair"><label class="scan-field">数量<input name="qty-${i}" type="number" min="1" step="1" required value="${esc(item.quantity)}"><span class="scan-field-hint" data-scan-hint="qty-${i}" hidden></span></label>
     <label class="scan-field">税込金額（円）<input name="amount-${i}" type="number" min="0" step="1" required value="${esc(item.amount)}" placeholder="金額を入力"><span class="scan-field-hint" data-scan-hint="amount-${i}" hidden></span></label></div>
     ${Number.isSafeInteger(item.taxExcludedAmount)?'<p class="scan-tax-excluded">税抜金額：'+yen(item.taxExcludedAmount)+(Number.isSafeInteger(item.ocrDiscount)&&item.ocrDiscount>0?' ／ 値引き：'+yen(item.ocrDiscount):'')+(item.taxCalculation==='printed-total-proportional'?' ／ '+(scanDraft.taxDerivedFromTotals||scanDraft.taxRateCalculated?'計算税額':'税額')+'：'+yen(item.allocatedTax):'')+'</p>':''}
@@ -1357,12 +1359,13 @@ function syncScanReview(){
    if(hidden)hidden.value=it.productId;
    if(it.productId!==previousId){
     relinked=true;
-    const label=form.querySelectorAll('.scan-review-item')[i]
-     ?.querySelector('.scan-product-association strong');
-    if(label){
+    const association=form.querySelectorAll('.scan-review-item')[i]
+     ?.querySelector('.scan-product-association');
+    if(association){
      const p=catalogue.products.find(x=>x.id===it.productId);
-     label.textContent=p?productTitle(p)+' ／ 日用品：'+linkedItemName(p):
-      '未照合（レシートだけの保存も可能）';
+     association.querySelector('strong').textContent=p?productTitle(p)+' ／ 日用品：'+linkedItemName(p):'';
+     association.querySelector('.scan-product-status-label').textContent=p?'照合済み':'商品未照合';
+     association.querySelector('.scan-product-toggle').textContent=p?'変更':'照合・登録';
     }
    }
   }else{
