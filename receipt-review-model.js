@@ -108,7 +108,7 @@
     amount:line.amount===null?'':line.amount,
     productId:'',manuallyLinked:false,autoLinked:false,
     quantityOrigin:'chatgpt-photo-candidate',amountOrigin:'chatgpt-photo-candidate',
-    issues:['ChatGPTが写真から抽出した候補です。原本と照合してください']
+    issues:[]
    }))}
  }
  // ReviewModel is derived from the old draft. It never marks any item
