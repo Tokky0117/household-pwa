@@ -1075,7 +1075,7 @@ const activeReceiptForm=scanSession.window.document.getElementById('scanConfirmF
 const activeAmount=activeReceiptForm.querySelector('[name="amount-0"]');
 activeAmount.value='420';
 activeAmount.dispatchEvent(new scanSession.window.Event('input',{bubbles:true}));
-assert.match(activeReceiptForm.querySelector('#scan-total-warning').textContent,/差額：20/,
+assert.match(activeReceiptForm.querySelector('#scan-total-warning').textContent,/レシート記載額/,
  'P2 edited amount immediately shows a mismatch from the printed total');
 activeAmount.value='440';
 activeAmount.dispatchEvent(new scanSession.window.Event('input',{bubbles:true}));
@@ -1107,7 +1107,7 @@ assert.ok(resumedForm.querySelector('#scan-count-text'),
 const resumedQty=resumedForm.querySelector('[name="qty-0"]');
 resumedQty.value='3';
 resumedQty.dispatchEvent(new resumedScan.window.Event('input',{bubbles:true}));
-assert.match(resumedForm.querySelector('#scan-count-warning').textContent,/購入点数を確認/,
+assert.match(resumedForm.querySelector('#scan-count-warning').textContent,/レシートの購入点数と一致しません/,
  'P2 quantity mismatch is recomputed immediately after editing the draft');
 resumedQty.value='2';
 resumedQty.dispatchEvent(new resumedScan.window.Event('input',{bubbles:true}));
@@ -1193,35 +1193,39 @@ assert.ok(learned.some(x=>x.chainId===chainForCorrection&&
 correctReopened.window.close();
 console.log('v60: persistent OCR corrections with previous offline queue: OK');
 
-/* One screen, multiple unmatched lines: batch registration uses existing
- * product.create queue and the existing item group master. */
+/* Unmatched receipt items remain separate from product creation; individual
+ * registration uses the same durable product.create queue. */
 let bulkUI=appSession();
-await waitFor(()=>bulkUI.window.KurashiLive.state().loaded,'batch registration loaded');
+await waitFor(()=>bulkUI.window.KurashiLive.state().loaded,'individual receipt registration loaded');
 bulkUI.window.document.querySelector('[data-tab="receipt"]').click();
 prepareOcrImport(bulkUI);
 bulkUI.window.eval(importer);
 const batchJson={...chatJson,receiptTotal:410,printedCount:1,items:[{
- name:'レシート一括登録テスト固有',code:null,quantity:1,
+ name:'レシート個別登録テスト固有',code:null,quantity:1,
  unitPrice:410,grossAmount:410,discount:0,netAmount:410
 }]};
 bulkUI.window.document.querySelector('#chatgpt-input').value=JSON.stringify(batchJson);
 await completeOcrImport(bulkUI);
-assert.ok(bulkUI.window.document.querySelector('[data-act="scanBulkProducts"]'),
- 'unmatched product offers batch create');
-bulkUI.window.document.querySelector('[data-act="scanBulkProducts"]').click();
-const bulkForm=bulkUI.window.document.querySelector('#scanBulkProductsForm');
-assert.ok(bulkForm,'one batch sheet without row-by-row modal navigation');
+assert.equal(bulkUI.window.document.querySelector('[data-act="scanBulkProducts"]'),null,
+ 'removed batch action cannot interrupt receipt photo review');
+const unmatchedStatus=bulkUI.window.document.querySelector('.scan-product-association');
+assert.ok(unmatchedStatus&&unmatchedStatus.textContent.includes('商品未照合'),
+ 'an unmatched product has an explicit status');
+unmatchedStatus.open=true;
+bulkUI.window.document.querySelector('[data-act="scanNewProduct"]').click();
+const individualForm=bulkUI.window.document.querySelector('#scanProductForm');
+assert.ok(individualForm,'unmatched item opens individual master creation');
 const firstGroup=temp.call('bootstrap').data.item_groups[0].item_group_id;
-bulkForm.querySelector('[name="group-0"]').value=firstGroup;
-bulkForm.dispatchEvent(new bulkUI.window.Event('submit',{bubbles:true,cancelable:true}));
+individualForm.querySelector('[name="group"]').value=firstGroup;
+individualForm.dispatchEvent(new bulkUI.window.Event('submit',{bubbles:true,cancelable:true}));
 await waitFor(()=>!!bulkUI.window.document.querySelector('#scanConfirmForm'),
- 'returns to the same receipt review after grouped registration');
+ 'individual registration returns to receipt review');
 await waitFor(()=>temp.call('bootstrap').data.products.some(p=>
- p.name==='レシート一括登録テスト固有'),'batch product syncs to Sheets');
+ p.name==='レシート個別登録テスト固有'),'individual product syncs to Sheets');
 await waitFor(()=>!!bulkUI.window.document.querySelector('#scanConfirmForm [name="product-0"]')?.value,
- 'newly confirmed product remains selected after local ID becomes Sheets ID');
+ 'individual product remains linked through local-to-Sheets ID translation');
 bulkUI.window.close();
-console.log('v60: unmatched receipt products batch register with durable queue OK');
+console.log('v75: unmatched receipt products register individually with durable queue OK');
 
 /* COSTCO KitKat: receipt's printed spelling remains historical raw_name,
  * while the canonical master belongs to the household's "チョコ" item. */
