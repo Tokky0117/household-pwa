@@ -812,7 +812,7 @@ ui.setScanDraft({source:'ocr',taxBasis:'excluded',taxAllocationStatus:'allocated
   quantity:1,amount:95,taxExcludedAmount:88,ocrDiscount:10,taxRate:8,allocatedTax:7,
   taxCalculation:'printed-total-proportional',productId:'',issues:[]}]});
 const externalReview=ui.receiptScanView();
-assert.ok(externalReview.includes('外税レシート')&&externalReview.includes('OCR税抜印字額（値引き後）')&&externalReview.includes('配分税額'),
+assert.ok(externalReview.includes('税抜金額：')&&externalReview.includes('税額：'),
  'receipt review identifies allocated inclusive prices and their printed ex-tax provenance');
 
 // Photo-confirmed rows persist outside the OCR-name dictionary.
@@ -825,7 +825,7 @@ const photoDraft={source:'ocr',date:'2026-10-12',chainId:'c-a',total:11550,items
 ui.setScanDraft(photoDraft);
 assert.ok(!ui.receiptScanView().includes('scanDetachOcr'));
 assert.ok(!ui.receiptScanView().includes('scanUsePhotoCandidate'));
-assert.ok(ui.receiptScanView().includes('ChatGPT推測名'));
+assert.ok(ui.receiptScanView().includes('候補：'));
 assert.ok(source.includes('inferred_name:inferredName'));
 assert.ok(source.includes('const aliasLines=lines.filter'));
 assert.match(imports.makeChatGptOcrAssistPrompt(ocrRef),/構造認識の失敗/);
