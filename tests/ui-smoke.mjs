@@ -1048,9 +1048,9 @@ assert.ok(source.includes('支店名を追加（任意）')&&source.includes('�
 assert.ok(source.includes('scanModalPhotoLinks()'),'Product sheets can open receipt photo viewer');
 assert.ok(css.includes('.scan-product-status{')&&css.includes('.scan-compare-data{'),'Compact card and comparison layout styles exist');
 
-const previewWorkflow=readFileSync(new URL('../.github/workflows/pages-previews.yml',import.meta.url),'utf8');
-assert.ok(previewWorkflow.includes('household-preview-$slug-$revision')&&
- previewWorkflow.includes('git rev-parse --short=12'),
+const previewCacheWorkflow=readFileSync(new URL('../.github/workflows/pages-previews.yml',import.meta.url),'utf8');
+assert.ok(previewCacheWorkflow.includes('household-preview-$slug-$revision')&&
+ previewCacheWorkflow.includes('git rev-parse --short=12'),
  'Preview service-worker cache key must change with branch revision');
 ui.setScanDraft({source:'ocr',date:'2026-11-07',chainId:'c-a',total:100,
  items:[{name:'読取注意の商品',ocrRawName:'読取注意の商品',quantity:1,amount:100,
