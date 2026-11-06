@@ -404,8 +404,8 @@ assert.match(newPrompt,/OCR診断/,'correction reasoning must be separate from J
 assert.match(newPrompt,/商品行数が一致/,'OCR splitting mismatches are inspected');
 ui.setScanDraft({...rowOcr,items:[{...rowOcr.items[0],quantityUncertain:true}]});
 const uncertainHtml=ui.receiptScanView();
-assert.ok(uncertainHtml.includes('scan-quantity-uncertain'));
-assert.ok(uncertainHtml.includes('数量要確認'));
+assert.ok(uncertainHtml.includes('data-scan-hint="qty-0"'), 'uncertain quantity has an inline status target');
+assert.ok(source.includes("item.quantityUncertain?'warning'"), 'uncertain quantity receives yellow warning');
 ui.setScanDraft({...rowOcr,recordId:'saved-receipt',items:[
  {...rowOcr.items[0],savedOcrName:true},
  {name:'手入力の追加明細',inputOrigin:'manual',quantity:1,amount:120,productId:'',issues:[]}
@@ -435,7 +435,7 @@ assert.match(newProductHtml,/紐付けしない（商品だけ登録）/,'new pr
 assert.ok(!newProductHtml.includes('name="group" required'),
  'item group selection is optional, not forced');
 const listingHtml=ui.receiptScanView();
-assert.ok(listingHtml.includes('OCR明細名（変更不可）')&&
+assert.ok(listingHtml.includes('<span>商品名</span>')&&
  listingHtml.includes('既存商品と照合')&&listingHtml.includes('新しい商品を登録'),
  'scan review clearly distinguishes printed text and master product actions');
 const bulkHtml=ui.scanBulkProductsView();
@@ -485,9 +485,9 @@ ui.setScanDraft({source:'ocr',date:'',chainId:'c-a',total:11550,printedCount:5,
  items:[{name:'OCR商品',ocrRawName:'OCR商品',ocrRowId:'ocr-test',quantity:1,
  amount:1290,productId:'',issues:[]}]});
 const countReview=ui.receiptScanView();
-assert.ok(countReview.includes('印字点数：5点')&&countReview.includes('scan-count-text'),
+assert.ok(countReview.includes('scan-count-text')&&countReview.includes('scan-count-warning'),
  'Printed item count is shown independently from extracted rows');
-assert.ok(countReview.includes('購入日をOCRで確定できませんでした'),
+assert.ok(countReview.includes('data-scan-hint="date"'),
  'Unknown date warns the user before saving');
 assert.ok(source.includes('scanDraft.items.splice(Number(el.dataset.scanRow),1);saveScanDraft();'),
  'Deleting a false OCR merchandise row persists the corrected draft');
@@ -883,8 +883,8 @@ assert.ok(replacement.items.every(x=>x.inputOrigin==='photo'&&x.productId===''&&
 assert.equal(nineOcrDraft.items.length,9,'rebuild preview does not mutate OCR before confirmation');
 ui.setScanDraft(replacement);
 const photoRebuildReview=ui.receiptScanView();
-assert.match(photoRebuildReview,/OCR明細9件は破棄しました/);
-assert.match(photoRebuildReview,/name="photoReviewOk"/);
+assert.ok(photoRebuildReview.includes('写真と内容を確認してください。'));
+assert.doesNotMatch(photoRebuildReview,/name="photoReviewOk"/);
 assert.equal((photoRebuildReview.match(/name="name-\d+"/g)||[]).length,5,
  'all five image-derived line names are editable');
 assert.equal(imports.parseChatGptOcrResponse(suggestionJson).version,'kurashi-receipt-assist-1',
@@ -910,8 +910,8 @@ const incompleteDraft=ui.makeChatGptReceiptRebuildDraft(nineOcrDraft,incompleteR
 assert.equal(incompleteDraft.items[0].quantity,1);
 assert.equal(incompleteDraft.items[0].quantityUncertain,true);
 assert.equal(incompleteDraft.items[0].amount,'');
-assert.ok(source.includes("scanDraft.source==='chatgpt-rebuild'&&!d.get('photoReviewOk')"),
- 'server save is blocked before explicit review checkbox is checked');
+assert.ok(!source.includes("!d.get('photoReviewOk')"),
+ 'saving no longer requires a formal photo-review checkbox');
 console.log('v69: photo-only rebuild, strict schema, 5 actual items, and manual review checks OK');
 
 
@@ -1034,8 +1034,10 @@ assert.ok(!JSON.stringify(p4Rebuild).includes('ocr-p4'),
 console.log('P4 common review adapter, provenance, row identity and P2 validation OK');
 
 // v0.73: Receipt OCR review information hierarchy; preserve validation/confirmation.
-assert.ok(source.includes("const APP_VERSION='0.73.0'"), 'UI review revision version is current');
+assert.ok(source.includes("const APP_VERSION='0.74.0'"), 'UI review revision version is current');
 assert.ok(source.includes("UI.sectionHeading({title:'購入情報'})"), 'Receipt OCR review groups store and purchase date');
 assert.ok(source.includes("UI.sectionHeading({title:'購入明細',subtitle:scanDraft.items.length+'件'})"), 'Receipt OCR review identifies item list and count');
 assert.ok(source.includes("UI.sectionHeading({title:'合計の確認'})"), 'Receipt OCR review makes reconciliation distinct');
-assert.ok(source.includes("name=\"photoReviewOk\" required"), 'Photo reconstruction confirmation remains required');
+assert.ok(!source.includes('photoReviewOk'), 'Photo reconstruction no longer requires a formal checkbox');
+assert.ok(source.includes('scan-total-warning')&&source.includes('scan-count-warning'),
+ 'Only detected discrepancies receive comparison notes');
