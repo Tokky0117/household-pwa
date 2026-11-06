@@ -2279,7 +2279,7 @@ main>.ui-search + .filterrow{margin-bottom:5px}
 .scan-ocr-name{padding:4px 0;font-size:16px;line-height:1.5;overflow-wrap:anywhere}
 .scan-name-candidate{font-size:13px;line-height:1.5;color:var(--text-secondary,#555)}
 .scan-input-pair{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.4fr);gap:10px}
-.scan-review-item{margin:12px 0}
+.scan-review-item{margin:8px 0}
 .scan-warning{font-size:13px;color:var(--text-secondary,#666);line-height:1.5}
 .scan-check{display:flex;align-items:center;gap:8px;min-height:44px;font-size:14px}
 .scan-check input{width:20px;height:20px;flex-shrink:0}
@@ -2298,7 +2298,7 @@ main>.ui-search + .filterrow{margin-bottom:5px}
 
 /* Normal one-finger scroll and swipes remain enabled. No page pinch scaling. */
 html,body{touch-action:pan-x pan-y}
-.scan-product-association{padding:10px 12px;border:1px solid var(--line,#d5d9df);border-radius:12px;margin:12px 0;display:flex;flex-direction:column;gap:7px}
+.scan-product-association{padding:0;border:0;margin:5px 0;display:block;min-width:0}
 .scan-product-association-label{font-size:13px;color:var(--text-secondary,#666)}
 .scan-product-association strong{font-size:14px;overflow-wrap:anywhere}
 .scan-product-actions{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:9px}
@@ -2376,3 +2376,45 @@ html,body{touch-action:pan-x pan-y}
 .scan-review-item .scan-product-association{min-width:0}
 .scan-review-item .scan-product-candidates{min-width:0;overflow-wrap:anywhere}
 .scan-review-item input[type="number"]{width:100%;min-width:0;max-width:100%}
+
+/* v0.75: receipt review fits narrow phones without page-level clipping. */
+.receipt-scan-page{width:100%;min-width:0;max-width:100%;overflow-wrap:anywhere}
+.receipt-scan-page>*{min-width:0;max-width:100%}
+.scan-review-item{padding:10px 12px}
+.scan-review-item .row{gap:8px;min-width:0}
+.scan-review-item .row>*:first-child{min-width:0;overflow-wrap:anywhere}
+.scan-review-item .row .secondary{min-height:44px;padding:6px 10px}
+.scan-review-item .scan-field{margin:6px 0;gap:4px;min-width:0}
+.scan-review-item .scan-ocr-name{padding:0;line-height:1.35}
+.scan-review-item .scan-name-candidate{margin:3px 0}
+.scan-review-item .scan-input-pair{gap:8px;min-width:0}
+.scan-review-item .scan-input-pair>.scan-field{min-width:0;max-width:100%}
+.scan-review-item .scan-tax-excluded{font-size:12px;margin:5px 0;overflow-wrap:anywhere}
+.scan-product-status{display:flex;flex-wrap:wrap;align-items:center;gap:4px 8px;cursor:pointer;font-size:13px;min-height:44px;max-width:100%;list-style:none}
+.scan-product-status::-webkit-details-marker{display:none}
+.scan-product-status-label{color:var(--muted);flex:none}
+.scan-product-status strong{font-size:13px;flex:1 1 100px;min-width:0;overflow-wrap:anywhere;font-weight:600}
+.scan-product-toggle{color:var(--accent);font-size:13px;font-weight:700;flex:none;margin-left:auto}
+.scan-product-toggle::after{content:"⌄";margin-left:3px}
+.scan-product-association[open] .scan-product-toggle::after{content:"⌃"}
+.scan-product-actions{margin:7px 0 0;gap:7px}
+.scan-product-candidates{min-width:0}
+.scan-review>.ui-section-heading,.scan-receipt-meta>.ui-section-heading{min-width:0;max-width:100%;flex-wrap:wrap}
+.scan-branch-details{margin:8px 0 0;font-size:13px;min-width:0}
+.scan-branch-details>summary{color:var(--accent);font-weight:600;cursor:pointer;min-height:44px;display:flex;align-items:center}
+.scan-branch-details>summary::before{content:"＋";margin-right:6px}
+.scan-branch-details[open]>summary::before{content:"−"}
+.scan-branch-details .scan-field{margin:4px 0 8px}
+.scan-modal-photo-links{display:flex;gap:6px;flex-wrap:wrap;margin:0 0 10px}
+.scan-modal-photo-links button{min-height:44px}
+.scan-compare-note::before{content:none}
+.scan-compare-warning-head{font-weight:700;color:#A97800;font-size:13px;line-height:1.5}
+.scan-compare-warning-head::before{content:"⚠";display:inline-block;margin-right:6px}
+.scan-compare-data{display:flex;justify-content:space-between;align-items:baseline;gap:8px;margin-top:9px;flex-wrap:wrap}
+.scan-compare-data span{font-size:13px;color:var(--muted)}
+.scan-compare-data strong{font-size:15px;color:var(--ink);font-variant-numeric:tabular-nums;margin-left:auto}
+@media(max-width:360px){
+ .scan-review-item{padding:9px 10px}
+ .scan-product-status{align-items:flex-start}
+ .scan-photo-heading>span:first-child{min-width:0;overflow-wrap:anywhere}
+}
