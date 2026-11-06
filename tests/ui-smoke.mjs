@@ -239,7 +239,7 @@ assert.ok(ui.receiptScanView().includes('id="scan-status"')&&
 assert.ok(source.includes("action:'receiptScan'")&&
  source.includes("openReceiptPhotoPicker(document.getElementById('receipt-source-picker'))"),
  'Live receipt registration uses the existing native chooser; offline preview remains unchanged');
-assert.ok(source.includes("picker.value='';\n picker.click();"),
+assert.match(source,/picker\.value='';[^]*?picker\.click\(\);/,
  'Clear stale native Photos selection before the synchronous user-initiated picker tap');
 const indexHtml=readFileSync(new URL('../index.html',import.meta.url),'utf8');
 const previewWorkflow=readFileSync(new URL('../.github/workflows/pages-previews.yml',import.meta.url),'utf8');
