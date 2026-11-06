@@ -1,4 +1,4 @@
-const APP_VERSION='0.74.0';
+const APP_VERSION='0.75.0';
 const CATS=['飲食','キッチン','洗面・風呂','洗濯・掃除','その他'];
 const liveMode=!!window.KurashiLive; // Data source only; original Preview v46 UI components remain.
 const SEED=[['牛乳',0,true],['麦茶',0,false],['コーヒー',0,true],['卵',0,false],['キッチンペーパー',1,false],['ラップ',1,true],['食器用洗剤',1,true],['シャンプー',2,false],['歯磨き粉',2,true],['ハンドソープ',2,false],['洗濯洗剤',3,false],['柔軟剤',3,true],['トイレットペーパー',3,false],['乾電池',4,true],['ティッシュ',4,true]];
@@ -515,8 +515,8 @@ function scanFormView(){
    ${UI.sectionHeading({title:'合計の確認'})}
    <p id="scan-sum-text" class="scan-total-figure" aria-live="polite">合計金額：—</p>
    <p id="scan-count-text" class="scan-total-count">購入点数：—</p>
-   <div id="scan-total-warning" class="scan-state-note scan-state-warning" hidden></div>
-   <div id="scan-count-warning" class="scan-state-note scan-state-warning" hidden></div>
+   <div id="scan-total-warning" class="scan-state-note scan-state-warning scan-compare-note" role="status" hidden></div>
+   <div id="scan-count-warning" class="scan-state-note scan-state-warning scan-compare-note" role="status" hidden></div>
    <div id="scan-duplicate-warning" ${scanDuplicates(scanDraft).length?'':'hidden'}>
     <p class="scan-warning">同じレシートが登録されている可能性があります。</p>
     <label class="scan-check"><input type="checkbox" name="duplicateOk"> 重複登録の可能性を確認しました</label>
@@ -1655,8 +1655,7 @@ if(action==='confirmChatGptRebuild'&&p?.rebuild){
  try{
   scanDraft=makeChatGptReceiptRebuildDraft(scanDraft,p.rebuild);
   saveScanDraft();
-  scanStatus='写真からの再解析結果'+scanDraft.items.length+
-   '行を確認中です。OCR明細は保存に使用しません。';
+  scanStatus=scanDraft.items.length+'件の購入明細を読み取りました。';
   page='recordScan';render();
  }catch(err){say(err.message||'再解析結果を適用できませんでした');}
  return;
@@ -2288,13 +2287,17 @@ function refreshScanTotalUI(){
  const tm=result.checks.total==='mismatch',cm=result.checks.count==='mismatch';
  if(totalWarning){
   totalWarning.hidden=!(tm||codes.includes('conflicting_receipt_totals'));
-  totalWarning.textContent=tm?'合計金額を確認 ／ レシートの合計：'+yen(result.receiptTotal)+
-   ' ／ 差額：'+yen(Math.abs(result.amountDelta)):'レシートの合計を確認';
+  totalWarning.innerHTML=tm?
+   '<div class="scan-compare-warning-head">レシートの合計金額と一致しません</div>'+
+   '<div class="scan-compare-data"><span>レシート記載額</span><strong>'+yen(result.receiptTotal)+'</strong></div>':
+   '<div class="scan-compare-warning-head">レシート記載額を確認</div>';
  }
  if(countWarning){
   countWarning.hidden=!(cm||codes.includes('conflicting_printed_counts'));
-  countWarning.textContent=cm?'購入点数を確認 ／ レシートの点数：'+result.printedCount+
-   '点 ／ 差：'+Math.abs(result.quantitySum-result.printedCount)+'点':'レシートの点数を確認';
+  countWarning.innerHTML=cm?
+   '<div class="scan-compare-warning-head">レシートの購入点数と一致しません</div>'+
+   '<div class="scan-compare-data"><span>レシート記載点数</span><strong>'+result.printedCount+'点</strong></div>':
+   '<div class="scan-compare-warning-head">レシート記載点数を確認</div>';
  }
 }
 function refreshScanDuplicateUI(){
