@@ -268,6 +268,12 @@ function scanGroupOptions(selected='',{includeNone=true}={}){
   choices.map(x=>'<option value="'+esc(x.id)+'"'+(x.id===selected?' selected':'')+
   '>'+esc(x.name)+'（'+esc(CATS[x.category]||'その他')+'）</option>').join('');
 }
+function scanModalPhotoLinks(){
+ if(!scanPhotos.length)return '';
+ return '<div class="scan-modal-photo-links">'+scanPhotos.map((_,i)=>
+  '<button type="button" class="tertiary" data-act="scanOpenPhoto" data-scan-row="'+i+'">写真'+(i+1)+'を拡大</button>'
+ ).join('')+'</div>';
+}
 function scanProductView(){
  const item=scanDraft?.items[scanProductRow];
  if(!item)return UI.sheet({title:'商品を登録',body:'<p>対象の明細が見つかりません。</p>'});
@@ -279,7 +285,7 @@ function scanProductView(){
   UI.formField({id:'scan-product-unit',name:'package_unit',label:'単位',control:'select',value:'個',options:UNIT_OPTIONS.map(v=>({label:v,value:v}))})
  ].join('');
  return UI.sheet({title:'レシートの商品を登録',variant:'receipt-product-modal',
-  body:`<form id="scanProductForm">${fields}<p class="hint">商品は日用品に紐付けず登録できます。後から「チョコ」などに紐付けられます。OCR名は後から編集せず、商品の紐付けだけ変更できます。</p>
+  body:`${scanModalPhotoLinks()}<form id="scanProductForm">${fields}<p class="hint">商品は日用品に紐付けず登録できます。後から「チョコ」などに紐付けられます。OCR名は後から編集せず、商品の紐付けだけ変更できます。</p>
   <button type="submit" class="primary">商品を登録</button></form>`});
 }
 function scanExistingProductResults(){
@@ -299,6 +305,7 @@ function scanExistingProductView(){
  return UI.sheet({title:'既存の商品と照合',variant:'receipt-product-modal',
   body:`<div class="scan-existing-picker">
   <p class="hint">レシート表記：${esc(item.name)}</p>
+  ${scanModalPhotoLinks()}
   <label class="scan-field">商品名・日用品名で探す
    <input id="scan-existing-search" type="search" value="${esc(scanExistingQuery)}" placeholder="例：キットカット、チョコ">
   </label>
@@ -461,7 +468,7 @@ function scanFormView(){
  const reviewModel=window.KurashiReceiptReview.buildReviewModel(scanDraft);
  const chains=[...catalogue.chains.map(c=>'<option value="'+esc(c.id)+'"'+
   (c.id===scanDraft.chainId?' selected':'')+'>'+esc(c.name)+'</option>'),
-  '<option value="__new__"'+(!scanDraft.chainId?' selected':'')+'>＋ 新しいチェーン</option>'].join('');
+  '<option value="__new__"'+(!scanDraft.chainId?' selected':'')+'>＋ 新しい店舗を追加</option>'].join('');
  return `<form id="scanConfirmForm" class="scan-review">
   <h2 class="sectiontitle">読み取り結果の確認</h2>
   <p class="hint">写真と内容を確認してください。</p>
@@ -470,9 +477,11 @@ function scanFormView(){
   ${scanDraft.source==='ocr'&&receiptOcrRows(scanDraft).length?'<button type="button" class="secondary" data-act="chatGptAssist">ChatGPTで商品名・金額を確認</button>':''}
   <section class="scan-receipt-meta" aria-label="購入情報">
   ${UI.sectionHeading({title:'購入情報'})}
-  <label class="scan-field">チェーン<select name="chain" id="scan-chain">${chains}</select></label>
-  <label class="scan-field" id="scan-new-chain-wrap" ${scanDraft.chainId?'hidden':''}>新しいチェーン名<input name="chain_name" maxlength="80" placeholder="新しいチェーン名" value="${esc(scanDraft.chainName||'')}"></label>
-  <label class="scan-field">支店名（任意）<input name="branch_name" maxlength="80" placeholder="例：駅前店" value="${esc(scanDraft.branchName||'')}"></label>
+  <label class="scan-field">店舗<select name="chain" id="scan-chain">${chains}</select></label>
+  <label class="scan-field" id="scan-new-chain-wrap" ${scanDraft.chainId?'hidden':''}>店舗名<input name="chain_name" maxlength="80" placeholder="例：スーパー名" value="${esc(scanDraft.chainName||'')}"></label>
+  <details class="scan-branch-details" ${scanDraft.branchName?'open':''}><summary>支店名を追加（任意）</summary>
+   <label class="scan-field">支店名<input name="branch_name" maxlength="80" placeholder="例：駅前店" value="${esc(scanDraft.branchName||'')}"></label>
+  </details>
   <label class="scan-field">購入日<input name="date" type="date" required value="${esc(scanDraft.date)}"></label>
    <span class="scan-field-hint" data-scan-hint="date" hidden></span>
   </section>
