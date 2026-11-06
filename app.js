@@ -575,7 +575,7 @@ function receiptScanView(){
  ${scanPhotoSection()}
  ${!scanPhotos.length&&!reviewing?'<p class="hint">写真を選択してください。</p>':''}
  ${!reviewing&&scanPhotos.length?`<button type="button" class="primary scan-photo-start" data-act="scanStart" ${scanBusy?'disabled':''}>${scanBusy?'読み取り中…':'写真を解析する'}</button>`:''}
- <p id="scan-status" role="status" class="hint">${esc(!reviewing&&!scanPhotos.length?'':scanStatus||(!reviewing&&scanPhotos.length?'解析後、商品名・数量・金額を確認できます。':''))}</p>
+ <p id="scan-status" role="status" class="hint">${esc(!reviewing&&!scanPhotos.length?'':scanStatus)}</p>
  ${scanFormView()}
  </main>`;
 }
@@ -697,23 +697,14 @@ async function runReceiptScan(){
    taxRateCalculated:taxRateCandidateModes.some(Boolean),
    taxAllocationReason:allocationReasons.find(Boolean)||null,
    taxDiagnostics:taxDiagnostics.length===1?taxDiagnostics[0]:null,
-   chainId:chain?.id||null,chainName:'',reviewEvidence};
+   chainId:chain?.id||null,chainName:'',reviewEvidence,warnings:[...scanWarnings]};
   scanDraft.items.forEach(item=>{
    item.productId=isUnconfirmedBarcodeLine(item)?'':scanMatchProduct(item.ocrRawName,scanDraft.chainId);
    item.autoLinked=!!item.productId;
   });
   saveScanDraft();
   scanPhotosExpanded=false;
-  const scanNotices=[
-   (scanWarnings.has('conflicting_receipt_totals')||scanWarnings.has('conflicting_printed_counts'))?'合計・購入点数の競合を検出しました。':'',
-   scanWarnings.has('candidate_count_mismatch')?'印字購入点数と抽出した数量が一致しません。':'',
-   scanWarnings.has('subtotal_mismatch')?'税抜明細の合計が印字小計と一致しません。':'',
-   scanWarnings.has('receipt_total_mismatch')?'明細と税額の合計が印字合計と一致しません。':'',
-   scanWarnings.has('unassigned_price')?'商品に対応付けられない金額を検出しました。':'',
-   !date?'購入日は原本を見て確認してください。':''
-  ].filter(Boolean);
-  scanStatus=allItems.length+'件の明細を読み取りました。'+
-   (scanNotices.length?' '+scanNotices.join(' '):'');
+  scanStatus=allItems.length+'件の明細を読み取りました。';
  }catch(e){
   console.error('レシートOCR失敗',e);
   if(token===scanToken){scanRuntime=null;scanStatus='読み取れませんでした：'+(e?.message||String(e))+
@@ -1870,7 +1861,7 @@ if(action==='resumeScanDraft'){
  window.KurashiLive.loadReceiptDraft().then(draft=>{
   if(!draft)return;
   resetScan({keepDraft:true});scanDraft=draft;scanDraftAvailable=true;
-  scanStatus='下書きを再開しました。写真の画像は保存されていません。';
+  scanStatus='下書きを再開しました。';
   page='recordScan';render();
  }).catch(e=>say(e?.message||'下書きを再開できません'));return;
 }
