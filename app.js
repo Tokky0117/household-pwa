@@ -333,8 +333,8 @@ function storePickerBody(){
  return `<div class="store-picker-content">
   <div class="store-picker-search">${UI.searchField({id:'store-picker-search',
    label:'店舗名を検索',placeholder:'店舗名を検索',value:storePickerQuery})}</div>
-  <div class="store-picker-create"><button class="secondary" type="button"
-   data-act="storePickerShowNew">${miniIcon('plus')}<span>新しい店舗を追加</span></button></div>
+  ${liveMode?`<div class="store-picker-create"><button class="secondary" type="button"
+   data-act="storePickerShowNew">${miniIcon('plus')}<span>新しい店舗を追加</span></button></div>`:''}
   <div class="store-picker-results" id="store-picker-results">${storePickerChoices()}</div>
  </div>`;
 }
@@ -366,7 +366,7 @@ function showStorePickerMode(newMode){
 }
 function chooseStoreFromPicker(chainId,chainName=''){
  const target=storePickerTarget;
- if(!target)return;
+ if(!target||(chainId==='__new__'&&!liveMode))return;
  const form=document.getElementById(target==='scan'?'scanConfirmForm':'recordForm');
  const chain=form?.elements.namedItem('chain'),name=form?.elements.namedItem('chain_name');
  if(!chain||!name)return;
@@ -1882,7 +1882,7 @@ if(action==='restoreItem'||action==='showExistingItem'){
 }
 if(action==='back'){if(storePickerTarget){closeStorePicker();return}back();return}
 if(action==='storePickerOpen'){openStorePicker();return}
-if(action==='storePickerShowNew'){showStorePickerMode(true);return}
+if(action==='storePickerShowNew'){if(liveMode)showStorePickerMode(true);return}
 if(action==='storePickerShowList'){showStorePickerMode(false);return}if(action==='add'){duplicateItemId=null;selected=null;menu=false;openSwipeId=null;page='add'}if(action==='menu'){menu=!menu}if(['edit','products'].includes(action)){menu=false;editReturnPage=page;page=action}
 if(action==='productPick'){pickQuery='';pickerAll=true;openSwipeId=null;page=action}
 if(action==='productCreate'){
