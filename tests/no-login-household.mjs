@@ -911,12 +911,18 @@ assert.equal(recordForm.querySelector('input[name="chain"]').value,'__new__');
 recordForm.querySelector('[data-act="storePickerOpen"]').click();
 let recordStoreSheet=recordUI.window.document.querySelector('.store-picker-overlay');
 assert.ok(recordStoreSheet,'manual receipt uses the same store selection half sheet');
+assert.equal(recordUI.window.document.body.style.position,'fixed',
+ 'nested store modal keeps its underlying record entry sheet locked');
+assert.ok(recordStoreSheet.querySelector('.store-picker-create>.secondary>span'),
+ 'new-store entry button uses the common secondary button component');
 recordStoreSheet.querySelector('[data-act="storePickerShowNew"]').click();
 recordStoreSheet.querySelector('#store-picker-new-name').value='アプリ実機試験用チェーン';
 recordStoreSheet.querySelector('#storePickerNewForm').dispatchEvent(
  new recordUI.window.Event('submit',{bubbles:true,cancelable:true}));
 assert.equal(recordForm.querySelector('[name="chain_name"]').value,'アプリ実機試験用チェーン',
  'manual receipt retains new store name in deferred save payload');
+assert.equal(recordUI.window.document.body.style.position,'fixed',
+ 'closing nested picker leaves the underlying manual receipt modal locked');
 recordForm.querySelector('[name="quantity"]').value='2';
 recordForm.querySelector('[name="amount"]').value='340';
 recordForm.querySelector('[name="raw"]').value='未照合商品';
@@ -957,6 +963,8 @@ assert.equal(recordForm.querySelector('[name="chain"]').value,storedReceipt.chai
  'manual shelf form updates the existing hidden chain field on selection');
 assert.equal(recordForm.querySelector('.ui-picker-value').textContent,'アプリ実機試験用チェーン',
  'shelf form shows chosen store name with no new text field');
+assert.equal(recordReopened.window.document.body.style.position,'fixed',
+ 'choosing a shelf store retains scroll lock while parent sheet is open');
 const productToRecord=temp.call('bootstrap').data.products.find(p=>p.household_id==='household-one');
 assert.ok(productToRecord,'product exists for shelf');
 recordForm.querySelector('[name="product"]').value=productToRecord.product_id;
@@ -2115,6 +2123,14 @@ flowForm.querySelector('[data-act="storePickerOpen"]').click();
 let storeSheet=reviewFlow.window.document.querySelector('.store-picker-overlay');
 assert.ok(storeSheet?.querySelector('.half-sheet.store-picker-modal'),
  'store picker opens the common half sheet');
+assert.equal(reviewFlow.window.document.body.style.position,'fixed',
+ 'opening store sheet freezes the underlying iPhone page');
+assert.equal(reviewFlow.window.document.body.style.top,'-456px',
+ 'common sheet lock retains the original review page scroll offset');
+assert.equal(storeSheet.querySelectorAll('.store-picker-results .ui-menu-item').length,0,
+ 'store result list no longer masquerades as a popup menu');
+assert.ok(storeSheet.querySelector('.store-picker-results .ui-choice-row'),
+ 'store candidates use the common selection-row UI');
 let storeSearch=storeSheet.querySelector('#store-picker-search');
 assert.ok(storeSearch?.closest('.ui-search'),'store search uses shared search field');
 storeSearch.value='該当しない店舗名xyz';
@@ -2130,6 +2146,10 @@ differentStore.click();
 flowForm=reviewFlow.window.document.getElementById('scanConfirmForm');
 assert.equal(reviewFlow.window.document.querySelector('.store-picker-overlay'),null,
  'choosing a store closes its half sheet');
+assert.equal(reviewFlow.window.document.body.style.position,'',
+ 'closing store choice restores native underlying page scrolling');
+assert.ok(preservedScroll.includes(456),
+ 'closing store sheet restores the exact review scroll position');
 assert.equal(flowForm.querySelector('[name="product-0"]').value,'',
  'a user-unlinked product does not auto-relink when retailer changes');
 assert.equal(flowForm.querySelector('#scan-chain').value,differentStore.dataset.uiChoice,
@@ -2139,6 +2159,10 @@ storeSheet=reviewFlow.window.document.querySelector('.store-picker-overlay');
 storeSheet.querySelector('[data-act="storePickerShowNew"]').click();
 assert.ok(storeSheet.querySelector('#storePickerNewForm'),
  'new retailer form reuses common form field inside the half sheet');
+assert.ok(storeSheet.querySelector('#storePickerNewForm>.formfield>input'),
+ 'the new store form uses one full-width shared form field');
+assert.ok(storeSheet.querySelector('#storePickerNewForm>.primary>span')?.textContent.includes('この店舗名で決定'),
+ 'new store confirmation uses a common primary action builder');
 let newStoreInput=storeSheet.querySelector('#store-picker-new-name');
 storeSheet.querySelector('#storePickerNewForm').dispatchEvent(
  new reviewFlow.window.Event('submit',{bubbles:true,cancelable:true}));
