@@ -1134,7 +1134,7 @@ function recordAddView(){
   UI.formField({id:'record-quantity',name:'quantity',label:'購入数・販売個数',type:'number',value:1,required:true,extra:'min="1" step="1" inputmode="numeric"'}),
   UI.formField({id:'record-amount',name:'amount',label:'小計（円）',type:'number',value:'',required:true,extra:'min="0" step="1" inputmode="numeric"'})
  ].join('');
- return UI.sheet({title:type==='receipt'?'レシート明細を記録':'値札を記録',variant:'product-picker-modal',body:`<form id="recordForm" class="record-entry-form">${fields}<button class="primary" type="submit">${liveMode?'記録する':'この端末に試作保存'}</button><p class="sample-price-notice">${liveMode?'※ 1回1明細。Google Sheetsへ自動保存。ログイン一時停止中は個人情報の入力を控えてください。':'※ OCR・Sheets・夫婦間同期は未接続。1回につき1明細の試作入力です。'}</p></form>`});
+ return UI.sheet({title:type==='receipt'?'レシート明細を記録':'値札を記録',variant:'product-picker-modal',body:`<form id="recordForm" class="record-entry-form">${fields}<button class="primary" type="submit">${liveMode?'記録する':'この端末に試作保存'}</button><p class="sample-price-notice">${liveMode?'※ 1回1明細。Google Sheetsへ自動保存。ログイン一時停止中は個人情報の入力を控えてください。':'※ 読み取り・共有は利用できません。1回につき1明細の試作入力です。'}</p></form>`});
 }
 function getRecordSummary(record){
  const details=allPreviewItems().filter(x=>x.record_id===record.record_id&&!x.deleted_at);
