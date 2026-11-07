@@ -448,8 +448,22 @@ assert.ok(listingHtml.includes('class="scan-product-setting"')&&
 const existingHtml=ui.scanExistingProductView();
 assert.ok(existingHtml.includes('scan-existing-search')&&
  existingHtml.includes('scan-existing-group')&&
- existingHtml.includes('日用品：牛乳'),
+ existingHtml.includes('日用品リスト：牛乳'),
  'existing-product picker searches products and shows linked household item');
+const productAction=listingHtml.match(/<button[^>]*data-act="scanPickExisting"[^>]*>[^]*?<\/button>/)?.[0]||'';
+assert.ok(productAction.includes('class="ui-text-action"')&&
+ productAction.includes('商品を設定')&&!productAction.includes('ui-chevron'),
+ 'registered-product settings use shared text actions without navigation chevrons');
+assert.ok(listingHtml.includes('data-ui-select="scan-store-picker"')&&
+ listingHtml.includes('id="scan-chain" name="chain"'),
+ 'receipt store selection uses the common UI.dropdown control and stores a hidden value');
+assert.ok(!listingHtml.includes('日用品未紐付け'),
+ 'unlinked item-group metadata does not appear in receipt purchase lines');
+assert.ok(css.includes('.scan-field input:not([type="date"])')&&
+ css.includes('.formfield input,.formfield select,.formfield textarea,'),
+ 'receipt number/text controls share the canonical form input sizing rules');
+assert.ok(css.includes('.panel .ui-section-heading .sectiontitle{font-size:17px}'),
+ 'panel section headings use the same text scale as the other receipt headings');
 console.log('v61: printed-name preservation, explicit product↔item linking, and no-pinch UI OK');
 
 ui.setScanDraft({source:'chatgpt',date:'2026-11-02',chainId:'c-a',total:200,
@@ -1035,7 +1049,7 @@ assert.ok(!JSON.stringify(p4Rebuild).includes('ocr-p4'),
 console.log('P4 common review adapter, provenance, row identity and P2 validation OK');
 
 // v0.73: Receipt OCR review information hierarchy; preserve validation/confirmation.
-assert.ok(source.includes("const APP_VERSION='0.76.2'"), 'UI review revision version is current');
+assert.ok(source.includes("const APP_VERSION='0.76.3'"), 'UI review revision version is current');
 assert.ok(source.includes("UI.sectionHeading({title:'購入情報'})"), 'Receipt OCR review groups store and purchase date');
 assert.ok(source.includes("UI.sectionHeading({title:'購入明細',subtitle:scanDraft.items.length+'件'+"), 'Receipt OCR review identifies item list and unmatched count');
 assert.ok(source.includes("UI.sectionHeading({title:'合計の確認'})"), 'Receipt OCR review makes reconciliation distinct');
