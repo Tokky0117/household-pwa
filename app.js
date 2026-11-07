@@ -1,4 +1,4 @@
-const APP_VERSION='0.82.0';
+const APP_VERSION='0.83.0';
 const CATS=['飲食','キッチン','洗面・風呂','洗濯・掃除','その他'];
 const liveMode=!!window.KurashiLive; // Data source only; original Preview v46 UI components remain.
 const SEED=[['牛乳',0,true],['麦茶',0,false],['コーヒー',0,true],['卵',0,false],['キッチンペーパー',1,false],['ラップ',1,true],['食器用洗剤',1,true],['シャンプー',2,false],['歯磨き粉',2,true],['ハンドソープ',2,false],['洗濯洗剤',3,false],['柔軟剤',3,true],['トイレットペーパー',3,false],['乾電池',4,true],['ティッシュ',4,true]];
@@ -609,7 +609,9 @@ function scanFormView(){
     ${['manual','photo'].includes(item.inputOrigin)||item.ocrRawName===undefined?
      UI.formField({id:'scan-name-'+i,name:'name-'+i,label:'読み取り名',
       value:item.name,maxlength:120,required:true,hint:true,fieldClass:'scan-read-name'}):
-     '<div class="formfield scan-read-name"><span class="ui-static-field-label">読み取り名</span><div class="scan-ocr-name" data-ocr-row="'+i+'">'+esc(reviewModel.items[i].originalOcrName||'読み取り不可')+'</div></div>'}
+     UI.formField({id:'scan-ocr-name-'+i,control:'static',label:'読み取り名',
+       value:reviewModel.items[i].originalOcrName||'読み取り不可',valueClass:'scan-ocr-name',
+       extra:'data-ocr-row="'+i+'"',fieldClass:'scan-read-name'})}
     ${reviewModel.items[i].proposedName?'<p class="scan-name-candidate">候補：'+esc(reviewModel.items[i].proposedName)+'</p>':''}
     ${(item.issues||[]).some(reason=>/商品名|商品コード|名称|名前/.test(String(reason)))?'<p class="scan-name-warning">読み取り名を確認</p>':''}
     ${UI.formField({id:'scan-product-'+i,name:'product-'+i,label:'登録商品',
@@ -876,20 +878,28 @@ const UI={
   },
   formField({id,name=id,label,control='input',value='',type='text',placeholder='',
     required=false,maxlength=null,options=[],extra='',hint=false,fieldClass='',hiddenInputId='',
-    display='',action='',actionLabel='',actionRow=null,pickerLayout=''}) {
+    display='',action='',actionLabel='',actionRow=null,pickerLayout='',valueClass=''}) {
     const attr=`id="${esc(id)}" name="${esc(name)}"`;
     let input;
-    if(control==='select') input=UI.dropdown({id,name,inputId:hiddenInputId,value,options,label});
+    if(control==='static') input=`<div class="ui-static-field-value ${esc(valueClass)}" ${extra}>${esc(value)}</div>`;
+    else if(control==='select') input=UI.dropdown({id,name,inputId:hiddenInputId,value,options,label});
     else if(control==='search') input=UI.searchField({id,label,placeholder,value,extra});
     else if(control==='date') input=uiNativeDateInput(value,{id,name,label,required});
-    else if(control==='picker') input=`<div class="ui-picker-surface">
-     <strong class="ui-picker-value ${display?'':'is-empty'}">${esc(display||'未選択')}</strong>
-     ${UI.textAction({label:actionLabel||(display?'変更':'店舗を選択'),action,arrow:false,id:id+'-action',row:actionRow})}
-    </div><input type="hidden" ${attr} value="${esc(value)}">`;
+    else if(control==='picker') {
+     const actionButton=UI.textAction({label:actionLabel||(display?'変更':'店舗を選択'),
+      action,arrow:false,id:id+'-action',row:actionRow});
+     input=`<div class="ui-picker-surface">
+      <strong class="ui-picker-value ${display?'':'is-empty'}">${esc(display||'未選択')}</strong>
+      ${pickerLayout==='inline'?'<span class="ui-picker-action-slot">'+actionButton+'</span>':actionButton}
+     </div><input type="hidden" ${attr} value="${esc(value)}">`;
+    }
     else if(control==='textarea') input=`<textarea ${attr} ${placeholder?`placeholder="${esc(placeholder)}"`:''} ${extra}>${esc(value)}</textarea>`;
     else input=`<input ${attr} type="${esc(type)}" value="${esc(value)}" ${placeholder?`placeholder="${esc(placeholder)}"`:''} ${maxlength!==null?`maxlength="${Number(maxlength)}"`:''} ${required?'required':''} ${extra}>`;
     const message=hint?`<span class="ui-field-hint" data-field-hint="${esc(name)}" hidden></span>`:'';
-    return `<div class="formfield ${esc(fieldClass)}${control==='picker'&&pickerLayout==='inline'?' ui-picker-inline':''}"><label for="${esc(control==='picker'?id+'-action':id)}">${esc(label)}</label>${input}${message}</div>`;
+    const heading=control==='static'
+     ?`<span class="ui-static-field-label">${esc(label)}</span>`
+     :`<label for="${esc(control==='picker'?id+'-action':id)}">${esc(label)}</label>`;
+    return `<div class="formfield ${esc(fieldClass)}${control==='picker'&&pickerLayout==='inline'?' ui-picker-inline':''}">${heading}${input}${message}</div>`;
   },
   sheet({title,body,variant='',backdropClass=''}){return `<div class="sheet-back ${esc(backdropClass)}" data-sheet-backdrop="true"><section class="half-sheet ${esc(variant)}" role="dialog" aria-modal="true" aria-label="${esc(title)}"><div class="sheet-grip"></div><header class="sheet-head"><h2>${esc(title)}</h2><button class="sheet-close" type="button" data-act="back" aria-label="閉じる">${miniIcon('close')}</button></header><div class="sheet-body">${body}</div></section></div>`},
   inlineNotice({message,action,label}){return `<div class="ui-inline-notice" role="status"><p>${esc(message)}</p><button type="button" class="secondary" data-act="${esc(action)}">${esc(label)}</button></div>`},
