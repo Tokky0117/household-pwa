@@ -908,7 +908,15 @@ recordUI.window.document.querySelector('[data-act="newReceipt"]').click();
 let recordForm=recordUI.window.document.getElementById('recordForm');
 assert.ok(recordForm,'v46 receipt form reachable without test-only buttons');
 assert.equal(recordForm.querySelector('input[name="chain"]').value,'__new__');
-recordForm.querySelector('[name="chain_name"]').value='アプリ実機試験用チェーン';
+recordForm.querySelector('[data-act="storePickerOpen"]').click();
+let recordStoreSheet=recordUI.window.document.querySelector('.store-picker-overlay');
+assert.ok(recordStoreSheet,'manual receipt uses the same store selection half sheet');
+recordStoreSheet.querySelector('[data-act="storePickerShowNew"]').click();
+recordStoreSheet.querySelector('#store-picker-new-name').value='アプリ実機試験用チェーン';
+recordStoreSheet.querySelector('#storePickerNewForm').dispatchEvent(
+ new recordUI.window.Event('submit',{bubbles:true,cancelable:true}));
+assert.equal(recordForm.querySelector('[name="chain_name"]').value,'アプリ実機試験用チェーン',
+ 'manual receipt retains new store name in deferred save payload');
 recordForm.querySelector('[name="quantity"]').value='2';
 recordForm.querySelector('[name="amount"]').value='340';
 recordForm.querySelector('[name="raw"]').value='未照合商品';
@@ -2087,48 +2095,80 @@ assert.equal(flowForm.querySelector('[name="product-0"]').value,'',
 assert.ok(preservedScroll.includes(456),
  'closing the product sheet explicitly restores the original receipt scroll position');
 let storeField=flowForm.querySelector('#scan-chain');
-const storePicker=flowForm.querySelector('[data-ui-select="scan-store-picker"]');
-assert.ok(storePicker&&storeField.type==='hidden',
- 'receipt retailer chooser is the shared UI dropdown with a hidden form value');
-const differentStore=[...storePicker.querySelectorAll('[data-ui-choice]')].find(option=>
- option.dataset.uiChoice&&option.dataset.uiChoice!=='__new__'&&
- option.dataset.uiChoice!==storeField.value);
+assert.equal(storeField.type,'hidden','receipt picker preserves chain FormData');
+assert.ok(flowForm.querySelector('.ui-picker-surface [data-act="storePickerOpen"]'),
+ 'receipt store picker uses the shared text action instead of a dropdown');
+assert.equal(flowForm.querySelector('.ui-picker-surface .ui-chevron'),null,
+ 'half modal action must not show a navigation or dropdown arrow');
+flowForm.querySelector('[data-act="storePickerOpen"]').click();
+let storeSheet=reviewFlow.window.document.querySelector('.store-picker-overlay');
+assert.ok(storeSheet?.querySelector('.half-sheet.store-picker-modal'),
+ 'store picker opens the common half sheet');
+let storeSearch=storeSheet.querySelector('#store-picker-search');
+assert.ok(storeSearch?.closest('.ui-search'),'store search uses shared search field');
+storeSearch.value='該当しない店舗名xyz';
+storeSearch.dispatchEvent(new reviewFlow.window.Event('input',{bubbles:true}));
+assert.equal(storeSheet.querySelectorAll('.store-picker-results [data-ui-choice]').length,0,
+ 'store list can filter to no results');
+storeSheet.querySelector('[data-search-clear="store-picker-search"]').click();
+assert.equal(storeSearch.value,'','shared clear action restores all stores');
+const differentStore=[...storeSheet.querySelectorAll('.store-picker-results [data-ui-choice]')].find(option=>
+ option.dataset.uiChoice&&option.dataset.uiChoice!==storeField.value);
 assert.ok(differentStore,'test requires another registered retailer');
-storePicker.querySelector('.ui-select-trigger').click();
 differentStore.click();
 flowForm=reviewFlow.window.document.getElementById('scanConfirmForm');
+assert.equal(reviewFlow.window.document.querySelector('.store-picker-overlay'),null,
+ 'choosing a store closes its half sheet');
 assert.equal(flowForm.querySelector('[name="product-0"]').value,'',
- 'a user-unlinked product does not auto-relink when the retailer changes');
-storeField=flowForm.querySelector('#scan-chain');
-flowForm.querySelector('[data-ui-select="scan-store-picker"] .ui-select-trigger').click();
-flowForm.querySelector('[data-ui-select="scan-store-picker"] [data-ui-choice="__new__"]').click();
+ 'a user-unlinked product does not auto-relink when retailer changes');
+assert.equal(flowForm.querySelector('#scan-chain').value,differentStore.dataset.uiChoice,
+ 'chosen retailer remains in receipt FormData');
+flowForm.querySelector('[data-act="storePickerOpen"]').click();
+storeSheet=reviewFlow.window.document.querySelector('.store-picker-overlay');
+storeSheet.querySelector('[data-act="storePickerShowNew"]').click();
+assert.ok(storeSheet.querySelector('#storePickerNewForm'),
+ 'new retailer form reuses common form field inside the half sheet');
+let newStoreInput=storeSheet.querySelector('#store-picker-new-name');
+storeSheet.querySelector('#storePickerNewForm').dispatchEvent(
+ new reviewFlow.window.Event('submit',{bubbles:true,cancelable:true}));
+assert.ok(newStoreInput.closest('.formfield').classList.contains('ui-field-error'),
+ 'blank new store name has shared red required validation');
+newStoreInput.value=kitStore.canonical_name;
+storeSheet.querySelector('#storePickerNewForm').dispatchEvent(
+ new reviewFlow.window.Event('submit',{bubbles:true,cancelable:true}));
+assert.match(storeSheet.querySelector('[data-field-hint="store_name"]').textContent,
+ /登録済み店舗を選択/,'duplicate retailer names are rejected in the new-store sheet');
+storeSheet.querySelector('[data-act="storePickerShowList"]').click();
+assert.ok(storeSheet.querySelector('#store-picker-search'),'back to existing stores without committing new');
+storeSheet.querySelector('.sheet-close').click();
 flowForm=reviewFlow.window.document.getElementById('scanConfirmForm');
-assert.equal(flowForm.querySelector('#scan-store-select-wrap').hidden,true);
-assert.equal(flowForm.querySelector('#scan-new-chain-wrap').hidden,false,
- 'adding a store replaces rather than stacks the store selection field');
-const newStoreInput=flowForm.querySelector('#scan-new-store');
-newStoreInput.value='後で取り消す店舗名';
-newStoreInput.dispatchEvent(new reviewFlow.window.Event('input',{bubbles:true}));
-flowForm.querySelector('[data-act="scanStoreChooseExisting"]').click();
-flowForm=reviewFlow.window.document.getElementById('scanConfirmForm');
-assert.equal(flowForm.querySelector('#scan-new-chain-wrap').hidden,true,
- 'returning to registered stores hides the new-store field');
+assert.equal(flowForm.querySelector('#scan-chain').value,differentStore.dataset.uiChoice,
+ 'closing new-store sheet does not change the chosen retailer');
 assert.equal(flowForm.querySelector('[name="date"]').value,'',
- 'store toggling does not replace the invalid date with an old value');
-storeField=flowForm.querySelector('#scan-chain');
-flowForm.querySelector('[data-ui-select="scan-store-picker"] .ui-select-trigger').click();
-flowForm.querySelector('[data-ui-select="scan-store-picker"] [data-ui-choice="__new__"]').click();
+ 'store picker does not restore an invalid date');
+flowForm.querySelector('[data-act="storePickerOpen"]').click();
+storeSheet=reviewFlow.window.document.querySelector('.store-picker-overlay');
+storeSheet.querySelector('[data-act="storePickerShowNew"]').click();
+newStoreInput=storeSheet.querySelector('#store-picker-new-name');
+assert.equal(newStoreInput.value,'','cancelled new-store text is not resurrected');
+newStoreInput.value='新しい店舗登録動作テスト';
+storeSheet.querySelector('#storePickerNewForm').dispatchEvent(
+ new reviewFlow.window.Event('submit',{bubbles:true,cancelable:true}));
 flowForm=reviewFlow.window.document.getElementById('scanConfirmForm');
-const newStoreAgain=flowForm.querySelector('#scan-new-store');
-assert.equal(newStoreAgain.value,'',
- 'cancelled new-store text is not resurrected when the new option is reselected');
-newStoreAgain.dispatchEvent(new reviewFlow.window.Event('input',{bubbles:true}));
-assert.ok(newStoreAgain.closest('.formfield').classList.contains('ui-field-error'),
- 'a blank new-store name has the same red required-field style');
-newStoreAgain.value=kitStore.canonical_name;
-newStoreAgain.dispatchEvent(new reviewFlow.window.Event('input',{bubbles:true}));
-assert.match(flowForm.querySelector('[data-field-hint="chain_name"]').textContent,
- /登録済み店舗を選択/,'duplicate retailer names are rejected in the field');
+assert.equal(flowForm.querySelector('#scan-chain').value,'__new__',
+ 'new-store selection uses existing deferred-create sentinel');
+assert.equal(flowForm.querySelector('[name="chain_name"]').value,'新しい店舗登録動作テスト',
+ 'new-store selection keeps name in existing receipt save payload');
+assert.equal(flowForm.querySelector('.ui-picker-value').textContent,'新しい店舗登録動作テスト',
+ 'receipt review shows new store without adding a second visible field');
+flowForm.querySelector('[data-act="storePickerOpen"]').click();
+storeSheet=reviewFlow.window.document.querySelector('.store-picker-overlay');
+storeSheet.querySelector('.store-picker-results [data-ui-choice]').click();
+flowForm=reviewFlow.window.document.getElementById('scanConfirmForm');
+assert.notEqual(flowForm.querySelector('#scan-chain').value,'__new__',
+ 'choosing an existing retailer after new-store entry returns to existing mode');
+assert.equal(flowForm.querySelector('[name="chain_name"]').value,'',
+ 'switching to an existing store clears the unused new-store name');
 const compactDate=flowForm.querySelector('[name="date"]');
 assert.equal(compactDate.type,'date','the native iOS picker remains a date input');
 assert.ok(compactDate.closest('.ui-date-control'),
@@ -2140,5 +2180,5 @@ assert.equal(flowForm.querySelector('.ui-date-value').textContent,'2026/11/06',
 assert.equal(compactDate.closest('.formfield').classList.contains('ui-field-error'),false,
  'choosing a valid date removes the red warning');
 reviewFlow.window.close();
-console.log('v0.76.1: receipt form state, store toggles, explicit unlink and scroll restoration OK');
+console.log('v0.78.0: receipt store sheet/search/new/cancel and form state OK');
 
