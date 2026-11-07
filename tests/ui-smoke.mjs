@@ -404,7 +404,7 @@ assert.match(newPrompt,/OCR診断/,'correction reasoning must be separate from J
 assert.match(newPrompt,/商品行数が一致/,'OCR splitting mismatches are inspected');
 ui.setScanDraft({...rowOcr,items:[{...rowOcr.items[0],quantityUncertain:true}]});
 const uncertainHtml=ui.receiptScanView();
-assert.ok(uncertainHtml.includes('data-scan-hint="qty-0"'), 'uncertain quantity has an inline status target');
+assert.ok(uncertainHtml.includes('data-field-hint="qty-0"'), 'uncertain quantity uses the shared form validation hint');
 assert.ok(source.includes("item.quantityUncertain?'warning'"), 'uncertain quantity receives yellow warning');
 ui.setScanDraft({...rowOcr,recordId:'saved-receipt',items:[
  {...rowOcr.items[0],savedOcrName:true},
@@ -450,6 +450,13 @@ assert.ok(existingHtml.includes('scan-existing-search')&&
  existingHtml.includes('scan-existing-group')&&
  existingHtml.includes('日用品リスト：牛乳'),
  'existing-product picker searches products and shows linked household item');
+assert.ok(existingHtml.includes('class="ui-search"')&&
+ existingHtml.includes('data-search-clear="scan-existing-search"')&&
+ existingHtml.includes('data-ui-select="scan-existing-group"'),
+ 'Receipt product selection reuses the shared searchable input and item dropdown');
+assert.ok(newProductHtml.includes('data-ui-select="scan-product-group"')&&
+ source.includes("control==='date'")&&source.includes("control==='search'"),
+ 'Common formField owns date, search and item selection for all receipt forms');
 const productAction=listingHtml.match(/<button[^>]*data-act="scanPickExisting"[^>]*>[^]*?<\/button>/)?.[0]||'';
 assert.ok(productAction.includes('class="ui-text-action"')&&
  productAction.includes('商品を設定')&&!productAction.includes('ui-chevron'),
@@ -459,9 +466,11 @@ assert.ok(listingHtml.includes('data-ui-select="scan-store-picker"')&&
  'receipt store selection uses the common UI.dropdown control and stores a hidden value');
 assert.ok(!listingHtml.includes('日用品未紐付け'),
  'unlinked item-group metadata does not appear in receipt purchase lines');
-assert.ok(css.includes('.scan-field input:not([type="date"])')&&
- css.includes('.formfield input,.formfield select,.formfield textarea,'),
- 'receipt number/text controls share the canonical form input sizing rules');
+assert.ok(css.includes('.formfield input,.formfield select,.formfield textarea,')&&
+ css.includes('.formfield.ui-field-error')&&css.includes('.formfield.ui-field-warning')&&
+ !listingHtml.includes('class="scan-field">数量<input')&&
+ listingHtml.includes('class="formfield ')&&listingHtml.includes('name="amount-0"'),
+ 'receipt numbers and amounts use the canonical form component and shared red/yellow validation');
 assert.ok(css.includes('.panel .ui-section-heading .sectiontitle{font-size:17px}'),
  'panel section headings use the same text scale as the other receipt headings');
 console.log('v61: printed-name preservation, explicit product↔item linking, and no-pinch UI OK');
@@ -500,7 +509,7 @@ ui.setScanDraft({source:'ocr',date:'',chainId:'c-a',total:11550,printedCount:5,
 const countReview=ui.receiptScanView();
 assert.ok(countReview.includes('scan-count-text')&&countReview.includes('scan-count-warning'),
  'Printed item count is shown independently from extracted rows');
-assert.ok(countReview.includes('data-scan-hint="date"'),
+assert.ok(countReview.includes('data-field-hint="date"'),
  'Unknown date warns the user before saving');
 assert.ok(source.includes('scanDraft.items.splice(Number(el.dataset.scanRow),1);saveScanDraft();'),
  'Deleting a false OCR merchandise row persists the corrected draft');
@@ -1049,7 +1058,7 @@ assert.ok(!JSON.stringify(p4Rebuild).includes('ocr-p4'),
 console.log('P4 common review adapter, provenance, row identity and P2 validation OK');
 
 // v0.73: Receipt OCR review information hierarchy; preserve validation/confirmation.
-assert.ok(source.includes("const APP_VERSION='0.76.3'"), 'UI review revision version is current');
+assert.ok(source.includes("const APP_VERSION='0.77.0'"), 'UI review revision version is current');
 assert.ok(source.includes("UI.sectionHeading({title:'購入情報'})"), 'Receipt OCR review groups store and purchase date');
 assert.ok(source.includes("UI.sectionHeading({title:'購入明細',subtitle:scanDraft.items.length+'件'+"), 'Receipt OCR review identifies item list and unmatched count');
 assert.ok(source.includes("UI.sectionHeading({title:'合計の確認'})"), 'Receipt OCR review makes reconciliation distinct');
@@ -1117,11 +1126,12 @@ assert.ok(source.includes('item.amountReviewed=true')&&
 assert.ok(source.includes('レシートの合計額を特定できませんでした')&&
  source.includes('レシートの合計と一致しません'),
  'Unknown totals and mismatches give a specific yellow explanation');
-assert.ok(css.includes('.receipt-date-control{')&&
- css.includes('width:min(100%,236px)')&&
+assert.ok(css.includes('.ui-date-control{')&&
+ css.includes('width:100%;max-width:100%;min-width:0')&&
  css.includes('position:absolute;inset:0;display:block;z-index:1')&&
- css.includes('opacity:0;cursor:pointer'),
- 'Safari native date input is removed from flow inside a bounded date-picker surface');
+ css.includes('opacity:0;cursor:pointer')&&
+ !css.includes('width:min(100%,236px)'),
+ 'Shared native iOS date picker fills the field while its internal width remains out of flow');
 assert.ok(!css.includes('::-webkit-datetime-edit'),
  'No attempt is made to resize the system date field internals');
 assert.ok(source.includes('data-act="scanOpenPhoto"')&&source.includes('data-act="scanRemoveItem"'),
@@ -1136,12 +1146,12 @@ ui.setScanDraft({source:'ocr',date:'2026-11-07',chainId:'c-a',total:100,
 assert.ok(ui.receiptScanView().includes('class="scan-name-warning">読み取り名を確認'),
  'Concrete OCR name uncertainty has a targeted warning, not a generic blanket alert');
 const compactDateView=ui.receiptScanView();
-assert.ok(compactDateView.includes('class="receipt-date-control"')&&
+assert.ok(compactDateView.includes('class="ui-date-control"')&&
  compactDateView.includes('name="date" type="date"')&&
  compactDateView.includes('aria-label="購入日"')&&
  compactDateView.includes('2026/11/07'),
- 'Receipt confirmation displays a short date while preserving a real iOS date input');
+ 'Receipt confirmation displays a full-width shared date field with the native iOS picker');
 ui.setNewRecordType('receipt');
-assert.ok(ui.recordAddView().includes('class="receipt-date-control"')&&
+assert.ok(ui.recordAddView().includes('class="ui-date-control"')&&
  ui.recordAddView().includes('id="record-date"'),
- 'Manual receipt entry uses the same compact date picker instead of a wide native field');
+ 'Manual receipt entry uses the same shared full-width date picker');
