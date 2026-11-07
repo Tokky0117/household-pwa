@@ -1,4 +1,4 @@
-const APP_VERSION='0.80.0';
+const APP_VERSION='0.81.0';
 const CATS=['飲食','キッチン','洗面・風呂','洗濯・掃除','その他'];
 const liveMode=!!window.KurashiLive; // Data source only; original Preview v46 UI components remain.
 const SEED=[['牛乳',0,true],['麦茶',0,false],['コーヒー',0,true],['卵',0,false],['キッチンペーパー',1,false],['ラップ',1,true],['食器用洗剤',1,true],['シャンプー',2,false],['歯磨き粉',2,true],['ハンドソープ',2,false],['洗濯洗剤',3,false],['柔軟剤',3,true],['トイレットペーパー',3,false],['乾電池',4,true],['ティッシュ',4,true]];
@@ -608,7 +608,7 @@ function scanFormView(){
     </div></div>
     ${['manual','photo'].includes(item.inputOrigin)||item.ocrRawName===undefined?
      UI.formField({id:'scan-name-'+i,name:'name-'+i,label:'読み取り名',
-      value:item.name,maxlength:120,required:true,hint:true}):
+      value:item.name,maxlength:120,required:true,hint:true,fieldClass:'scan-read-name'}):
      '<div class="formfield scan-read-name"><span class="ui-static-field-label">読み取り名</span><div class="scan-ocr-name" data-ocr-row="'+i+'">'+esc(reviewModel.items[i].originalOcrName||'読み取り不可')+'</div></div>'}
     ${reviewModel.items[i].proposedName?'<p class="scan-name-candidate">候補：'+esc(reviewModel.items[i].proposedName)+'</p>':''}
     ${(item.issues||[]).some(reason=>/商品名|商品コード|名称|名前/.test(String(reason)))?'<p class="scan-name-warning">読み取り名を確認</p>':''}
