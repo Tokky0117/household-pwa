@@ -1,4 +1,4 @@
-const APP_VERSION='0.76.2';
+const APP_VERSION='0.76.3';
 const CATS=['飲食','キッチン','洗面・風呂','洗濯・掃除','その他'];
 const liveMode=!!window.KurashiLive; // Data source only; original Preview v46 UI components remain.
 const SEED=[['牛乳',0,true],['麦茶',0,false],['コーヒー',0,true],['卵',0,false],['キッチンペーパー',1,false],['ラップ',1,true],['食器用洗剤',1,true],['シャンプー',2,false],['歯磨き粉',2,true],['ハンドソープ',2,false],['洗濯洗剤',3,false],['柔軟剤',3,true],['トイレットペーパー',3,false],['乾電池',4,true],['ティッシュ',4,true]];
@@ -26,6 +26,7 @@ let catalogue=loadCatalogue(),pickQuery='',pickKind='product',pickerAll=false,ed
 const persistCatalogue=()=>{if(!liveMode)localStorage.setItem(catalogueKey,JSON.stringify(catalogue))};
 const productTitle=p=>p.name+(p.packageQuantity&&p.packageUnit?' '+p.packageQuantity+p.packageUnit:'');
 const linkedItemName=p=>items.find(i=>i.id===p.itemGroupId)?.name||'日用品未紐付け';
+const linkedItemLabel=p=>items.find(i=>i.id===p.itemGroupId)?.name||'';
 const registeredProducts=itemId=>catalogue.products.filter(p=>p.itemGroupId===itemId).sort((a,b)=>(a.itemGroupOrder??9999)-(b.itemGroupOrder??9999));
 function reorderProducts(itemId,ids){
  const currentProducts=registeredProducts(itemId);
@@ -279,7 +280,7 @@ function scanExistingProductResults(){
   <button type="button" class="scan-existing-option" data-act="scanChooseExisting"
     data-product-id="${esc(p.id)}">
    <strong>${esc(productTitle(p))}</strong>
-   <span>日用品：${esc(linkedItemName(p))}</span>
+   ${linkedItemLabel(p)?'<span>日用品リスト：'+esc(linkedItemLabel(p))+'</span>':''}
   </button>`).join(''):'<p class="hint">該当する登録商品はありません。新規商品登録をご利用ください。</p>';
 }
 function scanExistingProductView(){
@@ -417,7 +418,7 @@ function scanSuggestionButtons(item,row){
  return '<p class="hint">表記が近い登録商品（確認して選択）</p><div class="scan-product-actions">'+
   found.map(p=>'<button type="button" class="secondary" data-act="scanChooseSuggested" data-scan-row="'+
    row+'" data-product-id="'+esc(p.id)+'">'+esc(productTitle(p))+
-   ' ／ '+esc(linkedItemName(p))+'</button>').join('')+'</div>';
+   (linkedItemLabel(p)?' （日用品リスト：'+esc(linkedItemLabel(p))+'）':'')+'</button>').join('')+'</div>';
 }
 const scanDate=text=>{
  const pattern=/(?:^|[^\d])(?:20)?(2[0-9])\s*[\/-年.]\s*(0?[1-9]|1[0-2])\s*[\/-月.]\s*([0-2]?[0-9]|3[01])\s*日?(?!\d)/g;
@@ -454,7 +455,7 @@ function scanResolvedProductId(item){
 }
 function scanSelectedProductLabel(item){
  const product=catalogue.products.find(p=>p.id===scanResolvedProductId(item));
- return product?productTitle(product)+' ／ 日用品：'+linkedItemName(product):'商品未照合';
+ return product?productTitle(product):'商品未照合';
 }
 function scanPhotoIndexForItem(item){
  const evidence=scanDraft?.reviewEvidence?.itemSources?.find(row=>row.rowId===item.ocrRowId);
@@ -501,12 +502,11 @@ const scanTaxFailureDescription=reason=>window.KurashiReceiptValidation.describe
 function scanFormView(){
  if(!scanDraft)return '';
  const reviewModel=window.KurashiReceiptReview.buildReviewModel(scanDraft);
- const chains=['<option value=""'+(!scanDraft.chainId&&!scanNewStoreMode?' selected':'')+'>店舗を選択</option>',
-  ...catalogue.chains.map(c=>'<option value="'+esc(c.id)+'"'+
-   (c.id===scanDraft.chainId?' selected':'')+'>'+esc(c.name)+'</option>'),
-  ...(!scanDraft.recordId?['<option value="__new__"'+(scanNewStoreMode?' selected':'')+'>＋ 新しい店舗を追加</option>']:[])].join('');
+ const chains=[{value:'',label:'店舗を選択'},
+  ...catalogue.chains.map(c=>({value:c.id,label:c.name})),
+  ...(!scanDraft.recordId?[{value:'__new__',label:'＋ 新しい店舗を追加'}]:[])];
  return `<form id="scanConfirmForm" class="scan-review">
-  <h2 class="sectiontitle">読み取り結果の確認</h2>
+  ${UI.sectionHeading({title:'読み取り結果の確認'})}
   <p class="hint">写真と内容を確認してください。</p>
   ${scanDraft.taxBasis==='unknown'&&scanDraft.source==='ocr'?'<p class="scan-state-note scan-state-warning">税率を確認</p>':''}
   ${scanDraft.taxBasis==='excluded'&&scanDraft.taxAllocationStatus!=='allocated'?'<p class="scan-state-note scan-state-warning">税込金額を確認</p>':''}
@@ -514,10 +514,12 @@ function scanFormView(){
   <section class="scan-receipt-meta" aria-label="購入情報">
   ${UI.sectionHeading({title:'購入情報'})}
   <div class="scan-store-picker">
-   <label class="scan-field" id="scan-store-select-wrap" ${scanNewStoreMode?'hidden':''}>店舗
-    <select name="chain" id="scan-chain">${chains}</select>
+   <div class="scan-field" id="scan-store-select-wrap" ${scanNewStoreMode?'hidden':''}>
+    <label for="scan-store-picker">店舗</label>
+    ${UI.dropdown({id:'scan-store-picker',inputId:'scan-chain',name:'chain',
+     value:scanNewStoreMode?'__new__':scanDraft.chainId||'',options:chains,label:'店舗'})}
     <span class="scan-field-hint" data-scan-hint="chain" hidden></span>
-   </label>
+   </div>
    <label class="scan-field" id="scan-new-chain-wrap" ${scanNewStoreMode?'':'hidden'}>店舗
     <input name="chain_name" id="scan-new-store" maxlength="80" placeholder="新しい店舗名" value="${esc(scanDraft.chainName||'')}">
     <span class="scan-field-hint" data-scan-hint="chain_name" hidden></span>
@@ -545,7 +547,7 @@ function scanFormView(){
      <span class="scan-field-label">登録商品</span>
      <div class="scan-product-setting-row">
       <strong class="scan-product-selected">${esc(scanSelectedProductLabel(item))}</strong>
-      <button type="button" class="scan-product-action" data-act="scanPickExisting" data-scan-row="${i}">${scanResolvedProductId(item)?'変更':'商品を設定'} ${chevron('right')}</button>
+      ${UI.textAction({label:scanResolvedProductId(item)?'変更':'商品を設定',action:'scanPickExisting',arrow:false,row:i})}
      </div>
     </div>
     <div class="scan-input-pair"><label class="scan-field">数量<input name="qty-${i}" type="number" min="1" step="1" required value="${esc(item.quantity)}"><span class="scan-field-hint" data-scan-hint="qty-${i}" hidden></span></label>
@@ -779,15 +781,15 @@ const UI={
   sectionHeading({title,subtitle='',trailing='',className=''}) {
     return `<div class="ui-section-heading ${esc(className)}"><div class="ui-section-heading-copy"><h2 class="sectiontitle">${esc(title)}</h2>${subtitle?`<span class="ui-section-heading-sub">${esc(subtitle)}</span>`:''}</div>${trailing}</div>`;
   },
-  textAction({label,action,arrow=true}){return `<button type="button" class="ui-text-action" data-act="${esc(action)}"><span>${esc(label)}</span>${arrow?chevron('right'):''}</button>`;},
+  textAction({label,action,arrow=true,row=null}){return `<button type="button" class="ui-text-action" data-act="${esc(action)}" ${Number.isInteger(row)?'data-scan-row="'+row+'"':''}><span>${esc(label)}</span>${arrow?chevron('right'):''}</button>`;},
   recordRow({id,title,subtitle,amount=null,draft=false}){return `<button type="button" class="panel ui-record-row" data-act="${draft?'resumeScanDraft':'recordDetail'}" ${draft?'':`data-record-id="${esc(id)}"`}>
    <span class="ui-record-row-copy"><strong>${esc(title)}</strong><span>${esc(subtitle)}</span>${amount===null?'':`<strong class="ui-record-amount">${yen(amount)}</strong>`}</span>
    ${chevron('right')}</button>`;},
   stock(item){return `<button class="stock ${item.inStock?'':'off'}" data-stock="${esc(item.id)}" aria-label="${esc(item.name)}の在庫を切り替える" aria-pressed="${item.inStock}"><span class="stock-pill" aria-hidden="true">${item.inStock?'あり':'なし'}</span></button>`},
-  dropdown({id,name=null,value,options,label='',compact=false,open=false}){
+  dropdown({id,name=null,inputId='',value,options,label='',compact=false,open=false}){
     const active=options.find(x=>String(x.value)===String(value))||options[0];
     const choices=options.map(o=>({choice:String(o.value),label:o.label,selected:String(o.value)===String(active?.value)}));
-    return `<div class="ui-select ${compact?'ui-select-compact':''}" data-ui-select="${esc(id)}"><button type="button" class="ui-select-trigger" id="${esc(id)}" data-ui-toggle aria-haspopup="true" aria-expanded="${!!open}" aria-label="${esc(label||id)}"><span class="ui-select-label">${esc(active?.label||'')}</span>${chevron('down')}</button>${name!==null?`<input type="hidden" name="${esc(name)}" value="${esc(active?.value??'')}">`:''}${UI.actions({items:choices,label:label||id,compact,hidden:!open})}</div>`;
+    return `<div class="ui-select ${compact?'ui-select-compact':''}" data-ui-select="${esc(id)}"><button type="button" class="ui-select-trigger" id="${esc(id)}" data-ui-toggle aria-haspopup="true" aria-expanded="${!!open}" aria-label="${esc(label||id)}"><span class="ui-select-label">${esc(active?.label||'')}</span>${chevron('down')}</button>${name!==null?`<input type="hidden" ${inputId?'id="'+esc(inputId)+'"':''} name="${esc(name)}" value="${esc(active?.value??'')}">`:''}${UI.actions({items:choices,label:label||id,compact,hidden:!open})}</div>`;
   },
   formField({id,name=id,label,control='input',value='',type='text',placeholder='',required=false,maxlength=null,options=[],extra=''}) {
     const attr=`id="${esc(id)}" name="${esc(name)}"`;
@@ -1435,8 +1437,8 @@ function syncScanReview(){
      ?.querySelector('.scan-product-setting');
     if(association){
      association.querySelector('.scan-product-selected').textContent=scanSelectedProductLabel(it);
-     association.querySelector('.scan-product-action').innerHTML=
-      (it.productId?'変更':'商品を設定')+' '+chevron('right');
+     association.querySelector('.ui-text-action span').textContent=
+      it.productId?'変更':'商品を設定';
     }
    }
   }else{
