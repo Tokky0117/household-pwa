@@ -381,6 +381,25 @@ main {
   resize: vertical;
 }
 
+/* Shared form picker: value and an arrow-free text action open a sheet. */
+.ui-picker-surface{
+ display:flex;align-items:center;justify-content:space-between;gap:10px;
+ min-height:46px;min-width:0;max-width:100%;width:100%;box-sizing:border-box;
+}
+.ui-picker-value{
+ min-width:0;flex:1;font-size:16px;line-height:1.4;font-weight:650;
+ color:var(--ink);overflow-wrap:anywhere;
+}
+.ui-picker-value.is-empty{color:var(--muted);font-weight:400}
+.formfield.ui-field-error .ui-picker-surface{
+ border:1.5px solid var(--ui-field-error-color);border-radius:var(--ui-radius-control);
+ padding:0 10px;
+}
+.formfield.ui-field-warning .ui-picker-surface{
+ border:1.5px solid var(--ui-field-warning-color);border-radius:var(--ui-radius-control);
+ padding:0 10px;
+}
+
 /* Shared UI.formField extension: date, validation and read-only label. */
 /* Shared field error/review states for all UI.formField controls. */
 :root{--ui-field-error-color:#C53F3F;--ui-field-warning-color:#A97800}
@@ -2442,11 +2461,6 @@ html,body{touch-action:pan-x pan-y}
 .receipt-scan-page .scan-receipt-meta>.formfield,
 .receipt-scan-page .scan-store-picker,
 .receipt-scan-page .scan-store-picker .formfield{min-width:0;max-width:100%;width:100%}
-/* Safari's input[type=date] has a large native minimum content width.
- * Remove it from layout sizing, but preserve real native date input for taps,
- * keyboard access, required validation and the system date picker. */
-.scan-store-picker [hidden],.record-store-picker [hidden]{display:none!important}
-.record-store-picker .formfield{margin-bottom:12px}
 .scan-item-head{display:flex;align-items:center;justify-content:space-between;gap:8px;min-width:0}
 .scan-item-head>strong{flex:none;font-size:14px;font-weight:700}
 .scan-item-tools{display:flex;align-items:center;gap:3px;min-width:0}
@@ -2505,3 +2519,32 @@ html,body{touch-action:pan-x pan-y}
  .scan-picker-actions .secondary{padding:8px 9px}
  .scan-picker-actions{gap:5px}
 }
+
+/* Store-specific presentation uses UI.sheet, UI.searchField and UI.actions. */
+.store-picker-overlay{z-index:110}
+.half-sheet.store-picker-modal{
+ height:min(80dvh,720px);max-height:calc(100dvh - env(safe-area-inset-top) - 12px);
+ min-height:0;display:flex;flex-direction:column;overflow:hidden
+}
+.half-sheet.store-picker-modal>.sheet-body{
+ flex:1 1 auto;min-height:0;display:flex;flex-direction:column;overflow-y:auto;
+ padding-bottom:calc(16px + env(safe-area-inset-bottom))
+}
+.store-picker-content{flex:1 1 auto;min-height:0;display:flex;flex-direction:column;gap:10px}
+.store-picker-search,.store-picker-create{flex:0 0 auto}
+.store-picker-create>.secondary{width:100%;min-height:44px;display:inline-flex;gap:8px;align-items:center;justify-content:center}
+.store-picker-create svg{width:18px;height:18px}
+.store-picker-results{
+ flex:1 1 auto;min-height:0;overflow-y:auto;overscroll-behavior:contain;
+ border-top:1px solid var(--line);padding:4px 0 8px
+}
+.store-picker-results>.ui-menu{
+ display:block;position:static;width:100%;min-width:0;max-width:100%;
+ max-height:none;overflow:visible;box-shadow:none;border:0;border-radius:0;
+ padding:0;background:transparent
+}
+.store-picker-results .ui-menu-item{min-height:48px;white-space:normal;overflow-wrap:anywhere}
+#storePickerNewForm{display:flex;flex-direction:column;gap:12px}
+#storePickerNewForm>.formfield{margin:0}
+#storePickerNewForm>.primary{width:100%;min-height:46px}
+#storePickerNewForm>.ui-text-action{align-self:flex-start}
