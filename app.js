@@ -527,8 +527,8 @@ function scanFormView(){
     ${UI.formField({id:'scan-new-store',name:'chain_name',label:'店舗',maxlength:80,
      placeholder:'新しい店舗名',value:scanDraft.chainName||'',hint:true})}
    </div>
-   <button type="button" class="ui-text-action scan-store-back"
-    data-act="scanStoreChooseExisting" ${scanNewStoreMode?'':'hidden'}>登録済み店舗から選ぶ</button>
+   <button type="button" class="ui-text-action" data-act="scanStoreChooseExisting"
+    ${scanNewStoreMode?'':'hidden'}>登録済み店舗から選ぶ</button>
   </div>
   ${UI.formField({id:'scan-date',name:'date',label:'購入日',control:'date',
    value:scanDraft.date,required:true,hint:true,fieldClass:'scan-date-field'})}
@@ -1027,7 +1027,8 @@ function recordAddView(){
     UI.formField({id:'record-chain',name:'chain',label:'店舗',control:'select',value:chainValue,options:chainOptions})+'</div>'+
     (liveMode?'<div id="record-new-chain-row"'+(chainValue==='__new__'?'':' hidden')+'>'+
      UI.formField({id:'record-new-chain',name:'chain_name',label:'店舗',maxlength:80,placeholder:'新しい店舗名'})+
-     (catalogue.chains.length?'<button class="record-store-back" type="button" data-act="recordStoreChooseExisting">登録済み店舗から選ぶ</button>':'')+'</div>':'')+
+     (catalogue.chains.length?UI.textAction({label:'登録済み店舗から選ぶ',
+      action:'recordStoreChooseExisting',arrow:false}):'')+'</div>':'')+
     '</div>',
   UI.formField({id:'record-date',name:'date',label:type==='receipt'?'購入日':'値札確認日',
    control:'date',value:today,required:true,fieldClass:'record-date-field'}),
