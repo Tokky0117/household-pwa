@@ -1511,8 +1511,8 @@ standaloneSession.window.eval(importer);
 standaloneSession.window.document.getElementById('chatgpt-input').value=JSON.stringify(standaloneJson);
 await completeOcrImport(standaloneSession);
 const standaloneForm=standaloneSession.window.document.getElementById('scanConfirmForm');
-assert.equal(standaloneForm.querySelector('[name="chain"]').value,'',
- 'unrecognized printed retailer starts with a blank store choice rather than a duplicate name field');
+assert.equal(standaloneForm.querySelector('[name="chain"]').value,'__new__',
+ 'an unrecognized printed retailer opens the single new-store entry field');
 standaloneForm.querySelector('[name="chain"]').value=standaloneChainId;
 standaloneForm.querySelector('[name="chain"]').dispatchEvent(
  new standaloneSession.window.Event('change',{bubbles:true}));
