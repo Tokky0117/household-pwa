@@ -365,7 +365,8 @@ main {
   margin-bottom: 7px;
 }
 
-.formfield input,.formfield select,.formfield textarea {
+.formfield input,.formfield select,.formfield textarea,
+.scan-field input:not([type="date"]),.scan-field select {
   width: 100%;
   min-height: 46px;
   background: var(--card);
@@ -1734,8 +1735,10 @@ html,body {
   min-height: var(--ui-touch-size);
 }
 
-.formfield input,.formfield select,.formfield textarea {
+.formfield input,.formfield select,.formfield textarea,
+.scan-field input:not([type="date"]),.scan-field select {
   font-size: var(--ui-input-font-size);
+  font-weight: 400;
 }
 
 .stock,.detail-main .detail-stock-row .stock {
@@ -2274,8 +2277,9 @@ main>.ui-search + .filterrow{margin-bottom:5px}
 .scan-viewer-controls{display:flex;align-items:center;justify-content:center;gap:12px;min-height:62px;padding:6px 12px}
 .scan-viewer-controls button{min-width:44px;min-height:44px;border:1px solid #656b73;border-radius:10px;background:#33383f;color:#fff;font-size:17px;font-weight:700}
 .scan-viewer-controls .scan-viewer-scale{font-size:13px;min-width:56px;text-align:center}
-.scan-field{display:flex;flex-direction:column;gap:6px;font-size:14px;margin:12px 0}
-.scan-field input,.scan-field select{box-sizing:border-box;width:100%;min-height:44px;border:1px solid var(--line,#ccc);border-radius:10px;padding:9px 11px;font-size:16px;color:inherit;background:var(--card,#fff)}
+.scan-field{display:flex;flex-direction:column;gap:7px;font-size:14px;font-weight:700;margin:12px 0}
+.scan-field>label{display:block;font-size:inherit;font-weight:inherit}
+.scan-field input:not([type="date"]),.scan-field select{box-sizing:border-box;min-width:0;max-width:100%;color:var(--ink)}
 .scan-ocr-name{padding:4px 0;font-size:16px;line-height:1.5;overflow-wrap:anywhere}
 .scan-name-candidate{font-size:13px;line-height:1.5;color:var(--text-secondary,#555)}
 .scan-input-pair{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.4fr);gap:10px}
@@ -2322,8 +2326,9 @@ html,body{touch-action:pan-x pan-y}
 }
 
 /* Receipt confirmation sections: spacing only. Keep shared heading/form styles. */
-.scan-review>.ui-section-heading{margin:22px 0 10px}
-.scan-receipt-meta>.ui-section-heading{margin:20px 0 9px}
+.scan-review>.ui-section-heading,.scan-receipt-meta>.ui-section-heading{margin:20px 0 10px}
+.scan-review>.ui-section-heading:first-child{margin:0 0 10px}
+.panel .ui-section-heading .sectiontitle{font-size:17px}
 .scan-receipt-meta>.scan-field:first-of-type{margin-top:8px}
 .scan-review-total>.ui-section-heading{margin:0 0 8px}
 .scan-review-total>p:first-of-type{margin-top:0}
@@ -2343,7 +2348,7 @@ html,body{touch-action:pan-x pan-y}
 .scan-review .scan-state-error input,.scan-review .scan-state-warning input{
  background:#fff;color:var(--ink);border-width:1.5px
 }
-.scan-review .scan-state-error input{border-color:#C53F3F}
+.scan-review .scan-state-error input,.scan-review .scan-state-error .ui-select-trigger{border-color:#C53F3F}
 .scan-review .scan-state-warning input{border-color:#A97800}
 .scan-field-hint{font-size:12px;font-weight:600;line-height:1.45}
 .scan-state-error .scan-field-hint{color:#C53F3F}
@@ -2372,7 +2377,7 @@ html,body{touch-action:pan-x pan-y}
 .receipt-scan-page{width:100%;min-width:0;max-width:100%;overflow-wrap:anywhere}
 .receipt-scan-page>*{min-width:0;max-width:100%}
 .scan-review-item{padding:10px 12px}
-.scan-review-item .scan-field{margin:6px 0;gap:4px;min-width:0}
+.scan-review-item .scan-field{margin:6px 0;min-width:0}
 .scan-review-item .scan-ocr-name{padding:0;line-height:1.35}
 .scan-review-item .scan-name-candidate{margin:3px 0}
 .scan-review-item .scan-name-warning{font-size:12px;font-weight:600;line-height:1.4;color:#A97800;margin:4px 0}
@@ -2409,7 +2414,7 @@ html,body{touch-action:pan-x pan-y}
  width:min(100%,236px);max-width:100%;min-width:0;height:46px;
  box-sizing:border-box;padding:0 12px;overflow:hidden;
  background:var(--card,#fff);color:var(--ink);
- border:1px solid var(--line,#ccc);border-radius:10px;
+ border:1px solid #b9c5d1;border-radius:11px;
 }
 .receipt-date-control .receipt-date-value{
  flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
@@ -2442,7 +2447,7 @@ html,body{touch-action:pan-x pan-y}
 .record-store-picker .formfield{margin-bottom:12px}
 .record-store-picker .scan-state-error input{border:1.5px solid #C53F3F}
 .scan-item-head{display:flex;align-items:center;justify-content:space-between;gap:8px;min-width:0}
-.scan-item-head>strong{flex:none;font-size:13px}
+.scan-item-head>strong{flex:none;font-size:14px;font-weight:700}
 .scan-item-tools{display:flex;align-items:center;gap:3px;min-width:0}
 .scan-item-tool{
  display:inline-flex;align-items:center;justify-content:center;gap:4px;
@@ -2454,14 +2459,10 @@ html,body{touch-action:pan-x pan-y}
 .scan-review-item .scan-read-name{margin:4px 0 3px}
 .scan-review-item .scan-ocr-name{font-weight:650}
 .scan-product-setting{margin:5px 0 8px;min-width:0}
-.scan-field-label{display:block;font-size:13px;color:var(--muted);line-height:1.4;margin-bottom:2px}
+.scan-field-label{display:block;font-size:14px;font-weight:700;color:var(--ink);line-height:1.4;margin-bottom:4px}
 .scan-product-setting-row{display:flex;align-items:center;gap:8px;min-width:0}
-.scan-product-selected{font-weight:600;font-size:13px;line-height:1.4;
+.scan-product-selected{font-weight:650;font-size:15px;line-height:1.4;
  flex:1;min-width:0;overflow-wrap:anywhere}
-.scan-product-action{display:inline-flex;align-items:center;justify-content:flex-end;
- gap:3px;min-height:44px;flex:none;background:transparent;border:0;
- color:var(--accent);font-weight:700;font-size:13px;padding:5px 0 5px 5px}
-.scan-product-action .ui-chevron{width:16px;height:16px}
 .scan-setting-source{display:flex;flex-direction:column;gap:3px;margin:0 0 10px;overflow-wrap:anywhere}
 .scan-setting-source span{font-size:12px;color:var(--muted)}
 .scan-setting-source strong{font-size:14px}
