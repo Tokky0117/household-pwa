@@ -64,6 +64,40 @@ assert.ok(css.includes('.half-sheet.item-editor-sheet{')&&css.includes('height:m
 assert.ok(css.includes('.formfield .ui-search input')&&css.includes('background:transparent'),'Form search has shared internal styling');
 assert.ok(!css.includes('.searchbar'),'Obsolete list-specific search style removed');
 
+// v0.83: Shared visual hierarchy is applied across list, forms and receipt components.
+for(const [token,value] of Object.entries({
+ '--ui-section-font-size':'17px','--ui-section-font-weight':'700',
+ '--ui-field-label-font-size':'13px','--ui-field-label-font-weight':'500',
+ '--ui-field-label-gap':'5px','--ui-field-group-gap':'12px',
+ '--ui-value-font-size':'16px','--ui-value-font-weight':'600',
+ '--ui-list-name-font-size':'15px','--ui-list-name-font-weight':'600',
+ '--ui-action-font-size':'14px','--ui-action-font-weight':'600'
+})){
+ assert.ok(css.includes(token+': '+value+';'),'shared design token '+token);
+}
+assert.ok(ruleBody('.formfield label,.ui-static-field-label').some(x=>
+ x.includes('color: var(--muted)')&&x.includes('var(--ui-field-label-font-size)')&&
+ x.includes('var(--ui-field-label-gap)')),
+ 'Editable and noneditable field headings have one shared typography contract');
+assert.ok(css.includes('.ui-static-field-value {')&&
+ css.includes('font-weight: var(--ui-value-font-weight)'),
+ 'Static values use the same value type as the common picker');
+assert.ok(ruleBody('.formfield').some(x=>x.includes('var(--ui-field-group-gap)')),
+ 'Common forms use the shared group spacing');
+assert.ok(ruleBody('.sectiontitle').some(x=>x.includes('var(--ui-section-font-size)')),
+ 'All sections share the 17px section-heading token');
+assert.ok(ruleBody('.detail-main .sectiontitle').some(x=>
+ x.includes('var(--ui-section-font-size)')),
+ 'Daily-item price views use the same section-heading type');
+assert.ok(css.includes('.swipe-item .item-title{line-height:1.25;font-size:var(--ui-list-name-font-size)')&&
+ css.includes('.swipe-item .list-prices{line-height:1.25;font-size:12px'),
+ 'Daily-item compact names stay 15px and supporting prices become readable at 12px');
+assert.ok(css.includes('.ui-text-action{')&&css.includes('min-width:var(--ui-touch-size)')&&
+ css.includes('min-height:var(--ui-touch-size)'),
+ 'Text actions keep the full 44×44px touch target without changing label size');
+assert.ok(source.includes("control==='static'")&&
+ source.includes('class="ui-static-field-label"'),
+ 'Read-only fields also go through the shared form renderer');
 assert.ok(ui.listView().includes('class="stock-pill"'),'Stock labels are visually compact inside the shared button');
 assert.ok(css.includes('.stock .stock-pill{')&&css.includes('min-height:32px'),'Visible stock pill uses compact height');
 assert.ok(css.includes('.swipe-item .stock{')&&css.includes('min-height:44px'),'Stock button keeps accessible hit target');
@@ -170,13 +204,17 @@ assert.ok(ui.receiptView().includes('値札入力'));
 assert.ok(ui.receiptView().includes('ui-section-heading')&&ui.receiptView().includes('ui-text-action'),'Receipt home reuses section heading and backgroundless link');
 assert.ok(ui.receiptView().includes('ui-record-row')&&!ui.receiptView().includes('ほか'),'Receipt rows omit product summaries');
 assert.ok(ui.receiptView().includes('くらしストック'),'Receipt header uses the daily-item subtitle');
-assert.ok(css.includes('background: #e4e6e9;')&&css.includes('.secondary {')&&css.includes('font-weight: 700;'),'Secondary uses agreed gray fill and bold blue label');
+assert.ok(css.includes('background: #e4e6e9;')&&
+ ruleBody('.secondary').some(x=>x.includes('font-weight: 600;')),
+ 'Secondary retains the shared gray fill and uses medium-weight action text');
 assert.ok(css.includes('.tertiary{\n background:transparent;'),'Tertiary is transparent');
 assert.ok(!source.includes('secondary confirm-caution')&&!source.includes('class="secondary danger"'),'Shared dialog no longer uses per-danger colors');
 assert.ok(source.includes('class="dialog-action" data-dialog='),'Dialog choices share the same flat interaction surface');
 assert.ok(css.includes('border-top: 1px solid var(--line);')&&css.includes('.dialog-actions .dialog-action + .dialog-action')&&css.includes('border-left: 1px solid var(--line);'),'Dialog horizontal and vertical dividers connect without gaps');
 assert.ok(css.includes('gap: 0;')&&css.includes('margin: 18px -20px 0;'),'Dialog action separators span the panel width');
-assert.ok(css.includes('.ui-text-action{')&&css.includes('font-weight:700;font-size:14px;'),'Text actions use common bold type');
+assert.ok(css.includes('.ui-text-action{')&&
+ css.includes('font-weight:var(--ui-action-font-weight);font-size:var(--ui-action-font-size)'),
+ 'Text actions share the 14px/600 action type token');
 
 assert.ok(source.includes('function getRecordSummary(')&&source.includes('UI.recordRow(getRecordSummary(r))'),'History summary and shared row renderer');
 assert.ok(css.includes('.record-entry-actions{display:grid;grid-template-columns:repeat(3'),'Receipt registration has three equal columns');
@@ -422,12 +460,12 @@ assert.ok(manualAdd.includes('<label for="scan-name-1">読み取り名</label>')
 assert.ok(!manualAdd.includes('name="name-0"')&&manualAdd.includes('data-ocr-row="0"'),
  'read-only OCR name remains text and never becomes a saveable field');
 assert.ok(ruleBody('.scan-item-head>strong').some(x=>x.includes('font-size:16px')),
- 'receipt card heading uses 16px, above the shared 14px field labels');
-assert.ok(ruleBody('.scan-review-item .scan-read-name').some(x=>x.includes('margin:4px 0 8px')),
+ 'receipt card heading uses 16px, above the shared 13px field labels');
+assert.ok(ruleBody('.scan-review-item .scan-read-name').some(x=>x.includes('margin:4px 0 var(--ui-field-group-gap)')),
  'both name variants have the same compact vertical rhythm');
 assert.ok(ruleBody('.scan-review-item .formfield').some(x=>x.includes('margin:0')),
  'receipt fields have no accumulated 6px generic margins');
-assert.ok(ruleBody('.scan-product-setting').some(x=>x.includes('margin:0 0 6px')),
+assert.ok(ruleBody('.scan-product-setting').some(x=>x.includes('margin:0 0 var(--ui-field-group-gap)')),
  'product setting follows the name without redundant leading space');
 assert.ok(ruleBody('.scan-review-item .scan-ocr-name').every(x=>!x.includes('min-height')),
  'read-only OCR name does not reserve editable input height');
@@ -483,12 +521,14 @@ assert.ok(listingHtml.includes('<label for="scan-product-0-action">登録商品<
  'Product picker uses the shared form label, existing hidden value and unchanged row action');
 assert.ok(!listingHtml.includes('scan-field-label')&&!listingHtml.includes('scan-product-setting-row'),
  'Legacy product-specific label and picker markup are removed');
-assert.ok(css.includes('.formfield.ui-picker-inline .ui-text-action{')&&
- css.includes('grid-row:1 / 3')&&css.includes('min-height:44px'),
- 'Product action spans label and value without inserting a 44px content row');
-assert.ok(css.includes('.formfield.ui-picker-inline>label{')&&
- css.includes('.formfield.ui-picker-inline .ui-picker-value{'),
- 'Common inline picker preserves shared 14px label and 16px value');
+assert.ok(listingHtml.includes('class="ui-picker-action-slot"')&&
+ css.includes('.formfield.ui-picker-inline .ui-picker-action-slot{')&&
+ css.includes('height:0;width:max-content')&&
+ css.includes('top:-11px;min-height:var(--ui-touch-size)'),
+ 'Product action shares the value baseline without adding blank vertical space');
+assert.ok(css.includes('.formfield.ui-picker-inline .ui-picker-value{')&&
+ css.includes('font-size:var(--ui-value-font-size)'),
+ 'Common inline picker preserves the shared 13px label and 16px value');
 assert.ok(productAction.includes('class="ui-text-action"')&&
  productAction.includes('商品を設定')&&!productAction.includes('ui-chevron'),
  'registered-product settings use shared text actions without navigation chevrons');
@@ -1146,7 +1186,7 @@ assert.ok(!JSON.stringify(p4Rebuild).includes('ocr-p4'),
 console.log('P4 common review adapter, provenance, row identity and P2 validation OK');
 
 // v0.73: Receipt OCR review information hierarchy; preserve validation/confirmation.
-assert.ok(source.includes("const APP_VERSION='0.82.0'"), 'UI review revision version is current');
+assert.ok(source.includes("const APP_VERSION='0.83.0'"), 'UI review revision version is current');
 assert.ok(source.includes("UI.sectionHeading({title:'購入情報'})"), 'Receipt OCR review groups store and purchase date');
 assert.ok(source.includes("UI.sectionHeading({title:'購入明細',subtitle:scanDraft.items.length+'件'+"), 'Receipt OCR review identifies item list and unmatched count');
 assert.ok(source.includes("UI.sectionHeading({title:'合計の確認'})"), 'Receipt OCR review makes reconciliation distinct');
