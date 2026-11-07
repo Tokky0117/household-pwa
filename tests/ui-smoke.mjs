@@ -25,7 +25,7 @@ const doc={
 const ctx={document:doc,localStorage:{getItem:k=>storage.get(k)??null,setItem:(k,v)=>storage.set(k,v),removeItem:k=>storage.delete(k)},
  navigator:{},window:{scrollTo(){},scrollY:0,KurashiReceiptValidation:validator,KurashiReceiptReview:review},crypto:{randomUUID:()=> 'test-id'},setTimeout:()=>0};
 const ui=vm.runInNewContext(source+`
-({listView,priceCompareView,pickerView,pickerResults,receiptView,receiptScanView,receiptChatGptView,recordDetailView,applyChatGptOcrAssistance,receiptOcrReference,receiptOcrRows,isUnconfirmedBarcodeLine,makeChatGptReceiptRebuildDraft,scanProductView,scanExistingProductView,scanChainForStore,scanAutolinkUnmatched,scanMatchProduct,render,initializeCompare,
+({listView,priceCompareView,pickerView,pickerResults,receiptView,receiptScanView,receiptChatGptView,recordDetailView,scanStoreNameIssue,scanValidPurchaseDate,applyChatGptOcrAssistance,receiptOcrReference,receiptOcrRows,isUnconfirmedBarcodeLine,makeChatGptReceiptRebuildDraft,scanProductView,scanExistingProductView,scanChainForStore,scanAutolinkUnmatched,scanMatchProduct,render,initializeCompare,
  setProductGroup,reorderProducts,registeredProducts,convertQuantity,setOpenSwipe,
  chainMinima,priceCandidates,savePreviewRecord,periodStart,
  demoRecords,demoRecordItems,allPreviewRecords,allPreviewItems,
@@ -1042,6 +1042,44 @@ assert.ok(source.includes("UI.sectionHeading({title:'合計の確認'})"), 'Rece
 assert.ok(!source.includes('photoReviewOk'), 'Photo reconstruction no longer requires a formal checkbox');
 assert.ok(source.includes('scan-total-warning')&&source.includes('scan-count-warning'),
  'Only detected discrepancies receive comparison notes');
+
+
+/* v0.76.1: test the actual state logic, not only string presence. */
+assert.equal(ui.scanValidPurchaseDate('2026-11-07'),true);
+assert.equal(ui.scanValidPurchaseDate('2026-02-30'),false,
+ 'calendar-invalid dates cannot be stored even after leaving a field');
+assert.equal(ui.scanValidPurchaseDate(''),false);
+assert.equal(ui.scanStoreNameIssue('ライフ'),'登録済み店舗を選択',
+ 'a new retailer must not duplicate an existing canonical retailer');
+assert.equal(ui.scanStoreNameIssue('新しい店舗77'),'');
+assert.equal(ui.scanStoreNameIssue(''),'店舗名を入力');
+assert.equal(ui.scanStoreNameIssue('=unsafe'),'店舗名を確認');
+ui.setScanDraft({source:'ocr',date:'2026-11-07',chainId:'c-life',total:298,
+ items:[{name:'おいしい牛乳',ocrRawName:'おいしい牛乳',
+  quantity:1,amount:298,productId:'p-milk-1',issues:[]}]});
+ui.setScanProductRow(0);
+const unifiedPicker=ui.scanExistingProductView();
+assert.ok(unifiedPicker.includes('data-act="scanUnlinkProduct"'),
+ 'a wrongly matched registered product can be returned to an unlinked receipt line');
+assert.ok(unifiedPicker.indexOf('data-act="scanExistingToNew"')<
+ unifiedPicker.indexOf('id="scan-existing-results"'),
+ 'new product creation is reachable above the potentially long existing-products list');
+assert.ok(unifiedPicker.includes('登録先の日用品を変更（任意）'),
+ 'optional reassignment stays available without occupying the main picker');
+ui.setScanDraft({source:'chatgpt-rebuild',date:'2026-11-07',chainId:'c-life',total:298,
+ items:[{name:'おいしい牛乳',inputOrigin:'photo',quantity:1,amount:298,
+  productId:'',manuallyLinked:false,issues:[]}]});
+assert.equal(ui.scanAutolinkUnmatched(),1,
+ 'the ChatGPT rebuilt read name can auto-link against the existing master');
+ui.getScanDraft().items[0].productId='';
+ui.getScanDraft().items[0].manuallyLinked=true;
+assert.equal(ui.scanAutolinkUnmatched(),0,
+ 'a user's explicit unlink is never silently undone by an automatic rematch');
+assert.equal(ui.getScanDraft().items[0].productId,'');
+assert.ok(!css.includes('.scan-product-status{')&&!css.includes('.scan-branch-details{'),
+ 'retired accordion and branch controls have no stale styling rules');
+assert.ok(css.includes('.scan-picker-actions{'),'single product picker has explicit layout styles');
+console.log('v0.76.1: single picker, unlink override, ChatGPT relink and field validators OK');
 
 // v0.75 receipt UI regression contracts.
 assert.ok(!source.includes('未照合商品をまとめて登録'),'Batch button is removed');
