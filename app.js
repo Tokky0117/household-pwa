@@ -609,12 +609,9 @@ function scanFormView(){
      ${scanPhotos.length?'<button type="button" class="scan-item-tool" data-act="scanOpenPhoto" data-scan-row="'+scanPhotoIndexForItem(item)+'">'+miniIcon('camera')+'<span>写真</span></button>':''}
      <button type="button" class="scan-item-tool" data-act="scanRemoveItem" data-scan-row="${i}">${miniIcon('trash')}<span>削除</span></button>
     </div></div>
-    ${['manual','photo'].includes(item.inputOrigin)||item.ocrRawName===undefined?
-     UI.formField({id:'scan-name-'+i,name:'name-'+i,
-      label:item.inputOrigin==='manual'?'明細名（任意）':'読み取り名',
-      placeholder:item.inputOrigin==='manual'?'例：みかん':'',
-      value:item.name,maxlength:120,required:item.inputOrigin!=='manual',
-      hint:true,fieldClass:'scan-read-name'}):
+    ${item.inputOrigin==='manual'?'':item.inputOrigin==='photo'||item.ocrRawName===undefined?
+     UI.formField({id:'scan-name-'+i,name:'name-'+i,label:'読み取り名',
+      value:item.name,maxlength:120,required:true,hint:true,fieldClass:'scan-read-name'}):
      UI.formField({id:'scan-ocr-name-'+i,control:'static',label:'読み取り名',
        value:reviewModel.items[i].originalOcrName||'読み取り不可',valueVariant:'supporting',
        valueClass:'scan-ocr-name',extra:'data-ocr-row="'+i+'"',fieldClass:'scan-read-name'})}
@@ -638,6 +635,10 @@ function scanFormView(){
        placeholder:'金額を入力',extra:'min="0" step="1" inputmode="numeric"',
        hint:true})}
     </div>
+    ${item.inputOrigin==='manual'?UI.formField({
+      id:'scan-name-'+i,name:'name-'+i,label:'明細名（任意）',
+      placeholder:'例：みかん',value:item.name,maxlength:120,
+      hint:true,fieldClass:'scan-manual-name'}):''}
     ${Number.isSafeInteger(item.taxExcludedAmount)?'<p class="scan-tax-excluded">税抜金額：'+yen(item.taxExcludedAmount)+(Number.isSafeInteger(item.ocrDiscount)&&item.ocrDiscount>0?' ／ 値引き：'+yen(item.ocrDiscount):'')+(item.taxCalculation==='printed-total-proportional'?' ／ '+(scanDraft.taxDerivedFromTotals||scanDraft.taxRateCalculated?'計算税額':'税額')+'：'+yen(item.allocatedTax):'')+'</p>':''}
    </div>`).join('')}
   <div class="scan-add-action">${UI.button({label:'明細を追加',variant:'tertiary',action:'scanAddItem',icon:'plus'})}</div>
