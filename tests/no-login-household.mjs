@@ -1223,6 +1223,24 @@ assert.equal(unnamedEdited.data.items[0].amount_tax_included,300);
 assert.equal(unnamedEdited.data.items[0].confirmed_name,'');
 assert.equal(unnamedFixture.call('bootstrap').data.product_aliases.length,0);
 
+const unnamedGroup=unnamedFixture.call('item.create',{name:'未命名価格比較テスト',category_id:0},
+ 'op-unnamed-item-create-abcdef12345').data.entity.item_group_id;
+const unnamedProduct=unnamedFixture.call('product.create',{
+ name:'金額が比較できる登録商品',item_group_id:unnamedGroup,
+ package_quantity:1,package_unit:'個'
+},'op-unnamed-product-create-abcdef12345');
+assert.equal(unnamedProduct.ok,true,'optional-name fixture has a registered product');
+const unnamedLinked=unnamedFixture.call('record.create',{
+ ...unnamedPayload,items:[{...unnamedLine,product_id:unnamedProduct.data.entity.product_id,
+ amount_tax_included:460}]
+},'op-unnamed-linked-create-abcdef12345');
+assert.equal(unnamedLinked.ok,true,'optional name and registered product may coexist');
+assert.equal(unnamedLinked.data.items[0].price_eligible,true,
+ 'a linked price can be compared without a separate manual detail name');
+assert.equal(unnamedLinked.data.items[0].confirmed_name,'');
+assert.equal(unnamedFixture.call('bootstrap').data.product_aliases.length,0,
+ 'unnamed linked product must not teach a blank alias');
+
 
 /* Confirmed OCR corrections survive a full PWA reload in the existing IndexedDB;
  * they are scoped per household and chain, never the source image. */
