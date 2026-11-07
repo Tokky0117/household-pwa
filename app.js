@@ -463,7 +463,7 @@ function scanPhotoIndexForItem(item){
 function scanStoreNameIssue(value){
  const name=String(value||'').trim();
  if(!name)return '店舗名を入力';
- if(name.length>80||/^[=+@\\-]/.test(name)||/[\\x00-\\x1f\\x7f<>]/.test(name))
+ if(name.length>80||/^[=+@-]/.test(name)||/[\x00-\x1f\x7f<>]/.test(name))
   return '店舗名を確認';
  const key=norm(name);
  if(catalogue.chains.some(c=>norm(c.name)===key||
@@ -473,7 +473,7 @@ function scanStoreNameIssue(value){
 }
 function scanValidPurchaseDate(value){
  const date=String(value||'');
- if(!/^\\d{4}-\\d{2}-\\d{2}$/.test(date))return false;
+ if(!/^\d{4}-\d{2}-\d{2}$/.test(date))return false;
  const [year,month,day]=date.split('-').map(Number);
  const actual=new Date(Date.UTC(year,month-1,day));
  return year>=2000&&year<=2100&&actual.getUTCFullYear()===year&&
