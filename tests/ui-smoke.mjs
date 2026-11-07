@@ -471,8 +471,9 @@ assert.ok(css.includes('.formfield input,.formfield select,.formfield textarea,'
  !listingHtml.includes('class="scan-field">数量<input')&&
  listingHtml.includes('class="formfield ')&&listingHtml.includes('name="amount-0"'),
  'receipt numbers and amounts use the canonical form component and shared red/yellow validation');
-assert.ok(css.includes('.panel .ui-section-heading .sectiontitle{font-size:17px}'),
- 'panel section headings use the same text scale as the other receipt headings');
+assert.ok(css.includes('.panel h2:not(.sectiontitle)')&&
+ !css.includes('.panel .ui-section-heading .sectiontitle{font-size:17px}'),
+ 'shared section heading text scales are not overridden by panel-specific h2 rules');
 console.log('v61: printed-name preservation, explicit product↔item linking, and no-pinch UI OK');
 
 ui.setScanDraft({source:'chatgpt',date:'2026-11-02',chainId:'c-a',total:200,
