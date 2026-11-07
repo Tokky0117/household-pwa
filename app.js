@@ -190,7 +190,7 @@ function saveScanDraft(){
 }
 function resetScan({keepDraft=false}={}){
  scanToken++;closeScanViewer();clearScanThumbnails();scanPhotos=[];scanIndex=0;scanBusy=false;scanStatus='';scanPhotosExpanded=true;
- if(!keepDraft){scanDraft=null;saveScanDraft();}
+ if(!keepDraft){scanDraft=null;scanNewStoreMode=false;saveScanDraft();}
 }
 // OCR row IDs and printed names are authoritative; AI may only suggest a product name.
 function isUnconfirmedBarcodeLine(item){
@@ -674,6 +674,7 @@ async function runReceiptScan(){
    taxAllocationReason:allocationReasons.find(Boolean)||null,
    taxDiagnostics:taxDiagnostics.length===1?taxDiagnostics[0]:null,
    chainId:chain?.id||null,chainName:'',reviewEvidence,warnings:[...scanWarnings]};
+  scanNewStoreMode=false;
   scanDraft.items.forEach(item=>{
    item.productId=isUnconfirmedBarcodeLine(item)?'':scanMatchProduct(item.ocrRawName,scanDraft.chainId);
    item.autoLinked=!!item.productId;
@@ -1644,6 +1645,8 @@ if(action==='confirmProductMove'&&p){
 if(action==='confirmChatGptRebuild'&&p?.rebuild){
  try{
   scanDraft=makeChatGptReceiptRebuildDraft(scanDraft,p.rebuild);
+  scanNewStoreMode=!scanDraft.chainId&&!!scanDraft.chainName;
+  scanAutolinkUnmatched();
   saveScanDraft();
   scanStatus=scanDraft.items.length+'件の購入明細を読み取りました。';
   page='recordScan';render();
@@ -1774,6 +1777,7 @@ if(action==='resumeScanDraft'){
  window.KurashiLive.loadReceiptDraft().then(draft=>{
   if(!draft)return;
   resetScan({keepDraft:true});scanDraft=draft;scanDraftAvailable=true;
+  scanNewStoreMode=!scanDraft.chainId&&!!scanDraft.chainName;
   scanStatus='下書きを再開しました。';
   page='recordScan';render();
  }).catch(e=>say(e?.message||'下書きを再開できません'));return;
@@ -1790,7 +1794,7 @@ if(action==='recordEdit'){
  if(r.record_id.startsWith('local-')){
   say('同期が完了してから編集できます');return;
  }
- scanPhotos=[];scanDraft={
+ scanPhotos=[];scanNewStoreMode=false;scanDraft={
   recordId:r.record_id,source:'edit',date:r.record_date,chainId:r.chain_id,
   chainName:'',branchName:r.branch_name||'',total:null,
   items:allPreviewItems().filter(x=>x.record_id===r.record_id&&!x.deleted_at)
@@ -2249,6 +2253,15 @@ function refreshScanTotalUI(){
   const hint=form.querySelector('[data-scan-hint="'+name+'"]');
   if(hint){hint.hidden=!message;hint.textContent=message||'';}
  }
+ const storeChoice=String(d.get('chain')||'');
+ const newStoreName=String(d.get('chain_name')||'').trim();
+ const duplicateStore=storeChoice==='__new__'&&!!newStoreName&&
+  catalogue.chains.some(c=>norm(c.name)===norm(newStoreName));
+ const existingStore=catalogue.chains.some(c=>c.id===storeChoice);
+ mark('chain',!scanNewStoreMode&&!existingStore?'error':'',
+  !scanNewStoreMode&&!existingStore?'店舗を選択':'');
+ mark('chain_name',scanNewStoreMode&&(!newStoreName||duplicateStore)?'error':'',
+  !scanNewStoreMode?'':duplicateStore?'登録済み店舗を選択':'店舗名を入力');
  const date=String(d.get('date')||'');
  const parsed=/^\d{4}-\d{2}-\d{2}$/.test(date)?new Date(date+'T12:00:00'):null;
  const dateOk=!!parsed&&!Number.isNaN(parsed.getTime())&&
@@ -2260,8 +2273,7 @@ function refreshScanTotalUI(){
   const validAmount=/^\d+$/.test(v)&&Number.isSafeInteger(Number(v))&&Number(v)>=0;
   mark('qty-'+i,!validQty?'error':item.quantityUncertain?'warning':'',
    !validQty?'数量を確認':item.quantityUncertain?'数量を確認':'');
-  const uncertain=!!item.issues?.some(code=>/amount|price|tax|discount|金額|値引き|税/i.test(code))||
-   scanDraft.taxBasis==='excluded'&&scanDraft.taxAllocationStatus!=='allocated';
+  const uncertain=!item.amountReviewed&&!!item.issues?.some(code=>/amount|price|tax|discount|金額|値引き|税込/i.test(code));
   mark('amount-'+i,!validAmount?'error':uncertain?'warning':'',
    !validAmount?'金額を入力':uncertain?'金額を確認':'');
   if(form.elements.namedItem('name-'+i)){
@@ -2277,11 +2289,13 @@ function refreshScanTotalUI(){
  const codes=(scanDraft.warnings||[]).map(w=>typeof w==='string'?w:w?.code);
  const tm=result.checks.total==='mismatch',cm=result.checks.count==='mismatch';
  if(totalWarning){
-  totalWarning.hidden=!(tm||codes.includes('conflicting_receipt_totals'));
-  totalWarning.innerHTML=tm?
-   '<div class="scan-compare-warning-head">レシートの合計金額と一致しません</div>'+
+  const unknownTotal=scanDraft.total==null&&['ocr','chatgpt-rebuild'].includes(scanDraft.source);
+  totalWarning.hidden=!(tm||unknownTotal||codes.includes('conflicting_receipt_totals'));
+  totalWarning.innerHTML=(tm?
+   '<div class="scan-compare-warning-head">レシートの合計と一致しません</div>'+
    '<div class="scan-compare-data"><span>レシート記載額</span><strong>'+yen(result.receiptTotal)+'</strong></div>':
-   '<div class="scan-compare-warning-head">レシート記載額を確認</div>';
+   '<div class="scan-compare-warning-head">レシートの合計額を特定できませんでした</div>')+
+   (scanPhotos.length?'<button type="button" class="scan-compare-photo" data-act="scanOpenPhoto" data-scan-row="0">'+miniIcon('camera')+'<span>写真で確認</span></button>':'');
  }
  if(countWarning){
   countWarning.hidden=!(cm||codes.includes('conflicting_printed_counts'));
@@ -2290,19 +2304,6 @@ function refreshScanTotalUI(){
    '<div class="scan-compare-data"><span>レシート記載点数</span><strong>'+result.printedCount+'点</strong></div>':
    '<div class="scan-compare-warning-head">レシート記載点数を確認</div>';
  }
-}
-function refreshScanDuplicateUI(){
- const form=document.getElementById('scanConfirmForm'),warn=document.getElementById('scan-duplicate-warning');
- if(!form||!warn||!scanDraft)return;
- const d=new FormData(form),fields=scanDraft.items.map((x,i)=>({
-  name:String(d.get('name-'+i)||''),quantity:Number(d.get('qty-'+i)),
-  amount:String(d.get('amount-'+i)||'')
- }));
- const chain=String(d.get('chain')||'');
- warn.hidden=!scanDuplicates({...scanDraft,
-   date:String(d.get('date')||''),chainId:chain==='__new__'?null:chain,
-   items:fields}).length;
- if(warn.hidden)form.querySelector('[name="duplicateOk"]').checked=false;
 }
 app.addEventListener('input',e=>{
  if(page==='scanExistingProduct'&&e.target.id==='scan-existing-search'){
@@ -2319,13 +2320,19 @@ app.addEventListener('input',e=>{
     item.quantityUncertain=false;
    }
   }
-  syncScanReview();saveScanDraft();refreshScanDuplicateUI();refreshScanTotalUI();
+  if(e.target.matches('input[name^="amount-"]')){
+   const index=Number(e.target.name.slice(7)),item=scanDraft?.items[index];
+   const entered=e.target.value.trim();
+   if(item&&entered!==String(item.amount)&&/^\d+$/.test(entered)&&Number.isSafeInteger(Number(entered)))
+    item.amountReviewed=true;
+  }
+  syncScanReview();saveScanDraft();refreshScanTotalUI();
  }
 });
 // Only structured receipt draft fields are stored, never raw OCR or photos.
 app.addEventListener('change',e=>{
  if(page==='recordScan'&&e.target.closest('#scanConfirmForm')){
-  syncScanReview();saveScanDraft();refreshScanDuplicateUI();
+  syncScanReview();saveScanDraft();refreshScanTotalUI();
  }
 });
 if(liveMode){
