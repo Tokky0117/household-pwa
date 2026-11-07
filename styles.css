@@ -3,6 +3,19 @@
 :root {
   font-family: -apple-system,BlinkMacSystemFont,"Hiragino Kaku Gothic ProN","Yu Gothic",sans-serif;
   --ui-focus-outline: 2px solid #80b5e5;
+  /* Shared type roles for lists, forms, selectors and record review. */
+  --ui-section-font-size: 17px;
+  --ui-section-font-weight: 700;
+  --ui-field-label-font-size: 13px;
+  --ui-field-label-font-weight: 500;
+  --ui-field-label-gap: 5px;
+  --ui-field-group-gap: 12px;
+  --ui-value-font-size: 16px;
+  --ui-value-font-weight: 600;
+  --ui-list-name-font-size: 15px;
+  --ui-list-name-font-weight: 600;
+  --ui-action-font-size: 14px;
+  --ui-action-font-weight: 600;
 }
 
 * {
@@ -84,7 +97,7 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
   border-radius: 12px;
   padding: 12px 17px;
   min-height: 44px;
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .secondary {
@@ -94,7 +107,7 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
   border-radius: 12px;
   min-height: 44px;
   padding: 10px 16px;
-  font-weight: 700;
+  font-weight: 600;
 }
 
 main {
@@ -132,7 +145,7 @@ main {
   align-items: center;
   gap: 9px;
   font-size: 14px;
-  font-weight: 650;
+  font-weight: 500;
 }
 
 .switchlabel input {
@@ -260,8 +273,8 @@ main {
 }
 
 .sectiontitle {
-  font-weight: 750;
-  font-size: 17px;
+  font-weight: var(--ui-section-font-weight);
+  font-size: var(--ui-section-font-size);
   margin: 23px 0 11px;
 }
 
@@ -356,14 +369,23 @@ main {
 }
 
 .formfield {
-  margin: 0 0 17px;
+  margin: 0 0 var(--ui-field-group-gap);
 }
 
-.formfield label {
+.formfield label,.ui-static-field-label {
   display: block;
-  font-size: 14px;
-  font-weight: 700;
-  margin-bottom: 7px;
+  color: var(--muted);
+  font-size: var(--ui-field-label-font-size);
+  font-weight: var(--ui-field-label-font-weight);
+  line-height: 1.4;
+  margin-bottom: var(--ui-field-label-gap);
+}
+.ui-static-field-value {
+  min-width: 0;
+  font-size: var(--ui-value-font-size);
+  font-weight: var(--ui-value-font-weight);
+  line-height: 1.4;
+  overflow-wrap: anywhere;
 }
 
 .formfield input,.formfield select,.formfield textarea,
@@ -388,25 +410,28 @@ main {
  min-height:46px;min-width:0;max-width:100%;width:100%;box-sizing:border-box;
 }
 .ui-picker-value{
- min-width:0;flex:1;font-size:16px;line-height:1.4;font-weight:650;
+ min-width:0;flex:1;font-size:var(--ui-value-font-size);line-height:1.4;font-weight:var(--ui-value-font-weight);
  color:var(--ink);overflow-wrap:anywhere;
 }
 .ui-picker-value.is-empty{color:var(--muted);font-weight:400}
-/* Shared compact picker: the 44px action spans label and value, adding no row height. */
-.formfield.ui-picker-inline{
- display:grid;grid-template-columns:minmax(0,1fr) auto;
- grid-template-rows:auto auto;column-gap:8px;min-width:0;align-items:start;
+/* Compact picker: value owns the natural row height. The 44px button
+   has a zero-height slot, centered on the value's first text line. */
+.formfield.ui-picker-inline{min-width:0}
+.formfield.ui-picker-inline>.ui-picker-surface{
+ display:grid;grid-template-columns:minmax(0,1fr) max-content;
+ gap:8px;align-items:start;min-width:0;min-height:0;
 }
-.formfield.ui-picker-inline>label{grid-column:1;grid-row:1;min-width:0}
-.formfield.ui-picker-inline>.ui-picker-surface{display:contents}
 .formfield.ui-picker-inline .ui-picker-value{
- grid-column:1;grid-row:2;align-self:start;
- font-size:16px;font-weight:650;line-height:1.4;
+ display:block;min-width:0;font-size:var(--ui-value-font-size);
+ font-weight:var(--ui-value-font-weight);line-height:1.4;
 }
-.formfield.ui-picker-inline .ui-text-action{
- grid-column:2;grid-row:1 / 3;align-self:center;min-height:44px;
+.formfield.ui-picker-inline .ui-picker-action-slot{
+ position:relative;display:block;height:0;width:max-content;
+ min-width:var(--ui-touch-size);overflow:visible;
 }
-.formfield.ui-picker-inline>input[type="hidden"]{display:none}
+.formfield.ui-picker-inline .ui-picker-action-slot .ui-text-action{
+ position:relative;top:-11px;min-height:var(--ui-touch-size);
+}
 .formfield.ui-field-error .ui-picker-surface{
  border:1.5px solid var(--ui-field-error-color);border-radius:var(--ui-radius-control);
  padding:0 10px;
@@ -462,7 +487,6 @@ main {
 }
 .ui-date-control:focus-within{outline:var(--ui-focus-outline);outline-offset:0}
 .ui-date-control>input[type="date"]:focus-visible{outline:none}
-.ui-static-field-label{display:block;font-size:14px;font-weight:700;margin-bottom:7px}
 
 .formactions {
   display: flex;
@@ -837,7 +861,7 @@ button, a, input, label, select, textarea, [role="button"] {
 }
 
 .detail-main .sectiontitle {
-  font-size: 15px;
+  font-size: var(--ui-section-font-size);
   margin: 12px 0 6px;
 }
 
@@ -1687,7 +1711,7 @@ html,body {
 
 .ui-menu .ui-menu-item.selected {
   color: var(--accent);
-  font-weight: 600;
+  font-weight: var(--ui-action-font-weight);
 }
 
 .ui-menu .ui-menu-icon {
@@ -1959,7 +1983,7 @@ html,body {
 .manage-main .hint{margin:0 0 10px}
 .catalogue-row{display:flex;align-items:center;gap:12px;padding:11px 12px;min-height:62px}
 .catalogue-row-body{display:flex;flex-direction:column;gap:3px;min-width:0;flex:1;word-break:break-word}
-.catalogue-row-body strong{font-size:15px;font-weight:650}
+.catalogue-row-body strong{font-size:var(--ui-list-name-font-size);font-weight:var(--ui-list-name-font-weight)}
 .catalogue-row-body .hint,.catalogue-row-body .hint:last-child{font-size:12px;line-height:1.4;margin:0}
 .catalogue-remove{flex:none;display:grid;place-items:center;width:44px;height:44px;font-size:21px;border-radius:11px}
 .manage-add{display:block;width:100%;margin:12px 0;min-height:44px}
@@ -1975,14 +1999,14 @@ html,body {
 
 /* Tapping a registered product opens the shared product information edit form. */
 .catalogue-edit{display:flex;flex-direction:column;align-items:flex-start;gap:3px;width:100%;text-align:left;background:transparent;color:var(--ink);border:0;padding:5px 0;min-height:44px}
-.catalogue-edit strong{font-size:15px;font-weight:650}
+.catalogue-edit strong{font-size:var(--ui-list-name-font-size);font-weight:var(--ui-list-name-font-weight)}
 .catalogue-edit .hint{font-size:12px;line-height:1.4}
 
 /* Canonical management rows: identical typography, padding, and remove affordance. */
 .catalogue-row{margin-bottom:8px}
 .catalogue-row-content{display:flex;flex-direction:column;align-items:flex-start;justify-content:center;gap:3px;min-height:44px;width:100%;text-align:left;color:var(--ink)}
 .catalogue-row-content .hint{display:block;margin:0;font-size:12px;line-height:1.4}
-.catalogue-row-content strong{font-size:15px;font-weight:650}
+.catalogue-row-content strong{font-size:var(--ui-list-name-font-size);font-weight:var(--ui-list-name-font-weight)}
 .catalogue-row-content.catalogue-edit{border:0;background:transparent;padding:0;border-radius:8px;cursor:pointer}
 .catalogue-candidate-end{display:flex;align-items:center;justify-content:center;min-width:20px}
 .catalogue-candidate-end .ui-chevron{width:18px;height:18px;color:var(--accent)}
@@ -1996,7 +2020,7 @@ html,body {
 .dialog .dialog-line+.dialog-line{margin-top:5px}
 
 /* Unified price comparison prototype (v22): style only new, previously undefined elements. */
-.itemname .item-title{display:block;font-weight:650;line-height:1.45}
+.itemname .item-title{display:block;font-weight:var(--ui-list-name-font-weight);line-height:1.45}
 .itemname .list-prices{display:block;color:var(--muted);font-size:12px;line-height:1.5;margin-top:4px}
 .itemname .list-prices b{font-weight:650;color:var(--ink)}
 .comparison-main .detail-section-heading{align-items:center}
@@ -2035,7 +2059,7 @@ html,body {
  border-radius:11px;background:var(--card);overflow:hidden;user-select:none;
 }
 .comparison-main .comparison-name{min-width:0;display:flex;flex-direction:column;gap:2px;padding-bottom:0}
-.comparison-main .comparison-name strong{font-size:15px;overflow-wrap:anywhere}
+.comparison-main .comparison-name strong{font-size:var(--ui-list-name-font-size);font-weight:var(--ui-list-name-font-weight);overflow-wrap:anywhere}
 .comparison-main .comparison-name small{font-size:12px;text-align:left;color:var(--muted)}
 .comparison-main .price-heading{margin:8px 0 6px}
 
@@ -2056,8 +2080,8 @@ html,body {
 .swipe-item{min-height:0!important;padding:0!important;margin-bottom:3px!important}
 .swipe-item .swipe-front{min-height:52px}
 .swipe-item .itemname{padding:5px 7px 5px 12px;gap:1px;min-height:0}
-.swipe-item .item-title{line-height:1.25;font-size:15px}
-.swipe-item .list-prices{line-height:1.25;font-size:11.5px;margin:0}
+.swipe-item .item-title{line-height:1.25;font-size:var(--ui-list-name-font-size)}
+.swipe-item .list-prices{line-height:1.25;font-size:12px;margin:0}
 .swipe-item .swipe-peek{flex:0 0 6px;align-self:stretch;background:var(--line);opacity:.40}
 .comparison-product-front{min-height:0!important;align-items:stretch}
 .product-picker-sheet{padding:6px 16px 22px;max-height:60vh;overflow:auto}
@@ -2086,7 +2110,7 @@ html,body {
 }
 .product-picker-search{flex:0 0 auto;padding:0 3px 12px;position:relative;z-index:1;background:var(--card)}
 .product-picker-search .formfield{margin:0}
-.product-picker-search .formfield label{display:block;margin:0 0 7px;min-height:auto}
+.product-picker-search .formfield label{display:block;margin:0 0 var(--ui-field-label-gap);min-height:auto}
 .product-picker-search .ui-search{width:100%;max-width:100%}
 .product-picker-results{flex:1 1 auto;min-height:0;overflow-y:auto;overscroll-behavior:contain;padding:4px 3px 8px}
 .product-picker-footer{flex:0 0 auto;padding:9px 4px 3px;font-size:12px;color:var(--muted);border-top:1px solid var(--line)}
@@ -2124,7 +2148,7 @@ html,body {
  min-height:44px;
  padding:10px 14px;
  font-size:14px;
- font-weight:700;
+ font-weight:var(--ui-action-font-weight);
  box-shadow:none;
 }
 .tertiary:active{background:var(--accent-soft)}
@@ -2293,7 +2317,7 @@ main>.ui-search + .filterrow{margin-bottom:5px}
 #shop-compare-fields .ui-quantity-unit{grid-template-columns:minmax(0,1fr) minmax(95px,110px);gap:10px}
 
 /* Common list row and text-only trailing action; shared by compact history screens. */
-.ui-text-action{display:inline-flex;align-items:center;justify-content:center;gap:4px;min-height:44px;padding:4px 0 4px 8px;border:0;background:transparent;color:var(--accent);font-weight:700;font-size:14px;white-space:nowrap}
+.ui-text-action{display:inline-flex;align-items:center;justify-content:center;gap:4px;min-width:var(--ui-touch-size);min-height:var(--ui-touch-size);padding:4px 8px;border:0;background:transparent;color:var(--accent);font-weight:var(--ui-action-font-weight);font-size:var(--ui-action-font-size);white-space:nowrap}
 .ui-text-action .ui-chevron{width:17px;height:17px;flex:none;vertical-align:middle;color:currentColor}
 .ui-text-action:focus-visible{outline:2px solid var(--accent);outline-offset:0}
 .ui-record-row{display:flex;flex-direction:row;align-items:center;justify-content:space-between;gap:12px;width:100%;text-align:left;cursor:pointer;margin:0}
@@ -2362,7 +2386,7 @@ main>.ui-search + .filterrow{margin-bottom:5px}
 .scan-viewer-controls{display:flex;align-items:center;justify-content:center;gap:12px;min-height:62px;padding:6px 12px}
 .scan-viewer-controls button{min-width:44px;min-height:44px;border:1px solid #656b73;border-radius:10px;background:#33383f;color:#fff;font-size:17px;font-weight:700}
 .scan-viewer-controls .scan-viewer-scale{font-size:13px;min-width:56px;text-align:center}
-.scan-field{display:flex;flex-direction:column;gap:7px;font-size:14px;font-weight:700;margin:12px 0}
+.scan-field{display:flex;flex-direction:column;gap:var(--ui-field-label-gap);font-size:var(--ui-field-label-font-size);font-weight:var(--ui-field-label-font-weight);margin:var(--ui-field-group-gap) 0}
 .scan-field>label{display:block;font-size:inherit;font-weight:inherit}
 .scan-field input,.scan-field select{box-sizing:border-box;min-width:0;max-width:100%;color:var(--ink)}
 .scan-ocr-name{padding:4px 0;font-size:16px;line-height:1.5;overflow-wrap:anywhere}
@@ -2398,7 +2422,7 @@ html,body{touch-action:pan-x pan-y}
  background:var(--card,#fff);color:var(--ink);text-align:left
 }
 .ui-choice-copy{display:flex;flex:1;min-width:0;flex-direction:column;gap:4px}
-.ui-choice-copy>strong{font-size:16px;font-weight:650;line-height:1.4;overflow-wrap:anywhere}
+.ui-choice-copy>strong{font-size:var(--ui-value-font-size);font-weight:var(--ui-value-font-weight);line-height:1.4;overflow-wrap:anywhere}
 .ui-choice-sub{font-size:12px;color:var(--muted);line-height:1.4;overflow-wrap:anywhere}
 .ui-choice-check{flex:none;color:var(--accent);font-size:17px;font-weight:700}
 .ui-choice-row.is-selected{border-color:var(--accent)}
@@ -2500,9 +2524,9 @@ html,body{touch-action:pan-x pan-y}
 }
 .scan-item-tool svg{width:17px;height:17px;flex:none}
 .scan-item-tool[data-act="scanRemoveItem"]{color:var(--muted)}
-.scan-review-item .scan-read-name{margin:4px 0 8px}
-.scan-review-item .scan-ocr-name{font-weight:650;line-height:1.4}
-.scan-product-setting{margin:0 0 6px;min-width:0}
+.scan-review-item .scan-read-name{margin:4px 0 var(--ui-field-group-gap)}
+.scan-review-item .scan-ocr-name{line-height:1.4}
+.scan-product-setting{margin:0 0 var(--ui-field-group-gap);min-width:0}
 .scan-setting-source{display:flex;flex-direction:column;gap:3px;margin:0 0 10px;overflow-wrap:anywhere}
 .scan-setting-source span{font-size:12px;color:var(--muted)}
 .scan-setting-source strong{font-size:14px}
