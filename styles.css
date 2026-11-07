@@ -2446,7 +2446,7 @@ html,body{touch-action:pan-x pan-y}
 .receipt-scan-page{width:100%;min-width:0;max-width:100%;overflow-wrap:anywhere}
 .receipt-scan-page>*{min-width:0;max-width:100%}
 .scan-review-item{padding:10px 12px}
-.scan-review-item .formfield{margin:6px 0;min-width:0}
+.scan-review-item .formfield{margin:0;min-width:0}
 .scan-review-item .scan-ocr-name{padding:0;line-height:1.35}
 .scan-review-item .scan-name-candidate{margin:3px 0}
 .scan-review-item .scan-name-warning{font-size:12px;font-weight:600;line-height:1.4;color:#A97800;margin:4px 0}
@@ -2476,7 +2476,7 @@ html,body{touch-action:pan-x pan-y}
 .receipt-scan-page .scan-store-picker,
 .receipt-scan-page .scan-store-picker .formfield{min-width:0;max-width:100%;width:100%}
 .scan-item-head{display:flex;align-items:center;justify-content:space-between;gap:8px;min-width:0}
-.scan-item-head>strong{flex:none;font-size:14px;font-weight:700}
+.scan-item-head>strong{flex:none;font-size:16px;font-weight:700}
 .scan-item-tools{display:flex;align-items:center;gap:3px;min-width:0}
 .scan-item-tool{
  display:inline-flex;align-items:center;justify-content:center;gap:4px;
@@ -2485,12 +2485,12 @@ html,body{touch-action:pan-x pan-y}
 }
 .scan-item-tool svg{width:17px;height:17px;flex:none}
 .scan-item-tool[data-act="scanRemoveItem"]{color:var(--muted)}
-.scan-review-item .scan-read-name{margin:7px 0 9px}
-.scan-review-item .scan-ocr-name{font-weight:650}
-.scan-product-setting{margin:5px 0 8px;min-width:0}
-.scan-field-label{display:block;font-size:14px;font-weight:700;color:var(--ink);line-height:1.4;margin-bottom:4px}
+.scan-review-item .scan-read-name{margin:4px 0 8px}
+.scan-review-item .scan-ocr-name{font-weight:650;line-height:1.4}
+.scan-product-setting{margin:0 0 6px;min-width:0}
+.scan-field-label{display:block;font-size:14px;font-weight:700;color:var(--ink);line-height:1.4;margin-bottom:7px}
 .scan-product-setting-row{display:flex;align-items:center;gap:8px;min-width:0}
-.scan-product-selected{font-weight:650;font-size:15px;line-height:1.4;
+.scan-product-selected{font-weight:650;font-size:16px;line-height:1.4;
  flex:1;min-width:0;overflow-wrap:anywhere}
 .scan-setting-source{display:flex;flex-direction:column;gap:3px;margin:0 0 10px;overflow-wrap:anywhere}
 .scan-setting-source span{font-size:12px;color:var(--muted)}
