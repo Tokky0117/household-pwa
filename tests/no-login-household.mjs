@@ -2053,6 +2053,8 @@ clearedDate.value='';
 clearedDate.dispatchEvent(new reviewFlow.window.Event('input',{bubbles:true}));
 assert.ok(clearedDate.closest('.scan-field').classList.contains('scan-state-error'),
  'clearing the purchase date gives its own red required-field state');
+assert.equal(flowForm.querySelector('.receipt-date-value').textContent,'日付を選択',
+ 'the compact date surface shows its empty state after clearing the native date');
 const preservedScroll=[];
 reviewFlow.window.scrollY=456;
 reviewFlow.window.scrollTo=(_,y)=>{preservedScroll.push(y);reviewFlow.window.scrollY=y;};
@@ -2110,6 +2112,16 @@ newStoreAgain.value=kitStore.canonical_name;
 newStoreAgain.dispatchEvent(new reviewFlow.window.Event('input',{bubbles:true}));
 assert.match(flowForm.querySelector('[data-scan-hint="chain_name"]').textContent,
  /登録済み店舗を選択/,'duplicate retailer names are rejected in the field');
+const compactDate=flowForm.querySelector('[name="date"]');
+assert.equal(compactDate.type,'date','the native iOS picker remains a date input');
+assert.ok(compactDate.closest('.receipt-date-control'),
+ 'the native date picker is contained by the compact, fixed-width visual control');
+compactDate.value='2026-11-06';
+compactDate.dispatchEvent(new reviewFlow.window.Event('input',{bubbles:true}));
+assert.equal(flowForm.querySelector('.receipt-date-value').textContent,'2026/11/06',
+ 'changing the actual native date immediately updates the compact visible date');
+assert.equal(compactDate.closest('.scan-field').classList.contains('scan-state-error'),false,
+ 'choosing a valid date removes the red warning');
 reviewFlow.window.close();
 console.log('v0.76.1: receipt form state, store toggles, explicit unlink and scroll restoration OK');
 
