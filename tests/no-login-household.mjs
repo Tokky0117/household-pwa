@@ -2032,3 +2032,84 @@ assert.equal(v70PhotoLine.confirmed_name,'メリノクルーネックカーデ�
 assert.equal(v70PhotoLine.inferred_name,'メリノVネックカーディガン');
 assert.ok(!v70PhotoLine.raw_name&&!v70PhotoLine.alias_id);
 console.log('v70: separate inferred/confirmed/OCR names persist without false aliases OK');
+
+/* v0.76.1: reproduce the real receipt-confirmation interactions that static
+ * checks missed: cleared dates, a wrongly linked product, return position,
+ * and one-field store selection. No server writes are needed here. */
+const reviewFlow=appSession(new IDBFactory());
+await waitFor(()=>reviewFlow.window.KurashiLive.state().loaded&&
+ !reviewFlow.window.KurashiLive.state().cached,
+ 'fresh receipt review test session loaded');
+reviewFlow.window.document.querySelector('[data-tab="receipt"]').click();
+prepareOcrImport(reviewFlow);
+reviewFlow.window.eval(importer);
+reviewFlow.window.document.getElementById('chatgpt-input').value=JSON.stringify(kitJson);
+await completeOcrImport(reviewFlow);
+let flowForm=reviewFlow.window.document.getElementById('scanConfirmForm');
+assert.equal(flowForm.querySelector('[name="product-0"]').value,kitSavedProduct.product_id,
+ 'known OCR spelling is initially linked to the same registered product');
+const clearedDate=flowForm.querySelector('[name="date"]');
+clearedDate.value='';
+clearedDate.dispatchEvent(new reviewFlow.window.Event('input',{bubbles:true}));
+assert.ok(clearedDate.closest('.scan-field').classList.contains('scan-state-error'),
+ 'clearing the purchase date gives its own red required-field state');
+const preservedScroll=[];
+reviewFlow.window.scrollY=456;
+reviewFlow.window.scrollTo=(_,y)=>{preservedScroll.push(y);reviewFlow.window.scrollY=y;};
+flowForm.querySelector('[data-act="scanPickExisting"]').click();
+const flowPicker=reviewFlow.window.document.querySelector('.scan-existing-picker');
+assert.ok(flowPicker,'single product picker opens');
+assert.ok(flowPicker.querySelector('[data-act="scanExistingToNew"]'),
+ 'new-product registration is visible before the long results list');
+assert.ok(flowPicker.querySelector('[data-act="scanUnlinkProduct"]'),
+ 'the existing product can be explicitly unlinked without deleting the master');
+flowPicker.querySelector('[data-act="scanUnlinkProduct"]').click();
+flowForm=reviewFlow.window.document.getElementById('scanConfirmForm');
+assert.equal(flowForm.querySelector('[name="date"]').value,'',
+ 'leaving product selection does not silently restore a cleared date');
+assert.equal(flowForm.querySelector('[name="product-0"]').value,'',
+ 'explicit product unlink is retained on returning to review');
+assert.ok(preservedScroll.includes(456),
+ 'closing the product sheet explicitly restores the original receipt scroll position');
+let storeField=flowForm.querySelector('#scan-chain');
+const differentStore=[...storeField.options].find(option=>
+ option.value&&option.value!=='__new__'&&option.value!==storeField.value);
+assert.ok(differentStore,'test requires another registered retailer');
+storeField.value=differentStore.value;
+storeField.dispatchEvent(new reviewFlow.window.Event('change',{bubbles:true}));
+flowForm=reviewFlow.window.document.getElementById('scanConfirmForm');
+assert.equal(flowForm.querySelector('[name="product-0"]').value,'',
+ 'a user-unlinked product does not auto-relink when the retailer changes');
+storeField=flowForm.querySelector('#scan-chain');
+storeField.value='__new__';
+storeField.dispatchEvent(new reviewFlow.window.Event('change',{bubbles:true}));
+flowForm=reviewFlow.window.document.getElementById('scanConfirmForm');
+assert.equal(flowForm.querySelector('#scan-store-select-wrap').hidden,true);
+assert.equal(flowForm.querySelector('#scan-new-chain-wrap').hidden,false,
+ 'adding a store replaces rather than stacks the store selection field');
+const newStoreInput=flowForm.querySelector('#scan-new-store');
+newStoreInput.value='後で取り消す店舗名';
+newStoreInput.dispatchEvent(new reviewFlow.window.Event('input',{bubbles:true}));
+flowForm.querySelector('[data-act="scanStoreChooseExisting"]').click();
+flowForm=reviewFlow.window.document.getElementById('scanConfirmForm');
+assert.equal(flowForm.querySelector('#scan-new-chain-wrap').hidden,true,
+ 'returning to registered stores hides the new-store field');
+assert.equal(flowForm.querySelector('[name="date"]').value,'',
+ 'store toggling does not replace the invalid date with an old value');
+storeField=flowForm.querySelector('#scan-chain');
+storeField.value='__new__';
+storeField.dispatchEvent(new reviewFlow.window.Event('change',{bubbles:true}));
+flowForm=reviewFlow.window.document.getElementById('scanConfirmForm');
+const newStoreAgain=flowForm.querySelector('#scan-new-store');
+assert.equal(newStoreAgain.value,'',
+ 'cancelled new-store text is not resurrected when the new option is reselected');
+newStoreAgain.dispatchEvent(new reviewFlow.window.Event('input',{bubbles:true}));
+assert.ok(newStoreAgain.closest('.scan-field').classList.contains('scan-state-error'),
+ 'a blank new-store name has the same red required-field style');
+newStoreAgain.value=kitStore.canonical_name;
+newStoreAgain.dispatchEvent(new reviewFlow.window.Event('input',{bubbles:true}));
+assert.match(flowForm.querySelector('[data-scan-hint="chain_name"]').textContent,
+ /登録済み店舗を選択/,'duplicate retailer names are rejected in the field');
+reviewFlow.window.close();
+console.log('v0.76.1: receipt form state, store toggles, explicit unlink and scroll restoration OK');
+
