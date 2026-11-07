@@ -903,7 +903,7 @@ const UI={
      const actionButton=UI.textAction({label:actionLabel||(display?'変更':'店舗を選択'),
       action,arrow:false,id:id+'-action',row:actionRow});
      input=`<div class="ui-picker-surface">
-      <strong class="ui-picker-value ${display?'':'is-empty'}${valueState==='unmatched'?' is-unmatched':''}">${esc(display||'未選択')}</strong>
+      <strong class="ui-picker-value${display?'':' is-empty'}${valueState==='unmatched'?' is-unmatched':''}">${esc(display||'未選択')}</strong>
       ${pickerLayout==='inline'?'<span class="ui-picker-action-slot">'+actionButton+'</span>':actionButton}
      </div><input type="hidden" ${attr} value="${esc(value)}">`;
     }
