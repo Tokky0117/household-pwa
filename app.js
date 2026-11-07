@@ -315,7 +315,9 @@ function receiptChatGptView(){
  '<p class="hint">指示文をコピーし、ChatGPTに必ず元のレシート写真も添付してください。商品行・数量・金額の対応が正しい場合はOCR文字修正、構造が崩れている場合は写真の全明細再解析を返す指示です。</p>'+
  '<p class="hint">最初のJSONを取り込みます。全明細再解析のときは、既存OCRの9行などを写真の商品行に置き換える前に確認画面を表示します。OCR診断は保存しません。</p>'+
  '<button type="button" class="secondary" data-act="chatGptCopyPrompt">OCR結果と指示文をコピー</button>'+
- '<label class="scan-field">ChatGPTの解析結果（JSON）<textarea id="chatgpt-input" rows="9" maxlength="30000" placeholder="最初のJSONコードブロックを貼り付け"></textarea></label>'+
+ UI.formField({id:'chatgpt-input',name:'chatgpt-json',label:'ChatGPTの解析結果（JSON）',
+  control:'textarea',placeholder:'最初のJSONコードブロックを貼り付け',
+  extra:'rows="9" maxlength="30000"'})+
  '<p id="chatgpt-error" class="scan-warning" role="status">'+esc(chatGptError)+'</p>'+
  '<button type="button" class="primary" data-act="chatGptImport">解析結果を取り込む</button></main>';
 }
@@ -1002,8 +1004,8 @@ function masterProductEditorView(){
    quantity:p?.packageQuantity??'',unit:p?.packageUnit||'個',extra:'inputmode="decimal"'})+
   (editing?'<p class="hint">日用品：'+esc(linkedItemName(p))+
    '。移動は日用品リストの「登録商品の管理」から操作してください。</p>':
-   '<label class="scan-field">日用品との紐付け（任意）<select name="group">'+
-   scanGroupOptions()+'</select></label>');
+   UI.formField({id:'master-product-group',name:'group',label:'日用品との紐付け（任意）',
+    control:'select',value:'',options:scanGroupChoices()}));
  return head(editing?'商品マスタを編集':'商品マスタを追加','',true)+
   '<main class="manage-main"><form id="masterProductForm">'+fields+
   '<div class="formactions"><button type="submit" class="primary">'+
