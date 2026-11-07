@@ -1265,8 +1265,9 @@ assert.equal(kitForm.querySelector('[name="group"]').value,'',
 assert.equal(kitForm.querySelector('[name="name"]').value,kitRaw,
  'printed raw name only pre-fills editable canonical name');
 kitForm.querySelector('[name="name"]').value=kitCanonical;
-assert.ok([...kitForm.querySelector('[name="group"]').options].some(o=>o.value===chocId),
- 'newly seeded chocolate item exists in product-group choices');
+assert.ok([...kitForm.querySelectorAll('[data-ui-select="scan-product-group"] [data-ui-choice]')]
+ .some(o=>o.dataset.uiChoice===chocId),
+ 'newly seeded chocolate item exists in the shared product-group selector');
 kitForm.querySelector('[name="group"]').value=chocId;
 assert.equal(kitForm.querySelector('[name="group"]').value,chocId,
  'selected item group is present before creating canonical product');
@@ -1943,13 +1944,13 @@ qtySession.window.document.getElementById('chatgpt-input').value=JSON.stringify(
 await completeOcrImport(qtySession);
 const qtyField=qtySession.window.document.querySelector('#scanConfirmForm [name="qty-0"]');
 assert.equal(qtyField.value,'1','unconfirmed OCR quantity defaults to one');
-assert.ok(qtyField.closest('label').classList.contains('scan-state-warning'));
+assert.ok(qtyField.closest('.formfield').classList.contains('ui-field-warning'));
 assert.match(qtySession.window.document.querySelector('#scanConfirmForm').textContent,/数量を確認/);
 qtyField.value='1';
 qtyField.dispatchEvent(new qtySession.window.Event('input',{bubbles:true}));
-assert.ok(!qtyField.closest('label').classList.contains('scan-state-warning'),
- 'even confirming one by re-entry clears the yellow field');
-assert.equal(qtySession.window.document.querySelector('[data-scan-hint="qty-0"]').hidden,true,
+assert.ok(!qtyField.closest('.formfield').classList.contains('ui-field-warning'),
+ 'even confirming one by re-entry clears the shared yellow field');
+assert.equal(qtySession.window.document.querySelector('[data-field-hint="qty-0"]').hidden,true,
  'yellow inline note clears after quantity entry');
 qtySession.window.close();
 console.log('v65: quantity unknown defaults to yellow one; re-entering one clears warning OK');
@@ -2053,9 +2054,9 @@ assert.equal(flowForm.querySelector('[name="product-0"]').value,kitSavedProduct.
 const clearedDate=flowForm.querySelector('[name="date"]');
 clearedDate.value='';
 clearedDate.dispatchEvent(new reviewFlow.window.Event('input',{bubbles:true}));
-assert.ok(clearedDate.closest('.scan-field').classList.contains('scan-state-error'),
- 'clearing the purchase date gives its own red required-field state');
-assert.equal(flowForm.querySelector('.receipt-date-value').textContent,'日付を選択',
+assert.ok(clearedDate.closest('.formfield').classList.contains('ui-field-error'),
+ 'clearing the purchase date gives a common red required-field state');
+assert.equal(flowForm.querySelector('.ui-date-value').textContent,'日付を選択',
  'the compact date surface shows its empty state after clearing the native date');
 const preservedScroll=[];
 reviewFlow.window.scrollY=456;
@@ -2067,6 +2068,16 @@ assert.ok(flowPicker.querySelector('[data-act="scanExistingToNew"]'),
  'new-product registration is visible before the long results list');
 assert.ok(flowPicker.querySelector('[data-act="scanUnlinkProduct"]'),
  'the existing product can be explicitly unlinked without deleting the master');
+const sharedSearch=flowPicker.querySelector('#scan-existing-search');
+assert.ok(sharedSearch?.closest('.ui-search'),'product chooser uses the shared search field');
+sharedSearch.value='テスト';
+sharedSearch.dispatchEvent(new reviewFlow.window.Event('input',{bubbles:true}));
+assert.ok(flowPicker.querySelector('[data-search-clear="scan-existing-search"]:not([hidden])'),
+ 'search clear action appears after typing in the shared search field');
+flowPicker.querySelector('[data-search-clear="scan-existing-search"]').click();
+assert.equal(sharedSearch.value,'','clearing search uses the shared binding');
+assert.ok(flowPicker.querySelectorAll('[data-act="scanChooseExisting"]').length>0,
+ 'cleared search restores the existing product candidates');
 flowPicker.querySelector('[data-act="scanUnlinkProduct"]').click();
 flowForm=reviewFlow.window.document.getElementById('scanConfirmForm');
 assert.equal(flowForm.querySelector('[name="date"]').value,'',
@@ -2112,21 +2123,21 @@ const newStoreAgain=flowForm.querySelector('#scan-new-store');
 assert.equal(newStoreAgain.value,'',
  'cancelled new-store text is not resurrected when the new option is reselected');
 newStoreAgain.dispatchEvent(new reviewFlow.window.Event('input',{bubbles:true}));
-assert.ok(newStoreAgain.closest('.scan-field').classList.contains('scan-state-error'),
+assert.ok(newStoreAgain.closest('.formfield').classList.contains('ui-field-error'),
  'a blank new-store name has the same red required-field style');
 newStoreAgain.value=kitStore.canonical_name;
 newStoreAgain.dispatchEvent(new reviewFlow.window.Event('input',{bubbles:true}));
-assert.match(flowForm.querySelector('[data-scan-hint="chain_name"]').textContent,
+assert.match(flowForm.querySelector('[data-field-hint="chain_name"]').textContent,
  /登録済み店舗を選択/,'duplicate retailer names are rejected in the field');
 const compactDate=flowForm.querySelector('[name="date"]');
 assert.equal(compactDate.type,'date','the native iOS picker remains a date input');
-assert.ok(compactDate.closest('.receipt-date-control'),
- 'the native date picker is contained by the compact, fixed-width visual control');
+assert.ok(compactDate.closest('.ui-date-control'),
+ 'the native date picker is contained by the shared, full-width date control');
 compactDate.value='2026-11-06';
 compactDate.dispatchEvent(new reviewFlow.window.Event('input',{bubbles:true}));
-assert.equal(flowForm.querySelector('.receipt-date-value').textContent,'2026/11/06',
+assert.equal(flowForm.querySelector('.ui-date-value').textContent,'2026/11/06',
  'changing the actual native date immediately updates the compact visible date');
-assert.equal(compactDate.closest('.scan-field').classList.contains('scan-state-error'),false,
+assert.equal(compactDate.closest('.formfield').classList.contains('ui-field-error'),false,
  'choosing a valid date removes the red warning');
 reviewFlow.window.close();
 console.log('v0.76.1: receipt form state, store toggles, explicit unlink and scroll restoration OK');
