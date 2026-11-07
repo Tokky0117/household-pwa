@@ -1198,6 +1198,31 @@ await waitFor(()=>historyRecovery.window.KurashiLive.state().queued===0&&
  'chain-specific learned alias is sent through the offline-safe queue');
 historyRecovery.window.close();
 console.log('v59: record editing, offline restart, deletion, alias training: OK');
+// Unnamed manual receipt lines need neither OCR aliases nor new data columns.
+// GAS accepts them for both create and edit; prices are ineligible until linked.
+const unnamedFixture=fixture(api);
+const unnamedChain=unnamedFixture.call('store.create',{name:'名前任意テスト店舗'},
+ 'op-unnamed-chain-create-abcdef12345').data.entity.chain_id;
+const unnamedLine={raw_name:'',product_id:null,quantity:1,amount_tax_included:250,category_id:null};
+const unnamedPayload={record_type:'receipt',chain_id:unnamedChain,record_date:'2026-11-08',
+ items:[unnamedLine]};
+const unnamedSaved=unnamedFixture.call('record.create',unnamedPayload,'op-unnamed-create-abcdef12345');
+assert.equal(unnamedSaved.ok,true,'blank detail names can be saved without a product');
+assert.equal(unnamedSaved.data.items[0].confirmed_name,'');
+assert.equal(unnamedSaved.data.items[0].alias_id,'');
+assert.equal(unnamedSaved.data.items[0].price_eligible,false);
+assert.equal(unnamedFixture.call('bootstrap').data.product_aliases.length,0,
+ 'blank detail never creates a learned OCR alias');
+const unnamedEdited=unnamedFixture.call('record.update',{
+ record_id:unnamedSaved.data.record.record_id,version:1,
+ chain_id:unnamedChain,branch_name:'',record_date:'2026-11-08',
+ items:[{...unnamedLine,amount_tax_included:300}]
+},'op-unnamed-update-abcdef12345');
+assert.equal(unnamedEdited.ok,true,'blank-name receipt rows remain editable');
+assert.equal(unnamedEdited.data.items[0].amount_tax_included,300);
+assert.equal(unnamedEdited.data.items[0].confirmed_name,'');
+assert.equal(unnamedFixture.call('bootstrap').data.product_aliases.length,0);
+
 
 /* Confirmed OCR corrections survive a full PWA reload in the existing IndexedDB;
  * they are scoped per household and chain, never the source image. */
@@ -1236,8 +1261,8 @@ await completeOcrImport(bulkUI);
 assert.equal(bulkUI.window.document.querySelector('[data-act="scanBulkProducts"]'),null,
  'removed batch action cannot interrupt receipt photo review');
 const unmatchedStatus=bulkUI.window.document.querySelector('.scan-product-setting');
-assert.ok(unmatchedStatus&&unmatchedStatus.textContent.includes('商品未照合'),
- 'an unmatched product has an explicit status');
+assert.ok(unmatchedStatus&&unmatchedStatus.querySelector('.ui-picker-value.is-unmatched')?.textContent==='未照合',
+ 'an unmatched product uses the neutral shared status rather than product-name typography');
 bulkUI.window.document.querySelector('[data-act="scanPickExisting"]').click();
 bulkUI.window.document.querySelector('[data-act="scanExistingToNew"]').click();
 const individualForm=bulkUI.window.document.querySelector('#scanProductForm');
