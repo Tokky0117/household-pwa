@@ -1292,8 +1292,8 @@ assert.equal(kitReview.querySelector('.scan-ocr-name').textContent,kitRaw,
  'raw receipt name is never silently replaced with canonical master name');
 assert.match(kitReview.textContent,/キットカット濃い抹茶10袋/,
  'canonical product appears as selected master in confirmation view');
-assert.match(kitReview.textContent,/日用品：チョコ/,
- 'selected master shows item-group relationship to chocolate');
+assert.equal(kitReview.querySelector('.scan-product-selected')?.textContent,kitCanonical,
+ 'receipt review shows only the chosen registered product name, without item-group metadata');
 kitReview.dispatchEvent(new kitSession.window.Event('submit',{bubbles:true,cancelable:true}));
 await waitFor(()=>kitSession.window.KurashiLive.state().queued===0&&
  temp.call('bootstrap').data.record_items.some(x=>
@@ -1477,7 +1477,7 @@ existingSearch.dispatchEvent(new existingSession.window.Event('input',{bubbles:t
 const existingChoice=existingSession.window.document.querySelector(
  '[data-act="scanChooseExisting"][data-product-id="'+kitSavedProduct.product_id+'"]');
 assert.ok(existingChoice,'registered KitKat found using household-item name');
-assert.match(existingChoice.textContent,/日用品：チョコ/);
+assert.match(existingChoice.textContent,/日用品リスト：チョコ/);
 existingChoice.click();
 const selectedReview=existingSession.window.document.getElementById('scanConfirmForm');
 assert.equal(selectedReview.querySelector('[name="product-0"]').value,
@@ -1540,8 +1540,9 @@ await waitFor(()=>temp.call('bootstrap').data.product_aliases.some(x=>
  'user confirmed abbreviation is persisted immediately after product registration');
 const standaloneReview=standaloneSession.window.document.getElementById('scanConfirmForm');
 assert.ok(standaloneReview,'standalone creation returns to receipt review');
-assert.match(standaloneReview.textContent,/日用品未紐付け/,
- 'standalone product is clearly identified as unlinked');
+assert.equal(standaloneReview.querySelector('.scan-product-selected')?.textContent,standaloneName,
+ 'unlinked master is shown by registered product name without confusing item-group text');
+assert.ok(!standaloneReview.querySelector('.scan-product-setting')?.textContent.includes('日用品未紐付け'));
 assert.ok(!standaloneReview.querySelector('[name="difference"]')&&
  !standaloneReview.querySelector('[name="confirmed"]'),
  'there is no redundant receipt-total or generic confirmation checkbox');
@@ -1561,7 +1562,8 @@ assert.equal(matchedReview.querySelector('[name="chain"]').value,standaloneChain
 assert.equal(matchedReview.querySelector('[name="product-0"]').value,
  standaloneProduct.product_id,
  're-read automatically selects canonical product via chain-scoped abbreviation');
-assert.match(matchedReview.textContent,/日用品未紐付け/);
+assert.equal(matchedReview.querySelector('.scan-product-selected')?.textContent,standaloneName,
+ 'later receipt also shows the selected master without its unrelated item-group status');
 const totalText=matchedReview.querySelector('#scan-sum-text').textContent;
 assert.match(totalText,/合計金額：/,'one calculated total is visible without a checkbox');
 matchedReview.dispatchEvent(new readAgain.window.Event('submit',{
@@ -2074,17 +2076,21 @@ assert.equal(flowForm.querySelector('[name="product-0"]').value,'',
 assert.ok(preservedScroll.includes(456),
  'closing the product sheet explicitly restores the original receipt scroll position');
 let storeField=flowForm.querySelector('#scan-chain');
-const differentStore=[...storeField.options].find(option=>
- option.value&&option.value!=='__new__'&&option.value!==storeField.value);
+const storePicker=flowForm.querySelector('[data-ui-select="scan-store-picker"]');
+assert.ok(storePicker&&storeField.type==='hidden',
+ 'receipt retailer chooser is the shared UI dropdown with a hidden form value');
+const differentStore=[...storePicker.querySelectorAll('[data-ui-choice]')].find(option=>
+ option.dataset.uiChoice&&option.dataset.uiChoice!=='__new__'&&
+ option.dataset.uiChoice!==storeField.value);
 assert.ok(differentStore,'test requires another registered retailer');
-storeField.value=differentStore.value;
-storeField.dispatchEvent(new reviewFlow.window.Event('change',{bubbles:true}));
+storePicker.querySelector('.ui-select-trigger').click();
+differentStore.click();
 flowForm=reviewFlow.window.document.getElementById('scanConfirmForm');
 assert.equal(flowForm.querySelector('[name="product-0"]').value,'',
  'a user-unlinked product does not auto-relink when the retailer changes');
 storeField=flowForm.querySelector('#scan-chain');
-storeField.value='__new__';
-storeField.dispatchEvent(new reviewFlow.window.Event('change',{bubbles:true}));
+flowForm.querySelector('[data-ui-select="scan-store-picker"] .ui-select-trigger').click();
+flowForm.querySelector('[data-ui-select="scan-store-picker"] [data-ui-choice="__new__"]').click();
 flowForm=reviewFlow.window.document.getElementById('scanConfirmForm');
 assert.equal(flowForm.querySelector('#scan-store-select-wrap').hidden,true);
 assert.equal(flowForm.querySelector('#scan-new-chain-wrap').hidden,false,
@@ -2099,8 +2105,8 @@ assert.equal(flowForm.querySelector('#scan-new-chain-wrap').hidden,true,
 assert.equal(flowForm.querySelector('[name="date"]').value,'',
  'store toggling does not replace the invalid date with an old value');
 storeField=flowForm.querySelector('#scan-chain');
-storeField.value='__new__';
-storeField.dispatchEvent(new reviewFlow.window.Event('change',{bubbles:true}));
+flowForm.querySelector('[data-ui-select="scan-store-picker"] .ui-select-trigger').click();
+flowForm.querySelector('[data-ui-select="scan-store-picker"] [data-ui-choice="__new__"]').click();
 flowForm=reviewFlow.window.document.getElementById('scanConfirmForm');
 const newStoreAgain=flowForm.querySelector('#scan-new-store');
 assert.equal(newStoreAgain.value,'',
