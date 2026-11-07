@@ -435,7 +435,7 @@ assert.match(newProductHtml,/紐付けしない（商品だけ登録）/,'new pr
 assert.ok(!newProductHtml.includes('name="group" required'),
  'item group selection is optional, not forced');
 const listingHtml=ui.receiptScanView();
-assert.ok(listingHtml.includes('<span>読み取り名</span>')&&
+assert.ok(listingHtml.includes('ui-static-field-label">読み取り名</span>')&&
  listingHtml.includes('登録商品')&&listingHtml.includes('商品を設定'),
  'receipt review distinguishes the read name from the selected registered product');
 assert.ok(!listingHtml.includes('data-act="scanBulkProducts"'),
