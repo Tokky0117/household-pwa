@@ -323,7 +323,7 @@ function storePickerChoices(){
  }))});
 }
 function storePickerBody(){
- if(storePickerNewMode)return `<form id="storePickerNewForm">
+ if(storePickerNewMode)return `<form id="storePickerNewForm" novalidate>
   ${UI.formField({id:'store-picker-new-name',name:'store_name',label:'新しい店舗名',
    value:storePickerTarget==='scan'&&scanNewStoreMode?scanDraft?.chainName||'':'',
    maxlength:80,required:true,placeholder:'店舗名を入力',hint:true})}
@@ -2485,6 +2485,14 @@ function refreshScanTotalUI(){
  }
 }
 app.addEventListener('input',e=>{
+ if(e.target.id==='store-picker-new-name'&&storePickerNewMode){
+  const issue=scanStoreNameIssue(e.target.value);
+  const field=e.target.closest('.formfield');
+  const message=e.target.value.trim()?issue:'';
+  field?.classList.toggle('ui-field-error',!!message);
+  const hint=field?.querySelector('[data-field-hint="store_name"]');
+  if(hint){hint.hidden=!message;hint.textContent=message}
+ }
  if(e.target.matches('input[type="date"][name="date"]'))refreshReceiptDateDisplay(e.target);
  if(page==='recordScan'&&e.target.closest('#scanConfirmForm')){
   const qty=e.target;
