@@ -889,7 +889,7 @@ const UI={
     else if(control==='textarea') input=`<textarea ${attr} ${placeholder?`placeholder="${esc(placeholder)}"`:''} ${extra}>${esc(value)}</textarea>`;
     else input=`<input ${attr} type="${esc(type)}" value="${esc(value)}" ${placeholder?`placeholder="${esc(placeholder)}"`:''} ${maxlength!==null?`maxlength="${Number(maxlength)}"`:''} ${required?'required':''} ${extra}>`;
     const message=hint?`<span class="ui-field-hint" data-field-hint="${esc(name)}" hidden></span>`:'';
-    return `<div class="formfield ${esc(fieldClass)} ${control==='picker'&&pickerLayout==='inline'?'ui-picker-inline':''}"><label for="${esc(control==='picker'?id+'-action':id)}">${esc(label)}</label>${input}${message}</div>`;
+    return `<div class="formfield ${esc(fieldClass)}${control==='picker'&&pickerLayout==='inline'?' ui-picker-inline':''}"><label for="${esc(control==='picker'?id+'-action':id)}">${esc(label)}</label>${input}${message}</div>`;
   },
   sheet({title,body,variant='',backdropClass=''}){return `<div class="sheet-back ${esc(backdropClass)}" data-sheet-backdrop="true"><section class="half-sheet ${esc(variant)}" role="dialog" aria-modal="true" aria-label="${esc(title)}"><div class="sheet-grip"></div><header class="sheet-head"><h2>${esc(title)}</h2><button class="sheet-close" type="button" data-act="back" aria-label="閉じる">${miniIcon('close')}</button></header><div class="sheet-body">${body}</div></section></div>`},
   inlineNotice({message,action,label}){return `<div class="ui-inline-notice" role="status"><p>${esc(message)}</p><button type="button" class="secondary" data-act="${esc(action)}">${esc(label)}</button></div>`},
