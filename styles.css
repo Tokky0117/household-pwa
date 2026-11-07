@@ -16,6 +16,8 @@
   --ui-list-name-font-weight: 600;
   --ui-action-font-size: 14px;
   --ui-action-font-weight: 600;
+  --ui-supporting-value-font-size: 14px;
+  --ui-supporting-value-font-weight: 400;
 }
 
 * {
@@ -386,6 +388,27 @@ main {
   font-weight: var(--ui-value-font-weight);
   line-height: 1.4;
   overflow-wrap: anywhere;
+}
+.ui-static-field-value.ui-value-supporting {
+ font-size: var(--ui-supporting-value-font-size);
+ font-weight: var(--ui-supporting-value-font-weight);
+ line-height: 1.5;
+}
+.ui-picker-value.is-unmatched{
+ color:var(--muted);font-size:var(--ui-field-label-font-size);
+ font-weight:var(--ui-field-label-font-weight);
+ display:inline-flex;align-items:center;gap:6px;
+}
+.ui-picker-value.is-unmatched::before{
+ content:"";display:inline-block;flex:none;width:11px;height:11px;
+ border:1.5px solid currentColor;border-radius:50%;
+}
+.ui-status-message{
+ margin:0;color:var(--muted);font-size:13px;line-height:1.5;
+}
+.ui-status-message.is-success::before{
+ content:"✓";display:inline-block;margin-right:6px;
+ color:var(--accent);font-weight:700;
 }
 
 .formfield input,.formfield select,.formfield textarea,
@@ -2376,6 +2399,15 @@ main>.ui-search + .filterrow{margin-bottom:5px}
 .receipt-scan-page .scan-photo-add svg{width:18px;height:18px}
 .receipt-scan-page .scan-photo-start{display:block;width:100%;min-height:48px;margin:0 0 12px}
 .receipt-scan-page #scan-status{margin:12px 0;line-height:1.6}
+.scan-assist-area{
+ display:flex;flex-direction:column;align-items:flex-start;gap:4px;
+ margin:0 0 12px;
+}
+.scan-assist-area .ui-text-action{padding-left:0}
+.scan-review-instruction{margin:3px 0 6px}
+.scan-add-action{display:flex;justify-content:center;margin:4px 0 12px}
+.scan-add-action .tertiary{display:inline-flex;gap:6px;align-items:center;justify-content:center}
+.scan-add-action .tertiary svg{width:18px;height:18px;flex:none}
 .scan-photo-unavailable{margin:12px 0 18px}
 .scan-photo-viewer{position:fixed;inset:0;z-index:350;display:flex;flex-direction:column;background:#15171a;color:#fff;padding:env(safe-area-inset-top,0px) 0 env(safe-area-inset-bottom,0px)}
 .scan-viewer-head{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:6px 16px;min-height:54px;font-weight:700}
@@ -2390,7 +2422,6 @@ main>.ui-search + .filterrow{margin-bottom:5px}
 .scan-field>label{display:block;font-size:inherit;font-weight:inherit}
 .scan-field input,.scan-field select{box-sizing:border-box;min-width:0;max-width:100%;color:var(--ink)}
 .scan-ocr-name{padding:4px 0;font-size:16px;line-height:1.5;overflow-wrap:anywhere}
-.scan-name-candidate{font-size:13px;line-height:1.5;color:var(--text-secondary,#555)}
 .scan-input-pair{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.4fr);gap:10px}
 .scan-review-item{margin:8px 0}
 .scan-warning{font-size:13px;color:var(--text-secondary,#666);line-height:1.5}
@@ -2450,7 +2481,6 @@ html,body{touch-action:pan-x pan-y}
 .scan-review>.ui-section-heading:first-child{margin:0 0 10px}
 .scan-receipt-meta>.formfield{margin:8px 0 14px}
 .scan-store-picker .formfield{margin:8px 0 14px}
-.scan-review-total>.ui-section-heading{margin:0 0 8px}
 .scan-review-total>p:first-of-type{margin-top:0}
 
 /* Receipt review v0.74: constrained width, no clipping; photo zoom keeps pan. */
@@ -2464,7 +2494,7 @@ html,body{touch-action:pan-x pan-y}
 .scan-field input,.scan-field select{max-width:100%;min-width:0}
 .scan-product-actions{grid-template-columns:repeat(2,minmax(0,1fr))}
 .scan-product-actions button,.scan-review-item button{min-width:0;overflow-wrap:anywhere}
-.scan-ocr-name,.scan-name-candidate,.scan-tax-excluded,.scan-total-figure,.scan-total-count{overflow-wrap:anywhere}
+.scan-ocr-name,.scan-tax-excluded,.scan-total-figure,.scan-total-count{overflow-wrap:anywhere}
 .scan-state-note{border:1.5px solid currentColor;border-radius:10px;padding:9px 11px;
  font-size:13px;line-height:1.5;background:var(--card);overflow-wrap:anywhere;margin:8px 0}
 .scan-state-warning.scan-state-note{color:var(--ui-field-warning-color)}
@@ -2487,7 +2517,6 @@ html,body{touch-action:pan-x pan-y}
 .scan-review-item{padding:10px 12px}
 .scan-review-item .formfield{margin:0;min-width:0}
 .scan-review-item .scan-ocr-name{padding:0;line-height:1.35}
-.scan-review-item .scan-name-candidate{margin:3px 0}
 .scan-review-item .scan-name-warning{font-size:12px;font-weight:600;line-height:1.4;color:#A97800;margin:4px 0}
 .scan-review-item .scan-name-warning::before{content:"⚠";margin-right:5px}
 .scan-review-item .scan-input-pair{gap:8px;min-width:0}
@@ -2525,12 +2554,12 @@ html,body{touch-action:pan-x pan-y}
 .scan-item-tool svg{width:17px;height:17px;flex:none}
 .scan-item-tool[data-act="scanRemoveItem"]{color:var(--muted)}
 .scan-review-item .scan-read-name{margin:4px 0 var(--ui-field-group-gap)}
-.scan-review-item .scan-ocr-name{line-height:1.4}
-/* This follows .scan-review-item .formfield { margin: 0; } with matching
-   specificity: retain a visible gap below the product value. The common
-   44px action overhangs the last text line by about 11px. */
+.scan-review-item .scan-proposed-name{margin:0 0 var(--ui-field-group-gap)}
+.scan-review-item .scan-ocr-name{line-height:1.5}
+/* The 44px action still overhangs the shorter neutral status value. Keep
+   clearance before the quantity and subtotal inputs without adding a box. */
 .scan-review-item .scan-product-setting{
- margin:0 0 calc(var(--ui-field-group-gap) + 4px);min-width:0
+ margin:0 0 calc(var(--ui-field-group-gap) + 8px);min-width:0
 }
 .scan-setting-source{display:flex;flex-direction:column;gap:3px;margin:0 0 10px;overflow-wrap:anywhere}
 .scan-setting-source span{font-size:12px;color:var(--muted)}
