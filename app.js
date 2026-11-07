@@ -223,8 +223,7 @@ function recordDetailView(){
  <main class="preview-record-page receipt-detail">
   <div class="panel"><p>購入日：${esc(record.record_date)}</p>
     <p>チェーン：${esc(chainLabel(record.chain_id))}</p>
-    ${record.branch_name?'<p>支店：'+esc(record.branch_name)+'</p>':''}
-    <p>明細数：${detail.length}件</p><strong>税込合計：${yen(total)}</strong></div>
+       <p>明細数：${detail.length}件</p><strong>税込合計：${yen(total)}</strong></div>
   ${detail.map((x,i)=>`<div class="panel preview-record-row">
     <strong>${i+1}. ${esc(catalogue.products.find(p=>p.id===x.product_id)?.name||aliasNameFor(x)||'未特定')}</strong>
     ${x.inferred_name?'<span>ChatGPT推測名：'+esc(x.inferred_name)+'</span>':''}
@@ -460,6 +459,25 @@ function scanSelectedProductLabel(item){
 function scanPhotoIndexForItem(item){
  const evidence=scanDraft?.reviewEvidence?.itemSources?.find(row=>row.rowId===item.ocrRowId);
  return Number.isInteger(evidence?.imageIndex)&&evidence.imageIndex<scanPhotos.length?evidence.imageIndex:0;
+}
+function scanStoreNameIssue(value){
+ const name=String(value||'').trim();
+ if(!name)return '店舗名を入力';
+ if(name.length>80||/^[=+@\\-]/.test(name)||/[\\x00-\\x1f\\x7f<>]/.test(name))
+  return '店舗名を確認';
+ const key=norm(name);
+ if(catalogue.chains.some(c=>norm(c.name)===key||
+    (c.aliases||[]).some(alias=>norm(alias)===key)))
+  return '登録済み店舗を選択';
+ return '';
+}
+function scanValidPurchaseDate(value){
+ const date=String(value||'');
+ if(!/^\\d{4}-\\d{2}-\\d{2}$/.test(date))return false;
+ const [year,month,day]=date.split('-').map(Number);
+ const actual=new Date(Date.UTC(year,month-1,day));
+ return year>=2000&&year<=2100&&actual.getUTCFullYear()===year&&
+  actual.getUTCMonth()+1===month&&actual.getUTCDate()===day;
 }
 const scanTaxFailureDescription=reason=>window.KurashiReceiptValidation.describeTaxFailure(reason);
 function scanFormView(){
@@ -1480,9 +1498,13 @@ app.addEventListener('submit',e=>{e.preventDefault();const form=e.target;const d
   }
   const chain_id=String(d.get('chain')||'');
   const storeName=String(d.get('chain_name')||'').trim();
-  const duplicateStore=chain_id==='__new__'&&catalogue.chains.some(c=>norm(c.name)===norm(storeName));
-  if(!chain_id||(chain_id==='__new__'&&(!storeName||duplicateStore))){
-   refreshScanTotalUI();fieldNotice(form,'赤い店舗欄を確認してください');return;
+  const storeError=chain_id==='__new__'?scanStoreNameIssue(storeName):
+   !catalogue.chains.some(c=>c.id===chain_id)?'店舗を選択':'';
+  if(storeError){
+   refreshScanTotalUI();fieldNotice(form,storeError);return;
+  }
+  if(!scanValidPurchaseDate(String(d.get('date')||''))){
+   refreshScanTotalUI();fieldNotice(form,'購入日を入力してください');return;
   }
   const submit=form.querySelector('[type="submit"]');if(submit?.disabled)return;
   if(submit)submit.disabled=true;
@@ -1517,11 +1539,10 @@ app.addEventListener('submit',e=>{e.preventDefault();const form=e.target;const d
  if(liveMode){
   const amount=Number(input.amount),quantity=Number(input.quantity);
   const storeName=input.chainName.trim();
-  const duplicateStore=input.chainId==='__new__'&&
-   catalogue.chains.some(c=>norm(c.name)===norm(storeName));
-  if(input.chainId==='__new__'&&(!storeName||duplicateStore)){
+  const storeIssue=input.chainId==='__new__'?scanStoreNameIssue(storeName):'';
+  if(storeIssue){
    document.getElementById('record-new-chain')?.closest('.formfield')?.classList.add('scan-state-error');
-   fieldNotice(form,duplicateStore?'登録済み店舗を選択':'店舗名を入力','record-new-chain');return;
+   fieldNotice(form,storeIssue,'record-new-chain');return;
   }
   if(!input.amount.trim()||!input.quantity.trim()||
      !Number.isSafeInteger(amount)||amount<0||!Number.isSafeInteger(quantity)||quantity<=0){
@@ -1531,7 +1552,7 @@ app.addEventListener('submit',e=>{e.preventDefault();const form=e.target;const d
   if(submit?.disabled)return;
   if(submit)submit.disabled=true;
   window.KurashiLive.saveRecord({
-   record_type:input.type,chain_id:input.chainId,chain_name:input.chainName,
+   record_type:input.type,chain_id:input.chainId,chain_name:input.chainId==='__new__'?storeName:'',
    record_date:input.date,
    items:[{raw_name:'',...(input.rawName.trim()?{confirmed_name:input.rawName}:{}),product_id:input.productId||null,quantity,
      amount_tax_included:amount,category_id:null}]
@@ -2326,17 +2347,13 @@ function refreshScanTotalUI(){
  }
  const storeChoice=String(d.get('chain')||'');
  const newStoreName=String(d.get('chain_name')||'').trim();
- const duplicateStore=storeChoice==='__new__'&&!!newStoreName&&
-  catalogue.chains.some(c=>norm(c.name)===norm(newStoreName));
+ const storeIssue=scanNewStoreMode?scanStoreNameIssue(newStoreName):'';
  const existingStore=catalogue.chains.some(c=>c.id===storeChoice);
  mark('chain',!scanNewStoreMode&&!existingStore?'error':'',
   !scanNewStoreMode&&!existingStore?'店舗を選択':'');
- mark('chain_name',scanNewStoreMode&&(!newStoreName||duplicateStore)?'error':'',
-  !scanNewStoreMode?'':duplicateStore?'登録済み店舗を選択':'店舗名を入力');
+ mark('chain_name',storeIssue?'error':'',storeIssue);
  const date=String(d.get('date')||'');
- const parsed=/^\d{4}-\d{2}-\d{2}$/.test(date)?new Date(date+'T12:00:00'):null;
- const dateOk=!!parsed&&!Number.isNaN(parsed.getTime())&&
-  [parsed.getFullYear(),String(parsed.getMonth()+1).padStart(2,'0'),String(parsed.getDate()).padStart(2,'0')].join('-')===date;
+ const dateOk=scanValidPurchaseDate(date);
  mark('date',dateOk?'':'error',dateOk?'':'購入日を入力してください。');
  scanDraft.items.forEach((item,i)=>{
   const q=rows[i].quantity,v=rows[i].amount;
