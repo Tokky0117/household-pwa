@@ -772,7 +772,7 @@ function openScanViewer(index){
 }
 async function runReceiptScan(){
  if(scanBusy||!scanPhotos.length)return;
- scanBusy=true;scanDraft=null;const token=++scanToken;
+ scanBusy=true;scanDraft=null;scanAssistMessage='';const token=++scanToken;
  scanStatus='読み取りを準備中です。初回はOCRモデルの取得に時間がかかる場合があります。';
  render();
  try{
@@ -1508,7 +1508,7 @@ function acceptReceiptPhotos(picker){
   picker.value='';render();return;
  }
  scanPhotos.push(...files);scanIndex=scanPhotos.length-1;scanPhotosExpanded=true;
- page='recordScan';scanDraft=null;scanToken++;
+ page='recordScan';scanDraft=null;scanAssistMessage='';scanToken++;
  scanStatus=files.length+'枚の写真を追加しました。';
  picker.value=''; // Same photo can be selected again.
  render();
@@ -1888,7 +1888,8 @@ if(action==='confirmChatGptRebuild'&&p?.rebuild){
   scanNewStoreMode=!scanDraft.chainId&&!!scanDraft.chainName;
   scanAutolinkUnmatched();
   saveScanDraft();
-  scanStatus=scanDraft.items.length+'件の購入明細を読み取りました。';
+  scanAssistMessage=scanDraft.items.length+'件の明細に置き換えました。';
+  scanStatus='';
   page='recordScan';render();
  }catch(err){say(err.message||'再解析結果を適用できませんでした');}
  return;
@@ -1997,8 +1998,8 @@ if(action==='chatGptImport'){
   saveScanDraft();
   const changed=response.items.filter(i=>i.nameCandidate).length;
   const priced=response.items.filter(i=>Number.isSafeInteger(i.amount)).length;
-  scanStatus='ChatGPT推測名'+changed+'件、金額'+priced+'件を反映しました。原本で数量・金額を確認してください。'+
-   (!changed&&!priced?' 行の対応が崩れている場合は全面再解析を使用してください。':'');
+  scanAssistMessage=changed||priced?'解析結果を反映しました。':'反映できる修正候補はありませんでした。';
+  scanStatus='';
   page='recordScan';render();
  }catch(e){
   const reason=String(e?.message||e);
@@ -2136,7 +2137,7 @@ if(action==='scanRemovePhoto'){
   resetScan();page='recordScan';render();return;
  }
  scanIndex=Math.max(0,Math.min(scanIndex,scanPhotos.length-1));
- scanDraft=null;scanToken++;scanStatus='写真を削除しました。';
+ scanDraft=null;scanToken++;scanAssistMessage='';scanStatus='写真を削除しました。';
  render();return;
 }
 if(action==='scanRemoveItem'&&scanDraft){
