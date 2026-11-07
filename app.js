@@ -880,6 +880,7 @@ const UI={
     </button>`;
   },
   textAction({label,action,arrow=true,row=null,id=''}){return `<button type="button" class="ui-text-action" ${id?'id="'+esc(id)+'"':''} data-act="${esc(action)}" ${Number.isInteger(row)?'data-scan-row="'+row+'"':''}><span>${esc(label)}</span>${arrow?chevron('right'):''}</button>`;},
+  statusMessage({text,kind='neutral'}){return `<p class="ui-status-message is-${esc(kind)}" role="status">${esc(text)}</p>`;},
   recordRow({id,title,subtitle,amount=null,draft=false}){return `<button type="button" class="panel ui-record-row" data-act="${draft?'resumeScanDraft':'recordDetail'}" ${draft?'':`data-record-id="${esc(id)}"`}>
    <span class="ui-record-row-copy"><strong>${esc(title)}</strong><span>${esc(subtitle)}</span>${amount===null?'':`<strong class="ui-record-amount">${yen(amount)}</strong>`}</span>
    ${chevron('right')}</button>`;},
@@ -891,10 +892,10 @@ const UI={
   },
   formField({id,name=id,label,control='input',value='',type='text',placeholder='',
     required=false,maxlength=null,options=[],extra='',hint=false,fieldClass='',hiddenInputId='',
-    display='',action='',actionLabel='',actionRow=null,pickerLayout='',valueClass=''}) {
+    display='',action='',actionLabel='',actionRow=null,pickerLayout='',valueClass='',valueVariant='',valueState=''}) {
     const attr=`id="${esc(id)}" name="${esc(name)}"`;
     let input;
-    if(control==='static') input=`<div class="ui-static-field-value ${esc(valueClass)}" ${extra}>${esc(value)}</div>`;
+    if(control==='static') input=`<div class="ui-static-field-value ${valueVariant==='supporting'?'ui-value-supporting':''} ${esc(valueClass)}" ${extra}>${esc(value)}</div>`;
     else if(control==='select') input=UI.dropdown({id,name,inputId:hiddenInputId,value,options,label});
     else if(control==='search') input=UI.searchField({id,label,placeholder,value,extra});
     else if(control==='date') input=uiNativeDateInput(value,{id,name,label,required});
@@ -902,7 +903,7 @@ const UI={
      const actionButton=UI.textAction({label:actionLabel||(display?'変更':'店舗を選択'),
       action,arrow:false,id:id+'-action',row:actionRow});
      input=`<div class="ui-picker-surface">
-      <strong class="ui-picker-value ${display?'':'is-empty'}">${esc(display||'未選択')}</strong>
+      <strong class="ui-picker-value ${display?'':'is-empty'}${valueState==='unmatched'?' is-unmatched':''}">${esc(display||'未選択')}</strong>
       ${pickerLayout==='inline'?'<span class="ui-picker-action-slot">'+actionButton+'</span>':actionButton}
      </div><input type="hidden" ${attr} value="${esc(value)}">`;
     }
@@ -1578,7 +1579,9 @@ function syncScanReview(){
     const association=form.querySelectorAll('.scan-review-item')[i]
      ?.querySelector('.scan-product-setting');
     if(association){
-     association.querySelector('.ui-picker-value').textContent=scanSelectedProductLabel(it);
+     const value=association.querySelector('.ui-picker-value');
+     value.textContent=scanSelectedProductLabel(it);
+     value.classList.toggle('is-unmatched',!it.productId);
      association.querySelector('.ui-text-action span').textContent=
       it.productId?'変更':'商品を設定';
     }
