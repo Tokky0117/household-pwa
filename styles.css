@@ -2401,17 +2401,39 @@ html,body{touch-action:pan-x pan-y}
 .receipt-scan-page .scan-receipt-meta>.scan-field,
 .receipt-scan-page .scan-store-picker,
 .receipt-scan-page .scan-store-picker>.scan-field{min-width:0;max-width:100%;width:100%}
-.receipt-scan-page .scan-receipt-meta input[type="date"]{
- display:block;box-sizing:border-box;min-width:0;max-width:100%;width:100%;
- min-inline-size:0;max-inline-size:100%;font-size:16px;padding:9px 8px;
- -webkit-appearance:auto;appearance:auto
+/* Safari's input[type=date] has a large native minimum content width.
+ * Remove it from layout sizing, but preserve real native date input for taps,
+ * keyboard access, required validation and the system date picker. */
+.receipt-date-control{
+ position:relative;display:flex;align-items:center;gap:10px;
+ width:min(100%,236px);max-width:100%;min-width:0;height:46px;
+ box-sizing:border-box;padding:0 12px;overflow:hidden;
+ background:var(--card,#fff);color:var(--ink);
+ border:1px solid var(--line,#ccc);border-radius:10px;
 }
-.receipt-scan-page input[type="date"]::-webkit-date-and-time-value{
- min-width:0;max-width:100%;text-align:left
+.receipt-date-control .receipt-date-value{
+ flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+ font-size:16px;line-height:1.4;font-variant-numeric:tabular-nums;
 }
-.receipt-scan-page input[type="date"]::-webkit-datetime-edit{min-width:0;max-width:100%}
-.receipt-scan-page input[type="date"]::-webkit-datetime-edit-fields-wrapper{min-width:0;padding:0}
-.receipt-scan-page input[type="date"]::-webkit-calendar-picker-indicator{margin:0;flex-shrink:0}
+.receipt-date-control .receipt-date-value.is-empty{color:var(--muted)}
+.receipt-date-control .receipt-date-symbol{
+ display:flex;align-items:center;justify-content:center;
+ width:18px;height:18px;flex:none;color:var(--muted);
+}
+.receipt-date-control .receipt-date-symbol svg{width:18px;height:18px}
+.scan-field .receipt-date-control>input[type="date"],
+.record-date-field .receipt-date-control>input[type="date"]{
+ position:absolute;inset:0;display:block;z-index:1;
+ box-sizing:border-box;width:100%;height:100%;min-width:0;min-height:0;max-width:100%;
+ margin:0;padding:0;border:0;border-radius:0;
+ opacity:0;cursor:pointer;
+ -webkit-appearance:auto;appearance:auto;
+}
+.receipt-date-control:focus-within{outline:3px solid #80b5e5;outline-offset:2px}
+.receipt-date-control>input[type="date"]:focus-visible{outline:none}
+.scan-review .scan-date-field.scan-state-error .receipt-date-control{
+ border:1.5px solid #C53F3F
+}
 .scan-store-picker [hidden],.record-store-picker [hidden]{display:none!important}
 .scan-store-back,.record-store-back{
  display:inline-flex;align-items:center;min-height:44px;padding:8px 0;
@@ -2454,7 +2476,7 @@ html,body{touch-action:pan-x pan-y}
  background:transparent;color:#fff;font-size:12px;font-weight:650;
  min-height:36px;padding:6px 5px;white-space:nowrap}
 @media(max-width:360px){
- .receipt-scan-page .scan-receipt-meta input[type="date"]{padding:8px 5px}
+ /* The native date text cannot widen the visible date control. */
  .scan-item-head{gap:4px}
  .scan-item-tool{padding:6px 3px;gap:3px;font-size:12px}
  .scan-review-item .scan-input-pair{grid-template-columns:minmax(0,1fr) minmax(0,1.1fr)}
