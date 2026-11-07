@@ -1758,6 +1758,7 @@ conflictSession.window.document.querySelector('#chatgpt-input').value=JSON.strin
 await completeOcrImport(conflictSession);
 assert.equal(conflictSession.window.document.querySelector('[name="product-0"]').value,'',
  'without retailer context an ambiguous confirmed name stays unlinked');
+conflictSession.window.document.querySelector('[data-act="scanPickExisting"]').click();
 assert.ok(conflictSession.window.document.querySelectorAll(
  '[data-act="scanChooseSuggested"]').length>=2,
  'conflicting exact matches are shown as manual candidate choices');
