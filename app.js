@@ -1040,7 +1040,7 @@ function render(){
  if(!window.document)return; // A closed iOS page/session must not re-render.
   closeScanViewer();
  const currentModal=page==='add'||page==='edit'||page==='productEdit'||page==='productPick'||page==='recordAdd'||page==='scanProduct'||page==='scanExistingProduct';
- const wasModal=previousPage==='add'||previousPage==='edit'||previousPage==='productEdit'||previousPage==='productPick'||previousPage==='recordAdd'||previousPage==='recordSource';
+ const wasModal=previousPage==='add'||previousPage==='edit'||previousPage==='productEdit'||previousPage==='productPick'||previousPage==='recordAdd'||previousPage==='recordSource'||previousPage==='scanProduct'||previousPage==='scanExistingProduct';
  // The product-creation page replaces an open search sheet. It is a full
  // page, so it must start at the top even if the underlying comparison page
  // was scrolled. Previously wasModal suppressed the normal scroll reset.
@@ -1302,7 +1302,10 @@ document.addEventListener('cancel',e=>{
 },true);
 app.addEventListener('change',e=>{
  if(e.target.id==='scan-chain'){
-  document.getElementById('scan-new-chain-wrap').hidden=e.target.value!=='__new__';
+  scanNewStoreMode=e.target.value==='__new__';
+  document.getElementById('scan-store-select-wrap').hidden=scanNewStoreMode;
+  document.getElementById('scan-new-chain-wrap').hidden=!scanNewStoreMode;
+  document.querySelector('[data-act="scanStoreChooseExisting"]').hidden=!scanNewStoreMode;
   if(scanDraft){
    const previousChainId=scanDraft.chainId;
    const changedLinks=syncScanReview();
@@ -1322,6 +1325,8 @@ app.addEventListener('change',e=>{
     scanStatus=learned+'件の登録済み商品を自動照合しました。内容を確認してください。';
    // A chain change can remove the previous link without finding another.
    if(previousChainId!==chainId||changedLinks||learned)render();
+   else refreshScanTotalUI();
+   if(scanNewStoreMode)document.getElementById('scan-new-store')?.focus({preventScroll:true});
   }
  }
 });
@@ -1332,7 +1337,6 @@ function syncScanReview(){
  const nextChainId=String(d.get('chain')||'')==='__new__'?null:String(d.get('chain')||'');
  scanDraft.chainId=nextChainId;
  scanDraft.chainName=String(d.get('chain_name')||'');
- scanDraft.branchName=String(d.get('branch_name')||'');
  scanDraft.date=String(d.get('date')||scanDraft.date);
  let relinked=false;
  for(let i=0;i<scanDraft.items.length;i++){
@@ -1346,7 +1350,7 @@ function syncScanReview(){
   it.name=nextName;
   // Retailer/printed-name corrections invalidate automatic links only;
   // explicit user choices must not be overwritten.
-  if(needsMatch&&!it.manuallyLinked&&it.inputOrigin!=='photo'&&(wasAutomatic||!previousId)){
+  if(needsMatch&&!it.manuallyLinked&&(wasAutomatic||!previousId)){
    it.productId=scanMatchProduct(nextName,nextChainId);
    it.autoLinked=!!it.productId;
    const hidden=form.querySelector('[name="product-'+i+'"]');
@@ -1354,19 +1358,16 @@ function syncScanReview(){
    if(it.productId!==previousId){
     relinked=true;
     const association=form.querySelectorAll('.scan-review-item')[i]
-     ?.querySelector('.scan-product-association');
+     ?.querySelector('.scan-product-setting');
     if(association){
-     const p=catalogue.products.find(x=>x.id===it.productId);
-     association.querySelector('strong').textContent=p?productTitle(p)+' ／ 日用品：'+linkedItemName(p):'';
-     association.querySelector('.scan-product-status-label').textContent=p?'照合済み':'商品未照合';
-     association.querySelector('.scan-product-toggle').textContent=p?'変更':'照合・登録';
+     association.querySelector('.scan-product-selected').textContent=scanSelectedProductLabel(it);
+     association.querySelector('.scan-product-action').innerHTML=
+      (it.productId?'変更':'商品を設定')+' '+chevron('right');
     }
    }
   }else{
    it.productId=String(d.get('product-'+i)||'');
   }
-  const suggest=form.querySelectorAll('.scan-product-candidates')[i];
-  if(suggest)suggest.innerHTML=scanSuggestionButtons(it,i);
   it.quantity=String(d.get('qty-'+i)||'');
   it.amount=String(d.get('amount-'+i)||'');
  }
@@ -1443,21 +1444,16 @@ app.addEventListener('submit',e=>{e.preventDefault();const form=e.target;const d
      !Number.isSafeInteger(x.amount_tax_included)||x.amount_tax_included<0)){
    refreshScanTotalUI();fieldNotice(form,'赤い項目を修正してください');return;
   }
-  const editedDate=String(d.get('date')||'');
-  const editedChain=String(d.get('chain')||'');
-  const dup=scanDuplicates({...scanDraft,date:editedDate,
-    chainId:editedChain==='__new__'?null:editedChain,
-    items:lines.map(x=>({name:x.confirmed_name||x.raw_name,quantity:x.quantity,amount:x.amount_tax_included}))});
-  if(dup.length&&!d.get('duplicateOk')){
-   document.getElementById('scan-duplicate-warning')?.removeAttribute('hidden');
-   fieldNotice(form,'重複の可能性があります。確認してから登録してください');return;
-  }
   const chain_id=String(d.get('chain')||'');
-  if(!chain_id){fieldNotice(form,'チェーンを選択してください');return;}
+  const storeName=String(d.get('chain_name')||'').trim();
+  const duplicateStore=chain_id==='__new__'&&catalogue.chains.some(c=>norm(c.name)===norm(storeName));
+  if(!chain_id||(chain_id==='__new__'&&(!storeName||duplicateStore))){
+   refreshScanTotalUI();fieldNotice(form,'赤い店舗欄を確認してください');return;
+  }
   const submit=form.querySelector('[type="submit"]');if(submit?.disabled)return;
   if(submit)submit.disabled=true;
   const values={record_type:'receipt',chain_id,chain_name:String(d.get('chain_name')||'').trim(),
-   branch_name:String(d.get('branch_name')||'').trim(),
+   branch_name:scanDraft.recordId?scanDraft.branchName||'':'',
    record_date:String(d.get('date')||''),items:lines};
   const work=scanDraft.recordId?
     window.KurashiLive.updateRecord({...values,record_id:scanDraft.recordId}):
@@ -1812,6 +1808,13 @@ if(action==='recordDelete'){
   pending:{recordId:recordDetailId}};
  renderDialogOnly();return;
 }
+if(action==='scanStoreChooseExisting'){
+ if(!scanDraft)return;
+ scanNewStoreMode=false;
+ scanDraft.chainName='';
+ const select=document.getElementById('scan-chain');if(select)select.value='';
+ syncScanReview();saveScanDraft();render();return;
+}
 if(action==='scanPickExisting'){
  if(!liveMode||!scanDraft)return;
  syncScanReview();saveScanDraft();
@@ -1867,12 +1870,6 @@ if(action==='scanChooseExisting'){
   saveScanDraft();page='recordScan';scanExistingQuery='';render();
  }
  return;
-}
-if(action==='scanNewProduct'){
- if(!liveMode||!scanDraft)return;
- syncScanReview();saveScanDraft();
- scanProductRow=Number(el.dataset.scanRow);
- page='scanProduct';render();return;
 }
 if(action==='scanStart'){void runReceiptScan();return}
 if(action==='scanTogglePhotos'){
