@@ -501,6 +501,24 @@ assert.ok(css.includes('.store-picker-results{')&&
  css.includes('.store-picker-search,.store-picker-create{flex:0 0 auto;'),
  'the scrollable candidate list keeps search and new-store controls fixed');
 shopMaster.length=oldCount;
+// Shared focus indication must remain separate from red/yellow validation,
+// and must not be clipped at the horizontal edge of a scrollable sheet.
+assert.ok(css.includes('--ui-focus-outline: 2px solid #80b5e5;'),
+ 'shared focus outline remains visible at 2px');
+const commonFocus=ruleBody('button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible');
+assert.equal(commonFocus.length,1,'single shared focus rule');
+assert.ok(commonFocus[0].includes('outline: var(--ui-focus-outline);')&&
+ commonFocus[0].includes('outline-offset: 0;'),'focus outline has no added gap');
+for(const selector of ['.ui-date-control:focus-within','.ui-select-trigger:focus-visible']){
+ const rules=ruleBody(selector);
+ assert.ok(rules.length===1&&rules[0].includes('outline:var(--ui-focus-outline)')&&
+  rules[0].includes('outline-offset:0'),'date and dropdown share 2px gapless focus: '+selector);
+}
+const sheetFocusSpace=ruleBody('.half-sheet>.sheet-body');
+assert.ok(sheetFocusSpace.length===1&&sheetFocusSpace[0].includes('padding-inline:2px'),
+ 'all scrolling half sheets reserve 2px for the outside focus outline');
+assert.ok(css.includes('.formfield.ui-field-error')&&css.includes('.formfield.ui-field-warning'),
+ 'red and yellow validation state borders remain separate from blue focus');
 
 assert.ok(!listingHtml.includes('日用品未紐付け'),
  'unlinked item-group metadata does not appear in receipt purchase lines');
