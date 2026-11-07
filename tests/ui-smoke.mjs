@@ -465,8 +465,9 @@ assert.ok(ruleBody('.scan-review-item .scan-read-name').some(x=>x.includes('marg
  'both name variants have the same compact vertical rhythm');
 assert.ok(ruleBody('.scan-review-item .formfield').some(x=>x.includes('margin:0')),
  'receipt fields have no accumulated 6px generic margins');
-assert.ok(ruleBody('.scan-product-setting').some(x=>x.includes('margin:0 0 var(--ui-field-group-gap)')),
- 'product setting follows the name without redundant leading space');
+assert.ok(ruleBody('.scan-review-item .scan-product-setting').some(x=>
+ x.includes('margin:0 0 calc(var(--ui-field-group-gap) + 4px)')),
+ 'product-to-number spacing beats the generic receipt form margin reset');
 assert.ok(ruleBody('.scan-review-item .scan-ocr-name').every(x=>!x.includes('min-height')),
  'read-only OCR name does not reserve editable input height');
 console.log('v65: OCR immutability, uncertain quantity, candidate only, and exact row ID OK');
@@ -513,6 +514,12 @@ assert.ok(existingHtml.includes('class="ui-search"')&&
 assert.ok(newProductHtml.includes('data-ui-select="scan-product-group"')&&
  source.includes("control==='date'")&&source.includes("control==='search'"),
  'Common formField owns date, search and item selection for all receipt forms');
+// The yen suffix is part of the label, not the number submitted to Sheets.
+assert.ok(listingHtml.includes('<label for="scan-amount-0">小計（円）</label>')&&
+ listingHtml.includes('id="scan-amount-0" name="amount-0" type="number"'),
+ 'receipt subtotal shows yen while retaining its numeric form value');
+assert.ok(!listingHtml.includes('type="text" value="268円"'),
+ 'currency unit is never injected into the saved numeric amount');
 const productAction=listingHtml.match(/<button[^>]*data-act="scanPickExisting"[^>]*>[^]*?<\/button>/)?.[0]||'';
 assert.ok(listingHtml.includes('<label for="scan-product-0-action">登録商品</label>')&&
  listingHtml.includes('name="product-0"')&&
@@ -1186,7 +1193,7 @@ assert.ok(!JSON.stringify(p4Rebuild).includes('ocr-p4'),
 console.log('P4 common review adapter, provenance, row identity and P2 validation OK');
 
 // v0.73: Receipt OCR review information hierarchy; preserve validation/confirmation.
-assert.ok(source.includes("const APP_VERSION='0.83.0'"), 'UI review revision version is current');
+assert.ok(source.includes("const APP_VERSION='0.83.1'"), 'UI review revision version is current');
 assert.ok(source.includes("UI.sectionHeading({title:'購入情報'})"), 'Receipt OCR review groups store and purchase date');
 assert.ok(source.includes("UI.sectionHeading({title:'購入明細',subtitle:scanDraft.items.length+'件'+"), 'Receipt OCR review identifies item list and unmatched count');
 assert.ok(source.includes("UI.sectionHeading({title:'合計の確認'})"), 'Receipt OCR review makes reconciliation distinct');
