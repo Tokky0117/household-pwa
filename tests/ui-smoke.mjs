@@ -461,9 +461,15 @@ const productAction=listingHtml.match(/<button[^>]*data-act="scanPickExisting"[^
 assert.ok(productAction.includes('class="ui-text-action"')&&
  productAction.includes('商品を設定')&&!productAction.includes('ui-chevron'),
  'registered-product settings use shared text actions without navigation chevrons');
-assert.ok(listingHtml.includes('data-ui-select="scan-store-picker"')&&
- listingHtml.includes('id="scan-chain" name="chain"'),
- 'receipt store selection uses the common UI.dropdown control and stores a hidden value');
+assert.ok(listingHtml.includes('class="ui-picker-surface"')&&
+ listingHtml.includes('data-act="storePickerOpen"')&&
+ listingHtml.includes('id="scan-chain" name="chain"')&&
+ !listingHtml.includes('data-ui-select="scan-store-picker"'),
+ 'receipt store uses shared arrow-free picker form and a hidden saved chain value');
+const storeAction=listingHtml.match(/<button[^>]*data-act="storePickerOpen"[^>]*>[^]*?<\/button>/)?.[0]||'';
+assert.ok(storeAction.includes('class="ui-text-action"')&&
+ !storeAction.includes('ui-chevron'),
+ 'store picker opens a half sheet without dropdown or navigation arrows');
 assert.ok(!listingHtml.includes('日用品未紐付け'),
  'unlinked item-group metadata does not appear in receipt purchase lines');
 assert.ok(css.includes('.formfield input,.formfield select,.formfield textarea,')&&
@@ -1059,7 +1065,7 @@ assert.ok(!JSON.stringify(p4Rebuild).includes('ocr-p4'),
 console.log('P4 common review adapter, provenance, row identity and P2 validation OK');
 
 // v0.73: Receipt OCR review information hierarchy; preserve validation/confirmation.
-assert.ok(source.includes("const APP_VERSION='0.77.0'"), 'UI review revision version is current');
+assert.ok(source.includes("const APP_VERSION='0.78.0'"), 'UI review revision version is current');
 assert.ok(source.includes("UI.sectionHeading({title:'購入情報'})"), 'Receipt OCR review groups store and purchase date');
 assert.ok(source.includes("UI.sectionHeading({title:'購入明細',subtitle:scanDraft.items.length+'件'+"), 'Receipt OCR review identifies item list and unmatched count');
 assert.ok(source.includes("UI.sectionHeading({title:'合計の確認'})"), 'Receipt OCR review makes reconciliation distinct');
@@ -1110,8 +1116,12 @@ assert.ok(!source.includes('未照合商品をまとめて登録'),'Batch button
 assert.ok(!source.includes('明細を確認</p>'),'No generic item warning');
 assert.ok(source.includes('レシート記載額')&&!source.includes(' ／ 差額：'),'Only meaningful total comparison fields');
 assert.ok(!source.includes('支店名を追加（任意）')&&
- source.includes('scan-store-select-wrap')&&source.includes('scan-new-chain-wrap'),
- 'Only one store field is visible, and the unused branch field is removed');
+ source.includes("function storePickerView()")&&
+ source.includes("variant:'store-picker-modal'")&&
+ source.includes("UI.searchField({id:'store-picker-search'")&&
+ source.includes("UI.actions({label:'店舗一覧'")&&
+ source.includes("storePickerNewForm"),
+ 'Receipt store choice reuses shared half-sheet/search/choice/form components');
 assert.ok(source.includes('scanModalPhotoLinks()'),'Product sheets can open receipt photo viewer');
 assert.ok(css.includes('.scan-product-setting-row{')&&css.includes('.scan-compare-data{'),
  'Compact product row and total comparison styles exist');
