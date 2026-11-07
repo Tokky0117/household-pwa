@@ -1320,7 +1320,7 @@ assert.equal(kitReview.querySelector('.scan-ocr-name').textContent,kitRaw,
  'raw receipt name is never silently replaced with canonical master name');
 assert.match(kitReview.textContent,/キットカット濃い抹茶10袋/,
  'canonical product appears as selected master in confirmation view');
-assert.equal(kitReview.querySelector('.scan-product-selected')?.textContent,kitCanonical,
+assert.equal(kitReview.querySelector('.scan-product-setting .ui-picker-value')?.textContent,kitCanonical,
  'receipt review shows only the chosen registered product name, without item-group metadata');
 kitReview.dispatchEvent(new kitSession.window.Event('submit',{bubbles:true,cancelable:true}));
 await waitFor(()=>kitSession.window.KurashiLive.state().queued===0&&
@@ -1568,7 +1568,7 @@ await waitFor(()=>temp.call('bootstrap').data.product_aliases.some(x=>
  'user confirmed abbreviation is persisted immediately after product registration');
 const standaloneReview=standaloneSession.window.document.getElementById('scanConfirmForm');
 assert.ok(standaloneReview,'standalone creation returns to receipt review');
-assert.equal(standaloneReview.querySelector('.scan-product-selected')?.textContent,standaloneName,
+assert.equal(standaloneReview.querySelector('.scan-product-setting .ui-picker-value')?.textContent,standaloneName,
  'unlinked master is shown by registered product name without confusing item-group text');
 assert.ok(!standaloneReview.querySelector('.scan-product-setting')?.textContent.includes('日用品未紐付け'));
 assert.ok(!standaloneReview.querySelector('[name="difference"]')&&
@@ -1590,7 +1590,7 @@ assert.equal(matchedReview.querySelector('[name="chain"]').value,standaloneChain
 assert.equal(matchedReview.querySelector('[name="product-0"]').value,
  standaloneProduct.product_id,
  're-read automatically selects canonical product via chain-scoped abbreviation');
-assert.equal(matchedReview.querySelector('.scan-product-selected')?.textContent,standaloneName,
+assert.equal(matchedReview.querySelector('.scan-product-setting .ui-picker-value')?.textContent,standaloneName,
  'later receipt also shows the selected master without its unrelated item-group status');
 const totalText=matchedReview.querySelector('#scan-sum-text').textContent;
 assert.match(totalText,/合計金額：/,'one calculated total is visible without a checkbox');
