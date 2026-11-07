@@ -1,4 +1,4 @@
-const APP_VERSION='0.83.0';
+const APP_VERSION='0.83.1';
 const CATS=['飲食','キッチン','洗面・風呂','洗濯・掃除','その他'];
 const liveMode=!!window.KurashiLive; // Data source only; original Preview v46 UI components remain.
 const SEED=[['牛乳',0,true],['麦茶',0,false],['コーヒー',0,true],['卵',0,false],['キッチンペーパー',1,false],['ラップ',1,true],['食器用洗剤',1,true],['シャンプー',2,false],['歯磨き粉',2,true],['ハンドソープ',2,false],['洗濯洗剤',3,false],['柔軟剤',3,true],['トイレットペーパー',3,false],['乾電池',4,true],['ティッシュ',4,true]];
@@ -623,7 +623,7 @@ function scanFormView(){
      ${UI.formField({id:'scan-qty-'+i,name:'qty-'+i,label:'数量',type:'number',
        value:item.quantity,required:true,extra:'min="1" step="1" inputmode="numeric"',
        hint:true})}
-     ${UI.formField({id:'scan-amount-'+i,name:'amount-'+i,label:'小計',
+     ${UI.formField({id:'scan-amount-'+i,name:'amount-'+i,label:'小計（円）',
        type:'number',value:item.amount,required:true,
        placeholder:'金額を入力',extra:'min="0" step="1" inputmode="numeric"',
        hint:true})}
