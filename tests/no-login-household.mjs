@@ -1208,11 +1208,11 @@ bulkUI.window.document.querySelector('#chatgpt-input').value=JSON.stringify(batc
 await completeOcrImport(bulkUI);
 assert.equal(bulkUI.window.document.querySelector('[data-act="scanBulkProducts"]'),null,
  'removed batch action cannot interrupt receipt photo review');
-const unmatchedStatus=bulkUI.window.document.querySelector('.scan-product-association');
+const unmatchedStatus=bulkUI.window.document.querySelector('.scan-product-setting');
 assert.ok(unmatchedStatus&&unmatchedStatus.textContent.includes('商品未照合'),
  'an unmatched product has an explicit status');
-unmatchedStatus.open=true;
-bulkUI.window.document.querySelector('[data-act="scanNewProduct"]').click();
+bulkUI.window.document.querySelector('[data-act="scanPickExisting"]').click();
+bulkUI.window.document.querySelector('[data-act="scanExistingToNew"]').click();
 const individualForm=bulkUI.window.document.querySelector('#scanProductForm');
 assert.ok(individualForm,'unmatched item opens individual master creation');
 const firstGroup=temp.call('bootstrap').data.item_groups[0].item_group_id;
@@ -1256,7 +1256,8 @@ kitSession.window.document.getElementById('chatgpt-input').value=JSON.stringify(
 await completeOcrImport(kitSession);
 assert.ok(kitSession.window.document.getElementById('scanConfirmForm'),
  'malformed name appears on receipt confirmation page');
-kitSession.window.document.querySelector('[data-act="scanNewProduct"]').click();
+kitSession.window.document.querySelector('[data-act="scanPickExisting"]').click();
+kitSession.window.document.querySelector('[data-act="scanExistingToNew"]').click();
 const kitForm=kitSession.window.document.getElementById('scanProductForm');
 assert.ok(kitForm,'receipt shows explicit new master registration form');
 assert.equal(kitForm.querySelector('[name="group"]').value,'',
@@ -1333,17 +1334,17 @@ assert.equal(duplicateKitReview.querySelector('[name="product-0"]').value,
  kitSavedProduct.product_id,'the exact same receipt OCR alias auto-links across devices');
 assert.equal(duplicateKitReview.querySelector('.scan-ocr-name').textContent,kitRaw,
  'reimport does not replace original printed name');
-assert.equal(duplicateKitReview.querySelector('#scan-duplicate-warning').hidden,false,
- 'importing an identical already-saved receipt shows duplicate warning');
+assert.equal(duplicateKitReview.querySelector('#scan-duplicate-warning'),null,
+ 'An identical receipt does not display unnecessary duplicate confirmation');
 duplicateKitReview.dispatchEvent(new otherPhone.window.Event('submit',{
  bubbles:true,cancelable:true
 }));
-assert.match(duplicateKitReview.textContent,/重複の可能性/,
- 'accidental duplicate save is blocked until explicitly acknowledged');
-assert.equal(temp.call('bootstrap').data.records.length,kitRecordCount,
- 'unconfirmed duplicate receipt did not create another Sheets record');
+await waitFor(()=>temp.call('bootstrap').data.records.length===kitRecordCount+1,
+ 'An intentionally reimported same-content receipt can save without extra confirmation');
+await waitFor(()=>otherPhone.window.KurashiLive.state().queued===0,
+ 'The intentional second receipt uses the durable operation queue');
 assert.equal(temp.call('bootstrap').data.product_aliases.length,kitAliasCount,
- 'unconfirmed duplicate did not generate another OCR alias');
+ 'Rereading the same name does not duplicate OCR alias data');
 otherPhone.window.close();
 
 // On the other phone, a genuinely new purchase with 2 units / 340 yen
@@ -1365,8 +1366,8 @@ assert.equal(repeatedKitReview.querySelector('[name="product-0"]').value,
  kitSavedProduct.product_id,'new purchase same printed name automatically links without new master');
 assert.equal(repeatedKitReview.querySelector('[name="qty-0"]').value,'2');
 assert.equal(repeatedKitReview.querySelector('[name="amount-0"]').value,'340');
-assert.equal(repeatedKitReview.querySelector('#scan-duplicate-warning').hidden,true,
- 'different purchase date and quantity are not treated as duplicate');
+assert.equal(repeatedKitReview.querySelector('#scan-duplicate-warning'),null,
+ 'No content-duplicate checkbox is rendered on any receipt');
 repeatedKitReview.dispatchEvent(new newPurchasePhone.window.Event('submit',{
  bubbles:true,cancelable:true
 }));
@@ -1382,8 +1383,8 @@ assert.equal(kitAfterSecondPurchase.products.filter(x=>x.name===kitCanonical).le
 assert.equal(kitAfterSecondPurchase.product_aliases.filter(x=>
  x.chain_id===kitStore.chain_id&&x.normalized_alias===kitRaw.toLocaleLowerCase('ja')).length,1,
  'rereading never creates duplicate OCR alias rows');
-assert.equal(kitAfterSecondPurchase.records.length,kitRecordCount+1,
- 'only the explicitly saved new receipt is added to Sheets');
+assert.equal(kitAfterSecondPurchase.records.length,kitRecordCount+2,
+ 'Both the intentionally repeated receipt and the new 2-point purchase are saved');
 newPurchasePhone.window.close();
 
 // A third independent device sees the new receipt and the correct unit price
@@ -1510,15 +1511,16 @@ standaloneSession.window.eval(importer);
 standaloneSession.window.document.getElementById('chatgpt-input').value=JSON.stringify(standaloneJson);
 await completeOcrImport(standaloneSession);
 const standaloneForm=standaloneSession.window.document.getElementById('scanConfirmForm');
-assert.equal(standaloneForm.querySelector('[name="chain"]').value,'__new__',
- 'unrecognized printed retailer initially needs explicit chain selection');
+assert.equal(standaloneForm.querySelector('[name="chain"]').value,'',
+ 'unrecognized printed retailer starts with a blank store choice rather than a duplicate name field');
 standaloneForm.querySelector('[name="chain"]').value=standaloneChainId;
 standaloneForm.querySelector('[name="chain"]').dispatchEvent(
  new standaloneSession.window.Event('change',{bubbles:true}));
 await waitFor(()=>temp.call('bootstrap').data.stores.some(x=>
  x.chain_id===standaloneChainId&&String(x.aliases).includes('COSTCO WHOLESALE')),
  'confirmed retailer spelling is remembered via existing stores.aliases and queue');
-standaloneSession.window.document.querySelector('[data-act="scanNewProduct"]').click();
+standaloneSession.window.document.querySelector('[data-act="scanPickExisting"]').click();
+standaloneSession.window.document.querySelector('[data-act="scanExistingToNew"]').click();
 const standaloneProductForm=standaloneSession.window.document.getElementById('scanProductForm');
 assert.ok(standaloneProductForm,'new product form is open');
 assert.equal(standaloneProductForm.querySelector('[name="group"]').value,'',
