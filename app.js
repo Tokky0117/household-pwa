@@ -1,4 +1,4 @@
-const APP_VERSION='0.76.0';
+const APP_VERSION='0.76.1';
 const CATS=['飲食','キッチン','洗面・風呂','洗濯・掃除','その他'];
 const liveMode=!!window.KurashiLive; // Data source only; original Preview v46 UI components remain.
 const SEED=[['牛乳',0,true],['麦茶',0,false],['コーヒー',0,true],['卵',0,false],['キッチンペーパー',1,false],['ラップ',1,true],['食器用洗剤',1,true],['シャンプー',2,false],['歯磨き粉',2,true],['ハンドソープ',2,false],['洗濯洗剤',3,false],['柔軟剤',3,true],['トイレットペーパー',3,false],['乾電池',4,true],['ティッシュ',4,true]];
@@ -174,7 +174,7 @@ let items=load(),tab='items',page='list',selected=null,query='',onlyOut=false,co
 const app=document.getElementById('app');
 let newRecordType='receipt';
 // Native iPhone chooser: Photo Library, Take Photo, or Files. Photos stay in memory.
-let scanPhotos=[],scanIndex=0,scanBusy=false,scanDraft=null,scanStatus='',scanToken=0,scanPhotosExpanded=true,scanNewStoreMode=false;
+let scanPhotos=[],scanIndex=0,scanBusy=false,scanDraft=null,scanStatus='',scanToken=0,scanPhotosExpanded=true,scanNewStoreMode=false,scanReturnScrollY=null;
 const scanPhotoUrls=new Map(); // Memory-only thumbnails; never persisted.
 function scanThumbnail(file){if(scanPhotoUrls.has(file))return scanPhotoUrls.get(file);const create=window.URL?.createObjectURL;if(typeof create!=='function')return '';const url=create.call(window.URL,file);scanPhotoUrls.set(file,url);return url;}
 function releaseScanThumbnail(file){const url=scanPhotoUrls.get(file);if(!url)return;scanPhotoUrls.delete(file);window.URL?.revokeObjectURL?.(url);}
@@ -190,7 +190,7 @@ function saveScanDraft(){
 }
 function resetScan({keepDraft=false}={}){
  scanToken++;closeScanViewer();clearScanThumbnails();scanPhotos=[];scanIndex=0;scanBusy=false;scanStatus='';scanPhotosExpanded=true;
- if(!keepDraft){scanDraft=null;scanNewStoreMode=false;saveScanDraft();}
+ if(!keepDraft){scanDraft=null;scanNewStoreMode=false;scanReturnScrollY=null;saveScanDraft();}
 }
 // OCR row IDs and printed names are authoritative; AI may only suggest a product name.
 function isUnconfirmedBarcodeLine(item){
@@ -290,18 +290,24 @@ function scanExistingProductView(){
   body:`<div class="scan-existing-picker">
   <p class="scan-setting-source"><span>読み取り名</span><strong>${esc(item.name)}</strong></p>
   ${scanModalPhotoLinks()}
-  ${scanSuggestionButtons(item,scanProductRow)}
   <label class="scan-field">登録商品・日用品名で探す
    <input id="scan-existing-search" type="search" value="${esc(scanExistingQuery)}" placeholder="例：キットカット、チョコ">
   </label>
+  <div class="scan-picker-actions">
+   <button class="secondary" type="button" data-act="scanExistingToNew">${miniIcon('plus')}<span>新しい商品を登録</span></button>
+   ${scanResolvedProductId(item)?'<button class="scan-unlink-action" type="button" data-act="scanUnlinkProduct">商品未照合にする</button>':''}
+  </div>
+  <details class="scan-existing-group-advanced">
+   <summary>登録先の日用品を変更（任意）</summary>
+   <label class="scan-field">変更先の日用品
+    <select id="scan-existing-group"><option value="">変更しない</option>
+     ${scanGroupOptions('',{includeNone:false})}
+    </select>
+   </label>
+   <p class="hint">変更すると登録商品の紐付け先も変わり、過去の価格表示に反映されます。</p>
+  </details>
+  ${scanSuggestionButtons(item,scanProductRow)}
   <div id="scan-existing-results" class="scan-existing-results">${scanExistingProductResults()}</div>
-  <label class="scan-field">登録先の日用品を変更する場合のみ選択
-   <select id="scan-existing-group"><option value="">既存の登録先を変更しない</option>
-    ${scanGroupOptions('',{includeNone:false})}
-   </select>
-  </label>
-  <p class="hint">変更すると商品マスタの紐付け先も変更され、過去の価格表示にも反映されます。</p>
-  <button class="secondary" type="button" data-act="scanExistingToNew">該当なし：新しい商品として登録</button>
   </div>`});
 }
 function receiptChatGptView(){
@@ -328,7 +334,7 @@ function scanAutolinkUnmatched(){
  if(!scanDraft)return 0;
  let added=0;
  for(const item of scanDraft.items){
-  if(item.inputOrigin==='manual'||isUnconfirmedBarcodeLine(item))continue;
+  if(item.inputOrigin==='manual'||item.manuallyLinked||isUnconfirmedBarcodeLine(item))continue;
   if(item.productId||!item.name)continue;
   const match=scanMatchProduct(item.name,scanDraft.chainId);
   if(match){item.productId=match;item.autoLinked=true;added++}
@@ -1078,7 +1084,14 @@ function render(){
  if(enteringProductCreate&&window.requestAnimationFrame)
   window.requestAnimationFrame(()=>window.scrollTo(0,0));
  previousPage=page;previousSelected=selected;
- if(page==='recordScan')refreshScanTotalUI();
+ if(page==='recordScan'){
+  refreshScanTotalUI();
+  if(wasModal&&scanReturnScrollY!==null){
+   const position=scanReturnScrollY;scanReturnScrollY=null;
+   window.scrollTo(0,position);
+   window.requestAnimationFrame?.(()=>{if(page==='recordScan')window.scrollTo(0,position)});
+  }
+ }
  if(liveMode&&tab==='settings')window.KurashiLive.renderLogin(document.getElementById('google-login-button'));
 }
 let toastTimer=null,toastSerial=0;
@@ -1357,8 +1370,8 @@ function syncScanReview(){
  const d=new FormData(form),previousChainId=scanDraft.chainId;
  const nextChainId=String(d.get('chain')||'')==='__new__'?null:String(d.get('chain')||'');
  scanDraft.chainId=nextChainId;
- scanDraft.chainName=String(d.get('chain_name')||'');
- scanDraft.date=String(d.get('date')||scanDraft.date);
+ scanDraft.chainName=scanNewStoreMode?String(d.get('chain_name')||''):'';
+ scanDraft.date=String(d.get('date')??'');
  let relinked=false;
  for(let i=0;i<scanDraft.items.length;i++){
   const it=scanDraft.items[i],previousName=it.name;
@@ -1473,7 +1486,7 @@ app.addEventListener('submit',e=>{e.preventDefault();const form=e.target;const d
   }
   const submit=form.querySelector('[type="submit"]');if(submit?.disabled)return;
   if(submit)submit.disabled=true;
-  const values={record_type:'receipt',chain_id,chain_name:String(d.get('chain_name')||'').trim(),
+  const values={record_type:'receipt',chain_id,chain_name:chain_id==='__new__'?storeName:'',
    branch_name:scanDraft.recordId?scanDraft.branchName||'':'',
    record_date:String(d.get('date')||''),items:lines};
   const work=scanDraft.recordId?
@@ -1874,7 +1887,14 @@ if(action==='scanPickExisting'){
  if(!liveMode||!scanDraft)return;
  syncScanReview();saveScanDraft();
  scanProductRow=Number(el.dataset.scanRow);scanExistingQuery='';
+ scanReturnScrollY=window.scrollY;
  page='scanExistingProduct';render();return;
+}
+if(action==='scanUnlinkProduct'){
+ if(!scanDraft||page!=='scanExistingProduct')return;
+ const item=scanDraft.items[scanProductRow];if(!item)return;
+ item.productId='';item.manuallyLinked=true;item.autoLinked=false;
+ saveScanDraft();page='recordScan';scanExistingQuery='';scanProductRow=null;render();return;
 }
 if(action==='scanExistingToNew'){
  if(!scanDraft)return;
