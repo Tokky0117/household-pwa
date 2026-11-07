@@ -492,7 +492,7 @@ function scanFormView(){
      <button type="button" class="scan-item-tool" data-act="scanRemoveItem" data-scan-row="${i}">${miniIcon('trash')}<span>削除</span></button>
     </div></div>
     ${['manual','photo'].includes(item.inputOrigin)||item.ocrRawName===undefined?
-     '<label class="scan-field">読み取り名<input name="name-'+i+'" maxlength="120" required value="'+esc(item.name)+'" placeholder="商品名"><span class="scan-field-hint" data-scan-hint="name-'+i+'" hidden></span></label>':
+     '<label class="scan-field">読み取り名<input name="name-'+i+'" maxlength="120" required value="'+esc(item.name)+'" placeholder="読み取り名"><span class="scan-field-hint" data-scan-hint="name-'+i+'" hidden></span></label>':
      '<div class="scan-field scan-read-name"><span>読み取り名</span><div class="scan-ocr-name" data-ocr-row="'+i+'">'+esc(reviewModel.items[i].originalOcrName||'読み取り不可')+'</div></div>'}
     ${reviewModel.items[i].proposedName?'<p class="scan-name-candidate">候補：'+esc(reviewModel.items[i].proposedName)+'</p>':''}
     ${(item.issues||[]).some(reason=>/商品名|商品コード|名称|名前/.test(String(reason)))?'<p class="scan-name-warning">読み取り名を確認</p>':''}
@@ -1512,7 +1512,7 @@ app.addEventListener('submit',e=>{e.preventDefault();const form=e.target;const d
   }
   if(!input.amount.trim()||!input.quantity.trim()||
      !Number.isSafeInteger(amount)||amount<0||!Number.isSafeInteger(quantity)||quantity<=0){
-   fieldNotice(form,'数量と税込明細合計を確認してください','record-amount');return;
+   fieldNotice(form,'数量と小計を確認してください','record-amount');return;
   }
   const submit=form.querySelector('[type="submit"]');
   if(submit?.disabled)return;
@@ -2285,7 +2285,7 @@ app.addEventListener('touchcancel',e=>{
 },{passive:true});
 
 
-// Update the possible-duplicate warning as form fields change.
+// Update receipt field validation and printed-total comparison after input changes.
 function refreshScanTotalUI(){
  const form=document.getElementById('scanConfirmForm');if(!form||!scanDraft)return;
  const d=new FormData(form);
@@ -2329,7 +2329,7 @@ function refreshScanTotalUI(){
    !validAmount?'金額を入力':uncertain?'金額を確認':'');
   if(form.elements.namedItem('name-'+i)){
    const name=String(d.get('name-'+i)||'').trim();
-   mark('name-'+i,name?'':'error',name?'':'商品名を入力');
+   mark('name-'+i,name?'':'error',name?'':'読み取り名を入力');
   }
  });
  const sum=document.getElementById('scan-sum-text'),count=document.getElementById('scan-count-text');
