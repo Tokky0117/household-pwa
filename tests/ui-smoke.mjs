@@ -413,6 +413,24 @@ ui.setScanDraft({...rowOcr,recordId:'saved-receipt',items:[
 const manualAdd=ui.receiptScanView();
 assert.ok(manualAdd.includes('name="name-1"'),'manual line stays editable');
 assert.ok(!manualAdd.includes('name="name-0"'),'saved OCR name stays plain text');
+// The two name origins share headings and spacing without turning the OCR text into an input.
+assert.ok((manualAdd.match(/class="formfield scan-read-name"/g)||[]).length===2,
+ 'editable and read-only receipt names use the same form-level layout class');
+assert.ok(manualAdd.includes('<label for="scan-name-1">読み取り名</label>')&&
+ manualAdd.includes('ui-static-field-label">読み取り名</span>'),
+ 'both name variants show the same heading with correct input semantics');
+assert.ok(!manualAdd.includes('name="name-0"')&&manualAdd.includes('data-ocr-row="0"'),
+ 'read-only OCR name remains text and never becomes a saveable field');
+assert.ok(ruleBody('.scan-item-head>strong').some(x=>x.includes('font-size:16px')),
+ 'receipt card heading uses 16px, above the shared 14px field labels');
+assert.ok(ruleBody('.scan-review-item .scan-read-name').some(x=>x.includes('margin:4px 0 8px')),
+ 'both name variants have the same compact vertical rhythm');
+assert.ok(ruleBody('.scan-review-item .formfield').some(x=>x.includes('margin:0')),
+ 'receipt fields have no accumulated 6px generic margins');
+assert.ok(ruleBody('.scan-product-setting').some(x=>x.includes('margin:0 0 6px')),
+ 'product setting follows the name without redundant leading space');
+assert.ok(ruleBody('.scan-review-item .scan-ocr-name').every(x=>!x.includes('min-height')),
+ 'read-only OCR name does not reserve editable input height');
 console.log('v65: OCR immutability, uncertain quantity, candidate only, and exact row ID OK');
 
 const pageHtml=readFileSync(new URL('../index.html',import.meta.url),'utf8');
@@ -1115,7 +1133,7 @@ assert.ok(!JSON.stringify(p4Rebuild).includes('ocr-p4'),
 console.log('P4 common review adapter, provenance, row identity and P2 validation OK');
 
 // v0.73: Receipt OCR review information hierarchy; preserve validation/confirmation.
-assert.ok(source.includes("const APP_VERSION='0.80.0'"), 'UI review revision version is current');
+assert.ok(source.includes("const APP_VERSION='0.81.0'"), 'UI review revision version is current');
 assert.ok(source.includes("UI.sectionHeading({title:'購入情報'})"), 'Receipt OCR review groups store and purchase date');
 assert.ok(source.includes("UI.sectionHeading({title:'購入明細',subtitle:scanDraft.items.length+'件'+"), 'Receipt OCR review identifies item list and unmatched count');
 assert.ok(source.includes("UI.sectionHeading({title:'合計の確認'})"), 'Receipt OCR review makes reconciliation distinct');
