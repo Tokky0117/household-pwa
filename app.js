@@ -383,11 +383,11 @@ function chooseStoreFromPicker(chainId,chainName=''){
  else field?.classList.remove('ui-field-error');
 }
 function receiptChatGptView(){
- return head('ChatGPTの補助解析','OCR文字修正または写真から再解析',true)+
+ return head('ChatGPTの補助解析','読み取り名の確認・写真からの再解析',true)+
  '<main class="preview-record-page receipt-chatgpt-page">'+
- '<p class="hint">指示文をコピーし、ChatGPTに必ず元のレシート写真も添付してください。商品行・数量・金額の対応が正しい場合はOCR文字修正、構造が崩れている場合は写真の全明細再解析を返す指示です。</p>'+
- '<p class="hint">最初のJSONを取り込みます。全明細再解析のときは、既存OCRの9行などを写真の商品行に置き換える前に確認画面を表示します。OCR診断は保存しません。</p>'+
- '<button type="button" class="secondary" data-act="chatGptCopyPrompt">OCR結果と指示文をコピー</button>'+
+ '<p class="hint">指示文をコピーし、ChatGPTに必ず元のレシート写真も添付してください。商品行・数量・金額の対応が正しい場合は文字の修正、行の対応が崩れている場合は写真から明細を再解析する指示です。</p>'+
+ '<p class="hint">最初のJSONを取り込みます。明細を置き換える場合は確認画面を表示します。ChatGPTによる分析の説明文は保存しません。</p>'+
+ '<button type="button" class="secondary" data-act="chatGptCopyPrompt">読み取り結果と指示文をコピー</button>'+
  UI.formField({id:'chatgpt-input',name:'chatgpt-json',label:'ChatGPTの解析結果（JSON）',
   control:'textarea',placeholder:'最初のJSONコードブロックを貼り付け',
   extra:'rows="9" maxlength="30000"'})+
@@ -773,7 +773,7 @@ function openScanViewer(index){
 async function runReceiptScan(){
  if(scanBusy||!scanPhotos.length)return;
  scanBusy=true;scanDraft=null;scanAssistMessage='';const token=++scanToken;
- scanStatus='読み取りを準備中です。初回はOCRモデルの取得に時間がかかる場合があります。';
+ scanStatus='読み取りを準備中です。初回は読み取り機能の準備に時間がかかる場合があります。';
  render();
  try{
   const engine=scanRuntime||(scanRuntime=await import('./ocr-engine/engine.js'));
@@ -1076,16 +1076,16 @@ function aliasManageRows(){
    value:p.id,label:productTitle(p)}))];
   return '<form class="panel" data-alias-form="'+esc(a.aliasId)+'">'+
    '<strong>'+esc(a.ocrName||a.normalizedAlias)+'</strong>'+
-   '<p class="hint">チェーン：'+esc(chain)+'（OCR名は編集不可）</p>'+
+   '<p class="hint">チェーン：'+esc(chain)+'（読み取り名は編集不可）</p>'+
    UI.formField({id:'alias-product-'+a.aliasId,name:'product',label:'紐付け商品',
     control:'select',value:a.productId||'',options})+
    '<button type="submit" class="secondary">紐付けを保存</button></form>';
- }).join('')||'<div class="panel empty">該当するOCR名はありません</div>';
+ }).join('')||'<div class="panel empty">該当する読み取り名はありません</div>';
 }
 function aliasManageView(){
- return head('OCR名辞書','商品との紐付け管理',true)+
-  '<main class="manage-main"><p class="hint">OCR名は変更せず、商品への紐付けだけを変更・解除できます。過去の購入明細の確定商品は変更しません。</p>'+
-  UI.searchField({id:'alias-query',label:'OCR名・登録商品で検索',placeholder:'OCR名を検索',value:aliasQuery})+
+ return head('読み取り名の管理','商品との紐付け管理',true)+
+  '<main class="manage-main"><p class="hint">読み取り名は変更せず、商品への紐付けだけを変更・解除できます。過去の購入明細の確定商品は変更しません。</p>'+
+  UI.searchField({id:'alias-query',label:'読み取り名・登録商品で検索',placeholder:'読み取り名を検索',value:aliasQuery})+
   '<div id="alias-results" class="catalogue-rows">'+aliasManageRows()+'</div></main>';
 }
 function masterProductsView(){
@@ -1176,7 +1176,7 @@ function settingsView(){
      s.temporary?(s.loaded?'Google Sheets 接続済み（ログイン一時停止中）':'Google Sheets 自動読み込み中…'):
      !s.signedIn?'Googleログインが必要です':
      s.loaded?'Google Sheets 接続済み':'読み込み中…');
-  return `${head('設定','くらしストック_試作')}<main><div class="panel"><h2>データと同期</h2><div class="info-row row"><div><strong>同期状態</strong><div class="hint">${esc(syncStatus)}</div></div><span class="tag">${s.loaded?'接続済み':s.cached?'再接続中':'未接続'}</span></div>${s.loginRequired?(s.signedIn?'<button type="button" class="secondary" data-act="liveLogout">ログアウト</button>':'<div id="google-login-button"></div>') : ''}${s.error&&s.queued?'<p class="hint" role="alert">通信が回復すると自動で再送します。未反映の操作は端末に残っています。</p>':''}</div><div class="panel"><div class="info-row row"><div><strong>アプリバージョン</strong><div class="hint">試作 v${esc(APP_VERSION)}</div></div></div></div><div class="panel"><h2>商品マスタ</h2><p class="hint">日用品に未紐付けの商品も編集できます。</p><button type="button" class="secondary" data-act="masterProducts">商品マスタを管理</button></div><div class="panel"><h2>OCR名辞書</h2><p class="hint">読み取った明細名を登録商品に紐付けます。</p><button type="button" class="secondary" data-act="aliasManage">OCR名の紐付けを管理</button></div></main>${nav()}`;
+  return `${head('設定','くらしストック_試作')}<main><div class="panel"><h2>データと同期</h2><div class="info-row row"><div><strong>同期状態</strong><div class="hint">${esc(syncStatus)}</div></div><span class="tag">${s.loaded?'接続済み':s.cached?'再接続中':'未接続'}</span></div>${s.loginRequired?(s.signedIn?'<button type="button" class="secondary" data-act="liveLogout">ログアウト</button>':'<div id="google-login-button"></div>') : ''}${s.error&&s.queued?'<p class="hint" role="alert">通信が回復すると自動で再送します。未反映の操作は端末に残っています。</p>':''}</div><div class="panel"><div class="info-row row"><div><strong>アプリバージョン</strong><div class="hint">試作 v${esc(APP_VERSION)}</div></div></div></div><div class="panel"><h2>商品マスタ</h2><p class="hint">日用品に未紐付けの商品も編集できます。</p><button type="button" class="secondary" data-act="masterProducts">商品マスタを管理</button></div><div class="panel"><h2>読み取り名の管理</h2><p class="hint">読み取った明細名を登録商品に紐付けます。</p><button type="button" class="secondary" data-act="aliasManage">読み取り名の紐付けを管理</button></div></main>${nav()}`;
  }
  return `${head('設定','くらしストック_試作')}<main><div class="panel"><h2>データと同期</h2><div class="info-row row"><div><strong>同期状態</strong><div class="hint">Google Sheets 接続前</div></div><span class="tag">未設定</span></div><button class="secondary" data-act="sync" style="width:100%">手動同期</button></div><div class="panel"><h2>試作版の操作</h2><p class="hint">変更内容はこの端末の localStorage のみに保存され、夫婦間では共有されません。</p><button class="secondary" data-act="reset">仮データを初期状態に戻す</button></div><div class="panel"><h2>今後の実装</h2><p class="hint">レシート／値札のチェーン照合、Google Apps Script 接続、認証、オフライン差分同期を追加予定です。</p></div></main>${nav()}`
 }
@@ -1398,7 +1398,7 @@ function back(){
    if(scanDraft){syncScanReview();saveScanDraft();}
    if(scanBusy){say('読み取り処理中です');return;}
    if(scanPhotos.length||scanDraft){
-    dialog={title:'OCR下書きを破棄しますか？',message:'写真と読み取り結果は保存せず破棄します。',
+    dialog={title:'読み取り途中の内容を破棄しますか？',message:'写真と読み取り結果は保存せず破棄します。',
      buttons:[{id:'cancel',label:'編集を続ける'},{id:'discardScan',label:'破棄する',critical:true}]};
     renderDialogOnly();return;
    }
@@ -1605,7 +1605,7 @@ app.addEventListener('submit',e=>{e.preventDefault();const form=e.target;const d
   window.KurashiLive.linkAlias(aliasId,String(d.get('product')||'')||null)
    .then(()=>render()).catch(err=>{
     if(button)button.disabled=false;
-    fieldNotice(form,err.message||'OCR名の紐付けを保存できませんでした');
+    fieldNotice(form,err.message||'読み取り名の紐付けを保存できませんでした');
    });
   return;
  }
@@ -1846,7 +1846,7 @@ if(el.dataset.pick){
  }else{setProductGroup(p,selected);page='compare';initializeCompare();render()}
  return;
 }
-if(el.dataset.dialog){if(el.dataset.dialog==='cancel'&&(dialog?.title==='変更を破棄しますか？'||dialog?.title==='比較単位について'||dialog?.title==='OCR下書きを破棄しますか？'||dialog?.title==='OCR明細を写真再解析に置き換えますか？')){dialog=null;document.querySelector('.dialog-back')?.remove();return}const action=el.dataset.dialog,p=dialog?.pending;dialog=null;
+if(el.dataset.dialog){if(el.dataset.dialog==='cancel'&&(dialog?.title==='変更を破棄しますか？'||dialog?.title==='比較単位について'||dialog?.title==='読み取り途中の内容を破棄しますか？'||dialog?.title==='読み取り結果を写真解析の結果に置き換えますか？')){dialog=null;document.querySelector('.dialog-back')?.remove();return}const action=el.dataset.dialog,p=dialog?.pending;dialog=null;
 
 if(action==='confirmMasterProductUnlink'&&p){
  const product=catalogue.products.find(x=>x.id===p.productId);
@@ -1964,10 +1964,10 @@ if(action==='chatGptAssist'){
 if(action==='chatGptCopyPrompt'){
  const parser=window.KurashiReceiptImport;
  try{
-  if(!scanDraft||scanDraft.source!=='ocr'||!parser)throw Error('OCR結果を確認してください');
+  if(!scanDraft||scanDraft.source!=='ocr'||!parser)throw Error('読み取り結果を確認してください');
   const prompt=parser.makeChatGptOcrAssistPrompt(receiptOcrReference(scanDraft));
   navigator.clipboard.writeText(prompt)
-   .then(()=>say('OCR結果と指示文をコピーしました'))
+   .then(()=>say('読み取り結果と指示文をコピーしました'))
    .catch(()=>say('コピーできませんでした'));
  }catch(e){say(e.message||'指示文を作成できませんでした');}
  return;
@@ -1975,7 +1975,7 @@ if(action==='chatGptCopyPrompt'){
 if(action==='chatGptImport'){
  const parser=window.KurashiReceiptImport;
  try{
-  if(!scanDraft||scanDraft.source!=='ocr')throw Error('先に写真をOCRで読み取ってください');
+  if(!scanDraft||scanDraft.source!=='ocr')throw Error('先に写真を読み取ってください');
   if(!parser)throw Error('補助解析機能を読み込めません');
   const response=parser.parseChatGptOcrResponse(document.getElementById('chatgpt-input')?.value||'');
   if(response.version===parser.REBUILD_VERSION){
@@ -1984,12 +1984,12 @@ if(action==='chatGptImport'){
    const sum=values.length===draft.items.length?
     values.reduce((a,b)=>a+b,0):null;
    const mismatch=draft.total!==null&&sum!==null&&draft.total!==sum;
-   dialog={title:'OCR明細を写真再解析に置き換えますか？',
-    message:'現在のOCR '+scanDraft.items.length+'行を採用せず、ChatGPTが写真から抽出した'+
-     draft.items.length+'行に置き換えます。商品マスタやOCR名辞書へ自動登録しません。'+
+   dialog={title:'読み取り結果を写真解析の結果に置き換えますか？',
+    message:'現在の読み取り'+scanDraft.items.length+'行を採用せず、ChatGPTが写真から抽出した'+
+     draft.items.length+'行に置き換えます。商品マスタや読み取り名の管理には自動登録しません。'+
      (mismatch?'解析した明細金額と印字合計が一致していません。':'')+
      '保存前に写真の全明細と数量・金額を確認してください。',
-    buttons:[{id:'cancel',label:'OCRを維持する'},
+    buttons:[{id:'cancel',label:'元の読み取り結果を維持する'},
      {id:'confirmChatGptRebuild',label:'写真解析'+draft.items.length+'行に置き換える',primary:true}],
     pending:{rebuild:response}};
    renderDialogOnly();return;
@@ -2004,7 +2004,7 @@ if(action==='chatGptImport'){
  }catch(e){
   const reason=String(e?.message||e);
   const readable=reason==='INVALID_OCR_ASSIST_ITEM'?
-   'OCR行の形式が不正です。OCR原表記や商品名候補に余分な情報がないか確認してください。':
+   '読み取り結果の形式が不正です。読み取り名や商品名候補に余分な情報がないか確認してください。':
    reason==='INVALID_OCR_ASSIST_FORMAT'||reason==='INVALID_REBUILD_FORMAT'||
     reason==='INVALID_OCR_RESPONSE_VERSION'?
    'JSONの形式が異なります。アプリの最新の指示文をコピーし、形式1か形式2のどちらかだけ貼り付けてください。':
