@@ -1,4 +1,4 @@
-const APP_VERSION='0.77.0';
+const APP_VERSION='0.78.0';
 const CATS=['飲食','キッチン','洗面・風呂','洗濯・掃除','その他'];
 const liveMode=!!window.KurashiLive; // Data source only; original Preview v46 UI components remain.
 const SEED=[['牛乳',0,true],['麦茶',0,false],['コーヒー',0,true],['卵',0,false],['キッチンペーパー',1,false],['ラップ',1,true],['食器用洗剤',1,true],['シャンプー',2,false],['歯磨き粉',2,true],['ハンドソープ',2,false],['洗濯洗剤',3,false],['柔軟剤',3,true],['トイレットペーパー',3,false],['乾電池',4,true],['ティッシュ',4,true]];
@@ -182,6 +182,7 @@ function releaseScanThumbnail(file){const url=scanPhotoUrls.get(file);if(!url)re
 function clearScanThumbnails(){for(const f of scanPhotoUrls.keys())releaseScanThumbnail(f)}
 let scanRuntime=null,scanDraftAvailable=false,scanDraftWrites=Promise.resolve(),chatGptError='',recordDetailId=null,scanProductRow=null;
 let scanExistingQuery='',recordDetailOrigin='list';
+let storePickerTarget=null,storePickerQuery='',storePickerNewMode=false;
 function saveScanDraft(){
  if(!liveMode||!window.KurashiLive?.saveReceiptDraft)return;
  const snapshot=scanDraft?JSON.parse(JSON.stringify(scanDraft)):null;
@@ -308,6 +309,77 @@ function scanExistingProductView(){
   ${scanSuggestionButtons(item,scanProductRow)}
   <div id="scan-existing-results" class="scan-existing-results">${scanExistingProductResults()}</div>
   </div>`});
+}
+// Only the explicitly chosen store is committed; the actual server create
+// continues to occur during receipt save, using the existing saveRecord API.
+function storePickerChoices(){
+ const form=document.getElementById(storePickerTarget==='scan'?'scanConfirmForm':'recordForm');
+ const selected=String(form?new FormData(form).get('chain')||'':'');
+ const q=norm(storePickerQuery);
+ const matches=catalogue.chains.filter(c=>!q||norm(c.name).includes(q));
+ if(!matches.length)return '<p class="hint">該当する店舗はありません。</p>';
+ return UI.actions({label:'店舗一覧',items:matches.map(c=>({
+  choice:c.id,label:c.name,selected:c.id===selected
+ }))});
+}
+function storePickerBody(){
+ if(storePickerNewMode)return `<form id="storePickerNewForm">
+  ${UI.formField({id:'store-picker-new-name',name:'store_name',label:'新しい店舗名',
+   value:storePickerTarget==='scan'&&scanNewStoreMode?scanDraft?.chainName||'':'',
+   maxlength:80,required:true,placeholder:'店舗名を入力',hint:true})}
+  <button class="primary" type="submit">この店舗名で決定</button>
+  ${UI.textAction({label:'登録済み店舗から選ぶ',action:'storePickerShowList',arrow:false})}
+ </form>`;
+ return `<div class="store-picker-content">
+  <div class="store-picker-search">${UI.searchField({id:'store-picker-search',
+   label:'店舗名を検索',placeholder:'店舗名を検索',value:storePickerQuery})}</div>
+  <div class="store-picker-create"><button class="secondary" type="button"
+   data-act="storePickerShowNew">${miniIcon('plus')}<span>新しい店舗を追加</span></button></div>
+  <div class="store-picker-results" id="store-picker-results">${storePickerChoices()}</div>
+ </div>`;
+}
+function storePickerView(){
+ return UI.sheet({title:storePickerNewMode?'新しい店舗':'店舗を選択',
+  variant:'store-picker-modal',backdropClass:'store-picker-overlay',
+  body:storePickerBody()});
+}
+function openStorePicker(){
+ if(storePickerTarget)return;
+ storePickerTarget=page==='recordScan'?'scan':page==='recordAdd'?'record':null;
+ if(!storePickerTarget)return;
+ if(storePickerTarget==='scan')syncScanReview();
+ storePickerQuery='';storePickerNewMode=false;
+ app.insertAdjacentHTML('beforeend',storePickerView());
+}
+function closeStorePicker(){
+ app.querySelector('.store-picker-overlay')?.remove();
+ storePickerTarget=null;storePickerQuery='';storePickerNewMode=false;
+}
+function showStorePickerMode(newMode){
+ if(!storePickerTarget)return;
+ storePickerNewMode=newMode;
+ const sheet=app.querySelector('.store-picker-modal');
+ if(!sheet)return;
+ sheet.querySelector('.sheet-head h2').textContent=newMode?'新しい店舗':'店舗を選択';
+ sheet.querySelector('.sheet-body').innerHTML=storePickerBody();
+ if(newMode)sheet.querySelector('#store-picker-new-name')?.focus({preventScroll:true});
+}
+function chooseStoreFromPicker(chainId,chainName=''){
+ const target=storePickerTarget;
+ if(!target)return;
+ const form=document.getElementById(target==='scan'?'scanConfirmForm':'recordForm');
+ const chain=form?.elements.namedItem('chain'),name=form?.elements.namedItem('chain_name');
+ if(!chain||!name)return;
+ chain.value=chainId;name.value=chainId==='__new__'?chainName:'';
+ const display=chainId==='__new__'?chainName:catalogue.chains.find(c=>c.id===chainId)?.name||'';
+ const field=chain.closest('.formfield');
+ const caption=field?.querySelector('.ui-picker-value');
+ if(caption){caption.textContent=display||'未選択';caption.classList.toggle('is-empty',!display)}
+ const label=field?.querySelector('.ui-text-action span');
+ if(label)label.textContent=display?'変更':'店舗を選択';
+ closeStorePicker();
+ if(target==='scan')chain.dispatchEvent(new Event('change',{bubbles:true}));
+ else field?.classList.remove('ui-field-error');
 }
 function receiptChatGptView(){
  return head('ChatGPTの補助解析','OCR文字修正または写真から再解析',true)+
@@ -518,17 +590,11 @@ function scanFormView(){
   <section class="scan-receipt-meta" aria-label="購入情報">
   ${UI.sectionHeading({title:'購入情報'})}
   <div class="scan-store-picker">
-   <div id="scan-store-select-wrap" ${scanNewStoreMode?'hidden':''}>
-    ${UI.formField({id:'scan-store-picker',name:'chain',hiddenInputId:'scan-chain',
-     label:'店舗',control:'select',value:scanNewStoreMode?'__new__':scanDraft.chainId||'',
-     options:chains,hint:true})}
-   </div>
-   <div id="scan-new-chain-wrap" ${scanNewStoreMode?'':'hidden'}>
-    ${UI.formField({id:'scan-new-store',name:'chain_name',label:'店舗',maxlength:80,
-     placeholder:'新しい店舗名',value:scanDraft.chainName||'',hint:true})}
-   </div>
-   <button type="button" class="ui-text-action" data-act="scanStoreChooseExisting"
-    ${scanNewStoreMode?'':'hidden'}>登録済み店舗から選ぶ</button>
+   ${UI.formField({id:'scan-chain',name:'chain',label:'店舗',control:'picker',
+     value:scanNewStoreMode?'__new__':scanDraft.chainId||'',
+     display:scanNewStoreMode?scanDraft.chainName||'':catalogue.chains.find(c=>c.id===scanDraft.chainId)?.name||'',
+     action:'storePickerOpen',hint:true})}
+   <input type="hidden" name="chain_name" value="${esc(scanNewStoreMode?scanDraft.chainName||'':'')}">
   </div>
   ${UI.formField({id:'scan-date',name:'date',label:'購入日',control:'date',
    value:scanDraft.date,required:true,hint:true,fieldClass:'scan-date-field'})}
@@ -791,7 +857,7 @@ const UI={
   sectionHeading({title,subtitle='',trailing='',className=''}) {
     return `<div class="ui-section-heading ${esc(className)}"><div class="ui-section-heading-copy"><h2 class="sectiontitle">${esc(title)}</h2>${subtitle?`<span class="ui-section-heading-sub">${esc(subtitle)}</span>`:''}</div>${trailing}</div>`;
   },
-  textAction({label,action,arrow=true,row=null}){return `<button type="button" class="ui-text-action" data-act="${esc(action)}" ${Number.isInteger(row)?'data-scan-row="'+row+'"':''}><span>${esc(label)}</span>${arrow?chevron('right'):''}</button>`;},
+  textAction({label,action,arrow=true,row=null,id=''}){return `<button type="button" class="ui-text-action" ${id?'id="'+esc(id)+'"':''} data-act="${esc(action)}" ${Number.isInteger(row)?'data-scan-row="'+row+'"':''}><span>${esc(label)}</span>${arrow?chevron('right'):''}</button>`;},
   recordRow({id,title,subtitle,amount=null,draft=false}){return `<button type="button" class="panel ui-record-row" data-act="${draft?'resumeScanDraft':'recordDetail'}" ${draft?'':`data-record-id="${esc(id)}"`}>
    <span class="ui-record-row-copy"><strong>${esc(title)}</strong><span>${esc(subtitle)}</span>${amount===null?'':`<strong class="ui-record-amount">${yen(amount)}</strong>`}</span>
    ${chevron('right')}</button>`;},
@@ -802,18 +868,23 @@ const UI={
     return `<div class="ui-select ${compact?'ui-select-compact':''}" data-ui-select="${esc(id)}"><button type="button" class="ui-select-trigger" id="${esc(id)}" data-ui-toggle aria-haspopup="true" aria-expanded="${!!open}" aria-label="${esc(label||id)}"><span class="ui-select-label">${esc(active?.label||'')}</span>${chevron('down')}</button>${name!==null?`<input type="hidden" ${inputId?'id="'+esc(inputId)+'"':''} name="${esc(name)}" value="${esc(active?.value??'')}">`:''}${UI.actions({items:choices,label:label||id,compact,hidden:!open})}</div>`;
   },
   formField({id,name=id,label,control='input',value='',type='text',placeholder='',
-    required=false,maxlength=null,options=[],extra='',hint=false,fieldClass='',hiddenInputId=''}) {
+    required=false,maxlength=null,options=[],extra='',hint=false,fieldClass='',hiddenInputId='',
+    display='',action=''}) {
     const attr=`id="${esc(id)}" name="${esc(name)}"`;
     let input;
     if(control==='select') input=UI.dropdown({id,name,inputId:hiddenInputId,value,options,label});
     else if(control==='search') input=UI.searchField({id,label,placeholder,value,extra});
     else if(control==='date') input=uiNativeDateInput(value,{id,name,label,required});
+    else if(control==='picker') input=`<div class="ui-picker-surface">
+     <strong class="ui-picker-value ${display?'':'is-empty'}">${esc(display||'未選択')}</strong>
+     ${UI.textAction({label:display?'変更':'店舗を選択',action,arrow:false,id:id+'-action'})}
+    </div><input type="hidden" ${attr} value="${esc(value)}">`;
     else if(control==='textarea') input=`<textarea ${attr} ${placeholder?`placeholder="${esc(placeholder)}"`:''} ${extra}>${esc(value)}</textarea>`;
     else input=`<input ${attr} type="${esc(type)}" value="${esc(value)}" ${placeholder?`placeholder="${esc(placeholder)}"`:''} ${maxlength!==null?`maxlength="${Number(maxlength)}"`:''} ${required?'required':''} ${extra}>`;
     const message=hint?`<span class="ui-field-hint" data-field-hint="${esc(name)}" hidden></span>`:'';
-    return `<div class="formfield ${esc(fieldClass)}"><label for="${esc(id)}">${esc(label)}</label>${input}${message}</div>`;
+    return `<div class="formfield ${esc(fieldClass)}"><label for="${esc(control==='picker'?id+'-action':id)}">${esc(label)}</label>${input}${message}</div>`;
   },
-  sheet({title,body,variant=''}){return `<div class="sheet-back" data-sheet-backdrop="true"><section class="half-sheet ${esc(variant)}" role="dialog" aria-modal="true" aria-label="${esc(title)}"><div class="sheet-grip"></div><header class="sheet-head"><h2>${esc(title)}</h2><button class="sheet-close" type="button" data-act="back" aria-label="閉じる">${miniIcon('close')}</button></header><div class="sheet-body">${body}</div></section></div>`},
+  sheet({title,body,variant='',backdropClass=''}){return `<div class="sheet-back ${esc(backdropClass)}" data-sheet-backdrop="true"><section class="half-sheet ${esc(variant)}" role="dialog" aria-modal="true" aria-label="${esc(title)}"><div class="sheet-grip"></div><header class="sheet-head"><h2>${esc(title)}</h2><button class="sheet-close" type="button" data-act="back" aria-label="閉じる">${miniIcon('close')}</button></header><div class="sheet-body">${body}</div></section></div>`},
   inlineNotice({message,action,label}){return `<div class="ui-inline-notice" role="status"><p>${esc(message)}</p><button type="button" class="secondary" data-act="${esc(action)}">${esc(label)}</button></div>`},
   actions({items,label,compact=false,hidden=false}){return commonMenu(items,{label,compact,hidden})}
 
@@ -1019,17 +1090,12 @@ function recordAddView(){
  const optsProduct=[{value:'',label:'商品未照合'},...catalogue.products.map(p=>({value:p.id,label:productTitle(p)}))];
  const optsCategory=[{value:'',label:'未分類'},...CATS.map((label,index)=>({label,value:String(index)}))];
  const today=daysFromDate(new Date());
- const chainOptions=catalogue.chains.map(c=>({value:c.id,label:c.name}));
- if(liveMode)chainOptions.push({value:'__new__',label:'＋ 新しい店舗を追加'});
- const chainValue=catalogue.chains[0]?.id||(liveMode?'__new__':'');
+ const initialChainId=catalogue.chains[0]?.id||(liveMode?'__new__':'');
+ const initialChainName=catalogue.chains[0]?.name||'';
  const fields=[
-  '<div class="record-store-picker"><div id="record-store-select-wrap"'+(chainValue==='__new__'?' hidden':'')+'>'+
-    UI.formField({id:'record-chain',name:'chain',label:'店舗',control:'select',value:chainValue,options:chainOptions})+'</div>'+
-    (liveMode?'<div id="record-new-chain-row"'+(chainValue==='__new__'?'':' hidden')+'>'+
-     UI.formField({id:'record-new-chain',name:'chain_name',label:'店舗',maxlength:80,placeholder:'新しい店舗名'})+
-     (catalogue.chains.length?UI.textAction({label:'登録済み店舗から選ぶ',
-      action:'recordStoreChooseExisting',arrow:false}):'')+'</div>':'')+
-    '</div>',
+  UI.formField({id:'record-chain',name:'chain',label:'店舗',control:'picker',
+   value:initialChainId,display:initialChainName,action:'storePickerOpen'}),
+  '<input type="hidden" name="chain_name" value="">',
   UI.formField({id:'record-date',name:'date',label:type==='receipt'?'購入日':'値札確認日',
    control:'date',value:today,required:true,fieldClass:'record-date-field'}),
   UI.formField({id:'record-product',name:'product',label:'商品',control:'select',value:'',options:optsProduct}),
@@ -1134,6 +1200,10 @@ function render(){
  const modal=page==='scanExistingProduct'?scanExistingProductView():page==='scanProduct'?scanProductView():page==='productPick'?pickerView():page==='productEdit'?productCreateView():page==='recordAdd'?recordAddView():currentModal?formView():'';
  const overlay=dialogView();
  app.innerHTML=`<div class="shell ${focus?'focus':''}">${pageView()}</div>${modal}${overlay}`;
+ if(storePickerTarget&&((storePickerTarget==='scan'&&page==='recordScan')||
+  (storePickerTarget==='record'&&page==='recordAdd')))
+  app.insertAdjacentHTML('beforeend',storePickerView());
+ else storePickerTarget=null;
  if(scrollReset)window.scrollTo(0,page==='list'&&previousPage==='compare'?listScrollPosition:0);
  // On iOS the search keyboard can still be dismissing after the first paint.
  // Recheck the viewport on the next frame; do not change the original v46 UI.
