@@ -227,7 +227,7 @@ function recordDetailView(){
     <p>チェーン：${esc(chainLabel(record.chain_id))}</p>
        <p>明細数：${detail.length}件</p><strong>税込合計：${yen(total)}</strong></div>
   ${detail.map((x,i)=>`<div class="panel preview-record-row">
-    <strong>${i+1}. ${esc(catalogue.products.find(p=>p.id===x.product_id)?.name||aliasNameFor(x)||'未特定')}</strong>
+    <strong>${i+1}. ${esc(catalogue.products.find(p=>p.id===x.product_id)?.name||aliasNameFor(x)||'明細名なし')}</strong>
     ${x.inferred_name?'<span>ChatGPT推測名：'+esc(x.inferred_name)+'</span>':''}
     ${x.confirmed_name?'<span>写真・手入力で確認した明細名：'+esc(x.confirmed_name)+'</span>':x.product_id&&aliasNameFor(x)?'<span>レシートの読み取り名：'+esc(aliasNameFor(x))+'</span>':''}
     <span>${esc(x.quantity)}個　税込 ${yen(Number(x.amount_tax_included))}</span>
@@ -1129,8 +1129,8 @@ function recordAddView(){
   '<input type="hidden" name="chain_name" value="">',
   UI.formField({id:'record-date',name:'date',label:type==='receipt'?'購入日':'値札確認日',
    control:'date',value:today,required:true,fieldClass:'record-date-field'}),
-  UI.formField({id:'record-product',name:'product',label:'商品',control:'select',value:'',options:optsProduct}),
-  UI.formField({id:'record-raw',name:'raw',label:'商品名',value:'',placeholder:'例：牛乳'}),
+  UI.formField({id:'record-product',name:'product',label:'登録商品',control:'select',value:'',options:optsProduct}),
+  UI.formField({id:'record-raw',name:'raw',label:'明細名（任意）',value:'',placeholder:'例：牛乳'}),
   UI.formField({id:'record-quantity',name:'quantity',label:'購入数・販売個数',type:'number',value:1,required:true,extra:'min="1" step="1" inputmode="numeric"'}),
   UI.formField({id:'record-amount',name:'amount',label:'小計',type:'number',value:'',required:true,extra:'min="0" step="1" inputmode="numeric"'})
  ].join('');
@@ -1649,7 +1649,7 @@ app.addEventListener('submit',e=>{e.preventDefault();const form=e.target;const d
    const inferredName=String(item.inferredName||item.nameCandidate||'').trim();
    return {
     raw_name:verified?'':String(item.ocrRawName||'').trim(),
-    ...(verified?{confirmed_name:confirmedName}:{}),
+    ...(verified&&confirmedName?{confirmed_name:confirmedName}:{}),
     ...(inferredName?{inferred_name:inferredName}:{}),
     product_id:String(d.get('product-'+i)||'')||null,
     quantity:Number(d.get('qty-'+i)),
@@ -1660,7 +1660,7 @@ app.addEventListener('submit',e=>{e.preventDefault();const form=e.target;const d
   if(scanDraft.items.some(isUnconfirmedBarcodeLine)){
    fieldNotice(form,'商品コードのみの行は保存できません。写真からの全面再解析を使用するか、不要な行を削除してください');return;
   }
-  if(lines.some(x=>(!x.raw_name&&!x.confirmed_name)||
+  if(lines.some((x,i)=>(!x.raw_name&&!x.confirmed_name&&scanDraft.items[i]?.inputOrigin!=='manual')||
      !Number.isSafeInteger(x.quantity)||x.quantity<1||
      !Number.isSafeInteger(x.amount_tax_included)||x.amount_tax_included<0)){
    refreshScanTotalUI();fieldNotice(form,'赤い項目を修正してください');return;
@@ -2043,7 +2043,7 @@ if(action==='recordEdit'){
   items:allPreviewItems().filter(x=>x.record_id===r.record_id&&!x.deleted_at)
    .sort((a,b)=>Number(a.line_order)-Number(b.line_order))
    .map(x=>({name:aliasNameFor(x),inferredName:x.inferred_name||'',
-    ...(x.confirmed_name?{inputOrigin:'photo'}:{ocrRawName:aliasNameFor(x),savedOcrName:true}),
+    ...(!aliasNameFor(x)||x.confirmed_name?{inputOrigin:'manual'}:{ocrRawName:aliasNameFor(x),savedOcrName:true}),
     quantity:x.quantity,amount:x.amount_tax_included,
     productId:x.product_id||'',manuallyLinked:!!x.product_id,issues:[]}))
  };
@@ -2143,7 +2143,7 @@ if(action==='scanRemoveItem'&&scanDraft){
  syncScanReview();scanDraft.items.splice(Number(el.dataset.scanRow),1);saveScanDraft();render();return;
 }
 if(action==='scanAddItem'&&scanDraft){
- syncScanReview();scanDraft.items.push({name:'',inputOrigin:'manual',quantity:1,quantityUncertain:false,amount:'',productId:'',issues:['追加した明細を確認']});
+ syncScanReview();scanDraft.items.push({name:'',inputOrigin:'manual',quantity:1,quantityUncertain:false,amount:'',productId:'',issues:[]});
  saveScanDraft();render();return;
 }
 if(action==='newReceipt'||action==='newShelf'){newRecordType=action==='newReceipt'?'receipt':'shelf';page='recordAdd';render();return}
@@ -2519,7 +2519,8 @@ function refreshScanTotalUI(){
    !validAmount?'金額を入力':uncertain?'金額を確認':'');
   if(form.elements.namedItem('name-'+i)){
    const name=String(d.get('name-'+i)||'').trim();
-   mark('name-'+i,name?'':'error',name?'':'読み取り名を入力');
+   const optional=scanDraft.items[i].inputOrigin==='manual';
+    mark('name-'+i,name||optional?'':'error',name||optional?'':'読み取り名を入力');
   }
  });
  const sum=document.getElementById('scan-sum-text'),count=document.getElementById('scan-count-text');
