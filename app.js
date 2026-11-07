@@ -1,4 +1,4 @@
-const APP_VERSION='0.76.1';
+const APP_VERSION='0.76.2';
 const CATS=['飲食','キッチン','洗面・風呂','洗濯・掃除','その他'];
 const liveMode=!!window.KurashiLive; // Data source only; original Preview v46 UI components remain.
 const SEED=[['牛乳',0,true],['麦茶',0,false],['コーヒー',0,true],['卵',0,false],['キッチンペーパー',1,false],['ラップ',1,true],['食器用洗剤',1,true],['シャンプー',2,false],['歯磨き粉',2,true],['ハンドソープ',2,false],['洗濯洗剤',3,false],['柔軟剤',3,true],['トイレットペーパー',3,false],['乾電池',4,true],['ティッシュ',4,true]];
@@ -479,6 +479,24 @@ function scanValidPurchaseDate(value){
  return year>=2000&&year<=2100&&actual.getUTCFullYear()===year&&
   actual.getUTCMonth()+1===month&&actual.getUTCDate()===day;
 }
+/* Use the native date picker without allowing its iOS intrinsic text width
+ * to determine the layout width of the receipt confirmation screen. */
+function receiptDateControl(value,{id='',label='購入日'}={}){
+ const date=scanValidPurchaseDate(value)?String(value):'';
+ const text=date?date.replaceAll('-','/'):'日付を選択';
+ return `<span class="receipt-date-control">
+  <span class="receipt-date-value${date?'':' is-empty'}" aria-hidden="true">${esc(text)}</span>
+  <span class="receipt-date-symbol" aria-hidden="true">${miniIcon('calendar')}</span>
+  <input ${id?'id="'+esc(id)+'" ':''}name="date" type="date" value="${esc(date)}" required aria-label="${esc(label)}">
+ </span>`;
+}
+function refreshReceiptDateDisplay(input){
+ const target=input?.closest('.receipt-date-control')?.querySelector('.receipt-date-value');
+ if(!target)return;
+ const date=scanValidPurchaseDate(input.value)?input.value:'';
+ target.textContent=date?date.replaceAll('-','/'):'日付を選択';
+ target.classList.toggle('is-empty',!date);
+}
 const scanTaxFailureDescription=reason=>window.KurashiReceiptValidation.describeTaxFailure(reason);
 function scanFormView(){
  if(!scanDraft)return '';
@@ -506,8 +524,10 @@ function scanFormView(){
    </label>
    <button type="button" class="scan-store-back" data-act="scanStoreChooseExisting" ${scanNewStoreMode?'':'hidden'}>登録済み店舗から選ぶ</button>
   </div>
-  <label class="scan-field">購入日<input name="date" type="date" required value="${esc(scanDraft.date)}"></label>
+  <label class="scan-field scan-date-field">購入日
+   ${receiptDateControl(scanDraft.date)}
    <span class="scan-field-hint" data-scan-hint="date" hidden></span>
+  </label>
   </section>
   ${UI.sectionHeading({title:'購入明細',subtitle:scanDraft.items.length+'件'+(scanDraft.items.filter(x=>!scanResolvedProductId(x)&&x.name?.trim()).length?'・商品未照合'+scanDraft.items.filter(x=>!scanResolvedProductId(x)&&x.name?.trim()).length+'件':'')})}
   ${scanDraft.items.map((item,i)=>`<div class="panel scan-review-item">
@@ -738,7 +758,7 @@ const id=()=>crypto.randomUUID?.()||`id-${Date.now()}-${Math.random()}`;
 function persist(){if(!liveMode)localStorage.setItem(key,JSON.stringify(items))}function visible(){return items.filter(i=>!i.hidden)}function current(){return items.find(i=>i.id===selected)}
 const icons={items:'<rect x="4" y="5" width="16" height="16" rx="2"/><path d="M4 11h16M10 5v16"/>',receipt:'<path d="M6 3h12v18l-3-2-3 2-3-2-3 2z"/><path d="M9 8h6M9 12h6"/>',budget:'<rect x="3" y="5" width="18" height="15" rx="3"/><path d="M3 10h18M16 15h3"/>',settings:'<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.9 4.9 7 7M17 17l2.1 2.1M2 12h3M19 12h3M4.9 19.1 7 17M17 7l2.1-2.1"/>'};
 const chevron=(direction='right')=>`<svg class="ui-chevron ${direction}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg>`;
-const miniIcon=k=>{const paths={camera:'<path d="M4 7h4l2-3h4l2 3h4v13H4z"/><circle cx="12" cy="13" r="4"/>',tag:'<path d="M3 11V4h7l11 11-7 7z"/><circle cx="7.5" cy="7.5" r="1"/>',receiptText:'<path d="M5 3h14v18l-3-2-4 2-4-2-3 2z"/><path d="M9 8h6M9 12h6M9 16h4"/>',search:'<circle cx="10.8" cy="10.8" r="7"/><path d="m16 16 5 5"/>',plus:'<path d="M12 5v14M5 12h14"/>',copy:'<rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/>',pencil:'<path d="M12 20h9"/><path d="m16 4 4 4-12 12H4v-4L16 4Z"/>',trash:'<path d="M4 7h16M10 7V4h4v3M7 7l1 13h8l1-13M10 11v6M14 11v6"/>',star:'<path d="m12 2 3.1 6.4 7 .9-5.1 5 .9 7-5.9-3.2-5.9 3.2.9-7-5.1-5 7-.9z"/>',package:'<path d="m3 7 9-4 9 4v10l-9 4-9-4zM3 7l9 4 9-4M12 11v10"/>',ruler:'<path d="M3 16 16 3l5 5L8 21zM13 6l3 3M10 9l3 3M7 12l3 3"/>',close:'<path d="M5 5l14 14M19 5 5 19"/>'};return `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths[k]||''}</svg>`};
+const miniIcon=k=>{const paths={camera:'<path d="M4 7h4l2-3h4l2 3h4v13H4z"/><circle cx="12" cy="13" r="4"/>',calendar:'<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M7 3v4M17 3v4M3 10h18"/>',tag:'<path d="M3 11V4h7l11 11-7 7z"/><circle cx="7.5" cy="7.5" r="1"/>',receiptText:'<path d="M5 3h14v18l-3-2-4 2-4-2-3 2z"/><path d="M9 8h6M9 12h6M9 16h4"/>',search:'<circle cx="10.8" cy="10.8" r="7"/><path d="m16 16 5 5"/>',plus:'<path d="M12 5v14M5 12h14"/>',copy:'<rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/>',pencil:'<path d="M12 20h9"/><path d="m16 4 4 4-12 12H4v-4L16 4Z"/>',trash:'<path d="M4 7h16M10 7V4h4v3M7 7l1 13h8l1-13M10 11v6M14 11v6"/>',star:'<path d="m12 2 3.1 6.4 7 .9-5.1 5 .9 7-5.9-3.2-5.9 3.2.9-7-5.1-5 7-.9z"/>',package:'<path d="m3 7 9-4 9 4v10l-9 4-9-4zM3 7l9 4 9-4M12 11v10"/>',ruler:'<path d="M3 16 16 3l5 5L8 21zM13 6l3 3M10 9l3 3M7 12l3 3"/>',close:'<path d="M5 5l14 14M19 5 5 19"/>'};return `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths[k]||''}</svg>`};
 // One menu DOM for actions and choices, with optional icons and selection.
 function commonMenu(items,{label='',compact=false,hidden=false}={}){
  return `<div class="ui-menu ${compact?'ui-menu-compact':''}" role="group" aria-label="${esc(label)}" ${hidden?'hidden':''}>${items.map(item=>{
@@ -993,7 +1013,9 @@ function recordAddView(){
      UI.formField({id:'record-new-chain',name:'chain_name',label:'店舗',maxlength:80,placeholder:'新しい店舗名'})+
      (catalogue.chains.length?'<button class="record-store-back" type="button" data-act="recordStoreChooseExisting">登録済み店舗から選ぶ</button>':'')+'</div>':'')+
     '</div>',
-  UI.formField({id:'record-date',name:'date',label:type==='receipt'?'購入日':'値札確認日',type:'date',value:today,required:true}),
+  '<div class="formfield record-date-field"><label for="record-date">'+
+   (type==='receipt'?'購入日':'値札確認日')+'</label>'+
+   receiptDateControl(today,{id:'record-date',label:type==='receipt'?'購入日':'値札確認日'})+'</div>',
   UI.formField({id:'record-product',name:'product',label:'商品',control:'select',value:'',options:optsProduct}),
   UI.formField({id:'record-raw',name:'raw',label:'商品名',value:'',placeholder:'例：牛乳'}),
   UI.formField({id:'record-quantity',name:'quantity',label:'購入数・販売個数',type:'number',value:1,required:true,extra:'min="1" step="1" inputmode="numeric"'}),
@@ -2394,6 +2416,7 @@ function refreshScanTotalUI(){
  }
 }
 app.addEventListener('input',e=>{
+ if(e.target.matches('input[type="date"][name="date"]'))refreshReceiptDateDisplay(e.target);
  if(page==='scanExistingProduct'&&e.target.id==='scan-existing-search'){
   scanExistingQuery=e.target.value;
   const results=document.getElementById('scan-existing-results');
@@ -2419,6 +2442,7 @@ app.addEventListener('input',e=>{
 });
 // Only structured receipt draft fields are stored, never raw OCR or photos.
 app.addEventListener('change',e=>{
+ if(e.target.matches('input[type="date"][name="date"]'))refreshReceiptDateDisplay(e.target);
  if(page==='recordScan'&&e.target.closest('#scanConfirmForm')){
   syncScanReview();saveScanDraft();refreshScanTotalUI();
  }
