@@ -1,4 +1,4 @@
-const APP_VERSION='0.78.0';
+const APP_VERSION='0.79.0';
 const CATS=['飲食','キッチン','洗面・風呂','洗濯・掃除','その他'];
 const liveMode=!!window.KurashiLive; // Data source only; original Preview v46 UI components remain.
 const SEED=[['牛乳',0,true],['麦茶',0,false],['コーヒー',0,true],['卵',0,false],['キッチンペーパー',1,false],['ラップ',1,true],['食器用洗剤',1,true],['シャンプー',2,false],['歯磨き粉',2,true],['ハンドソープ',2,false],['洗濯洗剤',3,false],['柔軟剤',3,true],['トイレットペーパー',3,false],['乾電池',4,true],['ティッシュ',4,true]];
@@ -278,12 +278,10 @@ function scanExistingProductResults(){
  const q=norm(scanExistingQuery);
  const matches=catalogue.products.filter(p=>
   !q||productMatches(p,q)||norm(linkedItemName(p)).includes(q));
- return matches.length?matches.slice(0,60).map(p=>`
-  <button type="button" class="scan-existing-option" data-act="scanChooseExisting"
-    data-product-id="${esc(p.id)}">
-   <strong>${esc(productTitle(p))}</strong>
-   ${linkedItemLabel(p)?'<span>日用品リスト：'+esc(linkedItemLabel(p))+'</span>':''}
-  </button>`).join(''):'<p class="hint">該当する登録商品はありません。新規商品登録をご利用ください。</p>';
+ return matches.length?matches.slice(0,60).map(p=>UI.choiceRow({
+  title:productTitle(p),subtitle:linkedItemLabel(p)?'日用品リスト：'+linkedItemLabel(p):'',
+  action:'scanChooseExisting',productId:p.id,className:'scan-existing-option'
+ })).join(''):'<p class="hint">該当する登録商品はありません。新規商品登録をご利用ください。</p>';
 }
 function scanExistingProductView(){
  const item=scanDraft?.items[scanProductRow];
@@ -318,23 +316,24 @@ function storePickerChoices(){
  const q=norm(storePickerQuery);
  const matches=catalogue.chains.filter(c=>!q||norm(c.name).includes(q));
  if(!matches.length)return '<p class="hint">該当する店舗はありません。</p>';
- return UI.actions({label:'店舗一覧',items:matches.map(c=>({
-  choice:c.id,label:c.name,selected:c.id===selected
- }))});
+ return matches.map(c=>UI.choiceRow({
+  title:c.name,choice:c.id,selected:c.id===selected
+ })).join('');
 }
 function storePickerBody(){
  if(storePickerNewMode)return `<form id="storePickerNewForm" novalidate>
   ${UI.formField({id:'store-picker-new-name',name:'store_name',label:'新しい店舗名',
    value:storePickerTarget==='scan'&&scanNewStoreMode?scanDraft?.chainName||'':'',
    maxlength:80,required:true,placeholder:'店舗名を入力',hint:true})}
-  <button class="primary" type="submit">この店舗名で決定</button>
+  ${UI.button({label:'この店舗名で決定',variant:'primary',type:'submit'})}
   ${UI.textAction({label:'登録済み店舗から選ぶ',action:'storePickerShowList',arrow:false})}
  </form>`;
  return `<div class="store-picker-content">
   <div class="store-picker-search">${UI.searchField({id:'store-picker-search',
    label:'店舗名を検索',placeholder:'店舗名を検索',value:storePickerQuery})}</div>
-  ${liveMode?`<div class="store-picker-create"><button class="secondary" type="button"
-   data-act="storePickerShowNew">${miniIcon('plus')}<span>新しい店舗を追加</span></button></div>`:''}
+  ${liveMode?`<div class="store-picker-create">${UI.button({
+   label:'新しい店舗を追加',variant:'secondary',action:'storePickerShowNew',icon:'plus'
+  })}</div>`:''}
   <div class="store-picker-results" id="store-picker-results">${storePickerChoices()}</div>
  </div>`;
 }
@@ -350,10 +349,12 @@ function openStorePicker(){
  if(storePickerTarget==='scan')syncScanReview();
  storePickerQuery='';storePickerNewMode=false;
  app.insertAdjacentHTML('beforeend',storePickerView());
+ syncSheetScrollLock();
 }
 function closeStorePicker(){
  app.querySelector('.store-picker-overlay')?.remove();
  storePickerTarget=null;storePickerQuery='';storePickerNewMode=false;
+ syncSheetScrollLock();
 }
 function showStorePickerMode(newMode){
  if(!storePickerTarget)return;
@@ -857,6 +858,15 @@ const UI={
   sectionHeading({title,subtitle='',trailing='',className=''}) {
     return `<div class="ui-section-heading ${esc(className)}"><div class="ui-section-heading-copy"><h2 class="sectiontitle">${esc(title)}</h2>${subtitle?`<span class="ui-section-heading-sub">${esc(subtitle)}</span>`:''}</div>${trailing}</div>`;
   },
+  button({label,variant='secondary',action='',type='button',icon=''}) {
+    return `<button type="${esc(type)}" class="${esc(variant)}" ${action?'data-act="'+esc(action)+'"':''}>${icon?miniIcon(icon):''}<span>${esc(label)}</span></button>`;
+  },
+  choiceRow({title,subtitle='',choice=null,action='',productId='',selected=false,disabled=false,className=''}) {
+    return `<button type="button" class="ui-choice-row ${esc(className)} ${selected?'is-selected':''}"${choice!==null?' data-ui-choice="'+esc(choice)+'" aria-pressed="'+String(!!selected)+'"':''}${action?' data-act="'+esc(action)+'"':''}${productId?' data-product-id="'+esc(productId)+'"':''}${disabled?' disabled':''}>
+     <span class="ui-choice-copy"><strong>${esc(title)}</strong>${subtitle?'<span class="ui-choice-sub">'+esc(subtitle)+'</span>':''}</span>
+     ${selected?'<span class="ui-choice-check" aria-hidden="true">✓</span>':''}
+    </button>`;
+  },
   textAction({label,action,arrow=true,row=null,id=''}){return `<button type="button" class="ui-text-action" ${id?'id="'+esc(id)+'"':''} data-act="${esc(action)}" ${Number.isInteger(row)?'data-scan-row="'+row+'"':''}><span>${esc(label)}</span>${arrow?chevron('right'):''}</button>`;},
   recordRow({id,title,subtitle,amount=null,draft=false}){return `<button type="button" class="panel ui-record-row" data-act="${draft?'resumeScanDraft':'recordDetail'}" ${draft?'':`data-record-id="${esc(id)}"`}>
    <span class="ui-record-row-copy"><strong>${esc(title)}</strong><span>${esc(subtitle)}</span>${amount===null?'':`<strong class="ui-record-amount">${yen(amount)}</strong>`}</span>
@@ -1185,6 +1195,34 @@ function pageView(){
   default: return mainTabView();
  }
 }
+// iOS Safari can scroll the page behind a fixed sheet even when the sheet
+// itself uses overscroll-behavior:contain. Lock the document once for all
+// stacked UI.sheet overlays; restore its original scroll position on exit.
+let sheetScrollLock=null;
+function syncSheetScrollLock(){
+ const active=!!app.querySelector('.sheet-back');
+ if(active&&sheetScrollLock===null){
+  const body=document.body;
+  const y=window.scrollY||window.pageYOffset||0;
+  sheetScrollLock={y,position:body.style.position,top:body.style.top,
+   left:body.style.left,right:body.style.right,width:body.style.width};
+  body.style.position='fixed';
+  body.style.top='-'+y+'px';
+  body.style.left='0';
+  body.style.right='0';
+  body.style.width='100%';
+ }else if(!active&&sheetScrollLock!==null){
+  const saved=sheetScrollLock;
+  sheetScrollLock=null;
+  const body=document.body;
+  body.style.position=saved.position;
+  body.style.top=saved.top;
+  body.style.left=saved.left;
+  body.style.right=saved.right;
+  body.style.width=saved.width;
+  window.scrollTo(0,saved.y);
+ }
+}
 function render(){
  if(!window.document)return; // A closed iOS page/session must not re-render.
   closeScanViewer();
@@ -1204,6 +1242,7 @@ function render(){
   (storePickerTarget==='record'&&page==='recordAdd')))
   app.insertAdjacentHTML('beforeend',storePickerView());
  else storePickerTarget=null;
+ syncSheetScrollLock();
  if(scrollReset)window.scrollTo(0,page==='list'&&previousPage==='compare'?listScrollPosition:0);
  // On iOS the search keyboard can still be dismissing after the first paint.
  // Recheck the viewport on the next frame; do not change the original v46 UI.
