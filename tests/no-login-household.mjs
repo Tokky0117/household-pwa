@@ -2242,3 +2242,57 @@ assert.equal(compactDate.closest('.formfield').classList.contains('ui-field-erro
 reviewFlow.window.close();
 console.log('v0.78.0: receipt store sheet/search/new/cancel and form state OK');
 
+/* v0.84: End-to-end optional-name flow in the live receipt confirmation UI.
+ * A user can add a monetary line without inventing a product or description. */
+const optionalUI=appSession();
+await waitFor(()=>optionalUI.window.KurashiLive.state().loaded,'optional detail session loaded');
+optionalUI.window.document.querySelector('[data-tab="receipt"]').click();
+prepareOcrImport(optionalUI);
+const knownForOptional=temp.call('bootstrap').data.stores[0].canonical_name;
+const receiptBeforeOptional=temp.call('bootstrap').data.records.length;
+optionalUI.window.document.querySelector('#chatgpt-input').value=JSON.stringify({
+ version:'kurashi-receipt-import-1',purchaseDate:'2026-11-08',storeName:knownForOptional,
+ receiptTotal:300,printedCount:2,items:[{
+  name:'既存の読み取り名',quantity:1,netAmount:100,grossAmount:100
+ }]
+});
+await completeOcrImport(optionalUI);
+assert.ok(optionalUI.window.document.querySelector('.scan-assist-area [data-act="chatGptAssist"]'),
+ 'ChatGPT help is outside the review form near the photo area');
+assert.match(optionalUI.window.document.querySelector('.scan-assist-area .ui-status-message')?.textContent||'',
+ /反映できる修正候補はありませんでした/,
+ 'the assist result appears by the operation, without misleading item counters');
+optionalUI.window.document.querySelector('[data-act="scanAddItem"]').click();
+let optionalForm=optionalUI.window.document.querySelector('#scanConfirmForm');
+const optionalName=optionalForm.querySelector('[name="name-1"]');
+assert.ok(optionalName&&!optionalName.required&&optionalName.value==='',
+ 'an additional manual item has an optional blank detail name');
+assert.equal(optionalName.closest('.formfield').querySelector('label').textContent,'明細名（任意）');
+optionalForm.querySelector('[name="qty-1"]').value='1';
+optionalForm.querySelector('[name="amount-1"]').value='200';
+optionalForm.dispatchEvent(new optionalUI.window.Event('submit',{bubbles:true,cancelable:true}));
+await waitFor(()=>temp.call('bootstrap').data.records.length===receiptBeforeOptional+1,
+ 'receipt with nameless manual amount is saved to Sheets through the operation queue');
+const afterOptional=temp.call('bootstrap').data;
+const optionalRecord=afterOptional.records.find(r=>r.record_date==='2026-11-08');
+assert.ok(optionalRecord,'new record can be retrieved');
+const optionalDetails=afterOptional.record_items.filter(x=>x.record_id===optionalRecord.record_id);
+assert.equal(optionalDetails.length,2);
+assert.ok(optionalDetails.some(x=>x.raw_name===''&&x.confirmed_name===''&&
+ x.product_id===''&&Number(x.amount_tax_included)===200&&x.price_eligible===false),
+ 'the nameless line is retained as a purchase amount, not a price-comparable registered product');
+await waitFor(()=>!!optionalUI.window.document.querySelector(
+ '[data-act="recordDetail"][data-record-id="'+optionalRecord.record_id+'"]'),
+ 'the saved unnamed receipt is shown in the app history');
+optionalUI.window.document.querySelector(
+ '[data-act="recordDetail"][data-record-id="'+optionalRecord.record_id+'"]').click();
+assert.match(optionalUI.window.document.body.textContent,/明細名なし/,
+ 'receipt detail displays a neutral name fallback');
+optionalUI.window.document.querySelector('[data-act="recordEdit"]').click();
+optionalForm=optionalUI.window.document.querySelector('#scanConfirmForm');
+assert.equal(optionalForm.querySelector('[name="name-1"]')?.value,'',
+ 'the blank manual field is editable with no generated name on receipt reopen');
+assert.equal(optionalForm.querySelector('[name="name-1"]')?.required,false);
+optionalUI.window.close();
+console.log('v0.84: optional unnamed receipt detail UI -> queue -> GAS -> history -> edit OK');
+
