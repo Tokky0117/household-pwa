@@ -25,7 +25,7 @@ const doc={
 const ctx={document:doc,localStorage:{getItem:k=>storage.get(k)??null,setItem:(k,v)=>storage.set(k,v),removeItem:k=>storage.delete(k)},
  navigator:{},window:{scrollTo(){},scrollY:0,KurashiReceiptValidation:validator,KurashiReceiptReview:review},crypto:{randomUUID:()=> 'test-id'},setTimeout:()=>0};
 const ui=vm.runInNewContext(source+`
-({listView,priceCompareView,pickerView,pickerResults,receiptView,receiptScanView,receiptChatGptView,recordDetailView,scanDuplicates,applyChatGptOcrAssistance,receiptOcrReference,receiptOcrRows,isUnconfirmedBarcodeLine,makeChatGptReceiptRebuildDraft,scanProductView,scanExistingProductView,scanChainForStore,scanAutolinkUnmatched,scanMatchProduct,render,initializeCompare,
+({listView,priceCompareView,pickerView,pickerResults,receiptView,receiptScanView,receiptChatGptView,recordDetailView,applyChatGptOcrAssistance,receiptOcrReference,receiptOcrRows,isUnconfirmedBarcodeLine,makeChatGptReceiptRebuildDraft,scanProductView,scanExistingProductView,scanChainForStore,scanAutolinkUnmatched,scanMatchProduct,render,initializeCompare,
  setProductGroup,reorderProducts,registeredProducts,convertQuantity,setOpenSwipe,
  chainMinima,priceCandidates,savePreviewRecord,periodStart,
  demoRecords,demoRecordItems,allPreviewRecords,allPreviewItems,
@@ -435,13 +435,16 @@ assert.match(newProductHtml,/紐付けしない（商品だけ登録）/,'new pr
 assert.ok(!newProductHtml.includes('name="group" required'),
  'item group selection is optional, not forced');
 const listingHtml=ui.receiptScanView();
-assert.ok(listingHtml.includes('<span>商品名</span>')&&
- listingHtml.includes('既存商品と照合')&&listingHtml.includes('新しい商品を登録'),
- 'scan review clearly distinguishes printed text and master product actions');
+assert.ok(listingHtml.includes('<span>読み取り名</span>')&&
+ listingHtml.includes('登録商品')&&listingHtml.includes('商品を設定'),
+ 'receipt review distinguishes the read name from the selected registered product');
 assert.ok(!listingHtml.includes('data-act="scanBulkProducts"'),
  'unmatched product batch creation is removed from receipt review');
-assert.ok(listingHtml.includes('class="scan-product-status"')&&listingHtml.includes('商品未照合')&&
- listingHtml.includes('照合・登録'),'unmatched status remains visible without opening controls');
+assert.ok(listingHtml.includes('class="scan-product-setting"')&&
+ listingHtml.includes('商品未照合')&&
+ !listingHtml.includes('scan-product-association')&&
+ !listingHtml.includes('data-act="scanNewProduct"'),
+ 'product selection is a single action without an accordion or split actions');
 const existingHtml=ui.scanExistingProductView();
 assert.ok(existingHtml.includes('scan-existing-search')&&
  existingHtml.includes('scan-existing-group')&&
@@ -1032,7 +1035,7 @@ assert.ok(!JSON.stringify(p4Rebuild).includes('ocr-p4'),
 console.log('P4 common review adapter, provenance, row identity and P2 validation OK');
 
 // v0.73: Receipt OCR review information hierarchy; preserve validation/confirmation.
-assert.ok(source.includes("const APP_VERSION='0.75.0'"), 'UI review revision version is current');
+assert.ok(source.includes("const APP_VERSION='0.76.0'"), 'UI review revision version is current');
 assert.ok(source.includes("UI.sectionHeading({title:'購入情報'})"), 'Receipt OCR review groups store and purchase date');
 assert.ok(source.includes("UI.sectionHeading({title:'購入明細',subtitle:scanDraft.items.length+'件'+"), 'Receipt OCR review identifies item list and unmatched count');
 assert.ok(source.includes("UI.sectionHeading({title:'合計の確認'})"), 'Receipt OCR review makes reconciliation distinct');
@@ -1044,10 +1047,29 @@ assert.ok(source.includes('scan-total-warning')&&source.includes('scan-count-war
 assert.ok(!source.includes('未照合商品をまとめて登録'),'Batch button is removed');
 assert.ok(!source.includes('明細を確認</p>'),'No generic item warning');
 assert.ok(source.includes('レシート記載額')&&!source.includes(' ／ 差額：'),'Only meaningful total comparison fields');
-assert.ok(source.includes('支店名を追加（任意）')&&source.includes('＋ 新しい店舗を追加'),'Single store selector with an optional branch');
+assert.ok(!source.includes('支店名を追加（任意）')&&
+ source.includes('scan-store-select-wrap')&&source.includes('scan-new-chain-wrap'),
+ 'Only one store field is visible, and the unused branch field is removed');
 assert.ok(source.includes('scanModalPhotoLinks()'),'Product sheets can open receipt photo viewer');
-assert.ok(css.includes('.scan-product-status{')&&css.includes('.scan-compare-data{'),'Compact card and comparison layout styles exist');
+assert.ok(css.includes('.scan-product-setting-row{')&&css.includes('.scan-compare-data{'),
+ 'Compact product row and total comparison styles exist');
 
+assert.ok(!source.includes('scanDuplicates(')&&!source.includes('duplicateOk')&&
+ !source.includes('scan-duplicate-warning'),
+ 'Content-based duplicate blocking is removed; durable operation-ID replay remains separate');
+assert.ok(source.includes("scanAutolinkUnmatched();\n  saveScanDraft();"),
+ 'ChatGPT photo rebuild relinks products from the newly read name');
+assert.ok(source.includes('item.amountReviewed=true')&&
+ source.includes('!item.amountReviewed'),
+ 'A manually corrected amount clears its OCR-derived yellow state');
+assert.ok(source.includes('レシートの合計額を特定できませんでした')&&
+ source.includes('レシートの合計と一致しません'),
+ 'Unknown totals and mismatches give a specific yellow explanation');
+assert.ok(css.includes('input[type="date"]::-webkit-datetime-edit')&&
+ css.includes('min-inline-size:0'),
+ 'Safari native date input has a narrow-screen internal width constraint');
+assert.ok(source.includes('data-act="scanOpenPhoto"')&&source.includes('data-act="scanRemoveItem"'),
+ 'Photo and deletion actions coexist on each receipt item');
 const previewCacheWorkflow=readFileSync(new URL('../.github/workflows/pages-previews.yml',import.meta.url),'utf8');
 assert.ok(previewCacheWorkflow.includes('household-preview-$slug-$revision')&&
  previewCacheWorkflow.includes('git rev-parse --short=12'),
@@ -1055,5 +1077,5 @@ assert.ok(previewCacheWorkflow.includes('household-preview-$slug-$revision')&&
 ui.setScanDraft({source:'ocr',date:'2026-11-07',chainId:'c-a',total:100,
  items:[{name:'読取注意の商品',ocrRawName:'読取注意の商品',quantity:1,amount:100,
  productId:'',issues:['商品コードと商品名の対応を確認']}]});
-assert.ok(ui.receiptScanView().includes('class="scan-name-warning">商品名を確認'),
+assert.ok(ui.receiptScanView().includes('class="scan-name-warning">読み取り名を確認'),
  'Concrete OCR name uncertainty has a targeted warning, not a generic blanket alert');
