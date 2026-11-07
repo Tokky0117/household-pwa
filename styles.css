@@ -1140,6 +1140,7 @@ html,body {
   align-items: flex-end;
   justify-content: center;
   background: rgba(0,0,0,.34);
+  overscroll-behavior: none;
 }
 
 .half-sheet {
@@ -2372,8 +2373,19 @@ html,body{touch-action:pan-x pan-y}
 .scan-product-actions button{min-height:44px;white-space:normal}
 .scan-existing-picker{display:flex;flex-direction:column;min-height:0;gap:8px}
 .scan-existing-results{overflow-y:auto;min-height:64px;max-height:45vh;display:flex;flex-direction:column;gap:5px;overscroll-behavior:contain}
-.scan-existing-option{display:flex;flex-direction:column;align-items:flex-start;gap:4px;min-height:50px;width:100%;padding:11px;border:1px solid var(--line,#d5d9df);border-radius:10px;background:var(--card,#fff);color:inherit;text-align:left}
-.scan-existing-option span{font-size:12px;color:var(--text-secondary,#666)}
+/* Shared selectable results: same full-size row for product and store search. */
+.ui-choice-row{
+ display:flex;align-items:center;gap:10px;min-height:50px;width:100%;
+ min-width:0;max-width:100%;padding:11px;
+ border:1px solid var(--line,#d5d9df);border-radius:var(--ui-radius-control);
+ background:var(--card,#fff);color:var(--ink);text-align:left
+}
+.ui-choice-copy{display:flex;flex:1;min-width:0;flex-direction:column;gap:4px}
+.ui-choice-copy>strong{font-size:16px;font-weight:650;line-height:1.4;overflow-wrap:anywhere}
+.ui-choice-sub{font-size:12px;color:var(--muted);line-height:1.4;overflow-wrap:anywhere}
+.ui-choice-check{flex:none;color:var(--accent);font-size:17px;font-weight:700}
+.ui-choice-row.is-selected{border-color:var(--accent)}
+.ui-choice-row:disabled{opacity:.55}
 .scan-existing-picker>[data-act]{min-height:44px}
 
 /* Receipt product sheets scroll independently and preserve access to photo zoom. */
@@ -2520,31 +2532,35 @@ html,body{touch-action:pan-x pan-y}
  .scan-picker-actions{gap:5px}
 }
 
-/* Store-specific presentation uses UI.sheet, UI.searchField and UI.actions. */
+/* Store search sheet only owns layout: visual rows use shared UI.choiceRow. */
 .store-picker-overlay{z-index:110}
 .half-sheet.store-picker-modal{
  height:min(80dvh,720px);max-height:calc(100dvh - env(safe-area-inset-top) - 12px);
- min-height:0;display:flex;flex-direction:column;overflow:hidden
+ min-width:0;display:flex;flex-direction:column;overflow:hidden
 }
 .half-sheet.store-picker-modal>.sheet-body{
- flex:1 1 auto;min-height:0;display:flex;flex-direction:column;overflow-y:auto;
+ flex:1 1 auto;min-height:0;min-width:0;width:100%;
+ display:flex;flex-direction:column;overflow-y:auto;
  padding-bottom:calc(16px + env(safe-area-inset-bottom))
 }
-.store-picker-content{flex:1 1 auto;min-height:0;display:flex;flex-direction:column;gap:10px}
-.store-picker-search,.store-picker-create{flex:0 0 auto}
+.store-picker-content{
+ flex:1 1 auto;min-height:0;min-width:0;width:100%;
+ display:flex;flex-direction:column;gap:10px
+}
+.store-picker-search,.store-picker-create{flex:0 0 auto;min-width:0;width:100%}
 .store-picker-create>.secondary{width:100%;min-height:44px;display:inline-flex;gap:8px;align-items:center;justify-content:center}
 .store-picker-create svg{width:18px;height:18px}
 .store-picker-results{
- flex:1 1 auto;min-height:0;overflow-y:auto;overscroll-behavior:contain;
- border-top:1px solid var(--line);padding:4px 0 8px
+ flex:1 1 auto;min-height:0;min-width:0;width:100%;
+ display:flex;flex-direction:column;gap:5px;
+ overflow-y:auto;overscroll-behavior:contain;
+ border-top:1px solid var(--line);padding:6px 0 8px
 }
-.store-picker-results>.ui-menu{
- display:block;position:static;width:100%;min-width:0;max-width:100%;
- max-height:none;overflow:visible;box-shadow:none;border:0;border-radius:0;
- padding:0;background:transparent
+#storePickerNewForm{
+ display:flex;flex-direction:column;gap:12px;
+ width:100%;min-width:0;max-width:100%;align-self:stretch
 }
-.store-picker-results .ui-menu-item{min-height:48px;white-space:normal;overflow-wrap:anywhere}
-#storePickerNewForm{display:flex;flex-direction:column;gap:12px}
-#storePickerNewForm>.formfield{margin:0}
+#storePickerNewForm>.formfield{width:100%;min-width:0;max-width:100%;margin:0}
+#storePickerNewForm>.formfield>input{width:100%;min-width:0;max-width:100%}
 #storePickerNewForm>.primary{width:100%;min-height:46px}
 #storePickerNewForm>.ui-text-action{align-self:flex-start}
