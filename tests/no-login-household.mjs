@@ -946,6 +946,17 @@ assert.ok(recordReopened.window.document.body.textContent.includes('アプリ実
 recordReopened.window.document.querySelector('[data-act="newShelf"]').click();
 recordForm=recordReopened.window.document.getElementById('recordForm');
 assert.ok(recordForm,'shelf form is active in live mode');
+recordForm.querySelector('[data-act="storePickerOpen"]').click();
+const shelfStoreSheet=recordReopened.window.document.querySelector('.store-picker-overlay');
+assert.ok(shelfStoreSheet,'shelf input uses the same shared store-selection half sheet');
+const savedStoreChoice=shelfStoreSheet.querySelector(
+ '.store-picker-results [data-ui-choice="'+storedReceipt.chain_id+'"]');
+assert.ok(savedStoreChoice,'previously saved store is available as a choice');
+savedStoreChoice.click();
+assert.equal(recordForm.querySelector('[name="chain"]').value,storedReceipt.chain_id,
+ 'manual shelf form updates the existing hidden chain field on selection');
+assert.equal(recordForm.querySelector('.ui-picker-value').textContent,'アプリ実機試験用チェーン',
+ 'shelf form shows chosen store name with no new text field');
 const productToRecord=temp.call('bootstrap').data.products.find(p=>p.household_id==='household-one');
 assert.ok(productToRecord,'product exists for shelf');
 recordForm.querySelector('[name="product"]').value=productToRecord.product_id;
