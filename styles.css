@@ -273,7 +273,7 @@ main {
   margin-bottom: 13px;
 }
 
-.panel h2 {
+.panel h2:not(.sectiontitle) {
   font-size: 16px;
   margin: 0 0 15px;
 }
@@ -2329,7 +2329,6 @@ html,body{touch-action:pan-x pan-y}
 /* Receipt confirmation sections: spacing only. Keep shared heading/form styles. */
 .scan-review>.ui-section-heading,.scan-receipt-meta>.ui-section-heading{margin:20px 0 10px}
 .scan-review>.ui-section-heading:first-child{margin:0 0 10px}
-.panel .ui-section-heading .sectiontitle{font-size:17px}
 .scan-receipt-meta>.formfield{margin:8px 0 14px}
 .scan-store-picker .formfield{margin:8px 0 14px}
 .scan-review-total>.ui-section-heading{margin:0 0 8px}
@@ -2445,10 +2444,6 @@ html,body{touch-action:pan-x pan-y}
 .ui-date-control:focus-within{outline:3px solid #80b5e5;outline-offset:2px}
 .ui-date-control>input[type="date"]:focus-visible{outline:none}
 .scan-store-picker [hidden],.record-store-picker [hidden]{display:none!important}
-.scan-store-back,.record-store-back{
- display:inline-flex;align-items:center;min-height:44px;padding:8px 0;
- color:var(--accent);font-size:13px;font-weight:650;border:0;background:transparent
-}
 .record-store-picker .formfield{margin-bottom:12px}
 .scan-item-head{display:flex;align-items:center;justify-content:space-between;gap:8px;min-width:0}
 .scan-item-head>strong{flex:none;font-size:14px;font-weight:700}
@@ -2502,7 +2497,7 @@ html,body{touch-action:pan-x pan-y}
  border:1px solid var(--line,#d5d9df);border-radius:10px;padding:0 10px}
 .scan-existing-group-advanced summary{display:flex;align-items:center;
  min-height:44px;cursor:pointer;color:var(--accent);font-size:13px;font-weight:650}
-.scan-existing-group-advanced .scan-field{margin:5px 0}
+.scan-existing-group-advanced .formfield{margin:5px 0}
 .scan-existing-group-advanced .hint{font-size:12px;margin:5px 0 10px}
 @media(max-width:360px){
  .scan-picker-actions .secondary{padding:8px 9px}
