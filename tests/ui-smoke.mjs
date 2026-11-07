@@ -458,7 +458,7 @@ assert.ok(listingHtml.includes('ui-static-field-label">読み取り名</span>')&
  'receipt review distinguishes the read name from the selected registered product');
 assert.ok(!listingHtml.includes('data-act="scanBulkProducts"'),
  'unmatched product batch creation is removed from receipt review');
-assert.ok(listingHtml.includes('class="scan-product-setting"')&&
+assert.ok(listingHtml.includes('class="formfield scan-product-setting ui-picker-inline"')&&
  listingHtml.includes('商品未照合')&&
  !listingHtml.includes('scan-product-association')&&
  !listingHtml.includes('data-act="scanNewProduct"'),
@@ -476,6 +476,19 @@ assert.ok(newProductHtml.includes('data-ui-select="scan-product-group"')&&
  source.includes("control==='date'")&&source.includes("control==='search'"),
  'Common formField owns date, search and item selection for all receipt forms');
 const productAction=listingHtml.match(/<button[^>]*data-act="scanPickExisting"[^>]*>[^]*?<\/button>/)?.[0]||'';
+assert.ok(listingHtml.includes('<label for="scan-product-0-action">登録商品</label>')&&
+ listingHtml.includes('name="product-0"')&&
+ listingHtml.includes('id="scan-product-0-action"')&&
+ listingHtml.includes('data-scan-row="0"'),
+ 'Product picker uses the shared form label, existing hidden value and unchanged row action');
+assert.ok(!listingHtml.includes('scan-field-label')&&!listingHtml.includes('scan-product-setting-row'),
+ 'Legacy product-specific label and picker markup are removed');
+assert.ok(css.includes('.formfield.ui-picker-inline .ui-text-action{')&&
+ css.includes('grid-row:1 / 3')&&css.includes('min-height:44px'),
+ 'Product action spans label and value without inserting a 44px content row');
+assert.ok(css.includes('.formfield.ui-picker-inline>label{')&&
+ css.includes('.formfield.ui-picker-inline .ui-picker-value{'),
+ 'Common inline picker preserves shared 14px label and 16px value');
 assert.ok(productAction.includes('class="ui-text-action"')&&
  productAction.includes('商品を設定')&&!productAction.includes('ui-chevron'),
  'registered-product settings use shared text actions without navigation chevrons');
@@ -1133,7 +1146,7 @@ assert.ok(!JSON.stringify(p4Rebuild).includes('ocr-p4'),
 console.log('P4 common review adapter, provenance, row identity and P2 validation OK');
 
 // v0.73: Receipt OCR review information hierarchy; preserve validation/confirmation.
-assert.ok(source.includes("const APP_VERSION='0.81.0'"), 'UI review revision version is current');
+assert.ok(source.includes("const APP_VERSION='0.82.0'"), 'UI review revision version is current');
 assert.ok(source.includes("UI.sectionHeading({title:'購入情報'})"), 'Receipt OCR review groups store and purchase date');
 assert.ok(source.includes("UI.sectionHeading({title:'購入明細',subtitle:scanDraft.items.length+'件'+"), 'Receipt OCR review identifies item list and unmatched count');
 assert.ok(source.includes("UI.sectionHeading({title:'合計の確認'})"), 'Receipt OCR review makes reconciliation distinct');
@@ -1192,8 +1205,8 @@ assert.ok(!source.includes('支店名を追加（任意）')&&
  source.includes("storePickerNewForm"),
  'Receipt store choice reuses shared half-sheet/search/choice/form components');
 assert.ok(source.includes('scanModalPhotoLinks()'),'Product sheets can open receipt photo viewer');
-assert.ok(css.includes('.scan-product-setting-row{')&&css.includes('.scan-compare-data{'),
- 'Compact product row and total comparison styles exist');
+assert.ok(css.includes('.formfield.ui-picker-inline{')&&css.includes('.scan-compare-data{'),
+ 'Shared compact picker and total comparison styles exist');
 
 assert.ok(!source.includes('scanDuplicates(')&&!source.includes('duplicateOk')&&
  !source.includes('scan-duplicate-warning'),
