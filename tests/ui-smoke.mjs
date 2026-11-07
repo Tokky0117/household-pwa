@@ -452,14 +452,16 @@ const manualAdd=ui.receiptScanView();
 assert.ok(manualAdd.includes('name="name-1"'),'manual line stays editable');
 assert.ok(!manualAdd.includes('name="name-0"'),'saved OCR name stays plain text');
 // The two name origins share headings and spacing without turning the OCR text into an input.
-assert.ok((manualAdd.match(/class="formfield scan-read-name"/g)||[]).length===2,
- 'editable and read-only receipt names use the same form-level layout class');
+assert.ok((manualAdd.match(/class="formfield scan-read-name"/g)||[]).length===1&&
+ manualAdd.includes('class="formfield scan-manual-name"'),
+ 'immutable read name and optional manually entered name share common form controls with distinct placement');
 assert.ok(manualAdd.includes('<label for="scan-name-1">明細名（任意）</label>')&&
  manualAdd.includes('ui-static-field-label">読み取り名</span>'),
  'manual name is optional while OCR name stays an immutable display field');
 assert.ok(manualAdd.includes('name="name-1"')&&manualAdd.includes('placeholder="例：みかん"')&&
- !manualAdd.includes('name="name-1" required'),
- 'Manual rows have an optional name; quantity and amount remain required');
+ !manualAdd.includes('name="name-1" required')&&
+ manualAdd.indexOf('name="name-1"')>manualAdd.indexOf('name="amount-1"'),
+ 'Manual name is optional and placed after product, quantity and subtotal');
 assert.ok(!manualAdd.includes('読み取り結果の確認')&&
  manualAdd.indexOf('合計の確認')<manualAdd.indexOf('class="panel scan-review-total"')&&
  manualAdd.includes('class="tertiary" data-act="scanAddItem"'),
@@ -469,7 +471,7 @@ assert.ok(!manualAdd.includes('name="name-0"')&&manualAdd.includes('data-ocr-row
 assert.ok(ruleBody('.scan-item-head>strong').some(x=>x.includes('font-size:16px')),
  'receipt card heading uses 16px, above the shared 13px field labels');
 assert.ok(ruleBody('.scan-review-item .scan-read-name').some(x=>x.includes('margin:4px 0 var(--ui-field-group-gap)')),
- 'both name variants have the same compact vertical rhythm');
+ 'immutable OCR name retains its compact shared field rhythm');
 assert.ok(ruleBody('.scan-review-item .formfield').some(x=>x.includes('margin:0')),
  'receipt fields have no accumulated 6px generic margins');
 assert.ok(ruleBody('.scan-review-item .scan-product-setting').some(x=>
