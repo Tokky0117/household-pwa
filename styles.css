@@ -2416,3 +2416,70 @@ html,body{touch-action:pan-x pan-y}
  .scan-product-status{align-items:flex-start}
  .scan-photo-heading>span:first-child{min-width:0;overflow-wrap:anywhere}
 }
+
+/* v0.76: receipt confirmation is compact, with one visible store control.
+ * Constrain Safari's intrinsic date widget instead of masking overflow. */
+.receipt-scan-page .scan-receipt-meta{width:100%;min-width:0;max-width:100%}
+.receipt-scan-page .scan-receipt-meta>.scan-field,
+.receipt-scan-page .scan-store-picker,
+.receipt-scan-page .scan-store-picker>.scan-field{min-width:0;max-width:100%;width:100%}
+.receipt-scan-page .scan-receipt-meta input[type="date"]{
+ display:block;box-sizing:border-box;min-width:0;max-width:100%;width:100%;
+ min-inline-size:0;max-inline-size:100%;font-size:16px;padding:9px 8px;
+ -webkit-appearance:auto;appearance:auto
+}
+.receipt-scan-page input[type="date"]::-webkit-date-and-time-value{
+ min-width:0;max-width:100%;text-align:left
+}
+.receipt-scan-page input[type="date"]::-webkit-datetime-edit{min-width:0;max-width:100%}
+.receipt-scan-page input[type="date"]::-webkit-datetime-edit-fields-wrapper{min-width:0;padding:0}
+.receipt-scan-page input[type="date"]::-webkit-calendar-picker-indicator{margin:0;flex-shrink:0}
+.scan-store-picker [hidden],.record-store-picker [hidden]{display:none!important}
+.scan-store-back,.record-store-back{
+ display:inline-flex;align-items:center;min-height:44px;padding:8px 0;
+ color:var(--accent);font-size:13px;font-weight:650;border:0;background:transparent
+}
+.record-store-picker .formfield{margin-bottom:12px}
+.record-store-picker .scan-state-error input{border:1.5px solid #C53F3F}
+.scan-item-head{display:flex;align-items:center;justify-content:space-between;gap:8px;min-width:0}
+.scan-item-head>strong{flex:none;font-size:13px}
+.scan-item-tools{display:flex;align-items:center;gap:3px;min-width:0}
+.scan-item-tool{
+ display:inline-flex;align-items:center;justify-content:center;gap:4px;
+ min-height:44px;padding:7px 6px;border:0;background:transparent;
+ color:var(--accent);font-size:13px;font-weight:650;white-space:nowrap
+}
+.scan-item-tool svg{width:17px;height:17px;flex:none}
+.scan-item-tool[data-act="scanRemoveItem"]{color:var(--muted)}
+.scan-review-item .scan-read-name{margin:4px 0 3px}
+.scan-review-item .scan-ocr-name{font-weight:650}
+.scan-product-setting{margin:5px 0 8px;min-width:0}
+.scan-field-label{display:block;font-size:13px;color:var(--muted);line-height:1.4;margin-bottom:2px}
+.scan-product-setting-row{display:flex;align-items:center;gap:8px;min-width:0}
+.scan-product-selected{font-weight:600;font-size:13px;line-height:1.4;
+ flex:1;min-width:0;overflow-wrap:anywhere}
+.scan-product-action{display:inline-flex;align-items:center;justify-content:flex-end;
+ gap:3px;min-height:44px;flex:none;background:transparent;border:0;
+ color:var(--accent);font-weight:700;font-size:13px;padding:5px 0 5px 5px}
+.scan-product-action .ui-chevron{width:16px;height:16px}
+.scan-setting-source{display:flex;flex-direction:column;gap:3px;margin:0 0 10px;overflow-wrap:anywhere}
+.scan-setting-source span{font-size:12px;color:var(--muted)}
+.scan-setting-source strong{font-size:14px}
+.scan-compare-photo{display:inline-flex;align-items:center;gap:5px;min-height:44px;
+ margin-top:5px;color:var(--accent);border:0;background:transparent;
+ padding:6px 0;font-size:13px;font-weight:700}
+.scan-compare-photo svg{width:18px;height:18px}
+.scan-viewer-head{gap:6px}
+.scan-viewer-head>span{font-size:13px;white-space:nowrap}
+.scan-viewer-pages{display:flex;align-items:center;gap:4px;margin-left:auto;min-width:0}
+.scan-viewer-pages button{border:1px solid #656b73;border-radius:8px;
+ background:transparent;color:#fff;font-size:12px;font-weight:650;
+ min-height:36px;padding:6px 5px;white-space:nowrap}
+@media(max-width:360px){
+ .receipt-scan-page .scan-receipt-meta input[type="date"]{padding:8px 5px}
+ .scan-item-head{gap:4px}
+ .scan-item-tool{padding:6px 3px;gap:3px;font-size:12px}
+ .scan-review-item .scan-input-pair{grid-template-columns:minmax(0,1fr) minmax(0,1.1fr)}
+ .scan-viewer-head{padding:6px 9px}
+ .scan-viewer-pages button{font-size:11px;padding:5px 3px}
+}
