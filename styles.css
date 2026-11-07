@@ -1736,7 +1736,7 @@ html,body {
 }
 
 .formfield input,.formfield select,.formfield textarea,
-.scan-field input:not([type="date"]),.scan-field select {
+.scan-field input,.scan-field select {
   font-size: var(--ui-input-font-size);
   font-weight: 400;
 }
@@ -2279,7 +2279,8 @@ main>.ui-search + .filterrow{margin-bottom:5px}
 .scan-viewer-controls .scan-viewer-scale{font-size:13px;min-width:56px;text-align:center}
 .scan-field{display:flex;flex-direction:column;gap:7px;font-size:14px;font-weight:700;margin:12px 0}
 .scan-field>label{display:block;font-size:inherit;font-weight:inherit}
-.scan-field input:not([type="date"]),.scan-field select{box-sizing:border-box;min-width:0;max-width:100%;color:var(--ink)}
+.scan-field input,.scan-field select{box-sizing:border-box;min-width:0;max-width:100%;color:var(--ink)}
+.ui-static-field-label{display:block;font-size:14px;font-weight:700;margin-bottom:7px}
 .scan-ocr-name{padding:4px 0;font-size:16px;line-height:1.5;overflow-wrap:anywhere}
 .scan-name-candidate{font-size:13px;line-height:1.5;color:var(--text-secondary,#555)}
 .scan-input-pair{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.4fr);gap:10px}
@@ -2329,14 +2330,15 @@ html,body{touch-action:pan-x pan-y}
 .scan-review>.ui-section-heading,.scan-receipt-meta>.ui-section-heading{margin:20px 0 10px}
 .scan-review>.ui-section-heading:first-child{margin:0 0 10px}
 .panel .ui-section-heading .sectiontitle{font-size:17px}
-.scan-receipt-meta>.scan-field:first-of-type{margin-top:8px}
+.scan-receipt-meta>.formfield{margin:8px 0 14px}
+.scan-store-picker .formfield{margin:8px 0 14px}
 .scan-review-total>.ui-section-heading{margin:0 0 8px}
 .scan-review-total>p:first-of-type{margin-top:0}
 
 /* Receipt review v0.74: constrained width, no clipping; photo zoom keeps pan. */
 .receipt-scan-page,.scan-review,.scan-review-item,.scan-review-total,
 .scan-receipt-meta,.scan-input-pair,
-.scan-input-pair .scan-field{min-width:0;max-width:100%;box-sizing:border-box}
+.scan-input-pair .formfield{min-width:0;max-width:100%;box-sizing:border-box}
 .scan-review{width:100%;overflow-wrap:anywhere}
 .scan-review .panel,.scan-review .row{min-width:0;max-width:100%;box-sizing:border-box}
 .scan-input-pair{grid-template-columns:minmax(0,1fr) minmax(0,1.3fr)}
@@ -2345,18 +2347,28 @@ html,body{touch-action:pan-x pan-y}
 .scan-product-actions{grid-template-columns:repeat(2,minmax(0,1fr))}
 .scan-product-actions button,.scan-review-item button{min-width:0;overflow-wrap:anywhere}
 .scan-ocr-name,.scan-name-candidate,.scan-tax-excluded,.scan-total-figure,.scan-total-count{overflow-wrap:anywhere}
-.scan-review .scan-state-error input,.scan-review .scan-state-warning input{
- background:#fff;color:var(--ink);border-width:1.5px
-}
-.scan-review .scan-state-error input,.scan-review .scan-state-error .ui-select-trigger{border-color:#C53F3F}
-.scan-review .scan-state-warning input{border-color:#A97800}
-.scan-field-hint{font-size:12px;font-weight:600;line-height:1.45}
-.scan-state-error .scan-field-hint{color:#C53F3F}
-.scan-state-warning .scan-field-hint{color:#A97800}
+/* Shared field error/review states for all UI.formField controls. */
+:root{--ui-field-error-color:#C53F3F;--ui-field-warning-color:#A97800}
+.formfield.ui-field-error input:not([type="hidden"]):not([type="date"]):not([type="search"]),
+.formfield.ui-field-error textarea,
+.formfield.ui-field-error .ui-select-trigger,
+.formfield.ui-field-error .ui-date-control,
+.formfield.ui-field-error .ui-search{border:1.5px solid var(--ui-field-error-color)}
+.formfield.ui-field-warning input:not([type="hidden"]):not([type="date"]):not([type="search"]),
+.formfield.ui-field-warning textarea,
+.formfield.ui-field-warning .ui-select-trigger,
+.formfield.ui-field-warning .ui-date-control,
+.formfield.ui-field-warning .ui-search{border:1.5px solid var(--ui-field-warning-color)}
+.ui-field-hint{display:block;font-size:12px;font-weight:600;line-height:1.45;margin-top:6px}
+.formfield.ui-field-error .ui-field-hint{color:var(--ui-field-error-color)}
+.formfield.ui-field-warning .ui-field-hint{color:var(--ui-field-warning-color)}
+.formfield.ui-field-error .ui-field-hint::before,
+.formfield.ui-field-warning .ui-field-hint::before{content:"⚠";display:inline-block;margin-right:5px}
+.formfield .ui-field-hint[hidden]{display:none!important}
 .scan-state-note{border:1.5px solid currentColor;border-radius:10px;padding:9px 11px;
- font-size:13px;line-height:1.5;background:#fff;overflow-wrap:anywhere;margin:8px 0}
-.scan-state-warning.scan-state-note{color:#A97800}
-.scan-state-error.scan-state-note{color:#C53F3F}
+ font-size:13px;line-height:1.5;background:var(--card);overflow-wrap:anywhere;margin:8px 0}
+.scan-state-warning.scan-state-note{color:var(--ui-field-warning-color)}
+.scan-state-error.scan-state-note{color:var(--ui-field-error-color)}
 .scan-total-figure{font-size:19px;font-weight:700;margin:8px 0}
 .scan-total-count{font-size:15px;margin:8px 0}
 .scan-review [hidden]{display:none!important}
@@ -2367,23 +2379,19 @@ html,body{touch-action:pan-x pan-y}
 
 /* Equal treatment of red/yellow: the icon and note inherit the border color. */
 .scan-state-note::before{content:"⚠";display:inline-block;margin-right:6px;color:inherit}
-.scan-field.scan-state-warning .scan-field-hint::before,
-.scan-field.scan-state-error .scan-field-hint::before{content:"⚠";margin-right:5px}
-.scan-field.scan-state-error + .scan-field-hint{color:#C53F3F}
-.scan-field.scan-state-warning + .scan-field-hint{color:#A97800}
 .scan-review-item input[type="number"]{width:100%;min-width:0;max-width:100%}
 
 /* v0.75: receipt review fits narrow phones without page-level clipping. */
 .receipt-scan-page{width:100%;min-width:0;max-width:100%;overflow-wrap:anywhere}
 .receipt-scan-page>*{min-width:0;max-width:100%}
 .scan-review-item{padding:10px 12px}
-.scan-review-item .scan-field{margin:6px 0;min-width:0}
+.scan-review-item .formfield{margin:6px 0;min-width:0}
 .scan-review-item .scan-ocr-name{padding:0;line-height:1.35}
 .scan-review-item .scan-name-candidate{margin:3px 0}
 .scan-review-item .scan-name-warning{font-size:12px;font-weight:600;line-height:1.4;color:#A97800;margin:4px 0}
 .scan-review-item .scan-name-warning::before{content:"⚠";margin-right:5px}
 .scan-review-item .scan-input-pair{gap:8px;min-width:0}
-.scan-review-item .scan-input-pair>.scan-field{min-width:0;max-width:100%}
+.scan-review-item .scan-input-pair>.formfield{min-width:0;max-width:100%}
 .scan-review-item .scan-tax-excluded{font-size:12px;margin:5px 0;overflow-wrap:anywhere}
 .scan-product-actions{margin:7px 0 0;gap:7px}
 .scan-review>.ui-section-heading,.scan-receipt-meta>.ui-section-heading{min-width:0;max-width:100%;flex-wrap:wrap}
@@ -2403,49 +2411,45 @@ html,body{touch-action:pan-x pan-y}
 /* v0.76: receipt confirmation is compact, with one visible store control.
  * Constrain Safari's intrinsic date widget instead of masking overflow. */
 .receipt-scan-page .scan-receipt-meta{width:100%;min-width:0;max-width:100%}
-.receipt-scan-page .scan-receipt-meta>.scan-field,
+.receipt-scan-page .scan-receipt-meta>.formfield,
 .receipt-scan-page .scan-store-picker,
-.receipt-scan-page .scan-store-picker>.scan-field{min-width:0;max-width:100%;width:100%}
+.receipt-scan-page .scan-store-picker .formfield{min-width:0;max-width:100%;width:100%}
 /* Safari's input[type=date] has a large native minimum content width.
  * Remove it from layout sizing, but preserve real native date input for taps,
  * keyboard access, required validation and the system date picker. */
-.receipt-date-control{
+/* Shared date input surface: the real Safari date input is removed from
+ * the layout's width calculation; the visible control fills the form. */
+.ui-date-control{
  position:relative;display:flex;align-items:center;gap:10px;
- width:min(100%,236px);max-width:100%;min-width:0;height:46px;
+ width:100%;max-width:100%;min-width:0;min-height:46px;
  box-sizing:border-box;padding:0 12px;overflow:hidden;
- background:var(--card,#fff);color:var(--ink);
- border:1px solid #b9c5d1;border-radius:11px;
+ background:var(--card);color:var(--ink);
+ border:1px solid #b9c5d1;border-radius:var(--ui-radius-control);
 }
-.receipt-date-control .receipt-date-value{
+.ui-date-control .ui-date-value{
  flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
- font-size:16px;line-height:1.4;font-variant-numeric:tabular-nums;
+ font-size:var(--ui-input-font-size);line-height:1.4;font-variant-numeric:tabular-nums;
 }
-.receipt-date-control .receipt-date-value.is-empty{color:var(--muted)}
-.receipt-date-control .receipt-date-symbol{
+.ui-date-control .ui-date-value.is-empty{color:var(--muted)}
+.ui-date-control .ui-date-symbol{
  display:flex;align-items:center;justify-content:center;
- width:18px;height:18px;flex:none;color:var(--muted);
+ width:18px;height:18px;flex:none;color:var(--muted)
 }
-.receipt-date-control .receipt-date-symbol svg{width:18px;height:18px}
-.scan-field .receipt-date-control>input[type="date"],
-.record-date-field .receipt-date-control>input[type="date"]{
+.ui-date-control .ui-date-symbol svg{width:18px;height:18px}
+.formfield .ui-date-control>input[type="date"]{
  position:absolute;inset:0;display:block;z-index:1;
  box-sizing:border-box;width:100%;height:100%;min-width:0;min-height:0;max-width:100%;
- margin:0;padding:0;border:0;border-radius:0;
- opacity:0;cursor:pointer;
+ margin:0;padding:0;border:0;border-radius:0;opacity:0;cursor:pointer;
  -webkit-appearance:auto;appearance:auto;
 }
-.receipt-date-control:focus-within{outline:3px solid #80b5e5;outline-offset:2px}
-.receipt-date-control>input[type="date"]:focus-visible{outline:none}
-.scan-review .scan-date-field.scan-state-error .receipt-date-control{
- border:1.5px solid #C53F3F
-}
+.ui-date-control:focus-within{outline:3px solid #80b5e5;outline-offset:2px}
+.ui-date-control>input[type="date"]:focus-visible{outline:none}
 .scan-store-picker [hidden],.record-store-picker [hidden]{display:none!important}
 .scan-store-back,.record-store-back{
  display:inline-flex;align-items:center;min-height:44px;padding:8px 0;
  color:var(--accent);font-size:13px;font-weight:650;border:0;background:transparent
 }
 .record-store-picker .formfield{margin-bottom:12px}
-.record-store-picker .scan-state-error input{border:1.5px solid #C53F3F}
 .scan-item-head{display:flex;align-items:center;justify-content:space-between;gap:8px;min-width:0}
 .scan-item-head>strong{flex:none;font-size:14px;font-weight:700}
 .scan-item-tools{display:flex;align-items:center;gap:3px;min-width:0}
@@ -2456,7 +2460,7 @@ html,body{touch-action:pan-x pan-y}
 }
 .scan-item-tool svg{width:17px;height:17px;flex:none}
 .scan-item-tool[data-act="scanRemoveItem"]{color:var(--muted)}
-.scan-review-item .scan-read-name{margin:4px 0 3px}
+.scan-review-item .scan-read-name{margin:7px 0 9px}
 .scan-review-item .scan-ocr-name{font-weight:650}
 .scan-product-setting{margin:5px 0 8px;min-width:0}
 .scan-field-label{display:block;font-size:14px;font-weight:700;color:var(--ink);line-height:1.4;margin-bottom:4px}
