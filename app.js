@@ -1,4 +1,4 @@
-const APP_VERSION='0.75.0';
+const APP_VERSION='0.76.0';
 const CATS=['飲食','キッチン','洗面・風呂','洗濯・掃除','その他'];
 const liveMode=!!window.KurashiLive; // Data source only; original Preview v46 UI components remain.
 const SEED=[['牛乳',0,true],['麦茶',0,false],['コーヒー',0,true],['卵',0,false],['キッチンペーパー',1,false],['ラップ',1,true],['食器用洗剤',1,true],['シャンプー',2,false],['歯磨き粉',2,true],['ハンドソープ',2,false],['洗濯洗剤',3,false],['柔軟剤',3,true],['トイレットペーパー',3,false],['乾電池',4,true],['ティッシュ',4,true]];
@@ -174,7 +174,7 @@ let items=load(),tab='items',page='list',selected=null,query='',onlyOut=false,co
 const app=document.getElementById('app');
 let newRecordType='receipt';
 // Native iPhone chooser: Photo Library, Take Photo, or Files. Photos stay in memory.
-let scanPhotos=[],scanIndex=0,scanBusy=false,scanDraft=null,scanStatus='',scanToken=0,scanPhotosExpanded=true;
+let scanPhotos=[],scanIndex=0,scanBusy=false,scanDraft=null,scanStatus='',scanToken=0,scanPhotosExpanded=true,scanNewStoreMode=false;
 const scanPhotoUrls=new Map(); // Memory-only thumbnails; never persisted.
 function scanThumbnail(file){if(scanPhotoUrls.has(file))return scanPhotoUrls.get(file);const create=window.URL?.createObjectURL;if(typeof create!=='function')return '';const url=create.call(window.URL,file);scanPhotoUrls.set(file,url);return url;}
 function releaseScanThumbnail(file){const url=scanPhotoUrls.get(file);if(!url)return;scanPhotoUrls.delete(file);window.URL?.revokeObjectURL?.(url);}
@@ -212,22 +212,6 @@ function applyChatGptOcrAssistance(draft,result){
 // Photo-rebuilt rows cannot inherit OCR row IDs or OCR dictionary names.
 function makeChatGptReceiptRebuildDraft(previous,result){
  return window.KurashiReceiptReview.fromChatGptRebuild(previous,result,scanChainForStore);
-}
-function scanDuplicates(draft){
- if(!draft||!draft.chainId||!draft.date||!draft.items.length)return [];
- const sig=rows=>JSON.stringify(rows.map(x=>[
-  norm(x.name??aliasNameFor(x)??''),
-  Number(x.quantity),
-  x.amount===undefined?Number(x.amount_tax_included):Number(x.amount)
- ]).sort((a,b)=>JSON.stringify(a).localeCompare(JSON.stringify(b))));
- const source=draft.items;
- if(source.some(x=>String(x.amount)===''||
-  !Number.isSafeInteger(Number(x.amount))||!Number.isSafeInteger(Number(x.quantity))))return [];
- const key=sig(source);
- return allPreviewRecords().filter(record=>
-  record.record_type==='receipt'&&!record.deleted_at&&record.record_id!==draft.recordId&&
-  record.chain_id===draft.chainId&&record.record_date===draft.date&&
-  key===sig(allPreviewItems().filter(x=>x.record_id===record.record_id&&!x.deleted_at)));
 }
 function recordDetailView(){
  const record=allPreviewRecords().find(r=>r.record_id===recordDetailId);
@@ -278,14 +262,14 @@ function scanProductView(){
  const item=scanDraft?.items[scanProductRow];
  if(!item)return UI.sheet({title:'商品を登録',body:'<p>対象の明細が見つかりません。</p>'});
  const fields=[
-  '<p class="hint">'+(item.inputOrigin==='photo'?'写真で確認した明細名':'OCR明細名（変更不可）')+'：<strong>'+esc(item.inputOrigin==='photo'?item.name:item.ocrRawName||item.name||'読み取り不可')+'</strong></p>',
-  UI.formField({id:'scan-product-name',name:'name',label:'商品マスタに登録する正式商品名',value:item.canonicalName||item.inferredName||item.nameCandidate||item.name,maxlength:80,required:true}),
+  '<p class="scan-setting-source"><span>読み取り名</span><strong>'+esc(item.inputOrigin==='photo'?item.name:item.ocrRawName||item.name||'読み取り不可')+'</strong></p>',
+  UI.formField({id:'scan-product-name',name:'name',label:'登録商品名',value:item.canonicalName||item.inferredName||item.nameCandidate||item.name,maxlength:80,required:true}),
   '<label class="scan-field">日用品リストへの紐付け（任意）<select id="scan-product-group" name="group">'+scanGroupOptions()+'</select></label>',
   UI.formField({id:'scan-product-quantity',name:'package_quantity',label:'内容量（任意）',type:'number',value:'',extra:'min="0.001" step="any"'}),
   UI.formField({id:'scan-product-unit',name:'package_unit',label:'単位',control:'select',value:'個',options:UNIT_OPTIONS.map(v=>({label:v,value:v}))})
  ].join('');
  return UI.sheet({title:'レシートの商品を登録',variant:'receipt-product-modal',
-  body:`${scanModalPhotoLinks()}<form id="scanProductForm">${fields}<p class="hint">商品は日用品に紐付けず登録できます。後から「チョコ」などに紐付けられます。OCR名は後から編集せず、商品の紐付けだけ変更できます。</p>
+  body:`${scanModalPhotoLinks()}<form id="scanProductForm">${fields}<p class="hint">商品は日用品に紐付けず登録できます。後から「チョコ」などに紐付けられます。読み取り名と登録商品は別々に記録されます。</p>
   <button type="submit" class="primary">商品を登録</button></form>`});
 }
 function scanExistingProductResults(){
@@ -301,12 +285,13 @@ function scanExistingProductResults(){
 }
 function scanExistingProductView(){
  const item=scanDraft?.items[scanProductRow];
- if(!item)return UI.sheet({title:'既存の商品と照合',body:'<p>対象の明細が見つかりません。</p>'});
- return UI.sheet({title:'既存の商品と照合',variant:'receipt-product-modal',
+ if(!item)return UI.sheet({title:'登録商品を選択',body:'<p>対象の明細が見つかりません。</p>'});
+ return UI.sheet({title:'登録商品を選択',variant:'receipt-product-modal',
   body:`<div class="scan-existing-picker">
-  <p class="hint">レシート表記：${esc(item.name)}</p>
+  <p class="scan-setting-source"><span>読み取り名</span><strong>${esc(item.name)}</strong></p>
   ${scanModalPhotoLinks()}
-  <label class="scan-field">商品名・日用品名で探す
+  ${scanSuggestionButtons(item,scanProductRow)}
+  <label class="scan-field">登録商品・日用品名で探す
    <input id="scan-existing-search" type="search" value="${esc(scanExistingQuery)}" placeholder="例：キットカット、チョコ">
   </label>
   <div id="scan-existing-results" class="scan-existing-results">${scanExistingProductResults()}</div>
@@ -343,7 +328,7 @@ function scanAutolinkUnmatched(){
  if(!scanDraft)return 0;
  let added=0;
  for(const item of scanDraft.items){
-  if(['manual','photo'].includes(item.inputOrigin)||isUnconfirmedBarcodeLine(item))continue;
+  if(item.inputOrigin==='manual'||isUnconfirmedBarcodeLine(item))continue;
   if(item.productId||!item.name)continue;
   const match=scanMatchProduct(item.name,scanDraft.chainId);
   if(match){item.productId=match;item.autoLinked=true;added++}
@@ -462,53 +447,65 @@ function scanResolvedProductId(item){
   (!item.canonicalGroupId||p.itemGroupId===item.canonicalGroupId));
  return matches.length===1?matches[0].id:current;
 }
+function scanSelectedProductLabel(item){
+ const product=catalogue.products.find(p=>p.id===scanResolvedProductId(item));
+ return product?productTitle(product)+' ／ 日用品：'+linkedItemName(product):'商品未照合';
+}
+function scanPhotoIndexForItem(item){
+ const evidence=scanDraft?.reviewEvidence?.itemSources?.find(row=>row.rowId===item.ocrRowId);
+ return Number.isInteger(evidence?.imageIndex)&&evidence.imageIndex<scanPhotos.length?evidence.imageIndex:0;
+}
 const scanTaxFailureDescription=reason=>window.KurashiReceiptValidation.describeTaxFailure(reason);
 function scanFormView(){
  if(!scanDraft)return '';
  const reviewModel=window.KurashiReceiptReview.buildReviewModel(scanDraft);
- const chains=[...catalogue.chains.map(c=>'<option value="'+esc(c.id)+'"'+
-  (c.id===scanDraft.chainId?' selected':'')+'>'+esc(c.name)+'</option>'),
-  '<option value="__new__"'+(!scanDraft.chainId?' selected':'')+'>＋ 新しい店舗を追加</option>'].join('');
+ const chains=['<option value=""'+(!scanDraft.chainId&&!scanNewStoreMode?' selected':'')+'>店舗を選択</option>',
+  ...catalogue.chains.map(c=>'<option value="'+esc(c.id)+'"'+
+   (c.id===scanDraft.chainId?' selected':'')+'>'+esc(c.name)+'</option>'),
+  ...(!scanDraft.recordId?['<option value="__new__"'+(scanNewStoreMode?' selected':'')+'>＋ 新しい店舗を追加</option>']:[])].join('');
  return `<form id="scanConfirmForm" class="scan-review">
   <h2 class="sectiontitle">読み取り結果の確認</h2>
   <p class="hint">写真と内容を確認してください。</p>
   ${scanDraft.taxBasis==='unknown'&&scanDraft.source==='ocr'?'<p class="scan-state-note scan-state-warning">税率を確認</p>':''}
   ${scanDraft.taxBasis==='excluded'&&scanDraft.taxAllocationStatus!=='allocated'?'<p class="scan-state-note scan-state-warning">税込金額を確認</p>':''}
-  ${scanDraft.source==='ocr'&&receiptOcrRows(scanDraft).length?'<button type="button" class="secondary" data-act="chatGptAssist">ChatGPTで商品名・金額を確認</button>':''}
+  ${scanDraft.source==='ocr'&&receiptOcrRows(scanDraft).length?'<button type="button" class="secondary" data-act="chatGptAssist">ChatGPTで読み取り名・金額を確認</button>':''}
   <section class="scan-receipt-meta" aria-label="購入情報">
   ${UI.sectionHeading({title:'購入情報'})}
-  <label class="scan-field">店舗<select name="chain" id="scan-chain">${chains}</select></label>
-  <label class="scan-field" id="scan-new-chain-wrap" ${scanDraft.chainId?'hidden':''}>店舗名<input name="chain_name" maxlength="80" placeholder="例：スーパー名" value="${esc(scanDraft.chainName||'')}"></label>
-  <details class="scan-branch-details" ${scanDraft.branchName?'open':''}><summary>支店名を追加（任意）</summary>
-   <label class="scan-field">支店名<input name="branch_name" maxlength="80" placeholder="例：駅前店" value="${esc(scanDraft.branchName||'')}"></label>
-  </details>
+  <div class="scan-store-picker">
+   <label class="scan-field" id="scan-store-select-wrap" ${scanNewStoreMode?'hidden':''}>店舗
+    <select name="chain" id="scan-chain">${chains}</select>
+    <span class="scan-field-hint" data-scan-hint="chain" hidden></span>
+   </label>
+   <label class="scan-field" id="scan-new-chain-wrap" ${scanNewStoreMode?'':'hidden'}>店舗
+    <input name="chain_name" id="scan-new-store" maxlength="80" placeholder="新しい店舗名" value="${esc(scanDraft.chainName||'')}">
+    <span class="scan-field-hint" data-scan-hint="chain_name" hidden></span>
+   </label>
+   <button type="button" class="scan-store-back" data-act="scanStoreChooseExisting" ${scanNewStoreMode?'':'hidden'}>登録済み店舗から選ぶ</button>
+  </div>
   <label class="scan-field">購入日<input name="date" type="date" required value="${esc(scanDraft.date)}"></label>
    <span class="scan-field-hint" data-scan-hint="date" hidden></span>
   </section>
   ${UI.sectionHeading({title:'購入明細',subtitle:scanDraft.items.length+'件'+(scanDraft.items.filter(x=>!scanResolvedProductId(x)&&x.name?.trim()).length?'・商品未照合'+scanDraft.items.filter(x=>!scanResolvedProductId(x)&&x.name?.trim()).length+'件':'')})}
   ${scanDraft.items.map((item,i)=>`<div class="panel scan-review-item">
-    <div class="row" style="justify-content:space-between"><strong>明細 ${i+1}</strong><button type="button" class="secondary" data-act="scanRemoveItem" data-scan-row="${i}">削除</button></div>
+    <div class="scan-item-head"><strong>明細 ${i+1}</strong><div class="scan-item-tools">
+     ${scanPhotos.length?'<button type="button" class="scan-item-tool" data-act="scanOpenPhoto" data-scan-row="'+scanPhotoIndexForItem(item)+'">'+miniIcon('camera')+'<span>写真</span></button>':''}
+     <button type="button" class="scan-item-tool" data-act="scanRemoveItem" data-scan-row="${i}">${miniIcon('trash')}<span>削除</span></button>
+    </div></div>
     ${['manual','photo'].includes(item.inputOrigin)||item.ocrRawName===undefined?
-     '<label class="scan-field">商品名<input name="name-'+i+'" maxlength="120" required value="'+esc(item.name)+'" placeholder="商品名"><span class="scan-field-hint" data-scan-hint="name-'+i+'" hidden></span></label>':
-     '<div class="scan-field"><span>商品名</span><div class="scan-ocr-name" data-ocr-row="'+i+'">'+esc(reviewModel.items[i].originalOcrName||'読み取り不可')+'</div></div>'}
+     '<label class="scan-field">読み取り名<input name="name-'+i+'" maxlength="120" required value="'+esc(item.name)+'" placeholder="商品名"><span class="scan-field-hint" data-scan-hint="name-'+i+'" hidden></span></label>':
+     '<div class="scan-field scan-read-name"><span>読み取り名</span><div class="scan-ocr-name" data-ocr-row="'+i+'">'+esc(reviewModel.items[i].originalOcrName||'読み取り不可')+'</div></div>'}
     ${reviewModel.items[i].proposedName?'<p class="scan-name-candidate">候補：'+esc(reviewModel.items[i].proposedName)+'</p>':''}
-    ${(item.issues||[]).some(reason=>/商品名|商品コード|名称|名前/.test(String(reason)))?'<p class="scan-name-warning">商品名を確認</p>':''}
+    ${(item.issues||[]).some(reason=>/商品名|商品コード|名称|名前/.test(String(reason)))?'<p class="scan-name-warning">読み取り名を確認</p>':''}
     <input type="hidden" name="product-${i}" value="${esc(scanResolvedProductId(item))}">
-    <details class="scan-product-association">
-      <summary class="scan-product-status">
-       <span class="scan-product-status-label">${scanResolvedProductId(item)?'照合済み':'商品未照合'}</span>
-       <strong>${(()=>{const p=catalogue.products.find(x=>x.id===scanResolvedProductId(item));
-        return p?esc(productTitle(p))+' ／ 日用品：'+esc(linkedItemName(p)):''})()}</strong>
-       <span class="scan-product-toggle">${scanResolvedProductId(item)?'変更':'照合・登録'}</span>
-      </summary>
-      <div class="scan-product-actions">
-       <button type="button" class="secondary" data-act="scanPickExisting" data-scan-row="${i}">既存商品と照合</button>
-       <button type="button" class="tertiary" data-act="scanNewProduct" data-scan-row="${i}">＋ 新しい商品を登録</button>
-      </div>
-      <div class="scan-product-candidates">${scanSuggestionButtons(item,i)}</div>
-    </details>
+    <div class="scan-product-setting">
+     <span class="scan-field-label">登録商品</span>
+     <div class="scan-product-setting-row">
+      <strong class="scan-product-selected">${esc(scanSelectedProductLabel(item))}</strong>
+      <button type="button" class="scan-product-action" data-act="scanPickExisting" data-scan-row="${i}">${scanResolvedProductId(item)?'変更':'商品を設定'} ${chevron('right')}</button>
+     </div>
+    </div>
     <div class="scan-input-pair"><label class="scan-field">数量<input name="qty-${i}" type="number" min="1" step="1" required value="${esc(item.quantity)}"><span class="scan-field-hint" data-scan-hint="qty-${i}" hidden></span></label>
-    <label class="scan-field">税込金額（円）<input name="amount-${i}" type="number" min="0" step="1" required value="${esc(item.amount)}" placeholder="金額を入力"><span class="scan-field-hint" data-scan-hint="amount-${i}" hidden></span></label></div>
+    <label class="scan-field">小計<input name="amount-${i}" type="number" min="0" step="1" required value="${esc(item.amount)}" placeholder="金額を入力"><span class="scan-field-hint" data-scan-hint="amount-${i}" hidden></span></label></div>
     ${Number.isSafeInteger(item.taxExcludedAmount)?'<p class="scan-tax-excluded">税抜金額：'+yen(item.taxExcludedAmount)+(Number.isSafeInteger(item.ocrDiscount)&&item.ocrDiscount>0?' ／ 値引き：'+yen(item.ocrDiscount):'')+(item.taxCalculation==='printed-total-proportional'?' ／ '+(scanDraft.taxDerivedFromTotals||scanDraft.taxRateCalculated?'計算税額':'税額')+'：'+yen(item.allocatedTax):'')+'</p>':''}
    </div>`).join('')}
   <button type="button" class="secondary" data-act="scanAddItem">＋ 明細を追加</button>
@@ -518,10 +515,6 @@ function scanFormView(){
    <p id="scan-count-text" class="scan-total-count">購入点数：—</p>
    <div id="scan-total-warning" class="scan-state-note scan-state-warning scan-compare-note" role="status" hidden></div>
    <div id="scan-count-warning" class="scan-state-note scan-state-warning scan-compare-note" role="status" hidden></div>
-   <div id="scan-duplicate-warning" ${scanDuplicates(scanDraft).length?'':'hidden'}>
-    <p class="scan-warning">同じレシートが登録されている可能性があります。</p>
-    <label class="scan-check"><input type="checkbox" name="duplicateOk"> 重複登録の可能性を確認しました</label>
-   </div>
   </div>
   <button class="primary" type="submit">${scanDraft.recordId?'修正したレシートを保存':'保存'}</button>
  </form>`;
@@ -1397,7 +1390,7 @@ app.addEventListener('submit',e=>{e.preventDefault();const form=e.target;const d
  if(form.id==='scanProductForm'){
   const name=String(d.get('name')||'').trim(),group=String(d.get('group')||'');
   if(!name||name.length>80){
-   fieldNotice(form,'正式商品名を80文字以内で入力してください','scan-product-name');return;
+   fieldNotice(form,'登録商品名を80文字以内で入力してください','scan-product-name');return;
   }
   if(catalogue.products.some(p=>norm(p.name)===norm(name))){
    fieldNotice(form,'同じ商品名が登録されています。既存商品との照合を利用してください','scan-product-name');return;
