@@ -1062,7 +1062,9 @@ assert.ok(replacement.items.every(x=>x.inputOrigin==='photo'&&x.productId===''&&
 assert.equal(nineOcrDraft.items.length,9,'rebuild preview does not mutate OCR before confirmation');
 ui.setScanDraft(replacement);
 const photoRebuildReview=ui.receiptScanView();
-assert.ok(photoRebuildReview.includes('写真と内容を確認してください。'));
+assert.ok(photoRebuildReview.includes('内容を確認して保存してください。')&&
+ !photoRebuildReview.includes('読み取り結果の確認'),
+ 'photo replacement has a concise review instruction and no duplicate heading');
 assert.doesNotMatch(photoRebuildReview,/name="photoReviewOk"/);
 assert.equal((photoRebuildReview.match(/name="name-\d+"/g)||[]).length,5,
  'all five image-derived line names are editable');
