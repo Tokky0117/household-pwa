@@ -26,7 +26,7 @@ const ctx={document:doc,localStorage:{getItem:k=>storage.get(k)??null,setItem:(k
  navigator:{},window:{scrollTo(){},scrollY:0,KurashiReceiptValidation:validator,KurashiReceiptReview:review},crypto:{randomUUID:()=> 'test-id'},setTimeout:()=>0};
 const ui=vm.runInNewContext(source+`
 ({listView,priceCompareView,pickerView,pickerResults,receiptView,receiptScanView,receiptChatGptView,recordDetailView,scanStoreNameIssue,scanValidPurchaseDate,applyChatGptOcrAssistance,receiptOcrReference,receiptOcrRows,isUnconfirmedBarcodeLine,makeChatGptReceiptRebuildDraft,scanProductView,scanExistingProductView,scanChainForStore,scanAutolinkUnmatched,scanMatchProduct,render,initializeCompare,
- setProductGroup,reorderProducts,registeredProducts,convertQuantity,setOpenSwipe,
+ setProductGroup,reorderProducts,registeredProducts,convertQuantity,setOpenSwipe,storePickerChoices,
  chainMinima,priceCandidates,savePreviewRecord,periodStart,
  demoRecords,demoRecordItems,allPreviewRecords,allPreviewItems,
  setSelected(v){selected=v},setPage(v){page=v},setMode(v){priceScope=v},setDock(v){shopExpanded=v},
@@ -487,6 +487,21 @@ assert.ok(newStoreSheet.includes("UI.formField({id:'store-picker-new-name'")&&
  css.includes('#storePickerNewForm>.formfield>input{width:100%;min-width:0;max-width:100%}')&&
  !css.includes('.store-picker-results>.ui-menu{'),
  'new-store input is full-width; actions and selectable rows use common UI rather than menu overrides');
+// A growing retailer master must not silently truncate the searchable list.
+const shopMaster=ui.catalogue().chains;
+const oldCount=shopMaster.length;
+for(let i=0;i<125;i++)shopMaster.push({id:'bulk-store-'+i,name:'追加検証店舗'+i});
+const manyShops=ui.storePickerChoices();
+assert.equal((manyShops.match(/class="ui-choice-row/g)||[]).length,oldCount+125,
+ 'all 125 newly registered stores appear in the scrollable shared choice list');
+assert.ok(manyShops.includes('追加検証店舗124'),
+ 'last registered store remains reachable without a fixed result cap');
+assert.ok(css.includes('.store-picker-results{')&&
+ css.includes('overflow-y:auto;overscroll-behavior:contain;')&&
+ css.includes('.store-picker-search,.store-picker-create{flex:0 0 auto;'),
+ 'the scrollable candidate list keeps search and new-store controls fixed');
+shopMaster.length=oldCount;
+
 assert.ok(!listingHtml.includes('日用品未紐付け'),
  'unlinked item-group metadata does not appear in receipt purchase lines');
 assert.ok(css.includes('.formfield input,.formfield select,.formfield textarea,')&&
