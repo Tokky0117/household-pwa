@@ -963,14 +963,17 @@ function recordAddView(){
  if(liveMode)chainOptions.push({value:'__new__',label:'＋ 新しい店舗を追加'});
  const chainValue=catalogue.chains[0]?.id||(liveMode?'__new__':'');
  const fields=[
-  UI.formField({id:'record-chain',name:'chain',label:'店舗',control:'select',value:chainValue,options:chainOptions}),
-  ...(liveMode?['<div id="record-new-chain-row"'+(chainValue==='__new__'?'':' hidden')+'>'+
-    UI.formField({id:'record-new-chain',name:'chain_name',label:'店舗名',maxlength:80,placeholder:'例：スーパー名'})+'</div>']:[]),
+  '<div class="record-store-picker"><div id="record-store-select-wrap"'+(chainValue==='__new__'?' hidden':'')+'>'+
+    UI.formField({id:'record-chain',name:'chain',label:'店舗',control:'select',value:chainValue,options:chainOptions})+'</div>'+
+    (liveMode?'<div id="record-new-chain-row"'+(chainValue==='__new__'?'':' hidden')+'>'+
+     UI.formField({id:'record-new-chain',name:'chain_name',label:'店舗',maxlength:80,placeholder:'新しい店舗名'})+
+     (catalogue.chains.length?'<button class="record-store-back" type="button" data-act="recordStoreChooseExisting">登録済み店舗から選ぶ</button>':'')+'</div>':'')+
+    '</div>',
   UI.formField({id:'record-date',name:'date',label:type==='receipt'?'購入日':'値札確認日',type:'date',value:today,required:true}),
   UI.formField({id:'record-product',name:'product',label:'商品',control:'select',value:'',options:optsProduct}),
-  UI.formField({id:'record-raw',name:'raw',label:'明細の商品名',value:'',placeholder:'例：牛乳'}),
+  UI.formField({id:'record-raw',name:'raw',label:'商品名',value:'',placeholder:'例：牛乳'}),
   UI.formField({id:'record-quantity',name:'quantity',label:'購入数・販売個数',type:'number',value:1,required:true,extra:'min="1" step="1" inputmode="numeric"'}),
-  UI.formField({id:'record-amount',name:'amount',label:'明細の税込合計（円）',type:'number',value:'',required:true,extra:'min="0" step="1" inputmode="numeric"'})
+  UI.formField({id:'record-amount',name:'amount',label:'小計',type:'number',value:'',required:true,extra:'min="0" step="1" inputmode="numeric"'})
  ].join('');
  return UI.sheet({title:type==='receipt'?'レシート明細を記録':'値札を記録',variant:'product-picker-modal',body:`<form id="recordForm" class="record-entry-form">${fields}<button class="primary" type="submit">${liveMode?'記録する':'この端末に試作保存'}</button><p class="sample-price-notice">${liveMode?'※ 1回1明細。Google Sheetsへ自動保存。ログイン一時停止中は個人情報の入力を控えてください。':'※ OCR・Sheets・夫婦間同期は未接続。1回につき1明細の試作入力です。'}</p></form>`});
 }
@@ -1124,7 +1127,7 @@ app.addEventListener('input',e=>{if(e.target.id==='master-product-query'){
  masterQuery=e.target.value;
  const rows=document.getElementById('master-product-results');
  if(rows)rows.innerHTML=masterProductRows();return;
-}const field=e.target.closest?.('.formfield');field?.querySelector('.ui-field-notice')?.remove()});
+}const field=e.target.closest?.('.formfield');field?.querySelector('.ui-field-notice')?.remove();field?.classList.remove('scan-state-error')});
 function hasUnsavedFormChanges(){
   const pendingRecord=document.getElementById('recordForm');
   if(pendingRecord){
@@ -1500,6 +1503,13 @@ app.addEventListener('submit',e=>{e.preventDefault();const form=e.target;const d
  const input={type:newRecordType,chainId:String(d.get('chain')||''),chainName:String(d.get('chain_name')||''),date:String(d.get('date')||''),productId:String(d.get('product')||''),rawName:String(d.get('raw')||''),quantity:String(d.get('quantity')||''),amount:String(d.get('amount')||''),category:String(d.get('category')||'')};
  if(liveMode){
   const amount=Number(input.amount),quantity=Number(input.quantity);
+  const storeName=input.chainName.trim();
+  const duplicateStore=input.chainId==='__new__'&&
+   catalogue.chains.some(c=>norm(c.name)===norm(storeName));
+  if(input.chainId==='__new__'&&(!storeName||duplicateStore)){
+   document.getElementById('record-new-chain')?.closest('.formfield')?.classList.add('scan-state-error');
+   fieldNotice(form,duplicateStore?'登録済み店舗を選択':'店舗名を入力','record-new-chain');return;
+  }
   if(!input.amount.trim()||!input.quantity.trim()||
      !Number.isSafeInteger(amount)||amount<0||!Number.isSafeInteger(quantity)||quantity<=0){
    fieldNotice(form,'数量と税込明細合計を確認してください','record-amount');return;
@@ -1583,15 +1593,22 @@ if(el.dataset.uiChoice!==undefined){
  const wrapper=el.closest('.ui-select');if(!wrapper)return;
  const choice=el.dataset.uiChoice;
  if(wrapper.dataset.uiSelect==='record-chain'){
+  const newMode=choice==='__new__';
   const row=document.getElementById('record-new-chain-row');
-  if(row)row.hidden=choice!=='__new__';
+  if(row)row.hidden=!newMode;
+  const wrap=document.getElementById('record-store-select-wrap');
+  if(wrap)wrap.hidden=newMode;
  }
  if(wrapper.dataset.uiSelect==='price-period'){period=choice;periodMenu=false;render();return}
  const hidden=wrapper.querySelector('input[type="hidden"]');if(hidden){hidden.value=choice;hidden.dispatchEvent(new Event('change',{bubbles:true}))}
  if(wrapper.dataset.uiSelect==='compare-unit'){compareUnit=choice;const label=wrapper.querySelector('.ui-select-label');if(label)label.textContent=el.querySelector('.ui-menu-label')?.textContent||choice;wrapper.querySelectorAll('[data-ui-choice]').forEach(b=>{const chosen=b===el;b.classList.toggle('selected',chosen);b.setAttribute('aria-pressed',String(chosen));const tick=b.querySelector('.ui-menu-selected');if(tick)tick.textContent=chosen?'✓':''});updateComparisonPrices();closeAllDropdowns();return}
  const label=wrapper.querySelector('.ui-select-label');if(label)label.textContent=el.querySelector('.ui-menu-label')?.textContent||'';
  wrapper.querySelectorAll('[data-ui-choice]').forEach(b=>{const selected=b===el;b.classList.toggle('selected',selected);b.setAttribute('aria-pressed',String(selected));const tick=b.querySelector('.ui-menu-selected');if(tick)tick.textContent=selected?'✓':''});
- closeAllDropdowns();wrapper.querySelector('.ui-select-trigger')?.focus();return;
+ closeAllDropdowns();
+ if(wrapper.dataset.uiSelect==='record-chain'&&choice==='__new__'){
+  document.getElementById('record-new-chain')?.focus({preventScroll:true});return;
+ }
+ wrapper.querySelector('.ui-select-trigger')?.focus();return;
 }
 
 if(el.dataset.listEdit){duplicateItemId=null;selected=el.dataset.listEdit;editReturnPage='list';openSwipeId=null;page='edit';render();return}if(el.dataset.listHide){selected=el.dataset.listHide;setOpenSwipe(null);dialog={title:'日用品を削除',message:'日用品リストから削除します。',buttons:[{id:'cancel',label:'キャンセル'},{id:'confirmHide',label:'削除',critical:true}]};render();return}
@@ -1828,6 +1845,23 @@ if(action==='recordDelete'){
   buttons:[{id:'cancel',label:'キャンセル'},{id:'confirmRecordDelete',label:'削除する',critical:true}],
   pending:{recordId:recordDetailId}};
  renderDialogOnly();return;
+}
+if(action==='recordStoreChooseExisting'){
+ const wrapper=document.getElementById('record-store-select-wrap');
+ const row=document.getElementById('record-new-chain-row');
+ if(wrapper)wrapper.hidden=false;
+ if(row)row.hidden=true;
+ const first=catalogue.chains[0];
+ const dropdown=wrapper?.querySelector('[data-ui-select="record-chain"]');
+ const hidden=dropdown?.querySelector('input[name="chain"]');
+ if(hidden)hidden.value=first?.id||'';
+ const label=dropdown?.querySelector('.ui-select-label');if(label)label.textContent=first?.name||'店舗を選択';
+ dropdown?.querySelectorAll('[data-ui-choice]').forEach(b=>{
+  const selected=b.dataset.uiChoice===first?.id;
+  b.classList.toggle('selected',selected);b.setAttribute('aria-pressed',String(selected));
+  const tick=b.querySelector('.ui-menu-selected');if(tick)tick.textContent=selected?'✓':'';
+ });
+ wrapper?.querySelector('.ui-select-trigger')?.focus({preventScroll:true});return;
 }
 if(action==='scanStoreChooseExisting'){
  if(!scanDraft)return;
