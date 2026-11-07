@@ -470,6 +470,23 @@ const storeAction=listingHtml.match(/<button[^>]*data-act="storePickerOpen"[^>]*
 assert.ok(storeAction.includes('class="ui-text-action"')&&
  !storeAction.includes('ui-chevron'),
  'store picker opens a half sheet without dropdown or navigation arrows');
+assert.ok(existingHtml.includes('class="ui-choice-row scan-existing-option')&&
+ source.includes("title:productTitle(p)")&&
+ source.includes("title:c.name,choice:c.id,selected:c.id===selected"),
+ 'product and retailer selection actually share UI.choiceRow markup and selected state');
+assert.ok(source.includes("function syncSheetScrollLock()")&&
+ source.includes("syncSheetScrollLock();")&&
+ source.includes("body.style.position='fixed'")&&
+ source.includes("body.style.position=saved.position")&&
+ css.includes('overscroll-behavior: none;'),
+ 'all shared half sheets lock and restore iOS background scroll');
+const newStoreSheet=source.slice(source.indexOf("function storePickerBody()"),source.indexOf("function storePickerView()"));
+assert.ok(newStoreSheet.includes("UI.formField({id:'store-picker-new-name'")&&
+ newStoreSheet.includes("UI.button({label:'この店舗名で決定'")&&
+ newStoreSheet.includes("label:'新しい店舗を追加',variant:'secondary'")&&
+ css.includes('#storePickerNewForm>.formfield>input{width:100%;min-width:0;max-width:100%}')&&
+ !css.includes('.store-picker-results>.ui-menu{'),
+ 'new-store input is full-width; actions and selectable rows use common UI rather than menu overrides');
 assert.ok(!listingHtml.includes('日用品未紐付け'),
  'unlinked item-group metadata does not appear in receipt purchase lines');
 assert.ok(css.includes('.formfield input,.formfield select,.formfield textarea,')&&
@@ -1065,7 +1082,7 @@ assert.ok(!JSON.stringify(p4Rebuild).includes('ocr-p4'),
 console.log('P4 common review adapter, provenance, row identity and P2 validation OK');
 
 // v0.73: Receipt OCR review information hierarchy; preserve validation/confirmation.
-assert.ok(source.includes("const APP_VERSION='0.78.0'"), 'UI review revision version is current');
+assert.ok(source.includes("const APP_VERSION='0.79.0'"), 'UI review revision version is current');
 assert.ok(source.includes("UI.sectionHeading({title:'購入情報'})"), 'Receipt OCR review groups store and purchase date');
 assert.ok(source.includes("UI.sectionHeading({title:'購入明細',subtitle:scanDraft.items.length+'件'+"), 'Receipt OCR review identifies item list and unmatched count');
 assert.ok(source.includes("UI.sectionHeading({title:'合計の確認'})"), 'Receipt OCR review makes reconciliation distinct');
@@ -1119,7 +1136,8 @@ assert.ok(!source.includes('支店名を追加（任意）')&&
  source.includes("function storePickerView()")&&
  source.includes("variant:'store-picker-modal'")&&
  source.includes("UI.searchField({id:'store-picker-search'")&&
- source.includes("UI.actions({label:'店舗一覧'")&&
+ source.includes("UI.choiceRow({")&&
+ !source.includes("UI.actions({label:'店舗一覧'")&&
  source.includes("storePickerNewForm"),
  'Receipt store choice reuses shared half-sheet/search/choice/form components');
 assert.ok(source.includes('scanModalPhotoLinks()'),'Product sheets can open receipt photo viewer');
