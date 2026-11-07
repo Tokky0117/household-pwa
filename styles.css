@@ -381,6 +381,54 @@ main {
   resize: vertical;
 }
 
+/* Shared UI.formField extension: date, validation and read-only label. */
+/* Shared field error/review states for all UI.formField controls. */
+:root{--ui-field-error-color:#C53F3F;--ui-field-warning-color:#A97800}
+.formfield.ui-field-error input:not([type="hidden"]):not([type="date"]):not([type="search"]),
+.formfield.ui-field-error textarea,
+.formfield.ui-field-error .ui-select-trigger,
+.formfield.ui-field-error .ui-date-control,
+.formfield.ui-field-error .ui-search{border:1.5px solid var(--ui-field-error-color)}
+.formfield.ui-field-warning input:not([type="hidden"]):not([type="date"]):not([type="search"]),
+.formfield.ui-field-warning textarea,
+.formfield.ui-field-warning .ui-select-trigger,
+.formfield.ui-field-warning .ui-date-control,
+.formfield.ui-field-warning .ui-search{border:1.5px solid var(--ui-field-warning-color)}
+.ui-field-hint{display:block;font-size:12px;font-weight:600;line-height:1.45;margin-top:6px}
+.formfield.ui-field-error .ui-field-hint{color:var(--ui-field-error-color)}
+.formfield.ui-field-warning .ui-field-hint{color:var(--ui-field-warning-color)}
+.formfield.ui-field-error .ui-field-hint::before,
+.formfield.ui-field-warning .ui-field-hint::before{content:"⚠";display:inline-block;margin-right:5px}
+.formfield .ui-field-hint[hidden]{display:none!important}
+/* Shared date input surface: the real Safari date input is removed from
+ * the layout's width calculation; the visible control fills the form. */
+.ui-date-control{
+ position:relative;display:flex;align-items:center;gap:10px;
+ width:100%;max-width:100%;min-width:0;min-height:46px;
+ box-sizing:border-box;padding:0 12px;overflow:hidden;
+ background:var(--card);color:var(--ink);
+ border:1px solid #b9c5d1;border-radius:var(--ui-radius-control);
+}
+.ui-date-control .ui-date-value{
+ flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+ font-size:var(--ui-input-font-size);line-height:1.4;font-variant-numeric:tabular-nums;
+}
+.ui-date-control .ui-date-value.is-empty{color:var(--muted)}
+.ui-date-control .ui-date-symbol{
+ display:flex;align-items:center;justify-content:center;
+ width:18px;height:18px;flex:none;color:var(--muted)
+}
+.ui-date-control .ui-date-symbol svg{width:18px;height:18px}
+.formfield .ui-date-control>input[type="date"]{
+ position:absolute;inset:0;display:block;z-index:1;
+ box-sizing:border-box;width:100%;height:100%;min-width:0;min-height:0;max-width:100%;
+ margin:0;padding:0;border:0;border-radius:0;opacity:0;cursor:pointer;
+ -webkit-appearance:auto;appearance:auto;
+}
+.ui-date-control:focus-within{outline:3px solid #80b5e5;outline-offset:2px}
+.ui-date-control>input[type="date"]:focus-visible{outline:none}
+.ui-static-field-label{display:block;font-size:14px;font-weight:700;margin-bottom:7px}
+
 .formactions {
   display: flex;
   gap: 10px;
@@ -2280,7 +2328,6 @@ main>.ui-search + .filterrow{margin-bottom:5px}
 .scan-field{display:flex;flex-direction:column;gap:7px;font-size:14px;font-weight:700;margin:12px 0}
 .scan-field>label{display:block;font-size:inherit;font-weight:inherit}
 .scan-field input,.scan-field select{box-sizing:border-box;min-width:0;max-width:100%;color:var(--ink)}
-.ui-static-field-label{display:block;font-size:14px;font-weight:700;margin-bottom:7px}
 .scan-ocr-name{padding:4px 0;font-size:16px;line-height:1.5;overflow-wrap:anywhere}
 .scan-name-candidate{font-size:13px;line-height:1.5;color:var(--text-secondary,#555)}
 .scan-input-pair{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.4fr);gap:10px}
@@ -2346,24 +2393,6 @@ html,body{touch-action:pan-x pan-y}
 .scan-product-actions{grid-template-columns:repeat(2,minmax(0,1fr))}
 .scan-product-actions button,.scan-review-item button{min-width:0;overflow-wrap:anywhere}
 .scan-ocr-name,.scan-name-candidate,.scan-tax-excluded,.scan-total-figure,.scan-total-count{overflow-wrap:anywhere}
-/* Shared field error/review states for all UI.formField controls. */
-:root{--ui-field-error-color:#C53F3F;--ui-field-warning-color:#A97800}
-.formfield.ui-field-error input:not([type="hidden"]):not([type="date"]):not([type="search"]),
-.formfield.ui-field-error textarea,
-.formfield.ui-field-error .ui-select-trigger,
-.formfield.ui-field-error .ui-date-control,
-.formfield.ui-field-error .ui-search{border:1.5px solid var(--ui-field-error-color)}
-.formfield.ui-field-warning input:not([type="hidden"]):not([type="date"]):not([type="search"]),
-.formfield.ui-field-warning textarea,
-.formfield.ui-field-warning .ui-select-trigger,
-.formfield.ui-field-warning .ui-date-control,
-.formfield.ui-field-warning .ui-search{border:1.5px solid var(--ui-field-warning-color)}
-.ui-field-hint{display:block;font-size:12px;font-weight:600;line-height:1.45;margin-top:6px}
-.formfield.ui-field-error .ui-field-hint{color:var(--ui-field-error-color)}
-.formfield.ui-field-warning .ui-field-hint{color:var(--ui-field-warning-color)}
-.formfield.ui-field-error .ui-field-hint::before,
-.formfield.ui-field-warning .ui-field-hint::before{content:"⚠";display:inline-block;margin-right:5px}
-.formfield .ui-field-hint[hidden]{display:none!important}
 .scan-state-note{border:1.5px solid currentColor;border-radius:10px;padding:9px 11px;
  font-size:13px;line-height:1.5;background:var(--card);overflow-wrap:anywhere;margin:8px 0}
 .scan-state-warning.scan-state-note{color:var(--ui-field-warning-color)}
@@ -2416,33 +2445,6 @@ html,body{touch-action:pan-x pan-y}
 /* Safari's input[type=date] has a large native minimum content width.
  * Remove it from layout sizing, but preserve real native date input for taps,
  * keyboard access, required validation and the system date picker. */
-/* Shared date input surface: the real Safari date input is removed from
- * the layout's width calculation; the visible control fills the form. */
-.ui-date-control{
- position:relative;display:flex;align-items:center;gap:10px;
- width:100%;max-width:100%;min-width:0;min-height:46px;
- box-sizing:border-box;padding:0 12px;overflow:hidden;
- background:var(--card);color:var(--ink);
- border:1px solid #b9c5d1;border-radius:var(--ui-radius-control);
-}
-.ui-date-control .ui-date-value{
- flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
- font-size:var(--ui-input-font-size);line-height:1.4;font-variant-numeric:tabular-nums;
-}
-.ui-date-control .ui-date-value.is-empty{color:var(--muted)}
-.ui-date-control .ui-date-symbol{
- display:flex;align-items:center;justify-content:center;
- width:18px;height:18px;flex:none;color:var(--muted)
-}
-.ui-date-control .ui-date-symbol svg{width:18px;height:18px}
-.formfield .ui-date-control>input[type="date"]{
- position:absolute;inset:0;display:block;z-index:1;
- box-sizing:border-box;width:100%;height:100%;min-width:0;min-height:0;max-width:100%;
- margin:0;padding:0;border:0;border-radius:0;opacity:0;cursor:pointer;
- -webkit-appearance:auto;appearance:auto;
-}
-.ui-date-control:focus-within{outline:3px solid #80b5e5;outline-offset:2px}
-.ui-date-control>input[type="date"]:focus-visible{outline:none}
 .scan-store-picker [hidden],.record-store-picker [hidden]{display:none!important}
 .record-store-picker .formfield{margin-bottom:12px}
 .scan-item-head{display:flex;align-items:center;justify-content:space-between;gap:8px;min-width:0}
