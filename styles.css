@@ -2556,6 +2556,8 @@ html,body{touch-action:pan-x pan-y}
 .scan-review-item .scan-read-name{margin:4px 0 var(--ui-field-group-gap)}
 .scan-review-item .scan-proposed-name{margin:0 0 var(--ui-field-group-gap)}
 .scan-review-item .scan-ocr-name{line-height:1.5}
+.scan-review-item .scan-manual-name{margin:var(--ui-field-group-gap) 0 0}
+.scan-review-item .scan-item-head + .scan-product-setting{margin-top:4px}
 /* The 44px action still overhangs the shorter neutral status value. Keep
    clearance before the quantity and subtotal inputs without adding a box. */
 .scan-review-item .scan-product-setting{
