@@ -2365,7 +2365,9 @@ function refreshScanTotalUI(){
   const label=input.closest('.scan-field');
   label?.classList.toggle('scan-state-error',status==='error');
   label?.classList.toggle('scan-state-warning',status==='warning');
-  input.setAttribute('aria-invalid',String(status==='error'));
+  const control=input.type==='hidden'?
+   input.closest('.ui-select')?.querySelector('.ui-select-trigger')||input:input;
+  control.setAttribute('aria-invalid',String(status==='error'));
   const hint=form.querySelector('[data-scan-hint="'+name+'"]');
   if(hint){hint.hidden=!message;hint.textContent=message||'';}
  }
