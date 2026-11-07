@@ -555,18 +555,31 @@ function receiptScanView(){
  ${scanFormView()}
  </main>`;
 }
-function closeScanViewer(){
+function closeScanViewer({restore=true}={}){
  const viewer=document.getElementById('scan-photo-viewer');
- if(viewer)viewer.remove();
+ if(!viewer)return;
+ const origin=viewer._returnFocus,scroll=viewer._returnScrollY;
+ viewer._cleanup?.();
+ viewer.remove();
+ if(restore){
+  if(origin?.isConnected)origin.focus({preventScroll:true});
+  if(Number.isFinite(scroll)&&window.scrollY!==scroll)window.scrollTo(0,scroll);
+ }
 }
 function openScanViewer(index){
  if(!Number.isInteger(index)||index<0||index>=scanPhotos.length)return;
  const url=scanThumbnail(scanPhotos[index]);if(!url)return;
- closeScanViewer();
+ const currentViewer=document.getElementById('scan-photo-viewer');
+ const origin=currentViewer?currentViewer._returnFocus:document.activeElement;
+ const scroll=currentViewer?currentViewer._returnScrollY:window.scrollY;
+ closeScanViewer({restore:false});
  const viewer=document.createElement('div');
+ viewer._returnFocus=origin;viewer._returnScrollY=scroll;
  viewer.id='scan-photo-viewer';viewer.className='scan-photo-viewer';viewer.setAttribute('role','dialog');
  viewer.setAttribute('aria-modal','true');viewer.setAttribute('aria-label','レシート写真の拡大表示');
- viewer.innerHTML=`<div class="scan-viewer-head"><span>写真 ${index+1} / ${scanPhotos.length}</span><button type="button" class="scan-viewer-close" aria-label="閉じる">×</button></div>
+ viewer.innerHTML=`<div class="scan-viewer-head"><span>写真 ${index+1} / ${scanPhotos.length}</span>
+  ${scanPhotos.length>1?'<div class="scan-viewer-pages"><button type="button" data-photo-step="-1">前の写真</button><button type="button" data-photo-step="1">次の写真</button></div>':''}
+  <button type="button" class="scan-viewer-close" aria-label="閉じる">×</button></div>
   <div class="scan-viewer-viewport"><div class="scan-viewer-image-wrap"><img src="${esc(url)}" alt="レシート写真 ${index+1}" draggable="false"></div></div>
   <div class="scan-viewer-controls"><button type="button" data-zoom="out" aria-label="縮小">−</button><button type="button" data-zoom="actual">原寸</button><span class="scan-viewer-scale">全体表示</span><button type="button" data-zoom="in" aria-label="拡大">＋</button></div>`;
  document.body.appendChild(viewer);
@@ -592,7 +605,10 @@ function openScanViewer(index){
   scale.textContent='全体表示';
  }
  if(image.complete)init();else image.addEventListener('load',init,{once:true});
- viewer.querySelector('.scan-viewer-close').addEventListener('click',closeScanViewer);
+ viewer.querySelector('.scan-viewer-close').addEventListener('click',()=>closeScanViewer());
+ viewer.querySelectorAll('[data-photo-step]').forEach(button=>button.addEventListener('click',()=>{
+  openScanViewer((index+scanPhotos.length+Number(button.dataset.photoStep))%scanPhotos.length);
+ }));
  viewer.querySelectorAll('[data-zoom]').forEach(button=>button.addEventListener('click',()=>{
   if(button.dataset.zoom==='actual')setZoom(1);
   else setZoom(zoom*(button.dataset.zoom==='in'?1.5:1/1.5));
@@ -614,9 +630,10 @@ function openScanViewer(index){
  viewport.addEventListener('pointermove',e=>{if(drag){viewport.scrollLeft=drag.left+drag.x-e.clientX;viewport.scrollTop=drag.top+drag.y-e.clientY;}});
  viewport.addEventListener('pointerup',()=>{drag=null});
  viewport.addEventListener('pointercancel',()=>{drag=null});
- const onKey=e=>{if(e.key==='Escape'){closeScanViewer();document.removeEventListener('keydown',onKey)}};
+ const onKey=e=>{if(e.key==='Escape')closeScanViewer()};
+ viewer._cleanup=()=>document.removeEventListener('keydown',onKey);
  document.addEventListener('keydown',onKey);
- viewer.querySelector('.scan-viewer-close').focus();
+ viewer.querySelector('.scan-viewer-close').focus({preventScroll:true});
 }
 async function runReceiptScan(){
  if(scanBusy||!scanPhotos.length)return;
