@@ -1681,6 +1681,7 @@ historySession.window.document.getElementById('chatgpt-input').value=JSON.string
 });
 await completeOcrImport(historySession);
 assert.equal(hfield('product-0').value,'','kana/mark variation is NOT auto-confirmed');
+historySession.window.document.querySelector('[data-act="scanPickExisting"]').click();
 const hSuggestion=historySession.window.document.querySelector(
  '[data-act="scanChooseSuggested"][data-product-id="'+historyId+'"]');
 assert.ok(hSuggestion,'kana and punctuation variant appears as master candidate');
