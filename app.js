@@ -1,4 +1,4 @@
-const APP_VERSION='0.83.1';
+const APP_VERSION='0.84.0';
 const CATS=['飲食','キッチン','洗面・風呂','洗濯・掃除','その他'];
 const liveMode=!!window.KurashiLive; // Data source only; original Preview v46 UI components remain.
 const SEED=[['牛乳',0,true],['麦茶',0,false],['コーヒー',0,true],['卵',0,false],['キッチンペーパー',1,false],['ラップ',1,true],['食器用洗剤',1,true],['シャンプー',2,false],['歯磨き粉',2,true],['ハンドソープ',2,false],['洗濯洗剤',3,false],['柔軟剤',3,true],['トイレットペーパー',3,false],['乾電池',4,true],['ティッシュ',4,true]];
@@ -175,7 +175,7 @@ let items=load(),tab='items',page='list',selected=null,query='',onlyOut=false,co
 const app=document.getElementById('app');
 let newRecordType='receipt';
 // Native iPhone chooser: Photo Library, Take Photo, or Files. Photos stay in memory.
-let scanPhotos=[],scanIndex=0,scanBusy=false,scanDraft=null,scanStatus='',scanToken=0,scanPhotosExpanded=true,scanNewStoreMode=false,scanReturnScrollY=null;
+let scanPhotos=[],scanIndex=0,scanBusy=false,scanDraft=null,scanStatus='',scanAssistMessage='',scanToken=0,scanPhotosExpanded=true,scanNewStoreMode=false,scanReturnScrollY=null;
 const scanPhotoUrls=new Map(); // Memory-only thumbnails; never persisted.
 function scanThumbnail(file){if(scanPhotoUrls.has(file))return scanPhotoUrls.get(file);const create=window.URL?.createObjectURL;if(typeof create!=='function')return '';const url=create.call(window.URL,file);scanPhotoUrls.set(file,url);return url;}
 function releaseScanThumbnail(file){const url=scanPhotoUrls.get(file);if(!url)return;scanPhotoUrls.delete(file);window.URL?.revokeObjectURL?.(url);}
@@ -191,7 +191,7 @@ function saveScanDraft(){
  scanDraftWrites.catch(err=>console.warn('レシート下書き保存失敗',err));
 }
 function resetScan({keepDraft=false}={}){
- scanToken++;closeScanViewer();clearScanThumbnails();scanPhotos=[];scanIndex=0;scanBusy=false;scanStatus='';scanPhotosExpanded=true;
+ scanToken++;closeScanViewer();clearScanThumbnails();scanPhotos=[];scanIndex=0;scanBusy=false;scanStatus='';scanAssistMessage='';scanPhotosExpanded=true;
  if(!keepDraft){scanDraft=null;scanNewStoreMode=false;scanReturnScrollY=null;saveScanDraft();}
 }
 // OCR row IDs and printed names are authoritative; AI may only suggest a product name.
@@ -529,7 +529,7 @@ function scanResolvedProductId(item){
 }
 function scanSelectedProductLabel(item){
  const product=catalogue.products.find(p=>p.id===scanResolvedProductId(item));
- return product?productTitle(product):'商品未照合';
+ return product?productTitle(product):'未照合';
 }
 function scanPhotoIndexForItem(item){
  const evidence=scanDraft?.reviewEvidence?.itemSources?.find(row=>row.rowId===item.ocrRowId);
@@ -576,18 +576,21 @@ function refreshReceiptDateDisplay(input){
  target.classList.toggle('is-empty',!date);
 }
 const scanTaxFailureDescription=reason=>window.KurashiReceiptValidation.describeTaxFailure(reason);
+function scanAssistView(){
+ if(!scanDraft)return '';
+ const canAssist=scanDraft.source==='ocr'&&receiptOcrRows(scanDraft).length>0;
+ if(!canAssist&&!scanAssistMessage)return '';
+ return `<div class="scan-assist-area">
+  ${canAssist?UI.textAction({label:'ChatGPTで確認',action:'chatGptAssist'}):''}
+  ${scanAssistMessage?UI.statusMessage({text:scanAssistMessage,kind:'success'}):''}
+ </div>`;
+}
 function scanFormView(){
  if(!scanDraft)return '';
  const reviewModel=window.KurashiReceiptReview.buildReviewModel(scanDraft);
- const chains=[{value:'',label:'店舗を選択'},
-  ...catalogue.chains.map(c=>({value:c.id,label:c.name})),
-  ...(!scanDraft.recordId?[{value:'__new__',label:'＋ 新しい店舗を追加'}]:[])];
+ const unmatchedCount=scanDraft.items.filter(x=>!scanResolvedProductId(x)).length;
  return `<form id="scanConfirmForm" class="scan-review">
-  ${UI.sectionHeading({title:'読み取り結果の確認'})}
-  <p class="hint">写真と内容を確認してください。</p>
-  ${scanDraft.taxBasis==='unknown'&&scanDraft.source==='ocr'?'<p class="scan-state-note scan-state-warning">税率を確認</p>':''}
-  ${scanDraft.taxBasis==='excluded'&&scanDraft.taxAllocationStatus!=='allocated'?'<p class="scan-state-note scan-state-warning">税込金額を確認</p>':''}
-  ${scanDraft.source==='ocr'&&receiptOcrRows(scanDraft).length?'<button type="button" class="secondary" data-act="chatGptAssist">ChatGPTで読み取り名・金額を確認</button>':''}
+  <p class="hint scan-review-instruction">内容を確認して保存してください。</p>
   <section class="scan-receipt-meta" aria-label="購入情報">
   ${UI.sectionHeading({title:'購入情報'})}
   <div class="scan-store-picker">
@@ -600,23 +603,30 @@ function scanFormView(){
   ${UI.formField({id:'scan-date',name:'date',label:'購入日',control:'date',
    value:scanDraft.date,required:true,hint:true,fieldClass:'scan-date-field'})}
   </section>
-  ${UI.sectionHeading({title:'購入明細',subtitle:scanDraft.items.length+'件'+(scanDraft.items.filter(x=>!scanResolvedProductId(x)&&x.name?.trim()).length?'・商品未照合'+scanDraft.items.filter(x=>!scanResolvedProductId(x)&&x.name?.trim()).length+'件':'')})}
+  ${UI.sectionHeading({title:'購入明細',subtitle:scanDraft.items.length+'件'+(unmatchedCount?'・未照合'+unmatchedCount+'件':'')})}
   ${scanDraft.items.map((item,i)=>`<div class="panel scan-review-item">
     <div class="scan-item-head"><strong>明細 ${i+1}</strong><div class="scan-item-tools">
      ${scanPhotos.length?'<button type="button" class="scan-item-tool" data-act="scanOpenPhoto" data-scan-row="'+scanPhotoIndexForItem(item)+'">'+miniIcon('camera')+'<span>写真</span></button>':''}
      <button type="button" class="scan-item-tool" data-act="scanRemoveItem" data-scan-row="${i}">${miniIcon('trash')}<span>削除</span></button>
     </div></div>
     ${['manual','photo'].includes(item.inputOrigin)||item.ocrRawName===undefined?
-     UI.formField({id:'scan-name-'+i,name:'name-'+i,label:'読み取り名',
-      value:item.name,maxlength:120,required:true,hint:true,fieldClass:'scan-read-name'}):
+     UI.formField({id:'scan-name-'+i,name:'name-'+i,
+      label:item.inputOrigin==='manual'?'明細名（任意）':'読み取り名',
+      placeholder:item.inputOrigin==='manual'?'例：みかん':'',
+      value:item.name,maxlength:120,required:item.inputOrigin!=='manual',
+      hint:true,fieldClass:'scan-read-name'}):
      UI.formField({id:'scan-ocr-name-'+i,control:'static',label:'読み取り名',
-       value:reviewModel.items[i].originalOcrName||'読み取り不可',valueClass:'scan-ocr-name',
-       extra:'data-ocr-row="'+i+'"',fieldClass:'scan-read-name'})}
-    ${reviewModel.items[i].proposedName?'<p class="scan-name-candidate">候補：'+esc(reviewModel.items[i].proposedName)+'</p>':''}
+       value:reviewModel.items[i].originalOcrName||'読み取り不可',valueVariant:'supporting',
+       valueClass:'scan-ocr-name',extra:'data-ocr-row="'+i+'"',fieldClass:'scan-read-name'})}
+    ${reviewModel.items[i].proposedName&&!['manual','photo'].includes(item.inputOrigin)&&
+       reviewModel.items[i].proposedName!==reviewModel.items[i].originalOcrName?
+       UI.formField({id:'scan-proposed-'+i,control:'static',label:'推定商品名',
+        value:reviewModel.items[i].proposedName,valueVariant:'supporting',fieldClass:'scan-proposed-name'}):''}
     ${(item.issues||[]).some(reason=>/商品名|商品コード|名称|名前/.test(String(reason)))?'<p class="scan-name-warning">読み取り名を確認</p>':''}
     ${UI.formField({id:'scan-product-'+i,name:'product-'+i,label:'登録商品',
       control:'picker',pickerLayout:'inline',value:scanResolvedProductId(item),
-      display:scanSelectedProductLabel(item),action:'scanPickExisting',
+      display:scanSelectedProductLabel(item),valueState:scanResolvedProductId(item)?'':'unmatched',
+      action:'scanPickExisting',
       actionLabel:scanResolvedProductId(item)?'変更':'商品を設定',actionRow:i,
       fieldClass:'scan-product-setting'})}
     <div class="scan-input-pair">
@@ -630,11 +640,13 @@ function scanFormView(){
     </div>
     ${Number.isSafeInteger(item.taxExcludedAmount)?'<p class="scan-tax-excluded">税抜金額：'+yen(item.taxExcludedAmount)+(Number.isSafeInteger(item.ocrDiscount)&&item.ocrDiscount>0?' ／ 値引き：'+yen(item.ocrDiscount):'')+(item.taxCalculation==='printed-total-proportional'?' ／ '+(scanDraft.taxDerivedFromTotals||scanDraft.taxRateCalculated?'計算税額':'税額')+'：'+yen(item.allocatedTax):'')+'</p>':''}
    </div>`).join('')}
-  <button type="button" class="secondary" data-act="scanAddItem">＋ 明細を追加</button>
+  <div class="scan-add-action">${UI.button({label:'明細を追加',variant:'tertiary',action:'scanAddItem',icon:'plus'})}</div>
+  ${UI.sectionHeading({title:'合計の確認'})}
   <div class="panel scan-review-total">
-   ${UI.sectionHeading({title:'合計の確認'})}
    <p id="scan-sum-text" class="scan-total-figure" aria-live="polite">合計金額：—</p>
    <p id="scan-count-text" class="scan-total-count">購入点数：—</p>
+   ${scanDraft.taxBasis==='unknown'&&scanDraft.source==='ocr'?'<p class="scan-state-note scan-state-warning">税率を確認</p>':''}
+   ${scanDraft.taxBasis==='excluded'&&scanDraft.taxAllocationStatus!=='allocated'?'<p class="scan-state-note scan-state-warning">税込金額を確認</p>':''}
    <div id="scan-total-warning" class="scan-state-note scan-state-warning scan-compare-note" role="status" hidden></div>
    <div id="scan-count-warning" class="scan-state-note scan-state-warning scan-compare-note" role="status" hidden></div>
   </div>
@@ -673,7 +685,8 @@ function receiptScanView(){
  ${scanPhotoSection()}
  ${!scanPhotos.length&&!reviewing?'<p class="hint">写真を選択してください。</p>':''}
  ${!reviewing&&scanPhotos.length?`<button type="button" class="primary scan-photo-start" data-act="scanStart" ${scanBusy?'disabled':''}>${scanBusy?'読み取り中…':'写真を解析する'}</button>`:''}
- <p id="scan-status" role="status" class="hint">${esc(!reviewing&&!scanPhotos.length?'':scanStatus)}</p>
+ <p id="scan-status" role="status" class="hint" ${scanStatus?'':'hidden'}>${esc(scanStatus)}</p>
+ ${reviewing?scanAssistView():''}
  ${scanFormView()}
  </main>`;
 }
