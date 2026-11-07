@@ -1035,7 +1035,7 @@ assert.ok(!JSON.stringify(p4Rebuild).includes('ocr-p4'),
 console.log('P4 common review adapter, provenance, row identity and P2 validation OK');
 
 // v0.73: Receipt OCR review information hierarchy; preserve validation/confirmation.
-assert.ok(source.includes("const APP_VERSION='0.76.1'"), 'UI review revision version is current');
+assert.ok(source.includes("const APP_VERSION='0.76.2'"), 'UI review revision version is current');
 assert.ok(source.includes("UI.sectionHeading({title:'購入情報'})"), 'Receipt OCR review groups store and purchase date');
 assert.ok(source.includes("UI.sectionHeading({title:'購入明細',subtitle:scanDraft.items.length+'件'+"), 'Receipt OCR review identifies item list and unmatched count');
 assert.ok(source.includes("UI.sectionHeading({title:'合計の確認'})"), 'Receipt OCR review makes reconciliation distinct');
@@ -1103,9 +1103,13 @@ assert.ok(source.includes('item.amountReviewed=true')&&
 assert.ok(source.includes('レシートの合計額を特定できませんでした')&&
  source.includes('レシートの合計と一致しません'),
  'Unknown totals and mismatches give a specific yellow explanation');
-assert.ok(css.includes('input[type="date"]::-webkit-datetime-edit')&&
- css.includes('min-inline-size:0'),
- 'Safari native date input has a narrow-screen internal width constraint');
+assert.ok(css.includes('.receipt-date-control{')&&
+ css.includes('width:min(100%,236px)')&&
+ css.includes('position:absolute;inset:0;display:block;z-index:1')&&
+ css.includes('opacity:0;cursor:pointer'),
+ 'Safari native date input is removed from flow inside a bounded date-picker surface');
+assert.ok(!css.includes('::-webkit-datetime-edit'),
+ 'No attempt is made to resize the system date field internals');
 assert.ok(source.includes('data-act="scanOpenPhoto"')&&source.includes('data-act="scanRemoveItem"'),
  'Photo and deletion actions coexist on each receipt item');
 const previewCacheWorkflow=readFileSync(new URL('../.github/workflows/pages-previews.yml',import.meta.url),'utf8');
@@ -1117,3 +1121,13 @@ ui.setScanDraft({source:'ocr',date:'2026-11-07',chainId:'c-a',total:100,
  productId:'',issues:['商品コードと商品名の対応を確認']}]});
 assert.ok(ui.receiptScanView().includes('class="scan-name-warning">読み取り名を確認'),
  'Concrete OCR name uncertainty has a targeted warning, not a generic blanket alert');
+const compactDateView=ui.receiptScanView();
+assert.ok(compactDateView.includes('class="receipt-date-control"')&&
+ compactDateView.includes('name="date" type="date"')&&
+ compactDateView.includes('aria-label="購入日"')&&
+ compactDateView.includes('2026/11/07'),
+ 'Receipt confirmation displays a short date while preserving a real iOS date input');
+ui.setNewRecordType('receipt');
+assert.ok(ui.recordAddView().includes('class="receipt-date-control"')&&
+ ui.recordAddView().includes('id="record-date"'),
+ 'Manual receipt entry uses the same compact date picker instead of a wide native field');
