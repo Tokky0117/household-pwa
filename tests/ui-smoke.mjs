@@ -454,9 +454,16 @@ assert.ok(!manualAdd.includes('name="name-0"'),'saved OCR name stays plain text'
 // The two name origins share headings and spacing without turning the OCR text into an input.
 assert.ok((manualAdd.match(/class="formfield scan-read-name"/g)||[]).length===2,
  'editable and read-only receipt names use the same form-level layout class');
-assert.ok(manualAdd.includes('<label for="scan-name-1">読み取り名</label>')&&
+assert.ok(manualAdd.includes('<label for="scan-name-1">明細名（任意）</label>')&&
  manualAdd.includes('ui-static-field-label">読み取り名</span>'),
- 'both name variants show the same heading with correct input semantics');
+ 'manual name is optional while OCR name stays an immutable display field');
+assert.ok(manualAdd.includes('name="name-1"')&&manualAdd.includes('placeholder="例：みかん"')&&
+ !manualAdd.includes('name="name-1" required'),
+ 'Manual rows have an optional name; quantity and amount remain required');
+assert.ok(!manualAdd.includes('読み取り結果の確認')&&
+ manualAdd.indexOf('合計の確認')<manualAdd.indexOf('class="panel scan-review-total"')&&
+ manualAdd.includes('class="tertiary" data-act="scanAddItem"'),
+ 'Review has three equal-level section headings, with the add action using shared tertiary');
 assert.ok(!manualAdd.includes('name="name-0"')&&manualAdd.includes('data-ocr-row="0"'),
  'read-only OCR name remains text and never becomes a saveable field');
 assert.ok(ruleBody('.scan-item-head>strong').some(x=>x.includes('font-size:16px')),
@@ -466,7 +473,7 @@ assert.ok(ruleBody('.scan-review-item .scan-read-name').some(x=>x.includes('marg
 assert.ok(ruleBody('.scan-review-item .formfield').some(x=>x.includes('margin:0')),
  'receipt fields have no accumulated 6px generic margins');
 assert.ok(ruleBody('.scan-review-item .scan-product-setting').some(x=>
- x.includes('margin:0 0 calc(var(--ui-field-group-gap) + 4px)')),
+ x.includes('margin:0 0 calc(var(--ui-field-group-gap) + 8px)')),
  'product-to-number spacing beats the generic receipt form margin reset');
 assert.ok(ruleBody('.scan-review-item .scan-ocr-name').every(x=>!x.includes('min-height')),
  'read-only OCR name does not reserve editable input height');
@@ -492,13 +499,26 @@ assert.match(newProductHtml,/紐付けしない（商品だけ登録）/,'new pr
 assert.ok(!newProductHtml.includes('name="group" required'),
  'item group selection is optional, not forced');
 const listingHtml=ui.receiptScanView();
+assert.ok(listingHtml.includes('class="ui-picker-value is-unmatched"')&&
+ !listingHtml.includes('class="ui-picker-value is-unmatched">商品未照合'),
+ 'Unmatched is a neutral state, not a registered product name');
+assert.ok(css.includes('ui-picker-value.is-unmatched')&&
+ css.includes('--ui-supporting-value-font-size: 14px')&&
+ source.includes("valueVariant:'supporting'")&&source.includes("valueState:scanResolvedProductId(item)?'':'unmatched'"),
+ 'Form-level supporting value and neutral unmatched state use shared styling');
+assert.ok(source.includes("function scanAssistView()")&&
+ source.includes("UI.statusMessage({text:scanAssistMessage,kind:'success'})")&&
+ source.includes("scanAssistMessage=changed||priced?'解析結果を反映しました。'")&&
+ !source.includes("scanStatus='ChatGPT推測名'"),
+ 'ChatGPT action and short feedback stay together above form, with no counts');
+
 assert.ok(listingHtml.includes('ui-static-field-label">読み取り名</span>')&&
  listingHtml.includes('登録商品')&&listingHtml.includes('商品を設定'),
  'receipt review distinguishes the read name from the selected registered product');
 assert.ok(!listingHtml.includes('data-act="scanBulkProducts"'),
  'unmatched product batch creation is removed from receipt review');
 assert.ok(listingHtml.includes('class="formfield scan-product-setting ui-picker-inline"')&&
- listingHtml.includes('商品未照合')&&
+ listingHtml.includes('is-unmatched')&&listingHtml.includes('>未照合</strong>')&&
  !listingHtml.includes('scan-product-association')&&
  !listingHtml.includes('data-act="scanNewProduct"'),
  'product selection is a single action without an accordion or split actions');
@@ -982,7 +1002,9 @@ const photoDraft={source:'ocr',date:'2026-10-12',chainId:'c-a',total:11550,items
 ui.setScanDraft(photoDraft);
 assert.ok(!ui.receiptScanView().includes('scanDetachOcr'));
 assert.ok(!ui.receiptScanView().includes('scanUsePhotoCandidate'));
-assert.ok(ui.receiptScanView().includes('候補：'));
+assert.ok(ui.receiptScanView().includes('ui-static-field-label">推定商品名</span>')&&
+ ui.receiptScanView().includes('ui-value-supporting'),
+ 'Proposed product name uses a shared supporting-value field, not a freeform candidate paragraph');
 assert.ok(source.includes('inferred_name:inferredName'));
 assert.ok(source.includes('const aliasLines=lines.filter'));
 assert.match(imports.makeChatGptOcrAssistPrompt(ocrRef),/構造認識の失敗/);
@@ -1193,7 +1215,7 @@ assert.ok(!JSON.stringify(p4Rebuild).includes('ocr-p4'),
 console.log('P4 common review adapter, provenance, row identity and P2 validation OK');
 
 // v0.73: Receipt OCR review information hierarchy; preserve validation/confirmation.
-assert.ok(source.includes("const APP_VERSION='0.83.1'"), 'UI review revision version is current');
+assert.ok(source.includes("const APP_VERSION='0.84.0'"), 'UI review revision version is current');
 assert.ok(source.includes("UI.sectionHeading({title:'購入情報'})"), 'Receipt OCR review groups store and purchase date');
 assert.ok(source.includes("UI.sectionHeading({title:'購入明細',subtitle:scanDraft.items.length+'件'+"), 'Receipt OCR review identifies item list and unmatched count');
 assert.ok(source.includes("UI.sectionHeading({title:'合計の確認'})"), 'Receipt OCR review makes reconciliation distinct');
