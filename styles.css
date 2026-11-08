@@ -410,6 +410,7 @@ main {
  content:"✓";display:inline-block;margin-right:6px;
  color:var(--accent);font-weight:700;
 }
+.ui-status-message.is-error{color:var(--red);font-weight:600;line-height:1.55}
 
 .formfield input,.formfield select,.formfield textarea,
 .scan-field input:not([type="date"]),.scan-field select {
@@ -2381,12 +2382,7 @@ main>.ui-search + .filterrow{margin-bottom:5px}
 .receipt-scan-page .panel{margin-top:12px}
 /* Receipt original and editable OCR review share one screen. */
 .scan-photo-section{margin:0 0 14px}
-.scan-photo-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;width:100%;min-height:48px;padding:6px 0;border:0;background:transparent;color:var(--ink);font-size:17px;font-weight:700;text-align:left}
-.scan-photo-heading small{font-size:13px;font-weight:500;color:var(--muted);margin-left:6px}
-.scan-photo-heading-right{display:flex;align-items:center;gap:5px;font-size:14px;font-weight:650;color:var(--accent)}
-.scan-photo-heading-right svg{width:18px;height:18px}
-#scan-photo-content[hidden]{display:none}
-.scan-photo-instruction{margin:0 0 12px}
+.scan-photo-section>.ui-section-heading{margin:0 0 12px;min-height:32px}
 .scan-photo-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin:0 0 16px}
 .scan-photo-tile{min-width:0}
 .scan-photo-thumb{position:relative;min-width:0;display:flex;align-items:center;justify-content:center}
@@ -2396,9 +2392,19 @@ main>.ui-search + .filterrow{margin-bottom:5px}
 .scan-photo-remove svg{width:20px;height:20px}
 .scan-photo-label{display:block;font-size:13px;color:var(--muted);margin:6px 2px 0}
 .receipt-scan-page .scan-photo-add{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;min-height:48px;margin:10px 0 16px}
-.receipt-scan-page .scan-photo-add svg{width:18px;height:18px}
-.receipt-scan-page .scan-photo-start{display:block;width:100%;min-height:48px;margin:0 0 12px}
-.receipt-scan-page #scan-status{margin:12px 0;line-height:1.6}
+.receipt-scan-page .scan-photo-add svg{width:18px;height:18px;flex:none}
+.receipt-scan-page .scan-photo-empty .scan-photo-add{margin:0}
+.receipt-scan-page .scan-photo-start{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;min-height:48px;margin:0 0 12px}
+.receipt-scan-page .scan-photo-start svg{width:18px;height:18px;flex:none}
+.receipt-scan-page .scan-photo-start:disabled{cursor:wait;opacity:.7}
+.receipt-scan-page .scan-status-progress{display:flex;align-items:center;gap:8px;margin:10px 0;min-height:28px}
+.receipt-scan-page .scan-status-progress::before{
+ content:"";flex:none;width:16px;height:16px;border:2px solid currentColor;
+ border-right-color:transparent;border-radius:50%;animation:ui-scan-spin .8s linear infinite
+}
+@keyframes ui-scan-spin{to{transform:rotate(360deg)}}
+@media(prefers-reduced-motion:reduce){.receipt-scan-page .scan-status-progress::before{animation:none}}
+.receipt-scan-page .scan-status-error{margin:12px 0;font-size:13px}
 .scan-assist-area{
  display:flex;flex-direction:column;align-items:flex-start;gap:4px;
  margin:0 0 12px;
@@ -2542,7 +2548,6 @@ html,body{touch-action:pan-x pan-y}
 .scan-compare-data strong{font-size:15px;color:var(--ink);font-variant-numeric:tabular-nums;margin-left:auto}
 @media(max-width:360px){
  .scan-review-item{padding:9px 10px}
- .scan-photo-heading>span:first-child{min-width:0;overflow-wrap:anywhere}
 }
 
 /* v0.76: receipt confirmation is compact, with one visible store control.
