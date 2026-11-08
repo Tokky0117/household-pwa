@@ -10,6 +10,16 @@ const client=readFileSync(new URL('../live-client.js',import.meta.url),'utf8');
 const app=readFileSync(new URL('../app.js',import.meta.url),'utf8');
 const validator=readFileSync(new URL('../receipt-validation.js',import.meta.url),'utf8');
 const html=readFileSync(new URL('../index.html',import.meta.url),'utf8');
+const css=readFileSync(new URL('../styles.css',import.meta.url),'utf8');
+// This must parse as a real stylesheet. Plain string matching missed a malformed
+// CSS // comment that swallowed the entire position:fixed rule on iPhone.
+const floatingCssDom=new JSDOM('<!doctype html><style>'+css+'</style><div class="ui-floating-action"><button class="secondary ui-floating-action-button">写真を確認</button></div>');
+const actualFloating=floatingCssDom.window.document.querySelector('.ui-floating-action');
+const actualFloatingStyle=floatingCssDom.window.getComputedStyle(actualFloating);
+assert.equal(actualFloatingStyle.position,'fixed','browser stylesheet parser retains fixed photo button');
+assert.equal(actualFloatingStyle.zIndex,'20','fixed photo button stays above the page content');
+assert.match(actualFloatingStyle.bottom,/16px/,'fixed photo button is anchored to the viewport bottom');
+floatingCssDom.window.close();
 const pickerMarkup=[...html.matchAll(/<input id="(?:receipt-source-picker|scan-add-picker)"[^>]*>/g)]
  .map(match=>match[0]).join('');
 assert.equal((pickerMarkup.match(/type="file"/g)||[]).length,2,
