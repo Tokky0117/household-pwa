@@ -1,4 +1,4 @@
-const APP_VERSION='0.85.4';
+const APP_VERSION='0.85.5';
 const CATS=['飲食','キッチン','洗面・風呂','洗濯・掃除','その他'];
 const liveMode=!!window.KurashiLive; // Data source only; original Preview v46 UI components remain.
 const SEED=[['牛乳',0,true],['麦茶',0,false],['コーヒー',0,true],['卵',0,false],['キッチンペーパー',1,false],['ラップ',1,true],['食器用洗剤',1,true],['シャンプー',2,false],['歯磨き粉',2,true],['ハンドソープ',2,false],['洗濯洗剤',3,false],['柔軟剤',3,true],['トイレットペーパー',3,false],['乾電池',4,true],['ティッシュ',4,true]];
@@ -657,7 +657,7 @@ function scanFormView(){
    <div id="scan-count-warning" class="scan-state-note scan-state-warning scan-compare-note" role="status" hidden></div>
   </div>
   ${UI.formFeedback({id:'scan-save-feedback'})}
-  <button class="primary" type="submit">${scanDraft.recordId?'修正したレシートを保存':'保存'}</button>
+  ${UI.button({label:scanDraft.recordId?'修正したレシートを保存':'保存',variant:'primary',type:'submit'})}
  </form>`;
 }
 function scanPhotoSection(){
@@ -885,6 +885,9 @@ const UI={
   sectionHeading({title,subtitle='',trailing='',className=''}) {
     return `<div class="ui-section-heading ${esc(className)}"><div class="ui-section-heading-copy"><h2 class="sectiontitle">${esc(title)}</h2>${subtitle?`<span class="ui-section-heading-sub">${esc(subtitle)}</span>`:''}</div>${trailing}</div>`;
   },
+  iconButton({label,action,iconHtml,title=''}) {
+    return `<button class="iconbtn" type="button" data-act="${esc(action)}" aria-label="${esc(label)}"${title?' title="'+esc(title)+'"':''}>${iconHtml}</button>`;
+  },
   button({label,variant='secondary',action='',type='button',icon='',className='',disabled=false}) {
     return `<button type="${esc(type)}" class="${esc(variant)}${className?' '+esc(className):''}" ${action?'data-act="'+esc(action)+'"':''}${disabled?' disabled':''}>${icon?miniIcon(icon):''}<span>${esc(label)}</span></button>`;
   },
@@ -940,7 +943,7 @@ const UI={
 
 };
 const svg=k=>`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${icons[k]}</svg>`;
-function head(title,sub='',back=false,right='',left=''){return `<header class="top"><div class="headrow"><div class="head-left">${back?`<button class="iconbtn" data-act="back" aria-label="戻る">${chevron('left')}</button>`:left}</div><div class="head-title">${sub?`<p class="eyebrow">${esc(sub)}</p>`:''}<h1>${esc(title)}</h1></div><div class="head-right">${right}</div></div></header>`}
+function head(title,sub='',back=false,right='',left=''){return `<header class="top"><div class="headrow"><div class="head-left">${back?`${UI.iconButton({label:'戻る',action:'back',iconHtml:chevron('left')})}`:left}</div><div class="head-title">${sub?`<p class="eyebrow">${esc(sub)}</p>`:''}<h1>${esc(title)}</h1></div><div class="head-right">${right}</div></div></header>`}
 function nav(){return `<nav class="bottom" aria-label="メインメニュー"><div class="tabs">${[['items','日用品'],['receipt','明細'],['settings','設定']].map(([k,v])=>`<button class="tab ${tab===k?'active':''}" data-tab="${k}" ${tab===k?'aria-current="page"':''}>${svg(k)}<span>${v}</span></button>`).join('')}</div></nav>`}
 function listResults(){
  const q=norm(query),matches=i=>(!q||norm(i.name).includes(q))&&(!onlyOut||!i.inStock);
@@ -993,8 +996,8 @@ function listView(){
    s.queued?'未反映の操作 '+s.queued+'件（自動で保存します）':
    s.cached?'前回取得した内容を表示中。Google Sheetsと再接続しています。':
    s.busy&&!s.loaded?'家庭の日用品を読み込み中…':''):'';
- const copy='<button class="iconbtn" type="button" data-act="copyList" aria-label="在庫なしをコピー" title="在庫なしをコピー">'+miniIcon('copy')+'</button>';
- const add='<button class="iconbtn" type="button" data-act="add" aria-label="日用品を追加" title="日用品を追加">'+miniIcon('plus')+'</button>';
+ const copy=UI.iconButton({label:'在庫なしをコピー',action:'copyList',iconHtml:miniIcon('copy'),title:'在庫なしをコピー'});
+ const add=UI.iconButton({label:'日用品を追加',action:'add',iconHtml:miniIcon('plus'),title:'日用品を追加'});
  return `${head('日用品','くらしストック',false,add,copy)}<main>${UI.searchField({id:'search',label:'日用品を検索',placeholder:'日用品を検索',value:query,extra:'autocomplete="off"'})}<div class="filterrow"><label class="switchlabel"><input type="checkbox" id="onlyOut" ${onlyOut?'checked':''}>在庫なしのみ表示</label></div><div id="item-results">${listResults()}</div>${liveMode?'<p id="list-sync-status" class="hint" role="status" '+(notice?'':'hidden')+'>'+esc(notice)+'</p>':''}${listHelpView()}</main>${nav()}`;
 }
 function priceCompareView(){
@@ -1031,7 +1034,7 @@ function formView(){
   UI.formField({id:'name',label:'日用品名',value:i?.name||'',maxlength:80,required:true,placeholder:'例：食器用スポンジ'}),
   UI.formField({id:'category',label:'カテゴリ',control:'select',value:i?.category??0,options:CATS.map((label,value)=>({label,value}))})
  ].join('');
- return UI.sheet({title,variant:'item-editor-sheet',body:`<form id="itemForm">${fields}<div id="item-duplicate-notice"></div><div class="formactions"><button type="submit" class="primary">${editing?'変更を保存':'登録する'}</button></div></form>`});
+ return UI.sheet({title,variant:'item-editor-sheet',body:`<form id="itemForm">${fields}<div id="item-duplicate-notice"></div><div class="formactions">${UI.button({label:editing?'変更を保存':'登録する',variant:'primary',type:'submit'})}</div></form>`});
 }
 // Shared registered-product row: name opens editing; long press changes display order.
 function managementRow({name,sub,action,aria,details='',editId=null,productId=null}) {
@@ -1174,7 +1177,7 @@ function receiptView(){
  ].filter(x=>x.enabled);
  return `${head('明細','くらしストック')}<main class="preview-record-page receipt-home">
  ${UI.sectionHeading({title:'明細を登録'})}
- <div class="record-entry-actions">${registration.map(x=>`<button type="button" class="${x.primary?'primary':'secondary'}" data-act="${x.action}">${miniIcon(x.icon)}<span>${esc(x.label)}</span></button>`).join('')}</div>
+ <div class="record-entry-actions">${registration.map(x=>UI.button({label:x.label,icon:x.icon,action:x.action,variant:x.primary?'primary':'secondary'})).join('')}</div>
  ${UI.sectionHeading({title:'明細一覧',trailing:UI.textAction({label:'すべて表示',action:'receiptAll'}),className:'receipt-list-heading'})}
  <div class="receipt-record-list">${draft}${receiptHistoryRows(recent)||(!draft?'<div class="empty">記録はまだありません</div>':'')}</div>
  </main>${nav()}`;

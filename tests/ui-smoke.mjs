@@ -57,6 +57,15 @@ assert.ok(!source.includes('priceCells(){'),'Obsolete normal/discount UI compone
 assert.ok(!css.includes('grid-template-areas:"name value" "name date"'),'Obsolete two-row price CSS removed');
 assert.ok(ui.listView().includes('data-stock=')&&ui.listView().includes('data-list-edit='),'Stock and swipe list preserved');
 assert.ok(ui.listView().includes('class="ui-search"')&&ui.listView().includes('id="search"'),'Daily list uses shared search component');
+assert.ok(source.includes('iconButton({label,action,iconHtml,title=')&&
+ source.includes("const copy=UI.iconButton(")&&source.includes("const add=UI.iconButton(")&&
+ source.includes("registration.map(x=>UI.button("),
+ 'Daily header icons and receipt entry actions use shared builders');
+assert.ok(ui.listView().includes('data-act="copyList" aria-label="在庫なしをコピー"')&&
+ ui.listView().includes('data-act="add" aria-label="日用品を追加"')&&
+ ui.receiptView().includes('data-act="receiptScan"')&&
+ ui.receiptView().includes('data-act="newReceipt"'),
+ 'Common action builders preserve existing user labels and event hooks');
 assert.ok(!ui.listView().includes('※ 価格・店舗はサンプル'),'Daily list no longer shows temporary sample notice');
 assert.ok(ui.pickerView().includes('class="ui-search"')&&ui.pickerView().includes('id="catalogue-search"'),'Product picker reuses shared search');
 assert.ok(source.includes("variant:'item-editor-sheet'"),'Item add/edit uses shared sheet height variant');
@@ -589,8 +598,8 @@ assert.ok(ruleBody('.scan-review-item .scan-read-name').some(x=>x.includes('marg
 assert.ok(ruleBody('.scan-review-item .formfield').some(x=>x.includes('margin:0')),
  'receipt fields have no accumulated 6px generic margins');
 assert.ok(ruleBody('.scan-review-item .scan-product-setting').some(x=>
- x.includes('margin:0 0 calc(var(--ui-field-group-gap) + 8px)')),
- 'product-to-number spacing beats the generic receipt form margin reset');
+ x.includes('margin:0 0 var(--ui-field-group-gap)')),
+ 'product-to-number spacing uses the common field gap without receipt-only compensation');
 assert.ok(ruleBody('.scan-review-item .scan-ocr-name').every(x=>!x.includes('min-height')),
  'read-only OCR name does not reserve editable input height');
 console.log('v65: OCR immutability, uncertain quantity, candidate only, and exact row ID OK');
@@ -666,12 +675,18 @@ assert.ok(!listingHtml.includes('scan-field-label')&&!listingHtml.includes('scan
  'Legacy product-specific label and picker markup are removed');
 assert.ok(listingHtml.includes('class="ui-picker-action-slot"')&&
  css.includes('.formfield.ui-picker-inline .ui-picker-action-slot{')&&
- css.includes('height:0;width:max-content')&&
- css.includes('top:-11px;min-height:var(--ui-touch-size)'),
- 'Product action shares the value baseline without adding blank vertical space');
+ css.includes('height:calc(var(--ui-touch-size) - var(--ui-inline-picker-action-overhang));width:max-content')&&
+ css.includes('top:calc(-1 * var(--ui-inline-picker-action-overhang));min-height:var(--ui-touch-size)'),
+ 'Shared picker reserves the action touch area without a receipt-specific compensating margin');
 assert.ok(css.includes('.formfield.ui-picker-inline .ui-picker-value{')&&
  css.includes('font-size:var(--ui-value-font-size)'),
  'Common inline picker preserves the shared 13px label and 16px value');
+assert.ok(css.includes('--ui-stock-off-background: #fff0dd')&&
+ css.includes('--ui-stock-off-text: #995719')&&
+ css.includes('--ui-stock-off-border: #f1cfaa')&&
+ css.includes('color:var(--ui-field-warning-color)')&&
+ !css.includes('color:#A97800'),
+ 'Inventory and receipt warnings use shared semantic color tokens');
 assert.ok(productAction.includes('class="ui-text-action"')&&
  productAction.includes('商品を設定')&&!productAction.includes('ui-chevron'),
  'registered-product settings use shared text actions without navigation chevrons');
@@ -1335,7 +1350,7 @@ assert.ok(!JSON.stringify(p4Rebuild).includes('ocr-p4'),
 console.log('P4 common review adapter, provenance, row identity and P2 validation OK');
 
 // v0.73: Receipt OCR review information hierarchy; preserve validation/confirmation.
-assert.ok(source.includes("const APP_VERSION='0.85.4'"), 'UI review revision version is current');
+assert.ok(source.includes("const APP_VERSION='0.85.5'"), 'UI review revision version is current');
 assert.ok(source.includes("UI.sectionHeading({title:'読み取り状況'})"), 'OCR and ChatGPT appear under one section');
 assert.ok(source.includes("UI.sectionHeading({title:'購入情報'})"), 'Receipt OCR review groups store and purchase date');
 assert.ok(source.includes("UI.sectionHeading({title:'購入明細',subtitle:scanDraft.items.length+'件'+"), 'Receipt OCR review identifies item list and unmatched count');
