@@ -1297,7 +1297,8 @@ function render(){
 // any visible save button. Otherwise a short receipt hides photo review forever.
 function floatingActionPlacement({anchorRect,actionRect,topInset=0,keyboardOpen=false,overlayOpen=false}){
  if(keyboardOpen||overlayOpen)return {hidden:true,lift:0};
- if(!anchorRect||!actionRect)return {hidden:false,lift:0};
+ if(!anchorRect||!actionRect||anchorRect.bottom<=anchorRect.top||
+  actionRect.bottom<=actionRect.top)return {hidden:false,lift:0};
  const gap=12;
  const intersects=anchorRect.top<actionRect.bottom+gap&&
   anchorRect.bottom>actionRect.top-gap;
