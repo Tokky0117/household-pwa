@@ -271,9 +271,9 @@ assert.ok(source.includes('liveRecords={records:'),
  'Live price and budget use the shared record snapshot');
 
 
-assert.ok(ui.receiptScanView().includes('id="scan-status"')&&
+assert.ok(!ui.receiptScanView().includes('id="scan-status"')&&
  !ui.receiptScanView().includes('scan-crop-canvas')&&
- !ui.receiptScanView().includes('scan-mode'),'No crop and preprocessing selector');
+ !ui.receiptScanView().includes('scan-mode'),'Idle scanner shows no status and no image preprocessing controls');
 assert.ok(source.includes("action:'receiptScan'")&&
  source.includes("openReceiptPhotoPicker(document.getElementById('receipt-source-picker'))"),
  'Live receipt registration uses the existing native chooser; offline preview remains unchanged');
