@@ -2125,6 +2125,119 @@ masterUI.window.close();
 console.log('v86: master create/edit, searchable item links, confirmations, unlink and history preservation OK');
 
 
+/* v86.1: the OCR alias manager uses a single searchable picker and preserves history. */
+let aliasUI=appSession();
+await waitFor(()=>aliasUI.window.KurashiLive.state().loaded,'alias manager bootstrap');
+await waitFor(()=>aliasUI.window.KurashiLive.state().queued===0,'alias manager previous queue drained');
+assert.equal(await aliasUI.window.KurashiLive.load(),true,'alias manager loads server state');
+const aliasSnapshot=temp.call('bootstrap').data;
+const chosenAlias=aliasSnapshot.product_aliases.find(a=>
+ aliasSnapshot.record_items.some(line=>line.alias_id===a.alias_id)&&
+ a.product_id&&aliasSnapshot.products.some(p=>p.product_id===a.product_id));
+assert.ok(chosenAlias,'saved OCR alias has an original purchase record and linked product');
+const alternateMaster=aliasSnapshot.products.find(p=>p.product_id!==chosenAlias.product_id);
+assert.ok(alternateMaster,'at least two registered products for linking test');
+const originalLinkedId=chosenAlias.product_id;
+const historicalLineIds=JSON.stringify(aliasSnapshot.record_items.map(line=>[line.record_item_id,line.product_id,line.alias_id]));
+aliasUI.window.document.querySelector('[data-tab="settings"]').click();
+aliasUI.window.document.querySelector('[data-act="aliasManage"]').click();
+const aliasList=aliasUI.window.document.querySelector('#alias-results');
+const aliasSearch=aliasUI.window.document.querySelector('#alias-query');
+const aliasClear=aliasUI.window.document.querySelector('[data-search-clear="alias-query"]');
+assert.ok(aliasList&&aliasSearch&&aliasClear,'alias manager search and list display');
+assert.equal(aliasList.querySelectorAll('[data-alias-form]').length,0,
+ 'Read-only alias cards do not generate a save form per alias');
+assert.equal(aliasList.querySelectorAll('.ui-select').length,0,
+ 'Read-only list never expands every product into a dropdown');
+const aliasCount=aliasList.querySelectorAll('[data-act="aliasPickerOpen"]').length;
+assert.ok(aliasCount>0,'at least one linked OCR name is visible');
+aliasSearch.dispatchEvent(new aliasUI.window.Event('compositionstart',{bubbles:true}));
+aliasSearch.value='存在しないOCR名テストZZZZ99';
+aliasSearch.dispatchEvent(new aliasUI.window.Event('input',{bubbles:true}));
+assert.equal(aliasList.querySelectorAll('[data-act="aliasPickerOpen"]').length,aliasCount,
+ 'Searching during Japanese conversion preserves alias list rows');
+aliasSearch.dispatchEvent(new aliasUI.window.Event('compositionend',{bubbles:true}));
+assert.equal(aliasList.querySelectorAll('[data-act="aliasPickerOpen"]').length,0,
+ 'Alias search narrows after IME text is finalized');
+aliasClear.click();
+assert.equal(aliasSearch.value,'','Common clear button resets alias search');
+assert.equal(aliasList.querySelectorAll('[data-act="aliasPickerOpen"]').length,aliasCount,
+ 'Clearing search restores all alias cards');
+const chosenAliasRow=aliasList.querySelector('[data-alias-id="'+chosenAlias.alias_id+'"]');
+assert.ok(chosenAliasRow,'historical OCR alias is visible for editing');
+assert.ok(chosenAliasRow.textContent.includes('店舗：'),
+ 'OCR card displays a familiar store label');
+chosenAliasRow.click();
+let aliasModal=aliasUI.window.document.querySelector('.alias-product-picker-overlay');
+assert.ok(aliasModal?.querySelector('#alias-product-search'),
+ 'Alias card opens the shared searchable product choice sheet');
+assert.equal(aliasUI.window.document.body.style.position,'fixed',
+ 'Alias sheet locks the iPhone background scroll');
+const productSearch=aliasModal.querySelector('#alias-product-search');
+const productResults=aliasModal.querySelector('#alias-product-results');
+const productCount=productResults.querySelectorAll('.ui-choice-row').length;
+productSearch.dispatchEvent(new aliasUI.window.Event('compositionstart',{bubbles:true}));
+productSearch.value='存在しない商品ZZZZ99';
+productSearch.dispatchEvent(new aliasUI.window.Event('input',{bubbles:true}));
+assert.equal(productResults.querySelectorAll('.ui-choice-row').length,productCount,
+ 'Product candidates remain stable while IME is composing');
+productSearch.dispatchEvent(new aliasUI.window.Event('compositionend',{bubbles:true}));
+assert.equal(productResults.querySelectorAll('.ui-choice-row').length,0,
+ 'Product candidates filter after composition');
+aliasModal.querySelector('[data-search-clear="alias-product-search"]').click();
+assert.ok(productResults.querySelector('[data-ui-choice="'+alternateMaster.product_id+'"]'),
+ 'Clear restores existing products without reopening the sheet');
+aliasModal.querySelector('.sheet-close').click();
+assert.equal(aliasUI.window.document.querySelector('.alias-product-picker-overlay'),null,
+ 'Canceling sheet does not change the OCR dictionary');
+assert.equal(aliasUI.window.document.body.style.position,'',
+ 'Sheet dismissal restores background scroll');
+chosenAliasRow.click();
+aliasModal=aliasUI.window.document.querySelector('.alias-product-picker-overlay');
+aliasModal.querySelector('[data-ui-choice="'+alternateMaster.product_id+'"]').click();
+assert.ok(aliasUI.window.document.querySelector('[data-dialog="confirmAliasLink"]'),
+ 'Alias link requires a dedicated confirmation dialog');
+assert.equal(temp.call('bootstrap').data.product_aliases.find(a=>a.alias_id===chosenAlias.alias_id).product_id,
+ originalLinkedId,'Selecting candidate does not write to Sheets yet');
+aliasUI.window.document.querySelector('[data-dialog="cancel"]').click();
+assert.equal(aliasUI.window.document.querySelector('.dialog-back'),null,
+ 'Canceling alias change closes the confirmation');
+assert.equal(temp.call('bootstrap').data.product_aliases.find(a=>a.alias_id===chosenAlias.alias_id).product_id,
+ originalLinkedId,'Cancel does not change the OCR alias');
+chosenAliasRow.click();
+aliasModal=aliasUI.window.document.querySelector('.alias-product-picker-overlay');
+aliasModal.querySelector('[data-ui-choice="'+alternateMaster.product_id+'"]').click();
+aliasUI.window.document.querySelector('[data-dialog="confirmAliasLink"]').click();
+await waitFor(()=>aliasUI.window.KurashiLive.state().queued===0&&
+ temp.call('bootstrap').data.product_aliases.find(a=>a.alias_id===chosenAlias.alias_id)?.product_id===
+ alternateMaster.product_id,'Alias change reaches Sheets through existing queue');
+assert.equal(JSON.stringify(temp.call('bootstrap').data.record_items.map(line=>[line.record_item_id,line.product_id,line.alias_id])),
+ historicalLineIds,'Relinking the OCR name never rewrites saved receipt lines');
+const relinkedRow=aliasUI.window.document.querySelector('[data-alias-id="'+chosenAlias.alias_id+'"]');
+assert.ok(relinkedRow,'Alias remains visible after reassignment');
+relinkedRow.click();
+aliasModal=aliasUI.window.document.querySelector('.alias-product-picker-overlay');
+aliasModal.querySelector('[data-ui-choice=""]').click();
+assert.ok(aliasUI.window.document.querySelector('[data-dialog="confirmAliasLink"]'),
+ 'Unlinking uses the same selection and explicit confirmation');
+aliasUI.window.document.querySelector('[data-dialog="confirmAliasLink"]').click();
+await waitFor(()=>aliasUI.window.KurashiLive.state().queued===0&&
+ !temp.call('bootstrap').data.product_aliases.find(a=>a.alias_id===chosenAlias.alias_id)?.product_id,
+ 'Alias becomes unlinked without deleting the OCR dictionary entry');
+const unlinkedRow=aliasUI.window.document.querySelector('[data-alias-id="'+chosenAlias.alias_id+'"]');
+assert.ok(unlinkedRow?.textContent.includes('商品未紐付け'),
+ 'Unlinked OCR name is visible in the same list');
+unlinkedRow.click();
+aliasModal=aliasUI.window.document.querySelector('.alias-product-picker-overlay');
+aliasModal.querySelector('[data-ui-choice="'+originalLinkedId+'"]').click();
+aliasUI.window.document.querySelector('[data-dialog="confirmAliasLink"]').click();
+await waitFor(()=>aliasUI.window.KurashiLive.state().queued===0&&
+ temp.call('bootstrap').data.product_aliases.find(a=>a.alias_id===chosenAlias.alias_id)?.product_id===
+ originalLinkedId,'Original OCR mapping restored for later regression tests');
+assert.equal(JSON.stringify(temp.call('bootstrap').data.record_items.map(line=>[line.record_item_id,line.product_id,line.alias_id])),
+ historicalLineIds,'OCR mapping changes preserve all historical receipt item IDs');
+aliasUI.window.close();
+console.log('v86.1: OCR alias list, shared picker, IME, confirmation, unlink and history preservation OK');
 /* v64 migration: a previous schema must be upgraded in place. A failure after
  * the first historical row must allow a repeat without losing receipts or
  * adding duplicate OCR names. */

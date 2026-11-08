@@ -2693,6 +2693,36 @@ html,body{touch-action:pan-x pan-y}
  border-top:1px solid var(--line);padding:6px 0 8px
 }
 
+
+/* Alias management uses the existing card/list tokens; the picker only owns layout. */
+.alias-manage-row{gap:12px}
+.alias-manage-row .catalogue-row-body{min-width:0}
+.alias-more-action{display:flex;justify-content:center;margin:8px 0 18px}
+.alias-more-action>.tertiary{min-height:44px;padding:8px 16px}
+.alias-product-picker-overlay{z-index:110}
+.half-sheet.alias-product-picker-modal{
+ height:min(80dvh,720px);max-height:calc(100dvh - env(safe-area-inset-top) - 12px);
+ min-width:0;display:flex;flex-direction:column;overflow:hidden
+}
+.half-sheet.alias-product-picker-modal>.sheet-body{
+ flex:1 1 auto;min-height:0;min-width:0;width:100%;
+ display:flex;flex-direction:column;overflow-y:auto;
+ padding-bottom:calc(16px + env(safe-area-inset-bottom))
+}
+.alias-product-picker-content{
+ flex:1 1 auto;min-height:0;width:100%;min-width:0;
+ display:flex;flex-direction:column;gap:10px
+}
+.alias-product-picker-context{display:flex;flex-direction:column;gap:4px;min-width:0}
+.alias-product-picker-context strong{overflow-wrap:anywhere;font-size:var(--ui-list-name-font-size)}
+.alias-product-picker-context .hint{margin:0}
+.alias-product-picker-search{flex:0 0 auto;min-width:0;width:100%}
+.alias-product-picker-results{
+ flex:1 1 auto;min-height:0;width:100%;min-width:0;
+ display:flex;flex-direction:column;gap:5px;overflow-y:auto;
+ overscroll-behavior:contain;border-top:1px solid var(--line);padding:6px 0 8px
+}
+
 /* Shared floating secondary action: visually secondary to save.
    Keep the action aligned to the content edge on large screens. */
 .ui-floating-action{

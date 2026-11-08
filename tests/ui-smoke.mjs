@@ -25,11 +25,11 @@ const doc={
 const ctx={document:doc,localStorage:{getItem:k=>storage.get(k)??null,setItem:(k,v)=>storage.set(k,v),removeItem:k=>storage.delete(k)},
  navigator:{},window:{scrollTo(){},scrollY:0,KurashiReceiptValidation:validator,KurashiReceiptReview:review},crypto:{randomUUID:()=> 'test-id'},setTimeout:()=>0};
 const ui=vm.runInNewContext(source+`
-({listView,priceCompareView,pickerView,pickerResults,masterProductsView,masterProductRows,masterProductEditorView,masterGroupPickerView,masterGroupPickerRows,detailHomeView,detailAllView,receiptScanView,receiptChatGptView,recordDetailView,scanStoreNameIssue,scanValidPurchaseDate,scanReadableError,floatingActionPlacement,applyChatGptOcrAssistance,receiptOcrReference,receiptOcrRows,isUnconfirmedBarcodeLine,makeChatGptReceiptRebuildDraft,scanProductView,scanExistingProductView,scanChainForStore,scanAutolinkUnmatched,scanMatchProduct,render,initializeCompare,
+({listView,priceCompareView,pickerView,pickerResults,masterProductsView,masterProductRows,masterProductEditorView,masterGroupPickerView,masterGroupPickerRows,aliasManageView,aliasManageRows,aliasProductPickerView,aliasProductPickerRows,detailHomeView,detailAllView,receiptScanView,receiptChatGptView,recordDetailView,scanStoreNameIssue,scanValidPurchaseDate,scanReadableError,floatingActionPlacement,applyChatGptOcrAssistance,receiptOcrReference,receiptOcrRows,isUnconfirmedBarcodeLine,makeChatGptReceiptRebuildDraft,scanProductView,scanExistingProductView,scanChainForStore,scanAutolinkUnmatched,scanMatchProduct,render,initializeCompare,
  setProductGroup,reorderProducts,registeredProducts,convertQuantity,setOpenSwipe,storePickerChoices,
  chainMinima,priceCandidates,savePreviewRecord,periodStart,
  demoRecords,demoRecordItems,allPreviewRecords,allPreviewItems,
- setSelected(v){selected=v},setMasterProductId(v){masterProductId=v},setPage(v){page=v},setMode(v){priceScope=v},setDock(v){shopExpanded=v},
+ setSelected(v){selected=v},setMasterProductId(v){masterProductId=v},setAliasPickerId(v){aliasPickerId=v},setAliasQuery(v){aliasQuery=v;aliasVisibleLimit=100},setAliasVisibleLimit(v){aliasVisibleLimit=v},setPage(v){page=v},setMode(v){priceScope=v},setDock(v){shopExpanded=v},
  setPeriod(v){period=v},setQty(v){compareQuantity=v},setUnit(v){compareUnit=v},
  setNewRecordType(v){newRecordType=v},recordAddView,scanDate,
   detailLineName,settingsView,settingsSyncSummary,settingsLastSyncText,setRecordDetailId(v){recordDetailId=v},
@@ -124,6 +124,66 @@ assert.ok(source.includes("'master-group-search':{set:v=>{masterGroupQuery=v}")&
  'Shared IME-aware search, scrollable choices, and no dead unlink path');
 
 
+
+
+const masterCat=ui.catalogue(),originalAliases=masterCat.productAliases;
+masterCat.productAliases=Array.from({length:121},(_,i)=>({
+ aliasId:'test-alias-'+i,chainId:'c-a',
+ ocrName:'テスト印字名'+String(i).padStart(3,'0'),
+ normalizedAlias:'テスト印字名'+String(i).padStart(3,'0'),
+ productId:i===0?'p-milk-1':'',version:1
+}));
+masterCat.productAliases.push({aliasId:'local-unsynced',chainId:'c-a',
+ ocrName:'同期前の読み取り名',normalizedAlias:'同期前の読み取り名',
+ productId:'',version:1});
+ui.setAliasQuery('');
+const aliasList=ui.aliasManageView();
+assert.ok(aliasList.includes('id="alias-query"')&&
+ aliasList.includes('data-search-clear="alias-query"')&&
+ aliasList.includes('data-act="aliasPickerOpen"')&&
+ !aliasList.includes('data-alias-form=')&&
+ !aliasList.includes('data-ui-select="alias-product-'),
+ 'Alias list uses shared search and read-only cards without per-row dropdown forms');
+assert.equal((aliasList.match(/data-act="aliasPickerOpen"/g)||[]).length,100,
+ 'Initial alias list renders 100 cards, avoiding an unbounded DOM');
+assert.ok(aliasList.includes('さらに表示（残り22件）')&&
+ aliasList.includes('data-act="aliasMore"'),
+ 'More action shows remaining rows instead of silently hiding aliases');
+assert.ok(aliasList.includes('店舗：スーパー青空')&&
+ aliasList.includes('商品未紐付け'),
+ 'Alias row shows original OCR name, store and linked product without form controls');
+assert.ok(aliasList.includes('同期後に変更できます')&&
+ /data-alias-id="local-unsynced"[^>]*disabled/.test(aliasList),
+ 'Local pending OCR names are visibly disabled until they finish syncing');
+ui.setAliasVisibleLimit(200);
+const allAliasMarkup=ui.aliasManageRows();
+assert.ok(allAliasMarkup.includes('登録商品：おいしい牛乳'),
+ 'Linked master name is shown as soon as the linked alias enters the page');
+assert.equal((allAliasMarkup.match(/data-act="aliasPickerOpen"/g)||[]).length,122,
+ 'All aliases including beyond the original 100 can be reached');
+assert.ok(!allAliasMarkup.includes('data-act="aliasMore"'),
+ 'Pagination finishes when all rows are rendered');
+ui.setAliasQuery('テスト印字名120');
+assert.ok(ui.aliasManageRows().includes('テスト印字名120')&&
+ !ui.aliasManageRows().includes('テスト印字名119'),
+ 'Search covers the entire alias collection, not only the first 100');
+ui.setAliasPickerId('test-alias-0');
+const aliasSheet=ui.aliasProductPickerView();
+assert.ok(aliasSheet.includes('class="sheet-back alias-product-picker-overlay"')&&
+ aliasSheet.includes('class="half-sheet alias-product-picker-modal"')&&
+ aliasSheet.includes('id="alias-product-search"')&&
+ aliasSheet.includes('data-ui-choice=""')&&
+ aliasSheet.includes('data-ui-choice="p-milk-1"')&&
+ aliasSheet.includes('テスト印字名000'),
+ 'One common searchable sheet shows the selected OCR row, unlinked choice and products');
+assert.ok(source.includes("'alias-product-search':{set:v=>{aliasPickerQuery=v}")&&
+ source.includes("window.KurashiLive.linkAlias(alias.aliasId,p.productId||null)")&&
+ source.includes("if(action==='confirmAliasLink'")&&
+ !source.includes("if(form.dataset.aliasForm)")&&
+ css.includes('.alias-product-picker-results{'),
+ 'Alias picker uses shared IME handlers and the original linkAlias queue only after confirmation');
+masterCat.productAliases=originalAliases;
+ui.setAliasPickerId(null);ui.setAliasQuery('');
 
 const syncCase=(next={})=>ui.settingsSyncSummary({
  queued:0,error:'',loaded:true,cached:false,busy:false,syncing:false,
@@ -1503,7 +1563,7 @@ assert.ok(!JSON.stringify(p4Rebuild).includes('ocr-p4'),
 console.log('P4 common review adapter, provenance, row identity and P2 validation OK');
 
 // v0.73: Receipt OCR review information hierarchy; preserve validation/confirmation.
-assert.ok(source.includes("const APP_VERSION='0.86.0'"), 'UI review revision version is current');
+assert.ok(source.includes("const APP_VERSION='0.86.1'"), 'UI review revision version is current');
 assert.ok(source.includes("UI.sectionHeading({title:'読み取り状況'})"), 'OCR and ChatGPT appear under one section');
 assert.ok(source.includes("UI.sectionHeading({title:isShelf?'値札情報':'購入情報'})"), 'Receipt OCR review groups store and purchase date');
 assert.ok(source.includes("UI.sectionHeading({title:isShelf?'価格情報':'購入明細',subtitle:scanDraft.items.length+'件'+"), 'Receipt OCR review identifies item list and unmatched count');
