@@ -498,7 +498,7 @@ assert.ok(photoReview.includes('id="scanConfirmForm" class="scan-review" novalid
  'receipt save uses application validation and shared feedback');
 assert.ok(source.includes("function formSaveFeedback(")&&
  source.includes("formSaveFeedback(form,storeError,{fieldName:'chain'})")&&
- source.includes("formSaveFeedback(form,'購入日を入力してください。',{fieldName:'date'})")&&
+ source.includes("formSaveFeedback(form,scanDraft.recordType==='shelf'?'値札確認日を入力してください。':'購入日を入力してください。',{fieldName:'date'})")&&
  source.includes("formSaveFeedback(form,err.message||'保存できませんでした。通信状態を確認してください。')"),
  'receipt save failures use the same feedback helper across validation and async error');
 
@@ -1361,9 +1361,9 @@ console.log('P4 common review adapter, provenance, row identity and P2 validatio
 // v0.73: Receipt OCR review information hierarchy; preserve validation/confirmation.
 assert.ok(source.includes("const APP_VERSION='0.85.6'"), 'UI review revision version is current');
 assert.ok(source.includes("UI.sectionHeading({title:'読み取り状況'})"), 'OCR and ChatGPT appear under one section');
-assert.ok(source.includes("UI.sectionHeading({title:'購入情報'})"), 'Receipt OCR review groups store and purchase date');
-assert.ok(source.includes("UI.sectionHeading({title:'購入明細',subtitle:scanDraft.items.length+'件'+"), 'Receipt OCR review identifies item list and unmatched count');
-assert.ok(source.includes("UI.sectionHeading({title:'合計の確認'})"), 'Receipt OCR review makes reconciliation distinct');
+assert.ok(source.includes("UI.sectionHeading({title:isShelf?'値札情報':'購入情報'})"), 'Receipt OCR review groups store and purchase date');
+assert.ok(source.includes("UI.sectionHeading({title:isShelf?'価格情報':'購入明細',subtitle:scanDraft.items.length+'件'+"), 'Receipt OCR review identifies item list and unmatched count');
+assert.ok(source.includes("UI.sectionHeading({title:isShelf?'価格の確認':'合計の確認'})"), 'Receipt OCR review makes reconciliation distinct');
 assert.ok(!source.includes('photoReviewOk'), 'Photo reconstruction no longer requires a formal checkbox');
 assert.ok(source.includes('scan-total-warning')&&source.includes('scan-count-warning'),
  'Only detected discrepancies receive comparison notes');
