@@ -1244,6 +1244,7 @@ function settingsView(){
      ${lastSync?`<div class="settings-data-row"><dt>最終同期</dt><dd>${esc(lastSync)}</dd></div>`:''}
     </dl>
     ${sync.note?`<p class="settings-sync-note hint" ${s.error?'role="alert"':''}>${esc(sync.note)}</p>`:''}
+    ${s.temporary?'<p class="settings-sync-note hint">Googleログイン一時停止中</p>':''}
     ${s.error&&s.queued?'<p class="settings-sync-note hint">通信が回復すると自動で再送します。未反映の操作は端末に残っています。</p>':''}
     ${s.loginRequired?(s.signedIn?UI.button({label:'ログアウト',variant:'secondary',action:'liveLogout'}):'<div id="google-login-button"></div>'):''}
    </section>
