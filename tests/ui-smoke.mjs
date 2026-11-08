@@ -152,11 +152,11 @@ assert.ok(aliasList.includes('さらに表示（残り22件）')&&
 assert.ok(aliasList.includes('店舗：スーパー青空')&&
  aliasList.includes('商品未紐付け'),
  'Alias row shows original OCR name, store and linked product without form controls');
-assert.ok(aliasList.includes('同期後に変更できます')&&
- /data-alias-id="local-unsynced"[^>]*disabled/.test(aliasList),
- 'Local pending OCR names are visibly disabled until they finish syncing');
 ui.setAliasVisibleLimit(200);
 const allAliasMarkup=ui.aliasManageRows();
+assert.ok(allAliasMarkup.includes('同期後に変更できます')&&
+ /data-alias-id="local-unsynced"[^>]*disabled/.test(allAliasMarkup),
+ 'Local pending OCR names are visibly disabled after loading their page');
 assert.ok(allAliasMarkup.includes('登録商品：おいしい牛乳'),
  'Linked master name is shown as soon as the linked alias enters the page');
 assert.equal((allAliasMarkup.match(/data-act="aliasPickerOpen"/g)||[]).length,122,
