@@ -117,7 +117,7 @@ assert.equal(signed.db.users.length,2,'verified account is bound to household');
 assert.ok(client.includes('authRequired=true'),'client supports auth restoration');
 assert.ok(client.includes("document.addEventListener('DOMContentLoaded'"),'automatic initial load');
 assert.ok(client.includes('kurashi-stock-operations-v1'),'durable IndexedDB queue');
-assert.ok(app.includes('Google Sheets 接続済み（ログイン一時停止中）'),'Settings communicates temporary mode');
+assert.ok(app.includes('Googleログイン一時停止中'),'Settings communicates temporary mode without equating cached data with a server connection');
 assert.ok(!app.includes('Googleシートから読み込み'),'no manual reload button');
 
 
@@ -281,6 +281,8 @@ assert.ok(liveSettings.textContent.includes('最終同期'),
  'The last successful server contact is displayed when it exists');
 assert.ok(!liveSettings.querySelector('.tag'),
  'Old connected-state badge no longer contradicts current errors or cache');
+assert.ok(liveSettings.textContent.includes('Googleログイン一時停止中'),
+ 'The live settings screen still communicates temporary authentication mode');
 assert.ok(liveSettings.querySelector('[data-act="masterProducts"]')&&
  liveSettings.querySelector('[data-act="aliasManage"]'),
  'Both pre-existing management routes remain reachable');
