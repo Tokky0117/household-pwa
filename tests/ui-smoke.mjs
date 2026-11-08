@@ -478,7 +478,7 @@ assert.equal((photoReview.match(/data-act="scanOpenCurrentPhoto"/g)||[]).length,
  'One fixed photo action on the review screen');
 assert.ok(photoReview.includes('class="ui-floating-action" data-ui-floating-action')&&
  photoReview.includes('class="secondary ui-floating-action-button"')&&
- photoReview.includes('data-ui-floating-avoid="#scanConfirmForm button[type=&quot;submit&quot;]"')===false,
+ photoReview.includes('data-ui-floating-avoid="#scanConfirmForm button[type=&quot;submit&quot;]"'),
  'Floating photo trigger reuses the shared secondary button');
 assert.ok(!photoReview.includes('選択した写真')&&
  !photoReview.includes('class="scan-photo-section"')&&
