@@ -463,9 +463,9 @@ assert.ok(manualAdd.includes('name="name-1"')&&manualAdd.includes('placeholder="
  manualAdd.indexOf('name="name-1"')>manualAdd.indexOf('name="amount-1"'),
  'Manual name is optional and placed after product, quantity and subtotal');
 assert.ok(!manualAdd.includes('読み取り結果の確認')&&
- manualAdd.indexOf('読み取り状況')<manualAdd.indexOf('購入情報')&&
- manualAdd.indexOf('購入情報')<manualAdd.indexOf('購入明細')&&
- manualAdd.indexOf('購入明細')<manualAdd.indexOf('合計の確認')&&
+ manualAdd.indexOf('>読み取り状況</h2>')<manualAdd.indexOf('>購入情報</h2>')&&
+ manualAdd.indexOf('>購入情報</h2>')<manualAdd.indexOf('>購入明細</h2>')&&
+ manualAdd.indexOf('>購入明細</h2>')<manualAdd.indexOf('>合計の確認</h2>')&&
  manualAdd.indexOf('合計の確認')<manualAdd.indexOf('class="panel scan-review-total"')&&
  manualAdd.includes('class="tertiary" data-act="scanAddItem"'),
  'Review has four equal-level section headings, with the add action using shared tertiary');
