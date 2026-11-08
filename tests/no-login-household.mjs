@@ -2208,9 +2208,20 @@ chosenAliasRow.click();
 aliasModal=aliasUI.window.document.querySelector('.alias-product-picker-overlay');
 aliasModal.querySelector('[data-ui-choice="'+alternateMaster.product_id+'"]').click();
 aliasUI.window.document.querySelector('[data-dialog="confirmAliasLink"]').click();
-await waitFor(()=>aliasUI.window.KurashiLive.state().queued===0&&
- temp.call('bootstrap').data.product_aliases.find(a=>a.alias_id===chosenAlias.alias_id)?.product_id===
- alternateMaster.product_id,'Alias change reaches Sheets through existing queue');
+try{
+ await waitFor(()=>aliasUI.window.KurashiLive.state().queued===0&&
+  temp.call('bootstrap').data.product_aliases.find(a=>a.alias_id===chosenAlias.alias_id)?.product_id===
+  alternateMaster.product_id,'Alias change reaches Sheets through existing queue');
+}catch(err){
+ console.log('ALIAS DIAGNOSTIC',JSON.stringify({
+  state:aliasUI.window.KurashiLive.state(),
+  serverAlias:temp.call('bootstrap').data.product_aliases.find(a=>a.alias_id===chosenAlias.alias_id),
+  originalLinkedId,desiredProductId:alternateMaster.product_id,
+  pageText:aliasUI.window.document.querySelector('#alias-results')?.textContent.slice(0,350),
+  notice:aliasUI.window.document.querySelector('.ui-action-notice')?.textContent
+ }));
+ throw err;
+}
 assert.equal(JSON.stringify(temp.call('bootstrap').data.record_items.map(line=>[line.record_item_id,line.product_id,line.alias_id])),
  historicalLineIds,'Relinking the OCR name never rewrites saved receipt lines');
 const relinkedRow=aliasUI.window.document.querySelector('[data-alias-id="'+chosenAlias.alias_id+'"]');
