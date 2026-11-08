@@ -474,6 +474,15 @@ assert.ok(!manualAdd.includes('name="name-0"')&&manualAdd.includes('data-ocr-row
 // The selection grid remains before OCR; reviewed receipts use one fixed photo action.
 ui.setScanPhotos([{name:'receipt-1.jpg'},{name:'receipt-2.jpg'}]);
 const photoReview=ui.receiptScanView();
+assert.ok(photoReview.includes('id="scanConfirmForm" class="scan-review" novalidate')&&
+ photoReview.includes('id="scan-save-feedback" role="alert" hidden'),
+ 'receipt save uses application validation and shared feedback');
+assert.ok(source.includes("function formSaveFeedback(")&&
+ source.includes("formSaveFeedback(form,storeError,{fieldName:'chain'})")&&
+ source.includes("formSaveFeedback(form,'購入日を入力してください。',{fieldName:'date'})")&&
+ source.includes("formSaveFeedback(form,err.message||'保存できませんでした。通信状態を確認してください。')"),
+ 'receipt save failures use the same feedback helper across validation and async error');
+
 assert.equal((photoReview.match(/data-act="scanOpenCurrentPhoto"/g)||[]).length,1,
  'One fixed photo action on the review screen');
 assert.ok(photoReview.includes('class="ui-floating-action" data-ui-floating-action')&&
@@ -498,6 +507,13 @@ assert.ok(beforeScan.includes('選択した写真')&&
  !beforeScan.includes('data-act="scanOpenCurrentPhoto"'),
  'Pre-OCR photo selection and deletion remain available');
 ui.setScanPhotos([]);
+const resumedReviewWithoutPhoto=ui.receiptScanView();
+assert.ok(resumedReviewWithoutPhoto.includes('data-act="scanRestorePhoto"')&&
+ !resumedReviewWithoutPhoto.includes('data-act="scanOpenCurrentPhoto"'),
+ 'a resumed receipt without in-memory photos offers reselect instead of a dead photo button');
+assert.ok(source.includes('const restoring=scanRestoringPhoto')&&
+ source.includes("if(!restoring){scanDraft=null;scanAssistMessage='';scanToken++;"),
+ 'selecting reference photos does not erase receipt review data');
 assert.equal(ui.shouldHideFloatingAction({anchorRect:{top:710,bottom:760},viewportHeight:700}),false);
 assert.equal(ui.shouldHideFloatingAction({anchorRect:{top:680,bottom:750},viewportHeight:700}),true,
  'Fixed photo button hides when save becomes visible');
@@ -1262,7 +1278,7 @@ assert.ok(!JSON.stringify(p4Rebuild).includes('ocr-p4'),
 console.log('P4 common review adapter, provenance, row identity and P2 validation OK');
 
 // v0.73: Receipt OCR review information hierarchy; preserve validation/confirmation.
-assert.ok(source.includes("const APP_VERSION='0.85.0'"), 'UI review revision version is current');
+assert.ok(source.includes("const APP_VERSION='0.85.1'"), 'UI review revision version is current');
 assert.ok(source.includes("UI.sectionHeading({title:'読み取り状況'})"), 'OCR and ChatGPT appear under one section');
 assert.ok(source.includes("UI.sectionHeading({title:'購入情報'})"), 'Receipt OCR review groups store and purchase date');
 assert.ok(source.includes("UI.sectionHeading({title:'購入明細',subtitle:scanDraft.items.length+'件'+"), 'Receipt OCR review identifies item list and unmatched count');
