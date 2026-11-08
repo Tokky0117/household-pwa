@@ -1080,7 +1080,7 @@ assert.equal(fabricated.items[0].nameCandidate,'',
  'AI may not convert an isolated barcode into a named merchandise row');
 assert.equal(fabricated.items[0].productId,'',
  'a stale automatic barcode product link is not authoritative');
-assert.ok(source.includes('scanDraft.items.some(isUnconfirmedBarcodeLine)'),
+assert.ok(source.includes('scanDraft.items.findIndex(isUnconfirmedBarcodeLine)'),
  'unchecked barcode rows are blocked before they reach the Sheets save queue');
 assert.equal(ui.isUnconfirmedBarcodeLine({ocrRawName:'2000211787545',savedOcrName:true}),false,
  'editing an existing historical receipt does not require rewriting its old OCR names');
