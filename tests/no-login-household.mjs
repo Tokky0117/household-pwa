@@ -2288,8 +2288,10 @@ optionalUI.window.document.querySelector('#chatgpt-input').value=JSON.stringify(
 await completeOcrImport(optionalUI);
 // Real user recovery: a resumed receipt loses in-memory photos, but selecting
 // the original reference image must not discard already imported item changes.
-const restorePhoto=optionalUI.window.document.querySelector('[data-act="scanRestorePhoto"]');
-assert.ok(restorePhoto,'resumed receipt offers a reference-photo reselect action');
+const restorePhoto=optionalUI.window.document.querySelector('[data-act="scanOpenCurrentPhoto"]');
+assert.ok(restorePhoto,'resumed receipt exposes the same fixed photo action even without reference bytes');
+assert.equal(restorePhoto.closest('.ui-floating-action')?.hidden,false,
+ 'the fixed photo action is not hidden merely because save is visible');
 const beforeRestore=optionalUI.window.document.querySelector('[name="amount-0"]').value;
 const referencePicker=optionalUI.window.document.querySelector('#scan-add-picker');
 Object.defineProperty(referencePicker,'files',{configurable:true,value:[
@@ -2297,8 +2299,8 @@ Object.defineProperty(referencePicker,'files',{configurable:true,value:[
 ]});
 restorePhoto.click();
 referencePicker.dispatchEvent(new optionalUI.window.Event('input',{bubbles:true}));
-assert.ok(optionalUI.window.document.querySelector('[data-act="scanOpenCurrentPhoto"]'),
- 'photo confirmation action appears after selecting a reference image');
+assert.equal(optionalUI.window.document.querySelectorAll('[data-act="scanOpenCurrentPhoto"]').length,1,
+ 'reselecting the photo keeps a single fixed confirmation action');
 assert.equal(optionalUI.window.document.querySelector('[name="amount-0"]').value,beforeRestore,
  'reselecting a reference photo preserves existing OCR and ChatGPT corrections');
 assert.equal(optionalUI.window.document.querySelectorAll('.scan-review-item').length,1,
