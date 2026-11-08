@@ -1,4 +1,4 @@
-const APP_VERSION='0.85.0';
+const APP_VERSION='0.85.1';
 const CATS=['飲食','キッチン','洗面・風呂','洗濯・掃除','その他'];
 const liveMode=!!window.KurashiLive; // Data source only; original Preview v46 UI components remain.
 const SEED=[['牛乳',0,true],['麦茶',0,false],['コーヒー',0,true],['卵',0,false],['キッチンペーパー',1,false],['ラップ',1,true],['食器用洗剤',1,true],['シャンプー',2,false],['歯磨き粉',2,true],['ハンドソープ',2,false],['洗濯洗剤',3,false],['柔軟剤',3,true],['トイレットペーパー',3,false],['乾電池',4,true],['ティッシュ',4,true]];
@@ -175,7 +175,7 @@ let items=load(),tab='items',page='list',selected=null,query='',onlyOut=false,co
 const app=document.getElementById('app');
 let newRecordType='receipt';
 // Native iPhone chooser: Photo Library, Take Photo, or Files. Photos stay in memory.
-let scanPhotos=[],scanIndex=0,scanBusy=false,scanDraft=null,scanStatus='',scanAssistMessage='',scanToken=0,scanPhotosExpanded=true,scanNewStoreMode=false,scanReturnScrollY=null;
+let scanPhotos=[],scanIndex=0,scanBusy=false,scanDraft=null,scanStatus='',scanAssistMessage='',scanToken=0,scanPhotosExpanded=true,scanNewStoreMode=false,scanReturnScrollY=null,scanRestoringPhoto=false;
 const scanPhotoUrls=new Map(); // Memory-only thumbnails; never persisted.
 function scanThumbnail(file){if(scanPhotoUrls.has(file))return scanPhotoUrls.get(file);const create=window.URL?.createObjectURL;if(typeof create!=='function')return '';const url=create.call(window.URL,file);scanPhotoUrls.set(file,url);return url;}
 function releaseScanThumbnail(file){const url=scanPhotoUrls.get(file);if(!url)return;scanPhotoUrls.delete(file);window.URL?.revokeObjectURL?.(url);}
@@ -191,7 +191,7 @@ function saveScanDraft(){
  scanDraftWrites.catch(err=>console.warn('レシート下書き保存失敗',err));
 }
 function resetScan({keepDraft=false}={}){
- scanToken++;closeScanViewer();clearScanThumbnails();scanPhotos=[];scanIndex=0;scanBusy=false;scanStatus='';scanAssistMessage='';scanPhotosExpanded=true;
+ scanToken++;closeScanViewer();clearScanThumbnails();scanPhotos=[];scanIndex=0;scanBusy=false;scanStatus='';scanAssistMessage='';scanPhotosExpanded=true;scanRestoringPhoto=false;
  if(!keepDraft){scanDraft=null;scanNewStoreMode=false;scanReturnScrollY=null;saveScanDraft();}
 }
 // OCR row IDs and printed names are authoritative; AI may only suggest a product name.
@@ -589,14 +589,15 @@ function scanReadingStatusView(){
   ${UI.sectionHeading({title:'読み取り状況'})}
   <p id="scan-status" role="status" class="hint" ${summary?'':'hidden'}>${esc(summary)}</p>
   ${scanAssistView()}
-  ${!scanPhotos.length?'<p class="hint scan-photo-unavailable">写真は残っていません。元のレシートを確認してください。</p>':''}
+  ${!scanPhotos.length?`<div class="scan-photo-unavailable"><p class="hint">写真は保存されていません。</p>
+  ${UI.button({label:'写真を選び直す',variant:'secondary',action:'scanRestorePhoto',icon:'camera'})}</div>`:''}
  </section>`;
 }
 function scanFormView(){
  if(!scanDraft)return '';
  const reviewModel=window.KurashiReceiptReview.buildReviewModel(scanDraft);
  const unmatchedCount=scanDraft.items.filter(x=>!scanResolvedProductId(x)).length;
- return `<form id="scanConfirmForm" class="scan-review">
+ return `<form id="scanConfirmForm" class="scan-review" novalidate>
   <section class="scan-receipt-meta" aria-label="購入情報">
   ${UI.sectionHeading({title:'購入情報'})}
   <div class="scan-store-picker">
@@ -614,6 +615,7 @@ function scanFormView(){
     <div class="scan-item-head"><strong>明細 ${i+1}</strong><div class="scan-item-tools">
      <button type="button" class="scan-item-tool" data-act="scanRemoveItem" data-scan-row="${i}">${miniIcon('trash')}<span>削除</span></button>
     </div></div>
+    ${isUnconfirmedBarcodeLine(item)?'<p class="scan-name-warning">商品コードだけの明細を確認</p>':''}
     ${item.inputOrigin==='manual'?'':item.inputOrigin==='photo'||item.ocrRawName===undefined?
      UI.formField({id:'scan-name-'+i,name:'name-'+i,label:'読み取り名',
       value:item.name,maxlength:120,required:true,hint:true,fieldClass:'scan-read-name'}):
@@ -655,6 +657,7 @@ function scanFormView(){
    <div id="scan-total-warning" class="scan-state-note scan-state-warning scan-compare-note" role="status" hidden></div>
    <div id="scan-count-warning" class="scan-state-note scan-state-warning scan-compare-note" role="status" hidden></div>
   </div>
+  ${UI.formFeedback({id:'scan-save-feedback'})}
   <button class="primary" type="submit">${scanDraft.recordId?'修正したレシートを保存':'保存'}</button>
  </form>`;
 }
@@ -890,6 +893,7 @@ const UI={
   },
   textAction({label,action,arrow=true,row=null,id=''}){return `<button type="button" class="ui-text-action" ${id?'id="'+esc(id)+'"':''} data-act="${esc(action)}" ${Number.isInteger(row)?'data-scan-row="'+row+'"':''}><span>${esc(label)}</span>${arrow?chevron('right'):''}</button>`;},
   statusMessage({text,kind='neutral'}){return `<p class="ui-status-message is-${esc(kind)}" role="status">${esc(text)}</p>`;},
+  formFeedback({id}){return `<p class="ui-form-feedback" id="${esc(id)}" role="alert" hidden></p>`;},
   recordRow({id,title,subtitle,amount=null,draft=false}){return `<button type="button" class="panel ui-record-row" data-act="${draft?'resumeScanDraft':'recordDetail'}" ${draft?'':`data-record-id="${esc(id)}"`}>
    <span class="ui-record-row-copy"><strong>${esc(title)}</strong><span>${esc(subtitle)}</span>${amount===null?'':`<strong class="ui-record-amount">${yen(amount)}</strong>`}</span>
    ${chevron('right')}</button>`;},
@@ -1307,10 +1311,10 @@ function setupFloatingAction(){
  floatingActionUpdate=()=>{
   if(!floating.isConnected)return;
   const active=document.activeElement;
-  const editing=!!active?.matches?.('input,textarea,select,[contenteditable="true"]');
   const viewportHeight=window.visualViewport?.height||window.innerHeight||0;
   const keyboardOpen=!!window.visualViewport?.height&&
    Number(window.innerHeight)-window.visualViewport.height>120;
+  const editing=keyboardOpen&&!!active?.matches?.('input,textarea,select,[contenteditable="true"]');
   floating.hidden=shouldHideFloatingAction({
    anchorRect:anchor.getBoundingClientRect(),viewportHeight,editing,keyboardOpen,
    overlayOpen:!!dialog||!!storePickerTarget||!!app.querySelector?.('.sheet-back')
@@ -1323,7 +1327,7 @@ function setupFloatingAction(){
  }
 }
 window.addEventListener?.('resize',()=>floatingActionUpdate?.(),{passive:true});
-window.addEventListener?.('scroll',()=>{if(!floatingActionObserver)floatingActionUpdate?.()},{passive:true});
+window.addEventListener?.('scroll',()=>floatingActionUpdate?.(),{passive:true});
 window.visualViewport?.addEventListener?.('resize',()=>floatingActionUpdate?.());
 document.addEventListener('focusin',()=>floatingActionUpdate?.());
 document.addEventListener('focusout',()=>window.requestAnimationFrame?
@@ -1361,6 +1365,19 @@ function inlineActionNotice(anchor,message){
   note.style.top=Math.min(window.innerHeight-72,rect.bottom+8)+'px';
   note.style.left=Math.max(10,Math.min(rect.left,window.innerWidth-240))+'px';
  }else anchor.insertAdjacentElement('afterend',note);
+}
+// One shared feedback path for blocked form submits.
+function formSaveFeedback(form,message,{fieldName='',row=null}={}){
+ const note=form.querySelector('.ui-form-feedback');
+ if(note){note.textContent=message;note.hidden=false;}
+ const target=(fieldName?form.elements.namedItem(fieldName)?.closest?.('.formfield'):null)||
+  (Number.isInteger(row)?form.querySelectorAll('.scan-review-item')[row]:null)||
+  form.querySelector('.formfield.ui-field-error')||note;
+ target?.scrollIntoView?.({block:'center',behavior:'auto'});
+}
+function clearFormSaveFeedback(form){
+ const note=form?.querySelector('.ui-form-feedback');
+ if(note){note.textContent='';note.hidden=true;}
 }
 function fieldNotice(form,message,fieldId){
  clearToast();
@@ -1552,13 +1569,16 @@ function acceptReceiptPhotos(picker){
  if(!files.length){picker.value='';return;} // Cancel is never a selection.
  completedPhotoPickers.add(picker);
  if(picker.id==='receipt-source-picker')resetScan();
+ const restoring=scanRestoringPhoto&&picker.id==='scan-add-picker'&&!!scanDraft;
+ scanRestoringPhoto=false;
  if(scanPhotos.length+files.length>6){
   scanStatus='一度に読み込める写真は最大6枚です。';
   picker.value='';render();return;
  }
- scanPhotos.push(...files);scanIndex=scanPhotos.length-1;scanPhotosExpanded=true;
- page='recordScan';scanDraft=null;scanAssistMessage='';scanToken++;
- scanStatus=files.length+'枚の写真を追加しました。';
+ scanPhotos.push(...files);scanIndex=restoring?0:scanPhotos.length-1;scanPhotosExpanded=true;
+ page='recordScan';
+ if(!restoring){scanDraft=null;scanAssistMessage='';scanToken++;
+  scanStatus=files.length+'枚の写真を追加しました。';}
  picker.value=''; // Same photo can be selected again.
  render();
 }
@@ -1569,8 +1589,9 @@ for(const type of ['input','change'])document.addEventListener(type,e=>{
 // Safari's native Photo Library may report cancellation separately from
 // 'change'. Reset only the chooser's temporary value, not committed photos.
 document.addEventListener('cancel',e=>{
- if(e.target.id==='receipt-source-picker'||e.target.id==='scan-add-picker')
-  e.target.value='';
+ if(e.target.id==='receipt-source-picker'||e.target.id==='scan-add-picker'){
+  scanRestoringPhoto=false;e.target.value='';
+ }
 },true);
 app.addEventListener('change',e=>{
  if(e.target.id==='scan-chain'){
@@ -1690,8 +1711,10 @@ app.addEventListener('submit',e=>{e.preventDefault();const form=e.target;const d
   return;
  }
  if(form.id==='scanConfirmForm'){
-  if(!liveMode){fieldNotice(form,'正式保存はSheets接続時に利用できます');return;}
-  if(!scanDraft||!scanDraft.items.length){fieldNotice(form,'保存する明細がありません');return;}
+  clearFormSaveFeedback(form);
+  if(!liveMode){formSaveFeedback(form,'保存機能を利用できません。接続状態を確認してください。');return;}
+  if(!scanDraft||!scanDraft.items.length){formSaveFeedback(form,'保存する明細がありません。');return;}
+  refreshScanTotalUI();
   const lines=scanDraft.items.map((item,i)=>{
    const verified=['manual','photo'].includes(item.inputOrigin)||item.ocrRawName===undefined;
    const confirmedName=verified?String(d.get('name-'+i)||'').trim():'';
@@ -1706,23 +1729,30 @@ app.addEventListener('submit',e=>{e.preventDefault();const form=e.target;const d
     category_id:null
    };
   });
-  if(scanDraft.items.some(isUnconfirmedBarcodeLine)){
-   fieldNotice(form,'商品コードのみの行は保存できません。写真からの全面再解析を使用するか、不要な行を削除してください');return;
+  const codeOnlyRow=scanDraft.items.findIndex(isUnconfirmedBarcodeLine);
+  if(codeOnlyRow>=0){
+   formSaveFeedback(form,'商品コードだけの明細を確認するか、不要な明細を削除してください。',{row:codeOnlyRow});return;
   }
-  if(lines.some((x,i)=>(!x.raw_name&&!x.confirmed_name&&scanDraft.items[i]?.inputOrigin!=='manual')||
+  const badRow=lines.findIndex((x,i)=>(!x.raw_name&&!x.confirmed_name&&scanDraft.items[i]?.inputOrigin!=='manual')||
      !Number.isSafeInteger(x.quantity)||x.quantity<1||
-     !Number.isSafeInteger(x.amount_tax_included)||x.amount_tax_included<0)){
-   refreshScanTotalUI();fieldNotice(form,'赤い項目を修正してください');return;
+     !Number.isSafeInteger(x.amount_tax_included)||x.amount_tax_included<0);
+  if(badRow>=0){
+   const x=lines[badRow],item=scanDraft.items[badRow];
+   const badName=!x.raw_name&&!x.confirmed_name&&item.inputOrigin!=='manual';
+   const badQty=!Number.isSafeInteger(x.quantity)||x.quantity<1;
+   formSaveFeedback(form,'赤い項目を修正してください。',{
+    fieldName:(badName?'name-':badQty?'qty-':'amount-')+badRow
+   });return;
   }
   const chain_id=String(d.get('chain')||'');
   const storeName=String(d.get('chain_name')||'').trim();
   const storeError=chain_id==='__new__'?scanStoreNameIssue(storeName):
    !catalogue.chains.some(c=>c.id===chain_id)?'店舗を選択':'';
   if(storeError){
-   refreshScanTotalUI();fieldNotice(form,storeError);return;
+   formSaveFeedback(form,storeError,{fieldName:'chain'});return;
   }
   if(!scanValidPurchaseDate(String(d.get('date')||''))){
-   refreshScanTotalUI();fieldNotice(form,'購入日を入力してください');return;
+   formSaveFeedback(form,'購入日を入力してください。',{fieldName:'date'});return;
   }
   const submit=form.querySelector('[type="submit"]');if(submit?.disabled)return;
   if(submit)submit.disabled=true;
@@ -1748,7 +1778,7 @@ app.addEventListener('submit',e=>{e.preventDefault();const form=e.target;const d
    resetScan();page='list';tab='receipt';render();
   }).catch(err=>{
    if(submit)submit.disabled=false;
-   fieldNotice(form,err.message||'保存できませんでした');
+   formSaveFeedback(form,err.message||'保存できませんでした。通信状態を確認してください。');
   });
   return;
  }
@@ -2076,7 +2106,13 @@ if(action==='resumeScanDraft'){
  }).catch(e=>say(e?.message||'下書きを再開できません'));return;
 }
 if(action==='scanAddPhotos'){
- if(!scanBusy)openReceiptPhotoPicker(document.getElementById('scan-add-picker'));return;
+ if(!scanBusy){scanRestoringPhoto=false;openReceiptPhotoPicker(document.getElementById('scan-add-picker'));}return;
+}
+if(action==='scanRestorePhoto'){
+ if(page==='recordScan'&&scanDraft&&!scanPhotos.length){
+  scanRestoringPhoto=true;openReceiptPhotoPicker(document.getElementById('scan-add-picker'));
+ }
+ return;
 }
 if(action==='recordDetail'){
  recordDetailOrigin=page==='receiptAll'?'receiptAll':'list';recordDetailId=el.dataset.recordId;page='recordDetail';render();return;
@@ -2611,6 +2647,7 @@ app.addEventListener('input',e=>{
  }
  if(e.target.matches('input[type="date"][name="date"]'))refreshReceiptDateDisplay(e.target);
  if(page==='recordScan'&&e.target.closest('#scanConfirmForm')){
+  clearFormSaveFeedback(e.target.closest('#scanConfirmForm'));
   const qty=e.target;
   if(qty.matches('input[name^="qty-"]')){
    const index=Number(qty.name.slice(4)),item=scanDraft?.items[index];
