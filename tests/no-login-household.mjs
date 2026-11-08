@@ -2267,7 +2267,8 @@ await waitFor(()=>optionalUI.window.KurashiLive.state().loaded,'optional detail 
 optionalUI.window.document.querySelector('[data-tab="receipt"]').click();
 prepareOcrImport(optionalUI);
 const knownForOptional=temp.call('bootstrap').data.stores[0].canonical_name;
-const receiptBeforeOptional=temp.call('bootstrap').data.records.length;
+const priorOptionalRecordIds=new Set(temp.call('bootstrap').data.records.map(r=>r.record_id));
+const receiptBeforeOptional=priorOptionalRecordIds.size;
 optionalUI.window.document.querySelector('#chatgpt-input').value=JSON.stringify({
  version:'kurashi-receipt-import-1',purchaseDate:'2026-11-08',storeName:knownForOptional,
  receiptTotal:300,printedCount:2,items:[{
@@ -2292,7 +2293,8 @@ optionalForm.dispatchEvent(new optionalUI.window.Event('submit',{bubbles:true,ca
 await waitFor(()=>temp.call('bootstrap').data.records.length===receiptBeforeOptional+1,
  'receipt with nameless manual amount is saved to Sheets through the operation queue');
 const afterOptional=temp.call('bootstrap').data;
-const optionalRecord=afterOptional.records.find(r=>r.record_date==='2026-11-08');
+const optionalRecord=afterOptional.records.find(r=>!priorOptionalRecordIds.has(r.record_id));
+assert.equal(optionalRecord?.record_date,'2026-11-08','the newly saved receipt has the expected purchase date');
 assert.ok(optionalRecord,'new record can be retrieved');
 const optionalDetails=afterOptional.record_items.filter(x=>x.record_id===optionalRecord.record_id);
 assert.equal(optionalDetails.length,2);
