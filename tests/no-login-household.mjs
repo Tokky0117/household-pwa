@@ -267,6 +267,25 @@ const appVersion=app.match(/^const APP_VERSION='(\d+\.\d+\.\d+)';/m)?.[1];
 assert.ok(appVersion,'app.js declares a semantic app version');
 assert.ok(c.window.document.body.textContent.includes('試作 v'+appVersion),
  'Settings shows the current app version without hard-coding an old release');
+const liveSettings=c.window.document.querySelector('.settings-overview');
+assert.ok(liveSettings,'Live settings uses the new section-based overview');
+assert.equal(liveSettings.querySelectorAll('.settings-overview-section').length,3,
+ 'Sync, product master, and OCR alias management are distinct settings sections');
+assert.equal(liveSettings.querySelectorAll('.panel').length,0,
+ 'Settings content is not wrapped in decorative cards');
+assert.equal(liveSettings.querySelector('#settings-sync-status')?.textContent,'未反映の操作なし',
+ 'A completed queue is displayed without claiming ongoing server connectivity');
+assert.ok(liveSettings.querySelector('.settings-data-row dt')?.textContent==='同期状態',
+ 'Sync status has a clear key-value label');
+assert.ok(liveSettings.textContent.includes('最終同期'),
+ 'The last successful server contact is displayed when it exists');
+assert.ok(!liveSettings.querySelector('.tag'),
+ 'Old connected-state badge no longer contradicts current errors or cache');
+assert.ok(liveSettings.querySelector('[data-act="masterProducts"]')&&
+ liveSettings.querySelector('[data-act="aliasManage"]'),
+ 'Both pre-existing management routes remain reachable');
+assert.ok(liveSettings.querySelector('.settings-version-row'),
+ 'Version is moved to the bottom of the overview');
 
 // New item IDs can be referenced by edits/hides before the first GAS save.
 online=false;

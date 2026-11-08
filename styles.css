@@ -1433,6 +1433,20 @@ html,body {
   padding: 15px 16px;
 }
 
+/* Settings: sections instead of nested panels; state is a status, not a connected badge. */
+.settings-overview{padding-bottom:calc(110px + env(safe-area-inset-bottom))}
+.settings-overview-section{padding:0 0 18px;margin:0 0 18px;border-bottom:1px solid var(--line)}
+.settings-overview-section .ui-section-heading{margin-bottom:14px}
+.settings-data-list{margin:0}
+.settings-data-row{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin:0 0 var(--ui-field-group-gap)}
+.settings-data-row dt{flex:none;color:var(--muted);font-size:var(--ui-field-label-font-size);font-weight:var(--ui-field-label-font-weight);line-height:1.4}
+.settings-data-row dd{flex:1;min-width:0;margin:0;text-align:right;overflow-wrap:anywhere;font-size:var(--ui-value-font-size);font-weight:var(--ui-value-font-weight);line-height:1.4}
+.settings-sync-note{margin:5px 0 10px;overflow-wrap:anywhere}
+.settings-overview-section>.secondary{min-height:44px;margin-top:10px}
+.settings-link-row .ui-text-action{width:100%;min-height:44px;justify-content:space-between;padding:8px 0;text-align:left}
+.settings-version-row{display:flex;align-items:baseline;justify-content:space-between;gap:12px;padding:4px 0 16px;color:var(--muted);font-size:13px}
+.settings-version-row>span:last-child{text-align:right}
+
 .setting-entry {
   display: flex;
   align-items: center;

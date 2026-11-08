@@ -1,4 +1,4 @@
-const APP_VERSION='0.85.7';
+const APP_VERSION='0.85.8';
 const CATS=['飲食','キッチン','洗面・風呂','洗濯・掃除','その他'];
 const liveMode=!!window.KurashiLive; // Data source only; original Preview v46 UI components remain.
 const SEED=[['牛乳',0,true],['麦茶',0,false],['コーヒー',0,true],['卵',0,false],['キッチンペーパー',1,false],['ラップ',1,true],['食器用洗剤',1,true],['シャンプー',2,false],['歯磨き粉',2,true],['ハンドソープ',2,false],['洗濯洗剤',3,false],['柔軟剤',3,true],['トイレットペーパー',3,false],['乾電池',4,true],['ティッシュ',4,true]];
@@ -1211,18 +1211,54 @@ function detailAllView(){
  </main>`;
 }
 function stub(title,icon,desc){return `${head(title,'くらしストック_試作')}<main><div class="panel placeholder"><div class="bubble">${icon}</div><h2>${title}画面</h2><p>${desc}</p></div><div class="alert">この画面は共通UIの確認用です。データ処理や同期はまだ行いません。</div></main>${nav()}`}
+// Sync status reflects queue and last confirmed contact, not the mere presence of cached data.
+function settingsSyncSummary(s){
+ const queued=Math.max(0,Number(s.queued)||0);
+ if(s.loginRequired&&!s.signedIn)return {label:'Googleログインが必要です',
+  note:queued?'未反映の操作 '+queued+'件を端末に保存しています。':''};
+ if(queued)return {label:'未反映の操作 '+queued+'件',
+  note:s.error?String(s.error):s.syncing?'同期中…':'自動で保存・再試行します。'};
+ if(s.error)return {label:'同期できません',note:String(s.error)};
+ if(s.syncing)return {label:'同期中…',note:''};
+ if(s.cached)return {label:'前回取得したデータを表示中',note:''};
+ if(!s.loaded)return {label:s.busy?'読み込み中…':'データを読み込めていません',note:''};
+ return {label:'未反映の操作なし',note:''};
+}
+function settingsLastSyncText(timestamp){
+ const t=Number(timestamp);
+ if(!Number.isFinite(t)||t<=0)return '';
+ const d=new Date(t);
+ if(!Number.isFinite(d.getTime()))return '';
+ return d.toLocaleString('ja-JP',{year:'numeric',month:'2-digit',day:'2-digit',
+  hour:'2-digit',minute:'2-digit',hour12:false});
+}
 function settingsView(){
  if(liveMode){
   const s=window.KurashiLive.state();
-   const syncStatus=s.error||
-    (s.queued?'未反映の操作 '+s.queued+'件（自動で保存・再試行）':
-     s.cached?'前回取得データを表示中（再接続待ち）':
-     s.temporary?(s.loaded?'Google Sheets 接続済み（ログイン一時停止中）':'Google Sheets 自動読み込み中…'):
-     !s.signedIn?'Googleログインが必要です':
-     s.loaded?'Google Sheets 接続済み':'読み込み中…');
-  return `${head('設定','くらしストック_試作')}<main><div class="panel"><h2>データと同期</h2><div class="info-row row"><div><strong>同期状態</strong><div class="hint">${esc(syncStatus)}</div></div><span class="tag">${s.loaded?'接続済み':s.cached?'再接続中':'未接続'}</span></div>${s.loginRequired?(s.signedIn?'<button type="button" class="secondary" data-act="liveLogout">ログアウト</button>':'<div id="google-login-button"></div>') : ''}${s.error&&s.queued?'<p class="hint" role="alert">通信が回復すると自動で再送します。未反映の操作は端末に残っています。</p>':''}</div><div class="panel"><div class="info-row row"><div><strong>アプリバージョン</strong><div class="hint">試作 v${esc(APP_VERSION)}</div></div></div></div><div class="panel"><h2>商品マスタ</h2><p class="hint">日用品に未紐付けの商品も編集できます。</p><button type="button" class="secondary" data-act="masterProducts">商品マスタを管理</button></div><div class="panel"><h2>読み取り名の管理</h2><p class="hint">読み取った明細名を登録商品に紐付けます。</p><button type="button" class="secondary" data-act="aliasManage">読み取り名の紐付けを管理</button></div></main>${nav()}`;
+  const sync=settingsSyncSummary(s),lastSync=settingsLastSyncText(s.lastSync);
+  return `${head('設定','くらしストック')}<main class="settings-main settings-overview">
+   <section class="settings-overview-section" aria-label="データと同期">
+    ${UI.sectionHeading({title:'データと同期'})}
+    <dl class="settings-data-list">
+     <div class="settings-data-row"><dt>同期状態</dt><dd id="settings-sync-status" role="status">${esc(sync.label)}</dd></div>
+     ${lastSync?`<div class="settings-data-row"><dt>最終同期</dt><dd>${esc(lastSync)}</dd></div>`:''}
+    </dl>
+    ${sync.note?`<p class="settings-sync-note hint" ${s.error?'role="alert"':''}>${esc(sync.note)}</p>`:''}
+    ${s.error&&s.queued?'<p class="settings-sync-note hint">通信が回復すると自動で再送します。未反映の操作は端末に残っています。</p>':''}
+    ${s.loginRequired?(s.signedIn?UI.button({label:'ログアウト',variant:'secondary',action:'liveLogout'}):'<div id="google-login-button"></div>'):''}
+   </section>
+   <section class="settings-overview-section" aria-label="商品マスタ">
+    ${UI.sectionHeading({title:'商品マスタ'})}
+    <div class="settings-link-row">${UI.textAction({label:'商品マスタを管理',action:'masterProducts'})}</div>
+   </section>
+   <section class="settings-overview-section" aria-label="読み取り名の管理">
+    ${UI.sectionHeading({title:'読み取り名の管理'})}
+    <div class="settings-link-row">${UI.textAction({label:'読み取り名の紐付けを管理',action:'aliasManage'})}</div>
+   </section>
+   <div class="settings-version-row"><span>アプリバージョン</span><span>試作 v${esc(APP_VERSION)}</span></div>
+  </main>${nav()}`;
  }
- return `${head('設定','くらしストック_試作')}<main><div class="panel"><h2>データと同期</h2><div class="info-row row"><div><strong>同期状態</strong><div class="hint">Google Sheets 接続前</div></div><span class="tag">未設定</span></div><button class="secondary" data-act="sync" style="width:100%">手動同期</button></div><div class="panel"><h2>試作版の操作</h2><p class="hint">変更内容はこの端末の localStorage のみに保存され、夫婦間では共有されません。</p><button class="secondary" data-act="reset">仮データを初期状態に戻す</button></div><div class="panel"><h2>今後の実装</h2><p class="hint">レシート／値札のチェーン照合、Google Apps Script 接続、認証、オフライン差分同期を追加予定です。</p></div></main>${nav()}`
+ return `${head('設定','くらしストック')}<main><div class="panel"><h2>データと同期</h2><div class="info-row row"><div><strong>同期状態</strong><div class="hint">Google Sheets 接続前</div></div><span class="tag">未設定</span></div><button class="secondary" data-act="sync" style="width:100%">手動同期</button></div><div class="panel"><h2>試作版の操作</h2><p class="hint">変更内容はこの端末の localStorage のみに保存され、夫婦間では共有されません。</p><button class="secondary" data-act="reset">仮データを初期状態に戻す</button></div><div class="panel"><h2>今後の実装</h2><p class="hint">レシート／値札のチェーン照合、Google Apps Script 接続、認証、オフライン差分同期を追加予定です。</p></div></main>${nav()}`
 }
 // All confirmation dialogs share one DOM and CSS. A Japanese full stop ends a paragraph line.
 function dialogView(){

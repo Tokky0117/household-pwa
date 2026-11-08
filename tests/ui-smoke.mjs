@@ -32,7 +32,7 @@ const ui=vm.runInNewContext(source+`
  setSelected(v){selected=v},setPage(v){page=v},setMode(v){priceScope=v},setDock(v){shopExpanded=v},
  setPeriod(v){period=v},setQty(v){compareQuantity=v},setUnit(v){compareUnit=v},
  setNewRecordType(v){newRecordType=v},recordAddView,scanDate,
-  detailLineName,setRecordDetailId(v){recordDetailId=v},
+  detailLineName,settingsView,settingsSyncSummary,settingsLastSyncText,setRecordDetailId(v){recordDetailId=v},
  setScanDraft(v){scanDraft=v},setScanPhotos(v){scanPhotos=v},setScanState({busy=false,status='',error='',failed=false}){scanBusy=busy;scanStatus=status;scanError=error;scanReadFailed=failed},setScanProductRow(v){scanProductRow=v},setScanExistingQuery(v){scanExistingQuery=v},setOcrLearning(v){ocrLearning=v},getScanDraft(){return scanDraft},
  getCompare(){return [compareQuantity,compareUnit]},getSwipe(){return openSwipeId},
  getPeriod(){return period},getListHelpOpen(){return listHelpOpen},listHelpView,readListHelpOpen,catalogue:()=>catalogue})
@@ -68,6 +68,44 @@ assert.ok(ui.listView().includes('data-act="copyList" aria-label="在庫なし�
  ui.detailHomeView().includes('data-act="newReceipt"'),
  'Common action builders preserve existing user labels and event hooks');
 assert.ok(!ui.listView().includes('※ 価格・店舗はサンプル'),'Daily list no longer shows temporary sample notice');
+
+const syncCase=(next={})=>ui.settingsSyncSummary({
+ queued:0,error:'',loaded:true,cached:false,busy:false,syncing:false,
+ loginRequired:false,signedIn:true,...next});
+assert.equal(syncCase().label,'未反映の操作なし',
+ 'Confirmed local queue is empty; not an unproven always-connected badge');
+assert.equal(syncCase({loaded:true,cached:true}).label,'前回取得したデータを表示中',
+ 'Cached snapshot is not described as a live connection');
+assert.equal(syncCase({loaded:false,busy:true}).label,'読み込み中…',
+ 'Initial loading is distinguished from a connected state');
+assert.equal(syncCase({loaded:false}).label,'データを読み込めていません',
+ 'Lack of a snapshot is visible without claiming success');
+assert.equal(syncCase({queued:2}).label,'未反映の操作 2件',
+ 'Pending queue takes priority over cached snapshot');
+assert.equal(syncCase({queued:2,error:'通信できません'}).label,'未反映の操作 2件',
+ 'Pending count remains visible when communication fails');
+assert.equal(syncCase({queued:2,error:'通信できません'}).note,'通信できません',
+ 'Underlying sync error is retained as supporting detail');
+assert.equal(syncCase({error:'通信できません'}).label,'同期できません',
+ 'Error state is never mistaken for connected merely because loaded=true');
+assert.equal(syncCase({syncing:true}).label,'同期中…',
+ 'Active queue flush is distinguished from prior completion');
+assert.equal(syncCase({loginRequired:true,signedIn:false,queued:3}).label,'Googleログインが必要です',
+ 'Authentication requirement remains actionable');
+assert.ok(syncCase({loginRequired:true,signedIn:false,queued:3}).note.includes('3件'),
+ 'Pending local operations remain visible while signed out');
+assert.equal(ui.settingsLastSyncText(0),'','No invented last-sync time');
+assert.equal(ui.settingsLastSyncText(NaN),'','Invalid timestamps are omitted');
+assert.match(ui.settingsLastSyncText(Date.UTC(2026,10,8,9,0)),/2026/,
+ 'Successful contact timestamp is formatted for users');
+assert.ok(source.includes("UI.textAction({label:'商品マスタを管理',action:'masterProducts'})")&&
+ source.includes("UI.textAction({label:'読み取り名の紐付けを管理',action:'aliasManage'})"),
+ 'Settings management actions retain existing event routes');
+assert.ok(css.includes('.settings-overview-section{')&&
+ css.includes('.settings-data-row{')&&
+ css.includes('.settings-link-row .ui-text-action{'),
+ 'Settings uses sections and shared field/action tokens instead of one-off colored cards');
+
 assert.ok(ui.pickerView().includes('class="ui-search"')&&ui.pickerView().includes('id="catalogue-search"'),'Product picker reuses shared search');
 assert.ok(source.includes("variant:'item-editor-sheet'"),'Item add/edit uses shared sheet height variant');
 assert.ok(css.includes('.half-sheet.item-editor-sheet{')&&css.includes('height:min(540px'),'Item edit sheet accommodates five choices');
@@ -1409,7 +1447,7 @@ assert.ok(!JSON.stringify(p4Rebuild).includes('ocr-p4'),
 console.log('P4 common review adapter, provenance, row identity and P2 validation OK');
 
 // v0.73: Receipt OCR review information hierarchy; preserve validation/confirmation.
-assert.ok(source.includes("const APP_VERSION='0.85.7'"), 'UI review revision version is current');
+assert.ok(source.includes("const APP_VERSION='0.85.8'"), 'UI review revision version is current');
 assert.ok(source.includes("UI.sectionHeading({title:'読み取り状況'})"), 'OCR and ChatGPT appear under one section');
 assert.ok(source.includes("UI.sectionHeading({title:isShelf?'値札情報':'購入情報'})"), 'Receipt OCR review groups store and purchase date');
 assert.ok(source.includes("UI.sectionHeading({title:isShelf?'価格情報':'購入明細',subtitle:scanDraft.items.length+'件'+"), 'Receipt OCR review identifies item list and unmatched count');
