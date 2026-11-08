@@ -25,14 +25,14 @@ const doc={
 const ctx={document:doc,localStorage:{getItem:k=>storage.get(k)??null,setItem:(k,v)=>storage.set(k,v),removeItem:k=>storage.delete(k)},
  navigator:{},window:{scrollTo(){},scrollY:0,KurashiReceiptValidation:validator,KurashiReceiptReview:review},crypto:{randomUUID:()=> 'test-id'},setTimeout:()=>0};
 const ui=vm.runInNewContext(source+`
-({listView,priceCompareView,pickerView,pickerResults,receiptView,receiptScanView,receiptChatGptView,recordDetailView,scanStoreNameIssue,scanValidPurchaseDate,floatingActionPlacement,applyChatGptOcrAssistance,receiptOcrReference,receiptOcrRows,isUnconfirmedBarcodeLine,makeChatGptReceiptRebuildDraft,scanProductView,scanExistingProductView,scanChainForStore,scanAutolinkUnmatched,scanMatchProduct,render,initializeCompare,
+({listView,priceCompareView,pickerView,pickerResults,receiptView,receiptScanView,receiptChatGptView,recordDetailView,scanStoreNameIssue,scanValidPurchaseDate,scanReadableError,floatingActionPlacement,applyChatGptOcrAssistance,receiptOcrReference,receiptOcrRows,isUnconfirmedBarcodeLine,makeChatGptReceiptRebuildDraft,scanProductView,scanExistingProductView,scanChainForStore,scanAutolinkUnmatched,scanMatchProduct,render,initializeCompare,
  setProductGroup,reorderProducts,registeredProducts,convertQuantity,setOpenSwipe,storePickerChoices,
  chainMinima,priceCandidates,savePreviewRecord,periodStart,
  demoRecords,demoRecordItems,allPreviewRecords,allPreviewItems,
  setSelected(v){selected=v},setPage(v){page=v},setMode(v){priceScope=v},setDock(v){shopExpanded=v},
  setPeriod(v){period=v},setQty(v){compareQuantity=v},setUnit(v){compareUnit=v},
  setNewRecordType(v){newRecordType=v},recordAddView,scanDate,
- setScanDraft(v){scanDraft=v},setScanPhotos(v){scanPhotos=v},setScanProductRow(v){scanProductRow=v},setScanExistingQuery(v){scanExistingQuery=v},setOcrLearning(v){ocrLearning=v},getScanDraft(){return scanDraft},
+ setScanDraft(v){scanDraft=v},setScanPhotos(v){scanPhotos=v},setScanState({busy=false,status='',error='',failed=false}){scanBusy=busy;scanStatus=status;scanError=error;scanReadFailed=failed},setScanProductRow(v){scanProductRow=v},setScanExistingQuery(v){scanExistingQuery=v},setOcrLearning(v){ocrLearning=v},getScanDraft(){return scanDraft},
  getCompare(){return [compareQuantity,compareUnit]},getSwipe(){return openSwipeId},
  getPeriod(){return period},getListHelpOpen(){return listHelpOpen},listHelpView,readListHelpOpen,catalogue:()=>catalogue})
 `,ctx,{filename:'app.js'});
@@ -310,8 +310,9 @@ assert.ok(source.includes("resetScan();page='recordScan';render();return;"),
  'Removing the last image stays on the empty OCR screen');
 assert.ok(ui.receiptScanView().includes('data-act="scanAddPhotos"'),
  'Empty OCR screen has a direct photo picker button');
-assert.equal((ui.receiptScanView().match(/写真を選択してください。/g)||[]).length,1,
- 'Empty OCR screen displays one instruction only');
+assert.ok(ui.receiptScanView().includes('class="primary scan-photo-add"')&&
+ !ui.receiptScanView().includes('写真を選択してください。'),
+ 'Empty OCR screen uses one common primary photo picker and no redundant instruction');
 assert.equal((indexHtml.match(/type="file" accept="image\/\*"/g)||[]).length,2,
  'Both native photo inputs use confirmed single-photo selection');
 assert.ok(!indexHtml.includes('accept="image/*" multiple'),
@@ -502,10 +503,50 @@ assert.ok(photoReview.indexOf('読み取り状況')<photoReview.indexOf('ChatGPT
  'Read status groups OCR and ChatGPT before purchase details');
 ui.setScanDraft(null);
 const beforeScan=ui.receiptScanView();
-assert.ok(beforeScan.includes('選択した写真')&&
+assert.ok(beforeScan.includes('>選択した写真</h2>')&&
  beforeScan.includes('data-act="scanRemovePhoto"')&&
+ beforeScan.includes('class="secondary scan-photo-add"')&&
+ beforeScan.includes('data-act="scanStart"')&&
+ beforeScan.includes('写真を読み取る')&&
+ !beforeScan.includes('scanTogglePhotos')&&
+ !beforeScan.includes('scan-photo-content')&&
  !beforeScan.includes('data-act="scanOpenCurrentPhoto"'),
- 'Pre-OCR photo selection and deletion remain available');
+ 'Before OCR show thumbnails, common add/read controls, no collapsible photo grid');
+assert.ok(beforeScan.indexOf('>選択した写真</h2>')<
+ beforeScan.indexOf('data-act="scanAddPhotos"')&&
+ beforeScan.indexOf('data-act="scanAddPhotos"')<
+ beforeScan.indexOf('data-act="scanStart"'),
+ 'Photo preview, auxiliary add, then primary read are in logical order');
+ui.setScanState({busy:true,status:'読み取りを準備しています…'});
+const preparingScreen=ui.receiptScanView();
+assert.ok(preparingScreen.includes('読み取り中…')&&
+ preparingScreen.includes('id="scan-status"')&&
+ preparingScreen.includes('読み取りを準備しています…')&&
+ preparingScreen.includes('data-act="scanStart" disabled')&&
+ !preparingScreen.includes('data-act="scanRemovePhoto"')&&
+ !preparingScreen.includes('data-act="scanAddPhotos"'),
+ 'During reading, the status is visible and photo editing/duplicate scans are disabled');
+ui.setScanState({busy:false,error:'明細を読み取れませんでした。写真を確認して、もう一度お試しください。',failed:true});
+const failedScanScreen=ui.receiptScanView();
+assert.ok(failedScanScreen.includes('もう一度読み取る')&&
+ failedScanScreen.includes('role="alert"')&&
+ failedScanScreen.includes('明細を読み取れませんでした。')&&
+ failedScanScreen.includes('scan-photo-grid'),
+ 'Reading errors keep selected images and a clear retry action');
+ui.setScanState({error:'写真は最大6枚まで選択できます。'});
+assert.ok(ui.receiptScanView().includes('写真は最大6枚まで選択できます。')&&
+ ui.receiptScanView().includes('写真を読み取る'),
+ 'Selection limit warns without treating the existing photos as a failed read');
+ui.setScanState({});
+assert.equal(ui.scanReadableError(new Error('商品明細を抽出できませんでした。')),
+ '明細を読み取れませんでした。写真を確認して、もう一度お試しください。');
+assert.equal(ui.scanReadableError(new TypeError('Failed to fetch dynamically imported module')),
+ '読み取り機能を利用できませんでした。通信状態を確認して、もう一度お試しください。');
+assert.equal(ui.scanReadableError(new Error('Unexpected failure')),
+ '読み取れませんでした。もう一度お試しください。');
+assert.ok(!source.includes('scanPhotosExpanded')&&!source.includes('scanTogglePhotos')&&
+ !source.includes('枚の写真を追加しました。')&&!source.includes('写真を削除しました。'),
+ 'Retired photo accordion and redundant success feedback are removed');
 ui.setScanPhotos([]);
 ui.setScanDraft({...rowOcr,items:[{...rowOcr.items[0],savedOcrName:true}]});
 const resumedReviewWithoutPhoto=ui.receiptScanView();
@@ -1294,7 +1335,7 @@ assert.ok(!JSON.stringify(p4Rebuild).includes('ocr-p4'),
 console.log('P4 common review adapter, provenance, row identity and P2 validation OK');
 
 // v0.73: Receipt OCR review information hierarchy; preserve validation/confirmation.
-assert.ok(source.includes("const APP_VERSION='0.85.3'"), 'UI review revision version is current');
+assert.ok(source.includes("const APP_VERSION='0.85.4'"), 'UI review revision version is current');
 assert.ok(source.includes("UI.sectionHeading({title:'読み取り状況'})"), 'OCR and ChatGPT appear under one section');
 assert.ok(source.includes("UI.sectionHeading({title:'購入情報'})"), 'Receipt OCR review groups store and purchase date');
 assert.ok(source.includes("UI.sectionHeading({title:'購入明細',subtitle:scanDraft.items.length+'件'+"), 'Receipt OCR review identifies item list and unmatched count');
