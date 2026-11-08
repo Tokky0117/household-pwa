@@ -1,4 +1,4 @@
-const APP_VERSION='0.85.2';
+const APP_VERSION='0.85.3';
 const CATS=['飲食','キッチン','洗面・風呂','洗濯・掃除','その他'];
 const liveMode=!!window.KurashiLive; // Data source only; original Preview v46 UI components remain.
 const SEED=[['牛乳',0,true],['麦茶',0,false],['コーヒー',0,true],['卵',0,false],['キッチンペーパー',1,false],['ラップ',1,true],['食器用洗剤',1,true],['シャンプー',2,false],['歯磨き粉',2,true],['ハンドソープ',2,false],['洗濯洗剤',3,false],['柔軟剤',3,true],['トイレットペーパー',3,false],['乾電池',4,true],['ティッシュ',4,true]];
@@ -589,8 +589,7 @@ function scanReadingStatusView(){
   ${UI.sectionHeading({title:'読み取り状況'})}
   <p id="scan-status" role="status" class="hint" ${summary?'':'hidden'}>${esc(summary)}</p>
   ${scanAssistView()}
-  ${!scanPhotos.length?`<div class="scan-photo-unavailable"><p class="hint">写真は保存されていません。</p>
-  ${UI.button({label:'写真を選び直す',variant:'secondary',action:'scanRestorePhoto',icon:'camera'})}</div>`:''}
+
  </section>`;
 }
 function scanFormView(){
@@ -695,7 +694,7 @@ function receiptScanView(){
  ${reviewing?scanReadingStatusView():`<p id="scan-status" role="status" class="hint" ${scanStatus?'':'hidden'}>${esc(scanStatus)}</p>`}
  ${scanFormView()}
  </main>
- ${reviewing&&scanPhotos.length?UI.floatingAction({label:'写真を確認',icon:'camera',action:'scanOpenCurrentPhoto',avoidSelector:'#scanConfirmForm button[type="submit"]'}):''}`;
+ ${reviewing?UI.floatingAction({label:'写真を確認',icon:'camera',action:'scanOpenCurrentPhoto',avoidSelector:'#scanConfirmForm button[type="submit"]'}):''}`;
 }
 function closeScanViewer({restore=true}={}){
  const viewer=document.getElementById('scan-photo-viewer');
@@ -1294,11 +1293,18 @@ function render(){
  setupFloatingAction();
  if(liveMode&&tab==='settings')window.KurashiLive.renderLogin(document.getElementById('google-login-button'));
 }
-// Shared floating-action visibility. Save, keyboard and overlays take priority.
-function shouldHideFloatingAction({anchorRect,viewportHeight,editing=false,keyboardOpen=false,overlayOpen=false}){
- const anchorVisible=!!anchorRect&&Number.isFinite(anchorRect.top)&&Number.isFinite(anchorRect.bottom)&&
-  anchorRect.top<viewportHeight&&anchorRect.bottom>0;
- return anchorVisible||editing||keyboardOpen||overlayOpen;
+// Shared floating action avoids the *actual save button area*, not merely
+// any visible save button. Otherwise a short receipt hides photo review forever.
+function floatingActionPlacement({anchorRect,actionRect,topInset=0,keyboardOpen=false,overlayOpen=false}){
+ if(keyboardOpen||overlayOpen)return {hidden:true,lift:0};
+ if(!anchorRect||!actionRect)return {hidden:false,lift:0};
+ const gap=12;
+ const intersects=anchorRect.top<actionRect.bottom+gap&&
+  anchorRect.bottom>actionRect.top-gap;
+ if(!intersects)return {hidden:false,lift:0};
+ const lift=Math.max(0,Math.ceil(actionRect.bottom+gap-anchorRect.top));
+ return actionRect.top-lift>=topInset+8?
+  {hidden:false,lift}:{hidden:true,lift:0};
 }
 let floatingActionObserver=null,floatingActionUpdate=null;
 function setupFloatingAction(){
@@ -1310,15 +1316,20 @@ function setupFloatingAction(){
  if(!anchor)return;
  floatingActionUpdate=()=>{
   if(!floating.isConnected)return;
-  const active=document.activeElement;
-  const viewportHeight=window.visualViewport?.height||window.innerHeight||0;
   const keyboardOpen=!!window.visualViewport?.height&&
    Number(window.innerHeight)-window.visualViewport.height>120;
-  const editing=keyboardOpen&&!!active?.matches?.('input,textarea,select,[contenteditable="true"]');
-  floating.hidden=shouldHideFloatingAction({
-   anchorRect:anchor.getBoundingClientRect(),viewportHeight,editing,keyboardOpen,
-   overlayOpen:!!dialog||!!storePickerTarget||!!app.querySelector?.('.sheet-back')
+  const overlayOpen=!!dialog||!!storePickerTarget||!!app.querySelector?.('.sheet-back');
+  // Measure while unhidden and untransformed, so a hidden control can
+  // recover after scrolling, switching viewports, or closing a sheet.
+  floating.hidden=false;
+  floating.style.transform='';
+  const placement=floatingActionPlacement({
+   anchorRect:anchor.getBoundingClientRect(),actionRect:floating.getBoundingClientRect(),
+   topInset:app.querySelector('.top')?.getBoundingClientRect().bottom||0,
+   keyboardOpen,overlayOpen
   });
+  floating.hidden=placement.hidden;
+  if(!placement.hidden&&placement.lift)floating.style.transform='translateY(-'+placement.lift+'px)';
  };
  floatingActionUpdate();
  if(typeof IntersectionObserver!=='undefined'){
@@ -2108,12 +2119,6 @@ if(action==='resumeScanDraft'){
 if(action==='scanAddPhotos'){
  if(!scanBusy){scanRestoringPhoto=false;openReceiptPhotoPicker(document.getElementById('scan-add-picker'));}return;
 }
-if(action==='scanRestorePhoto'){
- if(page==='recordScan'&&scanDraft&&!scanPhotos.length){
-  scanRestoringPhoto=true;openReceiptPhotoPicker(document.getElementById('scan-add-picker'));
- }
- return;
-}
 if(action==='recordDetail'){
  recordDetailOrigin=page==='receiptAll'?'receiptAll':'list';recordDetailId=el.dataset.recordId;page='recordDetail';render();return;
 }
@@ -2212,7 +2217,12 @@ if(action==='scanTogglePhotos'){
 }
 if(action==='scanOpenPhoto'){openScanViewer(Number(el.dataset.scanRow));return}
 if(action==='scanOpenCurrentPhoto'){
- if(page==='recordScan'&&scanPhotos.length)openScanViewer(Math.max(0,Math.min(scanIndex,scanPhotos.length-1)));
+ if(page!=='recordScan'||!scanDraft)return;
+ if(scanPhotos.length)openScanViewer(Math.max(0,Math.min(scanIndex,scanPhotos.length-1)));
+ else{
+  scanRestoringPhoto=true;
+  openReceiptPhotoPicker(document.getElementById('scan-add-picker'));
+ }
  return;
 }
 if(action==='scanRemovePhoto'){
