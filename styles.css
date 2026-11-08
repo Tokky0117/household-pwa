@@ -2383,6 +2383,7 @@ main>.ui-search + .filterrow{margin-bottom:5px}
 /* Receipt original and editable OCR review share one screen. */
 .scan-photo-section{margin:0 0 14px}
 .scan-photo-section>.ui-section-heading{margin:0 0 12px;min-height:32px}
+.scan-photo-count{font-size:13px;color:var(--muted);font-weight:500;white-space:nowrap}
 .scan-photo-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin:0 0 16px}
 .scan-photo-tile{min-width:0}
 .scan-photo-thumb{position:relative;min-width:0;display:flex;align-items:center;justify-content:center}
