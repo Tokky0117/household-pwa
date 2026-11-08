@@ -25,7 +25,7 @@ const doc={
 const ctx={document:doc,localStorage:{getItem:k=>storage.get(k)??null,setItem:(k,v)=>storage.set(k,v),removeItem:k=>storage.delete(k)},
  navigator:{},window:{scrollTo(){},scrollY:0,KurashiReceiptValidation:validator,KurashiReceiptReview:review},crypto:{randomUUID:()=> 'test-id'},setTimeout:()=>0};
 const ui=vm.runInNewContext(source+`
-({listView,priceCompareView,pickerView,pickerResults,receiptView,receiptScanView,receiptChatGptView,recordDetailView,scanStoreNameIssue,scanValidPurchaseDate,shouldHideFloatingAction,applyChatGptOcrAssistance,receiptOcrReference,receiptOcrRows,isUnconfirmedBarcodeLine,makeChatGptReceiptRebuildDraft,scanProductView,scanExistingProductView,scanChainForStore,scanAutolinkUnmatched,scanMatchProduct,render,initializeCompare,
+({listView,priceCompareView,pickerView,pickerResults,receiptView,receiptScanView,receiptChatGptView,recordDetailView,scanStoreNameIssue,scanValidPurchaseDate,floatingActionPlacement,applyChatGptOcrAssistance,receiptOcrReference,receiptOcrRows,isUnconfirmedBarcodeLine,makeChatGptReceiptRebuildDraft,scanProductView,scanExistingProductView,scanChainForStore,scanAutolinkUnmatched,scanMatchProduct,render,initializeCompare,
  setProductGroup,reorderProducts,registeredProducts,convertQuantity,setOpenSwipe,storePickerChoices,
  chainMinima,priceCandidates,savePreviewRecord,periodStart,
  demoRecords,demoRecordItems,allPreviewRecords,allPreviewItems,
@@ -509,18 +509,33 @@ assert.ok(beforeScan.includes('選択した写真')&&
 ui.setScanPhotos([]);
 ui.setScanDraft({...rowOcr,items:[{...rowOcr.items[0],savedOcrName:true}]});
 const resumedReviewWithoutPhoto=ui.receiptScanView();
-assert.ok(resumedReviewWithoutPhoto.includes('data-act="scanRestorePhoto"')&&
- !resumedReviewWithoutPhoto.includes('data-act="scanOpenCurrentPhoto"'),
- 'a resumed receipt without in-memory photos offers reselect instead of a dead photo button');
+assert.equal((resumedReviewWithoutPhoto.match(/data-act="scanOpenCurrentPhoto"/g)||[]).length,1,
+ 'a restored receipt always shows one fixed photo-confirm action even without in-memory photos');
+assert.ok(!resumedReviewWithoutPhoto.includes('data-act="scanRestorePhoto"')&&
+ source.includes("if(scanPhotos.length)openScanViewer(")&&
+ source.includes("scanRestoringPhoto=true;\n  openReceiptPhotoPicker("),
+ 'the same fixed photo action opens the chooser when the original image is no longer in memory');
 assert.ok(source.includes('const restoring=scanRestoringPhoto')&&
  source.includes("if(!restoring){scanDraft=null;scanAssistMessage='';scanToken++;"),
  'selecting reference photos does not erase receipt review data');
-assert.equal(ui.shouldHideFloatingAction({anchorRect:{top:710,bottom:760},viewportHeight:700}),false);
-assert.equal(ui.shouldHideFloatingAction({anchorRect:{top:680,bottom:750},viewportHeight:700}),true,
- 'Fixed photo button hides when save becomes visible');
-assert.equal(ui.shouldHideFloatingAction({anchorRect:{top:900,bottom:950},viewportHeight:700,editing:true}),true);
-assert.equal(ui.shouldHideFloatingAction({anchorRect:{top:900,bottom:950},viewportHeight:700,keyboardOpen:true}),true);
-assert.equal(ui.shouldHideFloatingAction({anchorRect:{top:900,bottom:950},viewportHeight:700,overlayOpen:true}),true);
+const shortReceiptAction={top:780,bottom:828};
+const saveVisibleNoCollision=ui.floatingActionPlacement({
+ anchorRect:{top:630,bottom:680},actionRect:shortReceiptAction,topInset:90});
+assert.deepEqual(JSON.parse(JSON.stringify(saveVisibleNoCollision)),{hidden:false,lift:0},
+ 'visible save does not hide a photo action when the two buttons do not overlap');
+const saveAtBottom=ui.floatingActionPlacement({
+ anchorRect:{top:785,bottom:835},actionRect:shortReceiptAction,topInset:90});
+assert.equal(saveAtBottom.hidden,false,'short receipts keep the photo action visible');
+assert.ok(saveAtBottom.lift>=55,'photo action lifts above the save button instead of disappearing');
+assert.equal(ui.floatingActionPlacement({
+ anchorRect:{top:910,bottom:960},actionRect:shortReceiptAction,topInset:90}).hidden,false);
+assert.equal(ui.floatingActionPlacement({
+ anchorRect:{top:20,bottom:850},actionRect:shortReceiptAction,topInset:90}).hidden,true,
+ 'photo action hides only if there is physically no room to avoid overlap');
+assert.equal(ui.floatingActionPlacement({
+ anchorRect:{top:910,bottom:960},actionRect:shortReceiptAction,keyboardOpen:true}).hidden,true);
+assert.equal(ui.floatingActionPlacement({
+ anchorRect:{top:910,bottom:960},actionRect:shortReceiptAction,overlayOpen:true}).hidden,true);
 assert.ok(ruleBody('.ui-floating-action').some(x=>x.includes('position:fixed')&&
  x.includes('env(safe-area-inset-bottom'))&&
  ruleBody('.ui-floating-action .ui-floating-action-button').some(x=>
@@ -1279,7 +1294,7 @@ assert.ok(!JSON.stringify(p4Rebuild).includes('ocr-p4'),
 console.log('P4 common review adapter, provenance, row identity and P2 validation OK');
 
 // v0.73: Receipt OCR review information hierarchy; preserve validation/confirmation.
-assert.ok(source.includes("const APP_VERSION='0.85.2'"), 'UI review revision version is current');
+assert.ok(source.includes("const APP_VERSION='0.85.3'"), 'UI review revision version is current');
 assert.ok(source.includes("UI.sectionHeading({title:'読み取り状況'})"), 'OCR and ChatGPT appear under one section');
 assert.ok(source.includes("UI.sectionHeading({title:'購入情報'})"), 'Receipt OCR review groups store and purchase date');
 assert.ok(source.includes("UI.sectionHeading({title:'購入明細',subtitle:scanDraft.items.length+'件'+"), 'Receipt OCR review identifies item list and unmatched count');
