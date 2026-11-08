@@ -688,16 +688,18 @@
  }
  async function linkAlias(aliasId,productId){
   await boot();if(!workspace.base)await load();
-  const changed=await modify(doc=>{
+  let changed=false;
+  await modify(doc=>{
    const snap=project(doc),alias=snap?.product_aliases.find(x=>x.alias_id===aliasId);
    if(!alias)throw Error('OCR名が見つかりません');
    if(productId&&!snap.products.some(x=>x.product_id===productId))
     throw Error('登録商品が見つかりません');
-   if(String(alias.product_id||'')===String(productId||''))return false;
+   if(String(alias.product_id||'')===String(productId||''))return doc;
    if(String(aliasId).startsWith('local-'))throw Error('OCR名の同期後に変更してください');
    doc.queue.push({id:operationId(),kind:'alias-link',aliasId,
      productId:productId||null,version:Number(alias.version),retries:0});
-   return true;
+   changed=true;
+   return doc; // modify() requires a complete durable workspace, never a boolean.
   });
   if(changed)void flush();
   return changed;
