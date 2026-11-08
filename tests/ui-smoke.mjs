@@ -25,11 +25,11 @@ const doc={
 const ctx={document:doc,localStorage:{getItem:k=>storage.get(k)??null,setItem:(k,v)=>storage.set(k,v),removeItem:k=>storage.delete(k)},
  navigator:{},window:{scrollTo(){},scrollY:0,KurashiReceiptValidation:validator,KurashiReceiptReview:review},crypto:{randomUUID:()=> 'test-id'},setTimeout:()=>0};
 const ui=vm.runInNewContext(source+`
-({listView,priceCompareView,pickerView,pickerResults,masterProductsView,masterProductRows,detailHomeView,detailAllView,receiptScanView,receiptChatGptView,recordDetailView,scanStoreNameIssue,scanValidPurchaseDate,scanReadableError,floatingActionPlacement,applyChatGptOcrAssistance,receiptOcrReference,receiptOcrRows,isUnconfirmedBarcodeLine,makeChatGptReceiptRebuildDraft,scanProductView,scanExistingProductView,scanChainForStore,scanAutolinkUnmatched,scanMatchProduct,render,initializeCompare,
+({listView,priceCompareView,pickerView,pickerResults,masterProductsView,masterProductRows,masterProductEditorView,masterGroupPickerView,masterGroupPickerRows,detailHomeView,detailAllView,receiptScanView,receiptChatGptView,recordDetailView,scanStoreNameIssue,scanValidPurchaseDate,scanReadableError,floatingActionPlacement,applyChatGptOcrAssistance,receiptOcrReference,receiptOcrRows,isUnconfirmedBarcodeLine,makeChatGptReceiptRebuildDraft,scanProductView,scanExistingProductView,scanChainForStore,scanAutolinkUnmatched,scanMatchProduct,render,initializeCompare,
  setProductGroup,reorderProducts,registeredProducts,convertQuantity,setOpenSwipe,storePickerChoices,
  chainMinima,priceCandidates,savePreviewRecord,periodStart,
  demoRecords,demoRecordItems,allPreviewRecords,allPreviewItems,
- setSelected(v){selected=v},setPage(v){page=v},setMode(v){priceScope=v},setDock(v){shopExpanded=v},
+ setSelected(v){selected=v},setMasterProductId(v){masterProductId=v},setPage(v){page=v},setMode(v){priceScope=v},setDock(v){shopExpanded=v},
  setPeriod(v){period=v},setQty(v){compareQuantity=v},setUnit(v){compareUnit=v},
  setNewRecordType(v){newRecordType=v},recordAddView,scanDate,
   detailLineName,settingsView,settingsSyncSummary,settingsLastSyncText,setRecordDetailId(v){recordDetailId=v},
@@ -92,6 +92,37 @@ assert.ok(source.includes("'master-product-query':{set:v=>{masterQuery=v}")&&
 assert.ok(css.includes('.master-product-add-action{')&&
  css.includes('.master-product-add-action svg{'),
  'Master add button has layout-only CSS and uses shared button colors');
+
+ui.setMasterProductId(null);ui.setPage('masterProductNew');
+const masterNewEditor=ui.masterProductEditorView();
+assert.ok(masterNewEditor.includes('id="master-product-group"')&&
+ masterNewEditor.includes('name="group"')&&
+ masterNewEditor.includes('data-act="masterGroupPickerOpen"')&&
+ masterNewEditor.includes('日用品との紐付け（任意）')&&
+ masterNewEditor.includes('紐付けしない'),
+ 'New master uses a shared picker with optional default, not a long dropdown');
+assert.ok(!masterNewEditor.includes('class="ui-select"')&&
+ !masterNewEditor.includes('data-act="masterProductUnlink"'),
+ 'Master editor never creates a separate unlink button or long dropdown');
+ui.setMasterProductId('p-milk-1');ui.setPage('masterProductEdit');
+const masterEditPage=ui.masterProductEditorView();
+assert.ok(masterEditPage.includes('おいしい牛乳')&&
+ masterEditPage.includes('data-act="masterGroupPickerOpen"')&&
+ masterEditPage.includes('value="demo-1"'),
+ 'Existing master retains its linked item as picker value');
+const masterSheet=ui.masterGroupPickerView();
+assert.ok(masterSheet.includes('class="sheet-back master-group-picker-overlay"')&&
+ masterSheet.includes('class="half-sheet master-group-picker-modal"')&&
+ masterSheet.includes('id="master-group-search"')&&
+ masterSheet.includes('data-search-clear="master-group-search"')&&
+ masterSheet.includes('data-ui-choice=""')&&masterSheet.includes('data-ui-choice="demo-1"'),
+ 'One common searchable half-sheet includes unlink and registered item choices');
+assert.ok(source.includes("'master-group-search':{set:v=>{masterGroupQuery=v}")&&
+ css.includes('.master-group-picker-results{')&&
+ !source.includes("action==='masterProductUnlink'")&&
+ !source.includes("action==='confirmMasterProductUnlink'"),
+ 'Shared IME-aware search, scrollable choices, and no dead unlink path');
+
 
 
 const syncCase=(next={})=>ui.settingsSyncSummary({
@@ -1472,7 +1503,7 @@ assert.ok(!JSON.stringify(p4Rebuild).includes('ocr-p4'),
 console.log('P4 common review adapter, provenance, row identity and P2 validation OK');
 
 // v0.73: Receipt OCR review information hierarchy; preserve validation/confirmation.
-assert.ok(source.includes("const APP_VERSION='0.85.9'"), 'UI review revision version is current');
+assert.ok(source.includes("const APP_VERSION='0.86.0'"), 'UI review revision version is current');
 assert.ok(source.includes("UI.sectionHeading({title:'読み取り状況'})"), 'OCR and ChatGPT appear under one section');
 assert.ok(source.includes("UI.sectionHeading({title:isShelf?'値札情報':'購入情報'})"), 'Receipt OCR review groups store and purchase date');
 assert.ok(source.includes("UI.sectionHeading({title:isShelf?'価格情報':'購入明細',subtitle:scanDraft.items.length+'件'+"), 'Receipt OCR review identifies item list and unmatched count');

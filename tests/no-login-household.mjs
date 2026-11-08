@@ -2014,30 +2014,115 @@ await waitFor(()=>temp.call('bootstrap').data.products.some(p=>
  'product master edit reaches Sheets');
 await waitFor(()=>masterUI.window.KurashiLive.state().queued===0,
  'previous product edit completed');
-const currentMaster=temp.call('bootstrap').data.products.find(p=>
- p.product_id===createdMaster.product_id);
-await masterUI.window.KurashiLive.save('product.update',{
- product_id:createdMaster.product_id,version:Number(currentMaster.version),item_group_id:chocId
-});
-await waitFor(()=>temp.call('bootstrap').data.products.some(p=>
- p.product_id===createdMaster.product_id&&p.item_group_id===chocId),
- 'linked product keeps the same master ID');
-await waitFor(()=>masterUI.window.KurashiLive.state().queued===0,'link queue completed');
+// The master link editor must keep its unsaved name/size while a common sheet opens.
+const historyBeforeMasterLink=temp.call('bootstrap').data.record_items.map(x=>x.product_id).join('|');
 masterUI.window.document.querySelector(
- '[data-act="masterProductEdit"][data-product-id="'+createdMaster.product_id+'"]').click();
-assert.ok(masterUI.window.document.querySelector('[data-act="masterProductUnlink"]'),
- 'linked product has a separate unlink-only action');
-masterUI.window.document.querySelector('[data-act="masterProductUnlink"]').click();
-const unlinkConfirm=masterUI.window.document.querySelector(
- '[data-dialog="confirmMasterProductUnlink"]');
-assert.ok(unlinkConfirm,'unlink confirmation explains the master is retained');
-unlinkConfirm.click();
-await waitFor(()=>temp.call('bootstrap').data.products.some(p=>
- p.product_id===createdMaster.product_id&&!p.item_group_id),
- 'unlink does not delete the product master');
-assert.ok(!app.includes('product.delete'),'no product-delete action is introduced');
+ '[data-act="masterProductEdit"][data-product-id="'+createdMaster.product_id+'"]'
+).click();
+const masterEditForm=masterUI.window.document.getElementById('masterProductForm');
+const masterNameDraft=masterEditForm.querySelector('[name="name"]');
+masterNameDraft.value='まだ保存していない名前';
+assert.equal(masterEditForm.querySelector('[name="group"]').value,'',
+ 'Standalone master initially has no item group');
+masterEditForm.querySelector('[data-act="masterGroupPickerOpen"]').click();
+let groupSheet=masterUI.window.document.querySelector('.master-group-picker-overlay');
+assert.ok(groupSheet&&groupSheet.querySelector('#master-group-search'),
+ 'Master link editor opens the shared searchable half-sheet');
+assert.equal(masterUI.window.document.body.style.position,'fixed',
+ 'Picker locks background scrolling on iPhone');
+assert.ok(groupSheet.querySelector('[data-ui-choice=""]'),
+ 'Unlinked is represented in the same picker');
+assert.ok(groupSheet.querySelector('[data-ui-choice="'+chocId+'"]'),
+ 'Existing item is a selectable choice');
+const groupSearch=groupSheet.querySelector('#master-group-search');
+const groupResults=groupSheet.querySelector('#master-group-results');
+const groupCount=groupResults.querySelectorAll('.ui-choice-row').length;
+groupSearch.dispatchEvent(new masterUI.window.Event('compositionstart',{bubbles:true}));
+groupSearch.value='候補なしQQQ999';
+groupSearch.dispatchEvent(new masterUI.window.Event('input',{bubbles:true}));
+assert.equal(groupResults.querySelectorAll('.ui-choice-row').length,groupCount,
+ 'Group search preserves candidates during Japanese IME composition');
+groupSearch.dispatchEvent(new masterUI.window.Event('compositionend',{bubbles:true}));
+assert.equal(groupResults.querySelectorAll('.ui-choice-row').length,0,
+ 'Group candidates filter only when composition is confirmed');
+groupSheet.querySelector('[data-search-clear="master-group-search"]').click();
+assert.ok(groupResults.querySelector('[data-ui-choice="'+chocId+'"]'),
+ 'Common clear restores all choices');
+groupSheet.querySelector('.sheet-close').click();
+assert.equal(masterUI.window.document.querySelector('.master-group-picker-overlay'),null,
+ 'Close sheet without editing product');
+assert.equal(masterUI.window.document.body.style.position,'',
+ 'Background scroll lock is released when picker closes');
+assert.equal(masterNameDraft.value,'まだ保存していない名前',
+ 'Closing sheet does not discard unsaved product name');
+masterEditForm.querySelector('[data-act="masterGroupPickerOpen"]').click();
+groupSheet=masterUI.window.document.querySelector('.master-group-picker-overlay');
+groupSheet.querySelector('[data-ui-choice="'+chocId+'"]').click();
+assert.ok(masterUI.window.document.querySelector('[data-dialog="confirmMasterGroupChange"]'),
+ 'Changing item-group link requires explicit impact confirmation');
+masterUI.window.document.querySelector('[data-dialog="cancel"]').click();
+assert.equal(masterNameDraft.value,'まだ保存していない名前',
+ 'Canceling link confirmation preserves unsaved product input');
+assert.equal(masterEditForm.querySelector('[name="group"]').value,'',
+ 'Canceling link confirmation does not change the current group');
+masterEditForm.querySelector('[data-act="masterGroupPickerOpen"]').click();
+groupSheet=masterUI.window.document.querySelector('.master-group-picker-overlay');
+groupSheet.querySelector('[data-ui-choice="'+chocId+'"]').click();
+masterUI.window.document.querySelector('[data-dialog="confirmMasterGroupChange"]').click();
+await waitFor(()=>masterEditForm.querySelector('[name="group"]').value===chocId,
+ 'Confirmed link saved to the queue and displayed without recreating form');
+assert.equal(masterNameDraft.value,'まだ保存していない名前',
+ 'Confirmed link keeps unsaved name in the existing DOM node');
+await waitFor(()=>masterUI.window.KurashiLive.state().queued===0&&
+ temp.call('bootstrap').data.products.some(p=>
+  p.product_id===createdMaster.product_id&&p.item_group_id===chocId),
+ 'Linked product is reflected on Sheets with the same master ID');
+masterNameDraft.value='マスタ紐付け後に編集C';
+masterEditForm.dispatchEvent(new masterUI.window.Event('submit',{bubbles:true,cancelable:true}));
+await waitFor(()=>masterUI.window.KurashiLive.state().queued===0&&
+ temp.call('bootstrap').data.products.some(p=>p.product_id===createdMaster.product_id&&
+  p.name==='マスタ紐付け後に編集C'),
+ 'Editing product information after changing its link still saves independently');
+const newLinkRow=masterUI.window.document.querySelector(
+ '[data-act="masterProductEdit"][data-product-id="'+createdMaster.product_id+'"]');
+assert.ok(newLinkRow,'Edited master returns to the same entry in the catalogue');
+newLinkRow.click();
+const unlinkForm=masterUI.window.document.getElementById('masterProductForm');
+assert.equal(unlinkForm.querySelector('[name="group"]').value,chocId);
+unlinkForm.querySelector('[data-act="masterGroupPickerOpen"]').click();
+groupSheet=masterUI.window.document.querySelector('.master-group-picker-overlay');
+groupSheet.querySelector('[data-ui-choice=""]').click();
+assert.ok(masterUI.window.document.querySelector('[data-dialog="confirmMasterGroupChange"]'),
+ 'Unlink also uses the shared confirmation flow');
+masterUI.window.document.querySelector('[data-dialog="confirmMasterGroupChange"]').click();
+await waitFor(()=>masterUI.window.KurashiLive.state().queued===0&&
+ temp.call('bootstrap').data.products.some(p=>
+  p.product_id===createdMaster.product_id&&!p.item_group_id),
+ 'Unlink keeps master row and ID in Sheets');
+assert.equal(unlinkForm.querySelector('[name="group"]').value,'',
+ 'Unlink is reflected in the still-open editor');
+assert.equal(temp.call('bootstrap').data.record_items.map(x=>x.product_id).join('|'),
+ historyBeforeMasterLink,'Relinking does not rewrite historical receipt product IDs');
+assert.equal(masterUI.window.document.querySelector('[data-act="masterProductUnlink"]'),null,
+ 'Standalone unlink action has been removed');
+masterUI.window.document.querySelector('[data-act="back"]').click();
+masterUI.window.document.querySelector('[data-act="masterProductNew"]').click();
+const linkedNewForm=masterUI.window.document.getElementById('masterProductForm');
+linkedNewForm.querySelector('[data-act="masterGroupPickerOpen"]').click();
+groupSheet=masterUI.window.document.querySelector('.master-group-picker-overlay');
+groupSheet.querySelector('[data-ui-choice="'+chocId+'"]').click();
+assert.equal(masterUI.window.document.querySelector('.dialog-back'),null,
+ 'New master item link is only a form selection; no premature save');
+assert.equal(linkedNewForm.querySelector('[name="group"]').value,chocId);
+linkedNewForm.querySelector('[name="name"]').value='紐付け新規作成テストC';
+linkedNewForm.dispatchEvent(new masterUI.window.Event('submit',{bubbles:true,cancelable:true}));
+await waitFor(()=>masterUI.window.KurashiLive.state().queued===0&&
+ temp.call('bootstrap').data.products.some(p=>
+  p.name==='紐付け新規作成テストC'&&p.item_group_id===chocId),
+ 'New product persists optional item group in the same product.create operation');
+assert.ok(!app.includes('product.delete'),'No product-delete action is introduced');
 masterUI.window.close();
-console.log('v65: independent master create/edit, optional item link and unlink-only API OK');
+console.log('v86: master create/edit, searchable item links, confirmations, unlink and history preservation OK');
 
 
 /* v64 migration: a previous schema must be upgraded in place. A failure after

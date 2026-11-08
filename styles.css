@@ -2670,6 +2670,29 @@ html,body{touch-action:pan-x pan-y}
 #storePickerNewForm>.primary{width:100%;min-height:46px}
 #storePickerNewForm>.ui-text-action{align-self:flex-start}
 
+/* Master product's item link uses the same searchable choice sheet as stores. */
+.master-group-picker-overlay{z-index:110}
+.half-sheet.master-group-picker-modal{
+ height:min(80dvh,720px);max-height:calc(100dvh - env(safe-area-inset-top) - 12px);
+ min-width:0;display:flex;flex-direction:column;overflow:hidden
+}
+.half-sheet.master-group-picker-modal>.sheet-body{
+ flex:1 1 auto;min-height:0;min-width:0;width:100%;
+ display:flex;flex-direction:column;overflow-y:auto;
+ padding-bottom:calc(16px + env(safe-area-inset-bottom))
+}
+.master-group-picker-content{
+ flex:1 1 auto;min-height:0;width:100%;min-width:0;
+ display:flex;flex-direction:column;gap:10px
+}
+.master-group-picker-search{flex:0 0 auto;min-width:0;width:100%}
+.master-group-picker-results{
+ flex:1 1 auto;min-height:0;width:100%;min-width:0;
+ display:flex;flex-direction:column;gap:5px;
+ overflow-y:auto;overscroll-behavior:contain;
+ border-top:1px solid var(--line);padding:6px 0 8px
+}
+
 /* Shared floating secondary action: visually secondary to save.
    Keep the action aligned to the content edge on large screens. */
 .ui-floating-action{
