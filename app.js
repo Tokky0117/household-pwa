@@ -1,4 +1,4 @@
-const APP_VERSION='0.85.3';
+const APP_VERSION='0.85.4';
 const CATS=['飲食','キッチン','洗面・風呂','洗濯・掃除','その他'];
 const liveMode=!!window.KurashiLive; // Data source only; original Preview v46 UI components remain.
 const SEED=[['牛乳',0,true],['麦茶',0,false],['コーヒー',0,true],['卵',0,false],['キッチンペーパー',1,false],['ラップ',1,true],['食器用洗剤',1,true],['シャンプー',2,false],['歯磨き粉',2,true],['ハンドソープ',2,false],['洗濯洗剤',3,false],['柔軟剤',3,true],['トイレットペーパー',3,false],['乾電池',4,true],['ティッシュ',4,true]];
@@ -175,7 +175,7 @@ let items=load(),tab='items',page='list',selected=null,query='',onlyOut=false,co
 const app=document.getElementById('app');
 let newRecordType='receipt';
 // Native iPhone chooser: Photo Library, Take Photo, or Files. Photos stay in memory.
-let scanPhotos=[],scanIndex=0,scanBusy=false,scanDraft=null,scanStatus='',scanAssistMessage='',scanToken=0,scanPhotosExpanded=true,scanNewStoreMode=false,scanReturnScrollY=null,scanRestoringPhoto=false;
+let scanPhotos=[],scanIndex=0,scanBusy=false,scanDraft=null,scanStatus='',scanAssistMessage='',scanToken=0,scanError='',scanReadFailed=false,scanNewStoreMode=false,scanReturnScrollY=null,scanRestoringPhoto=false;
 const scanPhotoUrls=new Map(); // Memory-only thumbnails; never persisted.
 function scanThumbnail(file){if(scanPhotoUrls.has(file))return scanPhotoUrls.get(file);const create=window.URL?.createObjectURL;if(typeof create!=='function')return '';const url=create.call(window.URL,file);scanPhotoUrls.set(file,url);return url;}
 function releaseScanThumbnail(file){const url=scanPhotoUrls.get(file);if(!url)return;scanPhotoUrls.delete(file);window.URL?.revokeObjectURL?.(url);}
@@ -191,7 +191,7 @@ function saveScanDraft(){
  scanDraftWrites.catch(err=>console.warn('レシート下書き保存失敗',err));
 }
 function resetScan({keepDraft=false}={}){
- scanToken++;closeScanViewer();clearScanThumbnails();scanPhotos=[];scanIndex=0;scanBusy=false;scanStatus='';scanAssistMessage='';scanPhotosExpanded=true;scanRestoringPhoto=false;
+ scanToken++;closeScanViewer();clearScanThumbnails();scanPhotos=[];scanIndex=0;scanBusy=false;scanStatus='';scanAssistMessage='';scanError='';scanReadFailed=false;scanRestoringPhoto=false;
  if(!keepDraft){scanDraft=null;scanNewStoreMode=false;scanReturnScrollY=null;saveScanDraft();}
 }
 // OCR row IDs and printed names are authoritative; AI may only suggest a product name.
@@ -584,7 +584,7 @@ function scanAssistView(){
 function scanReadingStatusView(){
  if(!scanDraft)return '';
  const summary=scanStatus||(['ocr','chatgpt-rebuild'].includes(scanDraft.source)?
-  scanDraft.items.length+'件の購入明細を読み取りました。':'');
+  scanDraft.items.length+'件の明細を読み取りました。':'');
  return `<section class="scan-reading-status" aria-label="読み取り状況">
   ${UI.sectionHeading({title:'読み取り状況'})}
   <p id="scan-status" role="status" class="hint" ${summary?'':'hidden'}>${esc(summary)}</p>
@@ -662,36 +662,34 @@ function scanFormView(){
 }
 function scanPhotoSection(){
  if(!scanPhotos.length){
-  return '<section class="scan-photo-section scan-photo-empty"><button type="button" class="secondary scan-photo-add" data-act="scanAddPhotos">'+miniIcon('plus')+'<span>写真を選択</span></button></section>';
+  return '<section class="scan-photo-section scan-photo-empty">'+
+   UI.button({label:'写真を選択',variant:'primary',action:'scanAddPhotos',icon:'plus',className:'scan-photo-add'})+
+   '</section>';
  }
- const editing=!scanDraft&&!scanBusy;
+ const editing=!scanBusy;
  return `<section class="scan-photo-section">
-  <button type="button" class="scan-photo-heading" data-act="scanTogglePhotos" aria-expanded="${scanPhotosExpanded?'true':'false'}" aria-controls="scan-photo-content">
-   <span>選択した写真 <small>${scanPhotos.length}枚</small></span>
-   <span class="scan-photo-heading-right">${scanPhotosExpanded?'閉じる':'開く'} ${chevron(scanPhotosExpanded?'up':'down')}</span>
-  </button>
-  <div id="scan-photo-content" ${scanPhotosExpanded?'':'hidden'}>
-   
-   <div class="scan-photo-grid">${scanPhotos.map((file,i)=>`
-    <div class="scan-photo-tile">
-     <div class="scan-photo-thumb">
-      <button type="button" class="scan-photo-open" data-act="scanOpenPhoto" data-scan-row="${i}" aria-label="写真${i+1}を拡大表示">
-       ${scanThumbnail(file)?`<img src="${esc(scanThumbnail(file))}" alt="写真${i+1}" loading="lazy">`:`<span>写真${i+1}</span>`}
-      </button>
-      ${editing?`<button type="button" class="scan-photo-remove" data-act="scanRemovePhoto" data-scan-row="${i}" aria-label="写真${i+1}を削除">${miniIcon('close')}</button>`:''}
-     </div><span class="scan-photo-label">写真${i+1}</span>
-    </div>`).join('')}</div>
-   ${editing&&scanPhotos.length<6?`<button type="button" class="secondary scan-photo-add" data-act="scanAddPhotos">${miniIcon('plus')}<span>写真を追加</span></button>`:''}
-  </div>
+  ${UI.sectionHeading({title:'選択した写真',subtitle:scanPhotos.length+'枚'})}
+  <div class="scan-photo-grid">${scanPhotos.map((file,i)=>`
+   <div class="scan-photo-tile">
+    <div class="scan-photo-thumb">
+     <button type="button" class="scan-photo-open" data-act="scanOpenPhoto" data-scan-row="${i}" aria-label="写真${i+1}を拡大表示">
+      ${scanThumbnail(file)?`<img src="${esc(scanThumbnail(file))}" alt="写真${i+1}" loading="lazy">`:`<span>写真${i+1}</span>`}
+     </button>
+     ${editing?`<button type="button" class="scan-photo-remove" data-act="scanRemovePhoto" data-scan-row="${i}" aria-label="写真${i+1}を削除">${miniIcon('close')}</button>`:''}
+    </div><span class="scan-photo-label">写真${i+1}</span>
+   </div>`).join('')}</div>
+  ${editing&&scanPhotos.length<6?UI.button({label:'写真を追加',variant:'secondary',action:'scanAddPhotos',icon:'plus',className:'scan-photo-add'}):''}
  </section>`;
 }
 function receiptScanView(){
  const reviewing=!!scanDraft;
  return `${head('レシート読取','くらしストック',true)}<main class="preview-record-page receipt-scan-page">
  ${reviewing?'':scanPhotoSection()}
- ${!scanPhotos.length&&!reviewing?'<p class="hint">写真を選択してください。</p>':''}
- ${!reviewing&&scanPhotos.length?`<button type="button" class="primary scan-photo-start" data-act="scanStart" ${scanBusy?'disabled':''}>${scanBusy?'読み取り中…':'写真を解析する'}</button>`:''}
- ${reviewing?scanReadingStatusView():`<p id="scan-status" role="status" class="hint" ${scanStatus?'':'hidden'}>${esc(scanStatus)}</p>`}
+ ${!reviewing&&scanPhotos.length?UI.button({label:scanBusy?'読み取り中…':scanReadFailed?'もう一度読み取る':'写真を読み取る',
+   variant:'primary',action:'scanStart',icon:'receiptText',disabled:scanBusy,className:'scan-photo-start'}):''}
+ ${!reviewing&&scanBusy&&scanStatus?UI.statusMessage({text:scanStatus,id:'scan-status',className:'scan-status-progress'}):''}
+ ${!reviewing&&scanError?UI.statusMessage({text:scanError,kind:'error',className:'scan-status-error'}):''}
+ ${reviewing?scanReadingStatusView():''}
  ${scanFormView()}
  </main>
  ${reviewing?UI.floatingAction({label:'写真を確認',icon:'camera',action:'scanOpenCurrentPhoto',avoidSelector:'#scanConfirmForm button[type="submit"]'}):''}`;
@@ -777,10 +775,18 @@ function openScanViewer(index){
  document.addEventListener('keydown',onKey);
  viewer.querySelector('.scan-viewer-close').focus({preventScroll:true});
 }
+function scanReadableError(error){
+ const detail=String(error?.message||error||'');
+ if(/商品明細を抽出できませんでした/.test(detail))
+  return '明細を読み取れませんでした。写真を確認して、もう一度お試しください。';
+ if(/fetch|network|ネットワーク|通信|importing a module|module script|dynamically imported|timeout|timed out|failed to load/i.test(detail))
+  return '読み取り機能を利用できませんでした。通信状態を確認して、もう一度お試しください。';
+ return '読み取れませんでした。もう一度お試しください。';
+}
 async function runReceiptScan(){
  if(scanBusy||!scanPhotos.length)return;
- scanBusy=true;scanDraft=null;scanAssistMessage='';const token=++scanToken;
- scanStatus='読み取りを準備中です。初回は読み取り機能の準備に時間がかかる場合があります。';
+ scanBusy=true;scanDraft=null;scanAssistMessage='';scanError='';scanReadFailed=false;const token=++scanToken;
+ scanStatus='読み取りを準備しています…';
  render();
  try{
   const engine=scanRuntime||(scanRuntime=await import('./ocr-engine/engine.js'));
@@ -789,7 +795,7 @@ async function runReceiptScan(){
   const reviewEvidence={itemSources:[],unresolvedRows:[]};
   for(let i=0;i<scanPhotos.length;i++){
    if(token!==scanToken)return;
-   scanStatus='写真 '+(i+1)+' / '+scanPhotos.length+' を解析しています…';
+   scanStatus='写真'+(i+1)+'/'+scanPhotos.length+'を読み取り中…';
    const status=document.getElementById('scan-status');if(status)status.textContent=scanStatus;
    const out=await engine.scanReceiptImage(scanPhotos[i],{mode:'gray',crop:null});
    observations.push(out.text);taxModes.push(out.parsed.taxBasis);
@@ -839,13 +845,14 @@ async function runReceiptScan(){
    item.autoLinked=!!item.productId;
   });
   saveScanDraft();
-  scanPhotosExpanded=false;
   scanIndex=0;
-  scanStatus=allItems.length+'件の購入明細を読み取りました。';
+  scanStatus=allItems.length+'件の明細を読み取りました。';
  }catch(e){
   console.error('レシートOCR失敗',e);
-  if(token===scanToken){scanRuntime=null;scanStatus='読み取れませんでした：'+(e?.message||String(e))+
-   (e instanceof TypeError&&/fetch|module|network/i.test(String(e?.message||''))?' 通信を確認し、アプリを再読み込みしてください。':'');}
+  if(token===scanToken){
+   scanRuntime=null;scanStatus='';scanReadFailed=true;
+   scanError=scanReadableError(e);
+  }
  }
  finally{if(token===scanToken){scanBusy=false;render();}}
 }
@@ -878,8 +885,8 @@ const UI={
   sectionHeading({title,subtitle='',trailing='',className=''}) {
     return `<div class="ui-section-heading ${esc(className)}"><div class="ui-section-heading-copy"><h2 class="sectiontitle">${esc(title)}</h2>${subtitle?`<span class="ui-section-heading-sub">${esc(subtitle)}</span>`:''}</div>${trailing}</div>`;
   },
-  button({label,variant='secondary',action='',type='button',icon='',className=''}) {
-    return `<button type="${esc(type)}" class="${esc(variant)}${className?' '+esc(className):''}" ${action?'data-act="'+esc(action)+'"':''}>${icon?miniIcon(icon):''}<span>${esc(label)}</span></button>`;
+  button({label,variant='secondary',action='',type='button',icon='',className='',disabled=false}) {
+    return `<button type="${esc(type)}" class="${esc(variant)}${className?' '+esc(className):''}" ${action?'data-act="'+esc(action)+'"':''}${disabled?' disabled':''}>${icon?miniIcon(icon):''}<span>${esc(label)}</span></button>`;
   },
   floatingAction({label,action,icon='',avoidSelector=''}) {
     return `<div class="ui-floating-action" data-ui-floating-action data-ui-floating-avoid="${esc(avoidSelector)}">${UI.button({label,action,icon,variant:'secondary',className:'ui-floating-action-button'})}</div>`;
@@ -891,7 +898,7 @@ const UI={
     </button>`;
   },
   textAction({label,action,arrow=true,row=null,id=''}){return `<button type="button" class="ui-text-action" ${id?'id="'+esc(id)+'"':''} data-act="${esc(action)}" ${Number.isInteger(row)?'data-scan-row="'+row+'"':''}><span>${esc(label)}</span>${arrow?chevron('right'):''}</button>`;},
-  statusMessage({text,kind='neutral'}){return `<p class="ui-status-message is-${esc(kind)}" role="status">${esc(text)}</p>`;},
+  statusMessage({text,kind='neutral',id='',className=''}){return `<p ${id?'id="'+esc(id)+'" ':''}class="ui-status-message is-${esc(kind)}${className?' '+esc(className):''}" role="${kind==='error'?'alert':'status'}">${esc(text)}</p>`;},
   formFeedback({id}){return `<p class="ui-form-feedback" id="${esc(id)}" role="alert" hidden></p>`;},
   recordRow({id,title,subtitle,amount=null,draft=false}){return `<button type="button" class="panel ui-record-row" data-act="${draft?'resumeScanDraft':'recordDetail'}" ${draft?'':`data-record-id="${esc(id)}"`}>
    <span class="ui-record-row-copy"><strong>${esc(title)}</strong><span>${esc(subtitle)}</span>${amount===null?'':`<strong class="ui-record-amount">${yen(amount)}</strong>`}</span>
@@ -1584,13 +1591,13 @@ function acceptReceiptPhotos(picker){
  const restoring=scanRestoringPhoto&&picker.id==='scan-add-picker'&&!!scanDraft;
  scanRestoringPhoto=false;
  if(scanPhotos.length+files.length>6){
-  scanStatus='一度に読み込める写真は最大6枚です。';
+  scanError='写真は最大6枚まで選択できます。';
   picker.value='';render();return;
  }
- scanPhotos.push(...files);scanIndex=restoring?0:scanPhotos.length-1;scanPhotosExpanded=true;
+ scanPhotos.push(...files);scanIndex=restoring?0:scanPhotos.length-1;
  page='recordScan';
  if(!restoring){scanDraft=null;scanAssistMessage='';scanToken++;
-  scanStatus=files.length+'枚の写真を追加しました。';}
+  scanStatus='';scanError='';scanReadFailed=false;}
  picker.value=''; // Same photo can be selected again.
  render();
 }
@@ -2211,11 +2218,6 @@ if(action==='scanChooseExisting'){
  return;
 }
 if(action==='scanStart'){void runReceiptScan();return}
-if(action==='scanTogglePhotos'){
- const content=document.getElementById('scan-photo-content'),button=document.querySelector('.scan-photo-heading');
- if(content&&button){scanPhotosExpanded=!scanPhotosExpanded;content.hidden=!scanPhotosExpanded;button.setAttribute('aria-expanded',String(scanPhotosExpanded));const label=button.querySelector('.scan-photo-heading-right');if(label)label.innerHTML=(scanPhotosExpanded?'閉じる':'開く')+' '+chevron(scanPhotosExpanded?'up':'down');}
- return;
-}
 if(action==='scanOpenPhoto'){openScanViewer(Number(el.dataset.scanRow));return}
 if(action==='scanOpenCurrentPhoto'){
  if(page!=='recordScan'||!scanDraft)return;
@@ -2237,7 +2239,7 @@ if(action==='scanRemovePhoto'){
   resetScan();page='recordScan';render();return;
  }
  scanIndex=Math.max(0,Math.min(scanIndex,scanPhotos.length-1));
- scanDraft=null;scanToken++;scanAssistMessage='';scanStatus='写真を削除しました。';
+ scanDraft=null;scanToken++;scanAssistMessage='';scanStatus='';scanError='';scanReadFailed=false;
  render();return;
 }
 if(action==='scanRemoveItem'&&scanDraft){
