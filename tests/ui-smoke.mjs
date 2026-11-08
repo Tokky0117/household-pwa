@@ -507,6 +507,7 @@ assert.ok(beforeScan.includes('選択した写真')&&
  !beforeScan.includes('data-act="scanOpenCurrentPhoto"'),
  'Pre-OCR photo selection and deletion remain available');
 ui.setScanPhotos([]);
+ui.setScanDraft({...rowOcr,items:[{...rowOcr.items[0],savedOcrName:true}]});
 const resumedReviewWithoutPhoto=ui.receiptScanView();
 assert.ok(resumedReviewWithoutPhoto.includes('data-act="scanRestorePhoto"')&&
  !resumedReviewWithoutPhoto.includes('data-act="scanOpenCurrentPhoto"'),
