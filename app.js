@@ -233,7 +233,7 @@ function recordDetailView(){
     ${x.confirmed_name?'<span>写真・手入力で確認した明細名：'+esc(x.confirmed_name)+'</span>':x.product_id&&aliasNameFor(x)?'<span>レシートの読み取り名：'+esc(aliasNameFor(x))+'</span>':''}
     <span>${esc(x.quantity)}個　税込 ${yen(Number(x.amount_tax_included))}</span>
     <span>${x.product_id?'照合商品：'+esc(catalogue.products.find(p=>p.id===x.product_id)?.name||'登録済み商品'):'商品未照合'}</span></div>`).join('')}
-  ${liveMode?'<div class="record-detail-actions>'+UI.button({label:'編集',variant:'primary',action:'recordEdit'})+UI.button({label:'記録を削除',variant:'tertiary',action:'recordDelete',className:'record-delete-action'})+'</div>':''}
+  ${liveMode?'<div class="record-detail-actions">'+UI.button({label:'編集',variant:'primary',action:'recordEdit'})+UI.button({label:'記録を削除',variant:'tertiary',action:'recordDelete',className:'record-delete-action'})+'</div>':''}
  </main>${nav()}`;
 }
 
