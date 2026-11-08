@@ -1174,12 +1174,19 @@ const historyEntry=historyUI.window.document.querySelector(
 assert.ok(historyEntry,'confirmed receipt opens from existing history');
 historyEntry.click();
 assert.match(historyUI.window.document.body.textContent,/税込合計/);
-assert.ok(historyUI.window.document.querySelector('.record-detail-actions>.primary[data-act="recordEdit"]'),
- 'Receipt detail edit uses the existing shared primary button');
-assert.ok(historyUI.window.document.querySelector('.record-detail-actions>.tertiary.record-delete-action[data-act="recordDelete"]'),
- 'Receipt detail delete is a separate shared tertiary action');
-assert.equal(historyUI.window.document.querySelector('.record-detail-actions>.record-delete-action').textContent.trim(),
- '記録を削除','Destructive action states exactly what will be deleted');
+assert.ok(historyUI.window.document.querySelector('.record-detail-actions>.tertiary[data-act="recordEdit"]'),
+ 'Receipt detail edit uses the shared low-emphasis tertiary button');
+assert.ok(historyUI.window.document.querySelector('.record-detail-actions>.tertiary[data-act="recordDelete"]'),
+ 'Receipt detail delete is an equally ranked shared tertiary action');
+assert.equal(historyUI.window.document.querySelector('.record-detail-actions>[data-act="recordDelete"]').textContent.trim(),
+ '削除','Destructive operation is named clearly and stays secondary to viewing');
+assert.equal(historyUI.window.document.querySelectorAll('.detail-record-line').length,1,
+ 'Saved receipt retains one card per line');
+assert.ok(historyUI.window.document.querySelector('.detail-record-info .ui-static-field-value')&&
+ !historyUI.window.document.querySelector('.detail-record-info.panel'),
+ 'Purchase metadata uses shared static form labels without a panel');
+assert.ok(historyUI.window.document.querySelector('.detail-record-total'),
+ 'Total is separately visible outside the detail cards');
 historyUI.window.document.querySelector('[data-act="recordEdit"]').click();
 const editForm=historyUI.window.document.getElementById('scanConfirmForm');
 assert.ok(editForm,'history edit reuses shared multi-line confirmation form');
@@ -1234,7 +1241,7 @@ await waitFor(()=>historyRecovery.window.KurashiLive.state().queued===0&&
 const shelfEditRecord=temp.call('bootstrap').data.records.find(r=>
  r.record_type==='shelf'&&r.record_date===shelfEditDate);
 historyRecovery.window.document.querySelector('[data-tab="receipt"]').click();
-assert.match(historyRecovery.window.document.body.textContent,/記録一覧/);
+assert.match(historyRecovery.window.document.body.textContent,/明細一覧/);
 const shelfHistoryEntry=historyRecovery.window.document.querySelector(
  '[data-act="recordDetail"][data-record-id="'+shelfEditRecord.record_id+'"]');
 assert.ok(shelfHistoryEntry,'saved shelf observation opens from record list');

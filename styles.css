@@ -2182,9 +2182,24 @@ html,body {
 .record-entry-form .formfield{margin-bottom:14px}
 .record-entry-form input{font-size:16px}
 .record-entry-form>.primary{width:100%;min-height:44px}
-.preview-record-row{display:flex;flex-direction:column;gap:4px;margin:8px 0}
-.preview-record-row strong{font-size:14px}
-.preview-record-row span{font-size:13px;color:var(--muted)}
+/* Saved history: keep one card per line; do not card-wrap purchase metadata or totals. */
+.detail-record-page .ui-section-heading{margin-bottom:12px}
+.detail-record-info{margin-bottom:24px}
+.detail-record-info-fields .formfield{
+ display:flex;align-items:flex-start;justify-content:space-between;
+ gap:12px;margin:0 0 var(--ui-field-group-gap);
+}
+.detail-record-info-fields .ui-static-field-label{flex:none;margin:0}
+.detail-record-info-fields .ui-static-field-value{flex:1;text-align:right;min-width:0}
+.detail-record-line{margin:0 0 10px;padding:14px 15px}
+.detail-record-line-main{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;min-width:0}
+.detail-record-line-name{flex:1;min-width:0;overflow-wrap:anywhere;font-size:var(--ui-list-name-font-size);font-weight:var(--ui-list-name-font-weight);line-height:1.45}
+.detail-record-line-amount{flex:none;white-space:nowrap;font-size:var(--ui-value-font-size);font-weight:var(--ui-value-font-weight);font-variant-numeric:tabular-nums}
+.detail-record-line-meta{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px;color:var(--muted);font-size:12px;line-height:1.5}
+.detail-record-line-meta span+span::before{content:"·";margin-right:6px}
+.detail-record-total{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin:20px 0 0;padding:16px 0 6px;border-top:1px solid var(--line)}
+.detail-record-total-label{font-size:16px;font-weight:600;flex:none}
+.detail-record-total-amount{font-size:24px;font-weight:700;font-variant-numeric:tabular-nums;text-align:right;min-width:0;overflow-wrap:anywhere}
 .budget-month{display:flex;align-items:center;justify-content:space-between;margin:8px 0 20px}
 .budget-month .iconbtn{min-width:44px;min-height:44px}
 .budget-total{padding:16px 14px;margin-bottom:12px;border:1px solid var(--line);border-radius:var(--ui-radius-card);display:flex;flex-direction:column;gap:5px}
@@ -2336,12 +2351,12 @@ main>.ui-search + .filterrow{margin-bottom:5px}
 .ui-record-row .ui-record-row-copy>span{font-size:13px;font-weight:400;color:var(--muted)}
 .ui-record-row .ui-record-row-copy>.ui-record-amount{font-size:15px;font-variant-numeric:tabular-nums}
 .ui-record-row>.ui-chevron{width:18px;height:18px;color:var(--muted);flex:none}
-.receipt-record-list{display:flex;flex-direction:column;gap:8px}
-.receipt-home .ui-section-heading .sectiontitle{color:var(--muted);font-size:17px}
-.receipt-home .ui-section-heading{min-height:44px}
-.receipt-home .receipt-list-heading{margin-bottom:10px}
-.receipt-home .record-entry-actions{margin-top:9px;margin-bottom:22px}
-.receipt-all{padding-top:18px}
+.detail-history-list{display:flex;flex-direction:column;gap:8px}
+.detail-home .ui-section-heading .sectiontitle{color:var(--muted);font-size:17px}
+.detail-home .ui-section-heading{min-height:44px}
+.detail-home .detail-list-heading{margin-bottom:10px}
+.detail-home .record-entry-actions{margin-top:9px;margin-bottom:22px}
+.detail-all{padding-top:18px}
 
 /* Shared contextual feedback: anchored placement comes from say(), field errors persist. */
 .ui-field-notice{margin:7px 0 0;font-size:13px;line-height:1.5;color:var(--red)}
@@ -2434,9 +2449,11 @@ main>.ui-search + .filterrow{margin-bottom:5px}
 /* Record scan and history: use Preview v46 sizing, without custom camera controls. */
 .receipt-history-row{display:flex;flex-direction:column;align-items:stretch;gap:5px;width:100%;text-align:left;cursor:pointer}
 .receipt-history-row>span{font-weight:400}
-.record-detail-actions{display:flex;flex-direction:column;align-items:stretch;gap:4px;margin:18px 0}
-.record-detail-actions>.primary{width:100%;min-height:48px}
-.record-detail-actions>.record-delete-action{align-self:center;min-height:44px;padding:8px 14px;color:var(--ui-field-error-color)}
+/* Edit and delete are peer, secondary-frequency actions, both using shared Tertiary. */
+.record-detail-actions{display:flex;align-items:center;justify-content:space-around;position:relative;margin:18px 0 0;padding-top:8px;border-top:1px solid var(--line)}
+.record-detail-actions>.tertiary{display:inline-flex;align-items:center;justify-content:center;gap:8px;flex:1;min-width:0;min-height:44px;padding:9px 8px}
+.record-detail-actions>.tertiary svg{width:18px;height:18px;flex:none}
+.record-detail-actions::after{content:"";position:absolute;top:18px;bottom:10px;left:50%;width:1px;background:var(--line);pointer-events:none}
 .receipt-chatgpt-page>[data-act]{display:block;min-height:44px;width:100%;margin:12px auto}
 .receipt-chatgpt-page textarea{min-height:170px}
 .receipt-scan-page [data-act="scanAddPhotos"],.receipt-scan-page [data-act="scanStart"]{width:100%;min-height:44px}

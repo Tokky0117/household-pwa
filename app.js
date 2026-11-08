@@ -1,4 +1,4 @@
-const APP_VERSION='0.85.6';
+const APP_VERSION='0.85.7';
 const CATS=['飲食','キッチン','洗面・風呂','洗濯・掃除','その他'];
 const liveMode=!!window.KurashiLive; // Data source only; original Preview v46 UI components remain.
 const SEED=[['牛乳',0,true],['麦茶',0,false],['コーヒー',0,true],['卵',0,false],['キッチンペーパー',1,false],['ラップ',1,true],['食器用洗剤',1,true],['シャンプー',2,false],['歯磨き粉',2,true],['ハンドソープ',2,false],['洗濯洗剤',3,false],['柔軟剤',3,true],['トイレットペーパー',3,false],['乾電池',4,true],['ティッシュ',4,true]];
@@ -215,25 +215,43 @@ function applyChatGptOcrAssistance(draft,result){
 function makeChatGptReceiptRebuildDraft(previous,result){
  return window.KurashiReceiptReview.fromChatGptRebuild(previous,result,scanChainForStore);
 }
+// Saved detail uses master, confirmed or OCR names; unconfirmed inferences are not titles.
+function detailLineName(line){
+ return catalogue.products.find(p=>p.id===line.product_id)?.name||
+  aliasNameFor(line)||'明細名なし';
+}
 function recordDetailView(){
  const record=allPreviewRecords().find(r=>r.record_id===recordDetailId);
- if(!record)return `${head('保存済み記録','見つかりません',true)}<main></main>${nav()}`;
+ if(!record)return `${head('保存済み明細','見つかりません',true)}<main></main>${nav()}`;
  const isShelf=record.record_type==='shelf';
  const detail=allPreviewItems().filter(x=>x.record_id===recordDetailId&&!x.deleted_at)
   .sort((a,b)=>Number(a.line_order)-Number(b.line_order));
  const total=detail.reduce((sum,x)=>sum+Number(x.amount_tax_included||0),0);
- return `${head(record.record_type==='receipt'?'レシート詳細':'値札詳細',chainLabel(record.chain_id),true)}
- <main class="preview-record-page receipt-detail">
-  <div class="panel"><p>${isShelf?'値札確認日':'購入日'}：${esc(record.record_date)}</p>
-    <p>チェーン：${esc(chainLabel(record.chain_id))}</p>
-       <p>明細数：${detail.length}件</p><strong>税込合計：${yen(total)}</strong></div>
-  ${detail.map((x,i)=>`<div class="panel preview-record-row">
-    <strong>${i+1}. ${esc(catalogue.products.find(p=>p.id===x.product_id)?.name||aliasNameFor(x)||'明細名なし')}</strong>
-    ${x.inferred_name?'<span>ChatGPT推測名：'+esc(x.inferred_name)+'</span>':''}
-    ${x.confirmed_name?'<span>写真・手入力で確認した明細名：'+esc(x.confirmed_name)+'</span>':x.product_id&&aliasNameFor(x)?'<span>レシートの読み取り名：'+esc(aliasNameFor(x))+'</span>':''}
-    <span>${esc(x.quantity)}個　税込 ${yen(Number(x.amount_tax_included))}</span>
-    <span>${x.product_id?'照合商品：'+esc(catalogue.products.find(p=>p.id===x.product_id)?.name||'登録済み商品'):'商品未照合'}</span></div>`).join('')}
-  ${liveMode?'<div class="record-detail-actions">'+UI.button({label:'編集',variant:'primary',action:'recordEdit'})+UI.button({label:'記録を削除',variant:'tertiary',action:'recordDelete',className:'record-delete-action'})+'</div>':''}
+ return `${head(isShelf?'値札詳細':'レシート詳細','くらしストック',true)}
+ <main class="preview-record-page detail-record-page">
+  <section class="detail-record-info" aria-label="${isShelf?'値札情報':'購入情報'}">
+   ${UI.sectionHeading({title:isShelf?'値札情報':'購入情報'})}
+   <div class="detail-record-info-fields">
+    ${UI.formField({id:'detail-record-store',control:'static',label:'店舗',value:chainLabel(record.chain_id)})}
+    ${UI.formField({id:'detail-record-date',control:'static',label:isShelf?'値札確認日':'購入日',value:String(record.record_date||'').replaceAll('-','/')})}
+   </div>
+  </section>
+  <section class="detail-record-lines" aria-label="${isShelf?'価格情報':'購入明細'}">
+   ${UI.sectionHeading({title:isShelf?'価格情報':'購入明細',subtitle:detail.length+'件'})}
+   ${detail.map(line=>`<div class="panel detail-record-line">
+    <div class="detail-record-line-main">
+     <strong class="detail-record-line-name">${esc(detailLineName(line))}</strong>
+     <strong class="detail-record-line-amount">${yen(Number(line.amount_tax_included||0))}</strong>
+    </div>
+    <div class="detail-record-line-meta"><span>${isShelf?'販売個数':'数量'} ${esc(line.quantity)}</span>
+     ${!line.product_id?'<span>商品未照合</span>':''}</div>
+   </div>`).join('')}
+  </section>
+  <section class="detail-record-total" aria-label="${isShelf?'価格合計':'合計'}">
+   <strong class="detail-record-total-label">${isShelf?'販売価格合計':'税込合計'}</strong>
+   <strong class="detail-record-total-amount">${yen(total)}</strong>
+  </section>
+  ${liveMode?'<div class="record-detail-actions">'+UI.button({label:'編集',variant:'tertiary',icon:'pencil',action:'recordEdit'})+UI.button({label:'削除',variant:'tertiary',icon:'trash',action:'recordDelete'})+'</div>':''}
  </main>${nav()}`;
 }
 
@@ -1168,10 +1186,10 @@ function getRecordSummary(record){
   subtitle:`${record.record_date} · ${record.record_type==='receipt'?'レシート':'値札'} · ${details.length}明細`,
   amount:details.reduce((sum,x)=>sum+Number(x.amount_tax_included||0),0)};
 }
-function receiptHistoryRows(records){
+function detailHistoryRows(records){
  return records.map(r=>UI.recordRow(getRecordSummary(r))).join('');
 }
-function receiptView(){
+function detailHomeView(){
  const recent=allPreviewRecords().filter(r=>!r.deleted_at).slice().reverse().slice(0,5);
  const draft=scanDraftAvailable?UI.recordRow({title:'未保存の下書き',subtitle:'レシート · 確認を再開',draft:true}):'';
  const registration=[
@@ -1179,17 +1197,17 @@ function receiptView(){
   {label:'レシート入力',icon:'receiptText',action:'newReceipt',enabled:true},
   {label:'値札入力',icon:'tag',action:'newShelf',enabled:true}
  ].filter(x=>x.enabled);
- return `${head('明細','くらしストック')}<main class="preview-record-page receipt-home">
+ return `${head('明細','くらしストック')}<main class="preview-record-page detail-home">
  ${UI.sectionHeading({title:'明細を登録'})}
  <div class="record-entry-actions">${registration.map(x=>UI.button({label:x.label,icon:x.icon,action:x.action,variant:x.primary?'primary':'secondary'})).join('')}</div>
- ${UI.sectionHeading({title:'記録一覧',trailing:UI.textAction({label:'すべて表示',action:'receiptAll'}),className:'receipt-list-heading'})}
- <div class="receipt-record-list">${draft}${receiptHistoryRows(recent)||(!draft?'<div class="empty">記録はまだありません</div>':'')}</div>
+ ${UI.sectionHeading({title:'明細一覧',trailing:UI.textAction({label:'すべて表示',action:'detailAll'}),className:'detail-list-heading'})}
+ <div class="detail-history-list">${draft}${detailHistoryRows(recent)||(!draft?'<div class="empty">明細はまだありません</div>':'')}</div>
  </main>${nav()}`;
 }
-function receiptAllView(){
+function detailAllView(){
  const records=allPreviewRecords().filter(r=>!r.deleted_at).slice().reverse();
- return `${head('記録一覧','',true)}<main class="preview-record-page receipt-all">
- <div class="receipt-record-list">${receiptHistoryRows(records)||'<div class="empty">記録はまだありません</div>'}</div>
+ return `${head('明細一覧','',true)}<main class="preview-record-page detail-all">
+ <div class="detail-history-list">${detailHistoryRows(records)||'<div class="empty">明細はまだありません</div>'}</div>
  </main>`;
 }
 function stub(title,icon,desc){return `${head(title,'くらしストック_試作')}<main><div class="panel placeholder"><div class="bubble">${icon}</div><h2>${title}画面</h2><p>${desc}</p></div><div class="alert">この画面は共通UIの確認用です。データ処理や同期はまだ行いません。</div></main>${nav()}`}
@@ -1215,7 +1233,7 @@ function dialogView(){
 // One DOM routing table: screens define content, shell owns navigation and overlays.
 function mainTabView(){
  switch(tab){
-  case 'receipt': return receiptView();
+  case 'receipt': return detailHomeView();
   case 'settings': return settingsView();
   default: return listView();
  }
@@ -1227,11 +1245,11 @@ function pageView(){
   case 'add': return listView();
   case 'products': return productsView();
   case 'productPick': return priceCompareView();
-  case 'recordAdd': return receiptView();
+  case 'recordAdd': return detailHomeView();
   case 'recordScan': return receiptScanView();
   case 'recordChatGpt': return receiptChatGptView();
   case 'recordDetail': return recordDetailView();
-  case 'receiptAll': return receiptAllView();
+  case 'detailAll': return detailAllView();
   case 'scanProduct': return receiptScanView();
   case 'scanExistingProduct': return receiptScanView();
   case 'masterProducts': return masterProductsView();
@@ -1481,7 +1499,7 @@ function back(){
   if(page==='scanExistingProduct'){page='recordScan';scanExistingQuery='';render();return;}
   if(page==='scanProduct'){page='recordScan';scanProductRow=null;render();return;}
   if(page==='recordDetail'){page=recordDetailOrigin;tab='receipt';render();return;}
-  if(page==='receiptAll'){page='list';tab='receipt';render();return;}
+  if(page==='detailAll'){page='list';tab='receipt';render();return;}
   if(page==='recordChatGpt'){
    page=scanDraft?.source==='ocr'?'recordScan':'list';tab='receipt';render();return;
   }
@@ -2126,7 +2144,7 @@ if(action==='chatGptImport'){
  }
  return;
 }
-if(action==='receiptAll'){page='receiptAll';tab='receipt';render();return;}
+if(action==='detailAll'){page='detailAll';tab='receipt';render();return;}
 if(action==='resumeScanDraft'){
  window.KurashiLive.loadReceiptDraft().then(draft=>{
   if(!draft)return;
@@ -2140,7 +2158,7 @@ if(action==='scanAddPhotos'){
  if(!scanBusy){scanRestoringPhoto=false;openReceiptPhotoPicker(document.getElementById('scan-add-picker'));}return;
 }
 if(action==='recordDetail'){
- recordDetailOrigin=page==='receiptAll'?'receiptAll':'list';recordDetailId=el.dataset.recordId;page='recordDetail';render();return;
+ recordDetailOrigin=page==='detailAll'?'detailAll':'list';recordDetailId=el.dataset.recordId;page='recordDetail';render();return;
 }
 if(action==='recordEdit'){
  const r=allPreviewRecords().find(x=>x.record_id===recordDetailId);
@@ -2161,7 +2179,8 @@ if(action==='recordEdit'){
  saveScanDraft();scanStatus='';page='recordScan';render();return;
 }
 if(action==='recordDelete'){
- dialog={title:'記録を削除しますか？',message:'削除すると価格比較と記録一覧から除外されます。',
+ dialog={title:allPreviewRecords().find(r=>r.record_id===recordDetailId)?.record_type==='shelf'?'この値札を削除しますか？':'このレシートを削除しますか？',
+  message:'削除すると明細一覧と価格比較から除外されます。',
   buttons:[{id:'cancel',label:'キャンセル'},{id:'confirmRecordDelete',label:'削除する',critical:true}],
   pending:{recordId:recordDetailId}};
  renderDialogOnly();return;
