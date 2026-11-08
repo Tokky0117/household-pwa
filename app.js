@@ -668,7 +668,7 @@ function scanPhotoSection(){
  }
  const editing=!scanBusy;
  return `<section class="scan-photo-section">
-  ${UI.sectionHeading({title:'選択した写真',subtitle:scanPhotos.length+'枚'})}
+  ${UI.sectionHeading({title:'選択した写真',trailing:'<span class="scan-photo-count">'+scanPhotos.length+'枚</span>'})}
   <div class="scan-photo-grid">${scanPhotos.map((file,i)=>`
    <div class="scan-photo-tile">
     <div class="scan-photo-thumb">
