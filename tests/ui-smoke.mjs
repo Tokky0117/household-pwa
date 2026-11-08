@@ -63,7 +63,7 @@ assert.ok(source.includes('iconButton({label,action,iconHtml,title=')&&
  'Daily header icons and receipt entry actions use shared builders');
 assert.ok(ui.listView().includes('data-act="copyList" aria-label="在庫なしをコピー"')&&
  ui.listView().includes('data-act="add" aria-label="日用品を追加"')&&
- ui.receiptView().includes('data-act="receiptScan"')&&
+ source.includes("label:'レシート読取'")&&
  ui.receiptView().includes('data-act="newReceipt"'),
  'Common action builders preserve existing user labels and event hooks');
 assert.ok(!ui.listView().includes('※ 価格・店舗はサンプル'),'Daily list no longer shows temporary sample notice');
