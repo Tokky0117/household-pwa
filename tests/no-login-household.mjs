@@ -2276,6 +2276,37 @@ optionalUI.window.document.querySelector('#chatgpt-input').value=JSON.stringify(
  }]
 });
 await completeOcrImport(optionalUI);
+// Real user recovery: a resumed receipt loses in-memory photos, but selecting
+// the original reference image must not discard already imported item changes.
+const restorePhoto=optionalUI.window.document.querySelector('[data-act="scanRestorePhoto"]');
+assert.ok(restorePhoto,'resumed receipt offers a reference-photo reselect action');
+const beforeRestore=optionalUI.window.document.querySelector('[name="amount-0"]').value;
+const referencePicker=optionalUI.window.document.querySelector('#scan-add-picker');
+Object.defineProperty(referencePicker,'files',{configurable:true,value:[
+ new optionalUI.window.File(['mock image bytes'],'original-receipt.jpg',{type:'image/jpeg'})
+]});
+restorePhoto.click();
+referencePicker.dispatchEvent(new optionalUI.window.Event('input',{bubbles:true}));
+assert.ok(optionalUI.window.document.querySelector('[data-act="scanOpenCurrentPhoto"]'),
+ 'photo confirmation action appears after selecting a reference image');
+assert.equal(optionalUI.window.document.querySelector('[name="amount-0"]').value,beforeRestore,
+ 'reselecting a reference photo preserves existing OCR and ChatGPT corrections');
+assert.equal(optionalUI.window.document.querySelectorAll('.scan-review-item').length,1,
+ 'reselecting does not recreate or erase scanned receipt items');
+assert.ok(optionalUI.window.document.querySelector('#scanConfirmForm').noValidate,
+ 'receipt form uses app-level validation consistently');
+// Empty required quantity must show the same shared feedback and field hints.
+let invalidForm=optionalUI.window.document.querySelector('#scanConfirmForm');
+const invalidQty=invalidForm.querySelector('[name="qty-0"]');
+invalidQty.value='';
+invalidForm.dispatchEvent(new optionalUI.window.Event('submit',{bubbles:true,cancelable:true}));
+assert.match(invalidForm.querySelector('#scan-save-feedback')?.textContent||'',/赤い項目を修正/);
+assert.ok(invalidQty.closest('.formfield').classList.contains('ui-field-error'),
+ 'missing quantity uses the shared red field state');
+invalidQty.value='1';
+invalidQty.dispatchEvent(new optionalUI.window.Event('input',{bubbles:true}));
+assert.equal(invalidForm.querySelector('#scan-save-feedback')?.hidden,true,
+ 'editing the invalid value clears stale save-error feedback');
 assert.ok(optionalUI.window.document.querySelector('.scan-assist-area [data-act="chatGptAssist"]'),
  'ChatGPT help is outside the review form near the photo area');
 assert.match(optionalUI.window.document.querySelector('.scan-assist-area .ui-status-message')?.textContent||'',
