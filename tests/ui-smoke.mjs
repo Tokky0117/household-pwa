@@ -505,7 +505,7 @@ assert.equal(ui.shouldHideFloatingAction({anchorRect:{top:900,bottom:950},viewpo
 assert.equal(ui.shouldHideFloatingAction({anchorRect:{top:900,bottom:950},viewportHeight:700,keyboardOpen:true}),true);
 assert.equal(ui.shouldHideFloatingAction({anchorRect:{top:900,bottom:950},viewportHeight:700,overlayOpen:true}),true);
 assert.ok(ruleBody('.ui-floating-action').some(x=>x.includes('position:fixed')&&
- x.includes('env(safe-area-inset-bottom')))&&
+ x.includes('env(safe-area-inset-bottom'))&&
  ruleBody('.ui-floating-action .ui-floating-action-button').some(x=>
  x.includes('min-height:48px')&&x.includes('var(--ui-action-font-size)')),
  'Common fixed capsule respects iPhone safe area and the 48px touch target');
