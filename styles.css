@@ -2642,8 +2642,8 @@ html,body{touch-action:pan-x pan-y}
 #storePickerNewForm>.primary{width:100%;min-height:46px}
 #storePickerNewForm>.ui-text-action{align-self:flex-start}
 
-// Shared floating secondary action: foreground remains lighter than primary save.
-// Keep it in the viewport, aligned to the content edge on large screens.
+/* Shared floating secondary action: visually secondary to save.
+   Keep the action aligned to the content edge on large screens. */
 .ui-floating-action{
  position:fixed;z-index:20;pointer-events:none;
  right:max(16px,calc((100vw - 720px)/2 + 16px));
