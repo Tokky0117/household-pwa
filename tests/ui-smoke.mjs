@@ -25,14 +25,14 @@ const doc={
 const ctx={document:doc,localStorage:{getItem:k=>storage.get(k)??null,setItem:(k,v)=>storage.set(k,v),removeItem:k=>storage.delete(k)},
  navigator:{},window:{scrollTo(){},scrollY:0,KurashiReceiptValidation:validator,KurashiReceiptReview:review},crypto:{randomUUID:()=> 'test-id'},setTimeout:()=>0};
 const ui=vm.runInNewContext(source+`
-({listView,priceCompareView,pickerView,pickerResults,receiptView,receiptScanView,receiptChatGptView,recordDetailView,scanStoreNameIssue,scanValidPurchaseDate,applyChatGptOcrAssistance,receiptOcrReference,receiptOcrRows,isUnconfirmedBarcodeLine,makeChatGptReceiptRebuildDraft,scanProductView,scanExistingProductView,scanChainForStore,scanAutolinkUnmatched,scanMatchProduct,render,initializeCompare,
+({listView,priceCompareView,pickerView,pickerResults,receiptView,receiptScanView,receiptChatGptView,recordDetailView,scanStoreNameIssue,scanValidPurchaseDate,shouldHideFloatingAction,applyChatGptOcrAssistance,receiptOcrReference,receiptOcrRows,isUnconfirmedBarcodeLine,makeChatGptReceiptRebuildDraft,scanProductView,scanExistingProductView,scanChainForStore,scanAutolinkUnmatched,scanMatchProduct,render,initializeCompare,
  setProductGroup,reorderProducts,registeredProducts,convertQuantity,setOpenSwipe,storePickerChoices,
  chainMinima,priceCandidates,savePreviewRecord,periodStart,
  demoRecords,demoRecordItems,allPreviewRecords,allPreviewItems,
  setSelected(v){selected=v},setPage(v){page=v},setMode(v){priceScope=v},setDock(v){shopExpanded=v},
  setPeriod(v){period=v},setQty(v){compareQuantity=v},setUnit(v){compareUnit=v},
  setNewRecordType(v){newRecordType=v},recordAddView,scanDate,
- setScanDraft(v){scanDraft=v},setScanProductRow(v){scanProductRow=v},setScanExistingQuery(v){scanExistingQuery=v},setOcrLearning(v){ocrLearning=v},getScanDraft(){return scanDraft},
+ setScanDraft(v){scanDraft=v},setScanPhotos(v){scanPhotos=v},setScanProductRow(v){scanProductRow=v},setScanExistingQuery(v){scanExistingQuery=v},setOcrLearning(v){ocrLearning=v},getScanDraft(){return scanDraft},
  getCompare(){return [compareQuantity,compareUnit]},getSwipe(){return openSwipeId},
  getPeriod(){return period},getListHelpOpen(){return listHelpOpen},listHelpView,readListHelpOpen,catalogue:()=>catalogue})
 `,ctx,{filename:'app.js'});
@@ -463,11 +463,52 @@ assert.ok(manualAdd.includes('name="name-1"')&&manualAdd.includes('placeholder="
  manualAdd.indexOf('name="name-1"')>manualAdd.indexOf('name="amount-1"'),
  'Manual name is optional and placed after product, quantity and subtotal');
 assert.ok(!manualAdd.includes('読み取り結果の確認')&&
+ manualAdd.indexOf('読み取り状況')<manualAdd.indexOf('購入情報')&&
+ manualAdd.indexOf('購入情報')<manualAdd.indexOf('購入明細')&&
+ manualAdd.indexOf('購入明細')<manualAdd.indexOf('合計の確認')&&
  manualAdd.indexOf('合計の確認')<manualAdd.indexOf('class="panel scan-review-total"')&&
  manualAdd.includes('class="tertiary" data-act="scanAddItem"'),
- 'Review has three equal-level section headings, with the add action using shared tertiary');
+ 'Review has four equal-level section headings, with the add action using shared tertiary');
 assert.ok(!manualAdd.includes('name="name-0"')&&manualAdd.includes('data-ocr-row="0"'),
  'read-only OCR name remains text and never becomes a saveable field');
+// The selection grid remains before OCR; reviewed receipts use one fixed photo action.
+ui.setScanPhotos([{name:'receipt-1.jpg'},{name:'receipt-2.jpg'}]);
+const photoReview=ui.receiptScanView();
+assert.equal((photoReview.match(/data-act="scanOpenCurrentPhoto"/g)||[]).length,1,
+ 'One fixed photo action on the review screen');
+assert.ok(photoReview.includes('class="ui-floating-action" data-ui-floating-action')&&
+ photoReview.includes('class="secondary ui-floating-action-button"')&&
+ photoReview.includes('data-ui-floating-avoid="#scanConfirmForm button[type=&quot;submit&quot;]"')===false,
+ 'Floating photo trigger reuses the shared secondary button');
+assert.ok(!photoReview.includes('選択した写真')&&
+ !photoReview.includes('class="scan-photo-section"')&&
+ !photoReview.includes('data-act="scanOpenPhoto"'),
+ 'Reviewed receipt no longer displays a photo grid or per-line photo buttons');
+assert.ok(!photoReview.includes('内容を確認して保存してください。')&&
+ !photoReview.includes('scan-tax-excluded')&&
+ !photoReview.includes('写真で確認'),
+ 'Review omits redundant guidance, tax breakdown and duplicate photo trigger');
+assert.ok(photoReview.indexOf('読み取り状況')<photoReview.indexOf('ChatGPTで確認')&&
+ photoReview.indexOf('ChatGPTで確認')<photoReview.indexOf('購入情報'),
+ 'Read status groups OCR and ChatGPT before purchase details');
+ui.setScanDraft(null);
+const beforeScan=ui.receiptScanView();
+assert.ok(beforeScan.includes('選択した写真')&&
+ beforeScan.includes('data-act="scanRemovePhoto"')&&
+ !beforeScan.includes('data-act="scanOpenCurrentPhoto"'),
+ 'Pre-OCR photo selection and deletion remain available');
+ui.setScanPhotos([]);
+assert.equal(ui.shouldHideFloatingAction({anchorRect:{top:710,bottom:760},viewportHeight:700}),false);
+assert.equal(ui.shouldHideFloatingAction({anchorRect:{top:680,bottom:750},viewportHeight:700}),true,
+ 'Fixed photo button hides when save becomes visible');
+assert.equal(ui.shouldHideFloatingAction({anchorRect:{top:900,bottom:950},viewportHeight:700,editing:true}),true);
+assert.equal(ui.shouldHideFloatingAction({anchorRect:{top:900,bottom:950},viewportHeight:700,keyboardOpen:true}),true);
+assert.equal(ui.shouldHideFloatingAction({anchorRect:{top:900,bottom:950},viewportHeight:700,overlayOpen:true}),true);
+assert.ok(ruleBody('.ui-floating-action').some(x=>x.includes('position:fixed')&&
+ x.includes('env(safe-area-inset-bottom')))&&
+ ruleBody('.ui-floating-action .ui-floating-action-button').some(x=>
+ x.includes('min-height:48px')&&x.includes('var(--ui-action-font-size)')),
+ 'Common fixed capsule respects iPhone safe area and the 48px touch target');
 assert.ok(ruleBody('.scan-item-head>strong').some(x=>x.includes('font-size:16px')),
  'receipt card heading uses 16px, above the shared 13px field labels');
 assert.ok(ruleBody('.scan-review-item .scan-read-name').some(x=>x.includes('margin:4px 0 var(--ui-field-group-gap)')),
@@ -1219,7 +1260,8 @@ assert.ok(!JSON.stringify(p4Rebuild).includes('ocr-p4'),
 console.log('P4 common review adapter, provenance, row identity and P2 validation OK');
 
 // v0.73: Receipt OCR review information hierarchy; preserve validation/confirmation.
-assert.ok(source.includes("const APP_VERSION='0.84.0'"), 'UI review revision version is current');
+assert.ok(source.includes("const APP_VERSION='0.85.0'"), 'UI review revision version is current');
+assert.ok(source.includes("UI.sectionHeading({title:'読み取り状況'})"), 'OCR and ChatGPT appear under one section');
 assert.ok(source.includes("UI.sectionHeading({title:'購入情報'})"), 'Receipt OCR review groups store and purchase date');
 assert.ok(source.includes("UI.sectionHeading({title:'購入明細',subtitle:scanDraft.items.length+'件'+"), 'Receipt OCR review identifies item list and unmatched count');
 assert.ok(source.includes("UI.sectionHeading({title:'合計の確認'})"), 'Receipt OCR review makes reconciliation distinct');
