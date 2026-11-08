@@ -1044,8 +1044,8 @@ const libraryFile=new scanSession.window.File(['synthetic receipt pixels'],
  'receipt.png',{type:'image/png'});
 Object.defineProperty(picker,'files',{configurable:true,value:[libraryFile]});
 picker.dispatchEvent(new scanSession.window.Event('input',{bubbles:true}));
-assert.match(scanSession.window.document.body.textContent,/選択した写真 1枚/,
- 'first native input event commits the selected image');
+assert.match(scanSession.window.document.body.textContent,/選択した写真\s*1枚/,
+ 'first native input event commits the selected image under the shared heading');
 picker.dispatchEvent(new scanSession.window.Event('change',{bubbles:true}));
 assert.equal(scanSession.window.document.querySelectorAll('.scan-photo-tile').length,1,
  'input then change for the same native selection cannot import twice');
@@ -1053,12 +1053,18 @@ assert.ok(scanSession.window.document.querySelector('.scan-photo-grid'),'photo s
 assert.ok(scanSession.window.document.querySelector('[data-act="scanRemovePhoto"][data-scan-row="0"]'),'photo can be removed directly by index');
 assert.ok(scanSession.window.document.querySelector('[data-act="scanStart"]'),'scan remains the primary action');
 assert.equal(scanSession.window.document.querySelector('#scanConfirmForm'),null,'OCR review appears on the same screen only after analysis');
-assert.ok(scanSession.window.document.querySelector('.scan-photo-heading'),'photos can be collapsed independently of the form');
-assert.ok(scanSession.window.document.querySelector('[data-act="scanOpenPhoto"][data-scan-row="0"]'),'each photo opens the original viewer');
-scanSession.window.document.querySelector('[data-act="scanTogglePhotos"]').click();
-assert.equal(scanSession.window.document.getElementById('scan-photo-content').hidden,true,'photos collapse without navigating');
-scanSession.window.document.querySelector('[data-act="scanTogglePhotos"]').click();
-assert.equal(scanSession.window.document.getElementById('scan-photo-content').hidden,false,'photos expand without losing inputs');
+assert.ok(scanSession.window.document.querySelector('.scan-photo-section .ui-section-heading'),
+ 'the selected photo title uses the shared section heading');
+assert.ok(scanSession.window.document.querySelector('[data-act="scanOpenPhoto"][data-scan-row="0"]'),
+ 'each photo opens the original viewer');
+assert.equal(scanSession.window.document.querySelector('[data-act="scanTogglePhotos"]'),null,
+ 'photos stay visible without an unnecessary accordion');
+assert.equal(scanSession.window.document.getElementById('scan-photo-content'),null,
+ 'there is no collapsed photo container');
+assert.equal(scanSession.window.document.querySelector('[data-act="scanStart"]').textContent,'写真を読み取る',
+ 'the primary action uses plain-language wording');
+assert.equal(scanSession.window.document.querySelector('#scan-status'),null,
+ 'choosing a photo does not show redundant success feedback');
 assert.ok(!scanSession.window.document.querySelector('#scan-crop-canvas'),
  'manual cropping is gone');
 assert.ok(!scanSession.window.document.querySelector('#scan-mode'),
@@ -1071,17 +1077,17 @@ assert.equal(adds,1,'adding a second photo also opens native chooser in one tap'
 addPicker.dispatchEvent(new scanSession.window.Event('cancel',{bubbles:false}));
 assert.equal(scanSession.window.document.querySelectorAll('.scan-photo-tile').length,1,
  'cancelled extra photo does not remove the already chosen photo');
-// Clearing the only photo keeps the OCR page visible and provides an
-// immediate picker action; there must be only one empty-state instruction.
+// Clearing the only photo keeps the OCR page visible with just one
+// primary photo selection button, no duplicate instructional text.
 scanSession.window.document.querySelector('[data-act="scanRemovePhoto"][data-scan-row="0"]').click();
 assert.ok(scanSession.window.document.querySelector('.receipt-scan-page'),
  'removing the final photo stays on the OCR screen');
 assert.equal(scanSession.window.document.querySelectorAll('.scan-photo-tile').length,0,
  'no photo remains selected');
-assert.equal((scanSession.window.document.querySelector('.receipt-scan-page').textContent.match(/写真を選択してください。/g)||[]).length,1,
- 'one empty-state instruction remains');
-assert.ok(scanSession.window.document.querySelector('.scan-photo-empty [data-act="scanAddPhotos"]'),
- 'the empty OCR screen has a visible photo selection button');
+assert.ok(!scanSession.window.document.querySelector('.receipt-scan-page').textContent.includes('写真を選択してください。'),
+ 'empty-state instructions are not repeated beside the action');
+assert.ok(scanSession.window.document.querySelector('.scan-photo-empty .primary[data-act="scanAddPhotos"]'),
+ 'the empty OCR screen has one primary photo selection button');
 assert.equal(scanSession.window.document.querySelector('[data-act="scanStart"]'),null,
  'analysis cannot start with zero photos');
 scanSession.window.document.querySelector('.scan-photo-empty [data-act="scanAddPhotos"]').click();
@@ -1090,6 +1096,8 @@ Object.defineProperty(addPicker,'files',{configurable:true,value:[libraryFile]})
 addPicker.dispatchEvent(new scanSession.window.Event('change',{bubbles:true}));
 assert.equal(scanSession.window.document.querySelectorAll('.scan-photo-tile').length,1,
  'same photo can be selected again after cancel and final-photo removal');
+assert.equal(scanSession.window.document.querySelector('.scan-status-error'),null,
+ 'reselecting does not leave stale warnings');
 scanSession.window.document.querySelector('[data-act="back"]').click();
 assert.ok(scanSession.window.document.querySelector('[data-dialog="discardScan"]'),
  'unsaved OCR input is protected');
