@@ -1032,8 +1032,9 @@ ui.setScanDraft({source:'ocr',taxBasis:'excluded',taxAllocationStatus:'allocated
   quantity:1,amount:95,taxExcludedAmount:88,ocrDiscount:10,taxRate:8,allocatedTax:7,
   taxCalculation:'printed-total-proportional',productId:'',issues:[]}]});
 const externalReview=ui.receiptScanView();
-assert.ok(externalReview.includes('税抜金額：')&&externalReview.includes('税額：'),
- 'receipt review identifies allocated inclusive prices and their printed ex-tax provenance');
+assert.ok(!externalReview.includes('税抜金額：')&&!externalReview.includes('税額：')&&
+ ui.getScanDraft().items[0].taxExcludedAmount===88&&ui.getScanDraft().items[0].allocatedTax===7,
+ 'receipt review hides calculation details without removing tax evidence');
 
 // Photo-confirmed rows persist outside the OCR-name dictionary.
 const photoDraft={source:'ocr',date:'2026-10-12',chainId:'c-a',total:11550,items:[
@@ -1105,9 +1106,10 @@ assert.ok(replacement.items.every(x=>x.inputOrigin==='photo'&&x.productId===''&&
 assert.equal(nineOcrDraft.items.length,9,'rebuild preview does not mutate OCR before confirmation');
 ui.setScanDraft(replacement);
 const photoRebuildReview=ui.receiptScanView();
-assert.ok(photoRebuildReview.includes('内容を確認して保存してください。')&&
+assert.ok(photoRebuildReview.includes('>読み取り状況</h2>')&&
+ !photoRebuildReview.includes('内容を確認して保存してください。')&&
  !photoRebuildReview.includes('読み取り結果の確認'),
- 'photo replacement has a concise review instruction and no duplicate heading');
+ 'photo replacement uses the shared reading-status heading without redundant instructions');
 assert.doesNotMatch(photoRebuildReview,/name="photoReviewOk"/);
 assert.equal((photoRebuildReview.match(/name="name-\d+"/g)||[]).length,5,
  'all five image-derived line names are editable');
