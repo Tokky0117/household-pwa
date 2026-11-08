@@ -1328,7 +1328,7 @@ console.log('v0.76.1: single picker, unlink override, ChatGPT relink and field v
 
 // v0.75 receipt UI regression contracts.
 assert.ok(!source.includes('未照合商品をまとめて登録'),'Batch button is removed');
-assert.ok(!source.includes('明細を確認</p>'),'No generic item warning');
+assert.ok(!source.includes('<p class="scan-name-warning">明細を確認</p>')&&source.includes('商品コードだけの明細を確認'),'Only specific barcode warning is displayed');
 assert.ok(source.includes('レシート記載額')&&!source.includes(' ／ 差額：'),'Only meaningful total comparison fields');
 assert.ok(!source.includes('支店名を追加（任意）')&&
  source.includes("function storePickerView()")&&
