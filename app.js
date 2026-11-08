@@ -1,4 +1,4 @@
-const APP_VERSION='0.84.0';
+const APP_VERSION='0.85.0';
 const CATS=['飲食','キッチン','洗面・風呂','洗濯・掃除','その他'];
 const liveMode=!!window.KurashiLive; // Data source only; original Preview v46 UI components remain.
 const SEED=[['牛乳',0,true],['麦茶',0,false],['コーヒー',0,true],['卵',0,false],['キッチンペーパー',1,false],['ラップ',1,true],['食器用洗剤',1,true],['シャンプー',2,false],['歯磨き粉',2,true],['ハンドソープ',2,false],['洗濯洗剤',3,false],['柔軟剤',3,true],['トイレットペーパー',3,false],['乾電池',4,true],['ティッシュ',4,true]];
@@ -531,10 +531,6 @@ function scanSelectedProductLabel(item){
  const product=catalogue.products.find(p=>p.id===scanResolvedProductId(item));
  return product?productTitle(product):'未照合';
 }
-function scanPhotoIndexForItem(item){
- const evidence=scanDraft?.reviewEvidence?.itemSources?.find(row=>row.rowId===item.ocrRowId);
- return Number.isInteger(evidence?.imageIndex)&&evidence.imageIndex<scanPhotos.length?evidence.imageIndex:0;
-}
 function scanStoreNameIssue(value){
  const name=String(value||'').trim();
  if(!name)return '店舗名を入力';
@@ -585,12 +581,22 @@ function scanAssistView(){
   ${scanAssistMessage?UI.statusMessage({text:scanAssistMessage,kind:'success'}):''}
  </div>`;
 }
+function scanReadingStatusView(){
+ if(!scanDraft)return '';
+ const summary=scanStatus||(['ocr','chatgpt-rebuild'].includes(scanDraft.source)?
+  scanDraft.items.length+'件の購入明細を読み取りました。':'');
+ return `<section class="scan-reading-status" aria-label="読み取り状況">
+  ${UI.sectionHeading({title:'読み取り状況'})}
+  <p id="scan-status" role="status" class="hint" ${summary?'':'hidden'}>${esc(summary)}</p>
+  ${scanAssistView()}
+  ${!scanPhotos.length?'<p class="hint scan-photo-unavailable">写真は残っていません。元のレシートを確認してください。</p>':''}
+ </section>`;
+}
 function scanFormView(){
  if(!scanDraft)return '';
  const reviewModel=window.KurashiReceiptReview.buildReviewModel(scanDraft);
  const unmatchedCount=scanDraft.items.filter(x=>!scanResolvedProductId(x)).length;
  return `<form id="scanConfirmForm" class="scan-review">
-  <p class="hint scan-review-instruction">内容を確認して保存してください。</p>
   <section class="scan-receipt-meta" aria-label="購入情報">
   ${UI.sectionHeading({title:'購入情報'})}
   <div class="scan-store-picker">
@@ -606,7 +612,6 @@ function scanFormView(){
   ${UI.sectionHeading({title:'購入明細',subtitle:scanDraft.items.length+'件'+(unmatchedCount?'・未照合'+unmatchedCount+'件':'')})}
   ${scanDraft.items.map((item,i)=>`<div class="panel scan-review-item">
     <div class="scan-item-head"><strong>明細 ${i+1}</strong><div class="scan-item-tools">
-     ${scanPhotos.length?'<button type="button" class="scan-item-tool" data-act="scanOpenPhoto" data-scan-row="'+scanPhotoIndexForItem(item)+'">'+miniIcon('camera')+'<span>写真</span></button>':''}
      <button type="button" class="scan-item-tool" data-act="scanRemoveItem" data-scan-row="${i}">${miniIcon('trash')}<span>削除</span></button>
     </div></div>
     ${item.inputOrigin==='manual'?'':item.inputOrigin==='photo'||item.ocrRawName===undefined?
@@ -639,8 +644,7 @@ function scanFormView(){
       id:'scan-name-'+i,name:'name-'+i,label:'明細名（任意）',
       placeholder:'例：みかん',value:item.name,maxlength:120,
       hint:true,fieldClass:'scan-manual-name'}):''}
-    ${Number.isSafeInteger(item.taxExcludedAmount)?'<p class="scan-tax-excluded">税抜金額：'+yen(item.taxExcludedAmount)+(Number.isSafeInteger(item.ocrDiscount)&&item.ocrDiscount>0?' ／ 値引き：'+yen(item.ocrDiscount):'')+(item.taxCalculation==='printed-total-proportional'?' ／ '+(scanDraft.taxDerivedFromTotals||scanDraft.taxRateCalculated?'計算税額':'税額')+'：'+yen(item.allocatedTax):'')+'</p>':''}
-   </div>`).join('')}
+    </div>`).join('')}
   <div class="scan-add-action">${UI.button({label:'明細を追加',variant:'tertiary',action:'scanAddItem',icon:'plus'})}</div>
   ${UI.sectionHeading({title:'合計の確認'})}
   <div class="panel scan-review-total">
@@ -656,8 +660,7 @@ function scanFormView(){
 }
 function scanPhotoSection(){
  if(!scanPhotos.length){
-  return scanDraft?'<p class="hint scan-photo-unavailable">写真は残っていません。元のレシートを確認してください。</p>':
-   '<section class="scan-photo-section scan-photo-empty"><button type="button" class="secondary scan-photo-add" data-act="scanAddPhotos">'+miniIcon('plus')+'<span>写真を選択</span></button></section>';
+  return '<section class="scan-photo-section scan-photo-empty"><button type="button" class="secondary scan-photo-add" data-act="scanAddPhotos">'+miniIcon('plus')+'<span>写真を選択</span></button></section>';
  }
  const editing=!scanDraft&&!scanBusy;
  return `<section class="scan-photo-section">
@@ -683,13 +686,13 @@ function scanPhotoSection(){
 function receiptScanView(){
  const reviewing=!!scanDraft;
  return `${head('レシート読取','くらしストック',true)}<main class="preview-record-page receipt-scan-page">
- ${scanPhotoSection()}
+ ${reviewing?'':scanPhotoSection()}
  ${!scanPhotos.length&&!reviewing?'<p class="hint">写真を選択してください。</p>':''}
  ${!reviewing&&scanPhotos.length?`<button type="button" class="primary scan-photo-start" data-act="scanStart" ${scanBusy?'disabled':''}>${scanBusy?'読み取り中…':'写真を解析する'}</button>`:''}
- <p id="scan-status" role="status" class="hint" ${scanStatus?'':'hidden'}>${esc(scanStatus)}</p>
- ${reviewing?scanAssistView():''}
+ ${reviewing?scanReadingStatusView():`<p id="scan-status" role="status" class="hint" ${scanStatus?'':'hidden'}>${esc(scanStatus)}</p>`}
  ${scanFormView()}
- </main>`;
+ </main>
+ ${reviewing&&scanPhotos.length?UI.floatingAction({label:'写真を確認',icon:'camera',action:'scanOpenCurrentPhoto',avoidSelector:'#scanConfirmForm button[type="submit"]'}):''}`;
 }
 function closeScanViewer({restore=true}={}){
  const viewer=document.getElementById('scan-photo-viewer');
@@ -705,6 +708,7 @@ function closeScanViewer({restore=true}={}){
 function openScanViewer(index){
  if(!Number.isInteger(index)||index<0||index>=scanPhotos.length)return;
  const url=scanThumbnail(scanPhotos[index]);if(!url)return;
+ scanIndex=index;
  const currentViewer=document.getElementById('scan-photo-viewer');
  const origin=currentViewer?currentViewer._returnFocus:document.activeElement;
  const scroll=currentViewer?currentViewer._returnScrollY:window.scrollY;
@@ -834,6 +838,7 @@ async function runReceiptScan(){
   });
   saveScanDraft();
   scanPhotosExpanded=false;
+  scanIndex=0;
   scanStatus=allItems.length+'件の購入明細を読み取りました。';
  }catch(e){
   console.error('レシートOCR失敗',e);
@@ -871,8 +876,11 @@ const UI={
   sectionHeading({title,subtitle='',trailing='',className=''}) {
     return `<div class="ui-section-heading ${esc(className)}"><div class="ui-section-heading-copy"><h2 class="sectiontitle">${esc(title)}</h2>${subtitle?`<span class="ui-section-heading-sub">${esc(subtitle)}</span>`:''}</div>${trailing}</div>`;
   },
-  button({label,variant='secondary',action='',type='button',icon=''}) {
-    return `<button type="${esc(type)}" class="${esc(variant)}" ${action?'data-act="'+esc(action)+'"':''}>${icon?miniIcon(icon):''}<span>${esc(label)}</span></button>`;
+  button({label,variant='secondary',action='',type='button',icon='',className=''}) {
+    return `<button type="${esc(type)}" class="${esc(variant)}${className?' '+esc(className):''}" ${action?'data-act="'+esc(action)+'"':''}>${icon?miniIcon(icon):''}<span>${esc(label)}</span></button>`;
+  },
+  floatingAction({label,action,icon='',avoidSelector=''}) {
+    return `<div class="ui-floating-action" data-ui-floating-action data-ui-floating-avoid="${esc(avoidSelector)}">${UI.button({label,action,icon,variant:'secondary',className:'ui-floating-action-button'})}</div>`;
   },
   choiceRow({title,subtitle='',choice=null,action='',productId='',selected=false,disabled=false,className=''}) {
     return `<button type="button" class="ui-choice-row ${esc(className)} ${selected?'is-selected':''}"${choice!==null?' data-ui-choice="'+esc(choice)+'" aria-pressed="'+String(!!selected)+'"':''}${action?' data-act="'+esc(action)+'"':''}${productId?' data-product-id="'+esc(productId)+'"':''}${disabled?' disabled':''}>
@@ -1279,8 +1287,47 @@ function render(){
    window.requestAnimationFrame?.(()=>{if(page==='recordScan')window.scrollTo(0,position)});
   }
  }
+ setupFloatingAction();
  if(liveMode&&tab==='settings')window.KurashiLive.renderLogin(document.getElementById('google-login-button'));
 }
+// Shared floating-action visibility. Save, keyboard and overlays take priority.
+function shouldHideFloatingAction({anchorRect,viewportHeight,editing=false,keyboardOpen=false,overlayOpen=false}){
+ const anchorVisible=!!anchorRect&&Number.isFinite(anchorRect.top)&&Number.isFinite(anchorRect.bottom)&&
+  anchorRect.top<viewportHeight&&anchorRect.bottom>0;
+ return anchorVisible||editing||keyboardOpen||overlayOpen;
+}
+let floatingActionObserver=null,floatingActionUpdate=null;
+function setupFloatingAction(){
+ floatingActionObserver?.disconnect();
+ floatingActionObserver=null;floatingActionUpdate=null;
+ const floating=app.querySelector?.('[data-ui-floating-action]');
+ if(!floating)return;
+ const anchor=app.querySelector?.(floating.dataset.uiFloatingAvoid);
+ if(!anchor)return;
+ floatingActionUpdate=()=>{
+  if(!floating.isConnected)return;
+  const active=document.activeElement;
+  const editing=!!active?.matches?.('input,textarea,select,[contenteditable="true"]');
+  const viewportHeight=window.visualViewport?.height||window.innerHeight||0;
+  const keyboardOpen=!!window.visualViewport?.height&&
+   Number(window.innerHeight)-window.visualViewport.height>120;
+  floating.hidden=shouldHideFloatingAction({
+   anchorRect:anchor.getBoundingClientRect(),viewportHeight,editing,keyboardOpen,
+   overlayOpen:!!dialog||!!storePickerTarget||!!app.querySelector?.('.sheet-back')
+  });
+ };
+ floatingActionUpdate();
+ if(typeof IntersectionObserver!=='undefined'){
+  floatingActionObserver=new IntersectionObserver(()=>floatingActionUpdate?.());
+  floatingActionObserver.observe(anchor);
+ }
+}
+window.addEventListener?.('resize',()=>floatingActionUpdate?.(),{passive:true});
+window.addEventListener?.('scroll',()=>{if(!floatingActionObserver)floatingActionUpdate?.()},{passive:true});
+window.visualViewport?.addEventListener?.('resize',()=>floatingActionUpdate?.());
+document.addEventListener('focusin',()=>floatingActionUpdate?.());
+document.addEventListener('focusout',()=>window.requestAnimationFrame?
+ window.requestAnimationFrame(()=>floatingActionUpdate?.()):floatingActionUpdate?.());
 let toastTimer=null,toastSerial=0;
 function clearToast(){
  if(toastTimer!==null){clearTimeout(toastTimer);toastTimer=null}
@@ -1414,6 +1461,7 @@ function back(){
 function renderDialogOnly(){
   document.querySelector('.dialog-back')?.remove();
   if(dialog)app.insertAdjacentHTML('beforeend',dialogView());
+  floatingActionUpdate?.();
 }
 
 let duplicateItemId=null;
@@ -2127,6 +2175,10 @@ if(action==='scanTogglePhotos'){
  return;
 }
 if(action==='scanOpenPhoto'){openScanViewer(Number(el.dataset.scanRow));return}
+if(action==='scanOpenCurrentPhoto'){
+ if(page==='recordScan'&&scanPhotos.length)openScanViewer(Math.max(0,Math.min(scanIndex,scanPhotos.length-1)));
+ return;
+}
 if(action==='scanRemovePhoto'){
  if(scanBusy)return;
  const index=Number(el.dataset.scanRow);
@@ -2538,8 +2590,7 @@ function refreshScanTotalUI(){
   totalWarning.innerHTML=(tm?
    '<div class="scan-compare-warning-head">レシートの合計と一致しません</div>'+
    '<div class="scan-compare-data"><span>レシート記載額</span><strong>'+yen(result.receiptTotal)+'</strong></div>':
-   '<div class="scan-compare-warning-head">レシートの合計額を特定できませんでした</div>')+
-   (scanPhotos.length?'<button type="button" class="scan-compare-photo" data-act="scanOpenPhoto" data-scan-row="0">'+miniIcon('camera')+'<span>写真で確認</span></button>':'');
+   '<div class="scan-compare-warning-head">レシートの合計額を特定できませんでした</div>');
  }
  if(countWarning){
   countWarning.hidden=!(cm||codes.includes('conflicting_printed_counts'));
