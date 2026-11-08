@@ -25,7 +25,7 @@ const doc={
 const ctx={document:doc,localStorage:{getItem:k=>storage.get(k)??null,setItem:(k,v)=>storage.set(k,v),removeItem:k=>storage.delete(k)},
  navigator:{},window:{scrollTo(){},scrollY:0,KurashiReceiptValidation:validator,KurashiReceiptReview:review},crypto:{randomUUID:()=> 'test-id'},setTimeout:()=>0};
 const ui=vm.runInNewContext(source+`
-({listView,priceCompareView,pickerView,pickerResults,detailHomeView,detailAllView,receiptScanView,receiptChatGptView,recordDetailView,scanStoreNameIssue,scanValidPurchaseDate,scanReadableError,floatingActionPlacement,applyChatGptOcrAssistance,receiptOcrReference,receiptOcrRows,isUnconfirmedBarcodeLine,makeChatGptReceiptRebuildDraft,scanProductView,scanExistingProductView,scanChainForStore,scanAutolinkUnmatched,scanMatchProduct,render,initializeCompare,
+({listView,priceCompareView,pickerView,pickerResults,masterProductsView,masterProductRows,detailHomeView,detailAllView,receiptScanView,receiptChatGptView,recordDetailView,scanStoreNameIssue,scanValidPurchaseDate,scanReadableError,floatingActionPlacement,applyChatGptOcrAssistance,receiptOcrReference,receiptOcrRows,isUnconfirmedBarcodeLine,makeChatGptReceiptRebuildDraft,scanProductView,scanExistingProductView,scanChainForStore,scanAutolinkUnmatched,scanMatchProduct,render,initializeCompare,
  setProductGroup,reorderProducts,registeredProducts,convertQuantity,setOpenSwipe,storePickerChoices,
  chainMinima,priceCandidates,savePreviewRecord,periodStart,
  demoRecords,demoRecordItems,allPreviewRecords,allPreviewItems,
@@ -68,6 +68,31 @@ assert.ok(ui.listView().includes('data-act="copyList" aria-label="在庫なし�
  ui.detailHomeView().includes('data-act="newReceipt"'),
  'Common action builders preserve existing user labels and event hooks');
 assert.ok(!ui.listView().includes('※ 価格・店舗はサンプル'),'Daily list no longer shows temporary sample notice');
+
+const masterListing=ui.masterProductsView();
+assert.ok(masterListing.includes('class="ui-search"')&&
+ masterListing.includes('id="master-product-query"')&&
+ masterListing.includes('data-search-clear="master-product-query"')&&
+ masterListing.includes('aria-label="商品名・日用品名で検索"'),
+ 'Master search reuses the shared searchable input with accessible label and clear');
+assert.ok(masterListing.includes('class="secondary master-product-add-action"')&&
+ masterListing.includes('data-act="masterProductNew"'),
+ 'Master add action uses common secondary button and retains its event');
+assert.ok(masterListing.indexOf('id="master-product-query"')<
+ masterListing.indexOf('data-act="masterProductNew"')&&
+ masterListing.indexOf('data-act="masterProductNew"')<
+ masterListing.indexOf('id="master-product-results"'),
+ 'Master creation is above product cards, reachable without long scrolling');
+assert.ok(masterListing.includes('data-act="masterProductEdit"')&&
+ masterListing.includes('class="panel catalogue-candidate"'),
+ 'Existing editable master product cards remain intact');
+assert.ok(source.includes("'master-product-query':{set:v=>{masterQuery=v}")&&
+ !source.includes("if(e.target.id==='master-product-query')"),
+ 'Master search updates through shared IME-aware handler rather than duplicate path');
+assert.ok(css.includes('.master-product-add-action{')&&
+ css.includes('.master-product-add-action svg{'),
+ 'Master add button has layout-only CSS and uses shared button colors');
+
 
 const syncCase=(next={})=>ui.settingsSyncSummary({
  queued:0,error:'',loaded:true,cached:false,busy:false,syncing:false,
@@ -1447,7 +1472,7 @@ assert.ok(!JSON.stringify(p4Rebuild).includes('ocr-p4'),
 console.log('P4 common review adapter, provenance, row identity and P2 validation OK');
 
 // v0.73: Receipt OCR review information hierarchy; preserve validation/confirmation.
-assert.ok(source.includes("const APP_VERSION='0.85.8'"), 'UI review revision version is current');
+assert.ok(source.includes("const APP_VERSION='0.85.9'"), 'UI review revision version is current');
 assert.ok(source.includes("UI.sectionHeading({title:'読み取り状況'})"), 'OCR and ChatGPT appear under one section');
 assert.ok(source.includes("UI.sectionHeading({title:isShelf?'値札情報':'購入情報'})"), 'Receipt OCR review groups store and purchase date');
 assert.ok(source.includes("UI.sectionHeading({title:isShelf?'価格情報':'購入明細',subtitle:scanDraft.items.length+'件'+"), 'Receipt OCR review identifies item list and unmatched count');

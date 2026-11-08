@@ -1,4 +1,4 @@
-const APP_VERSION='0.85.8';
+const APP_VERSION='0.85.9';
 const CATS=['飲食','キッチン','洗面・風呂','洗濯・掃除','その他'];
 const liveMode=!!window.KurashiLive; // Data source only; original Preview v46 UI components remain.
 const SEED=[['牛乳',0,true],['麦茶',0,false],['コーヒー',0,true],['卵',0,false],['キッチンペーパー',1,false],['ラップ',1,true],['食器用洗剤',1,true],['シャンプー',2,false],['歯磨き粉',2,true],['ハンドソープ',2,false],['洗濯洗剤',3,false],['柔軟剤',3,true],['トイレットペーパー',3,false],['乾電池',4,true],['ティッシュ',4,true]];
@@ -1134,11 +1134,10 @@ function aliasManageView(){
 }
 function masterProductsView(){
  return head('商品マスタ','登録商品の管理',true)+
-  '<main class="manage-main"><p class="hint">日用品に未紐付けの商品も登録・編集できます。商品マスタ自体は削除しません。</p>'+
-  '<label class="scan-field">商品名・日用品名で検索'+
-  '<input id="master-product-query" type="search" placeholder="商品を検索" value="'+esc(masterQuery)+'"></label>'+
-  '<div id="master-product-results" class="catalogue-rows">'+masterProductRows()+'</div>'+
-  '<button type="button" class="primary manage-add" data-act="masterProductNew">＋ 商品マスタを追加</button></main>';
+  '<main class="manage-main">'+
+  UI.searchField({id:'master-product-query',label:'商品名・日用品名で検索',placeholder:'商品を検索',value:masterQuery,extra:'autocomplete="off"'})+
+  UI.button({label:'商品マスタを追加',icon:'plus',variant:'secondary',action:'masterProductNew',className:'master-product-add-action'})+
+  '<div id="master-product-results" class="catalogue-rows">'+masterProductRows()+'</div></main>';
 }
 function masterProductEditorView(){
  const editing=page==='masterProductEdit';
@@ -1468,11 +1467,7 @@ function fieldNotice(form,message,fieldId){
  note.textContent=message;
  field.querySelector('.ui-picker-surface .ui-text-action,input:not([type="hidden"]),textarea,.ui-select-trigger')?.focus();
 }
-app.addEventListener('input',e=>{if(e.target.id==='master-product-query'){
- masterQuery=e.target.value;
- const rows=document.getElementById('master-product-results');
- if(rows)rows.innerHTML=masterProductRows();return;
-}const field=e.target.closest?.('.formfield');field?.querySelector('.ui-field-notice')?.remove();field?.classList.remove('ui-field-error')});
+app.addEventListener('input',e=>{const field=e.target.closest?.('.formfield');field?.querySelector('.ui-field-notice')?.remove();field?.classList.remove('ui-field-error')});
 function hasUnsavedFormChanges(){
   const pendingRecord=document.getElementById('recordForm');
   if(pendingRecord){
@@ -1618,7 +1613,7 @@ let composing=false;
 function updateSearchResults(){const target=document.getElementById('item-results');if(target)target.innerHTML=listResults()}
 const searchBindings={'store-picker-search':{set:v=>{storePickerQuery=v},update:()=>{
  const target=document.getElementById('store-picker-results');if(target)target.innerHTML=storePickerChoices()
-}},search:{set:v=>{query=v},update:updateSearchResults},'catalogue-search':{set:v=>{pickQuery=v},update:()=>{const target=document.getElementById('catalogue-results');if(target)target.innerHTML=pickerResults()}},'alias-query':{set:v=>{aliasQuery=v},update:()=>{const rows=document.getElementById('alias-results');if(rows)rows.innerHTML=aliasManageRows()}},'scan-existing-search':{set:v=>{scanExistingQuery=v},update:()=>{const target=document.getElementById('scan-existing-results');if(target)target.innerHTML=scanExistingProductResults()}}};
+}},search:{set:v=>{query=v},update:updateSearchResults},'catalogue-search':{set:v=>{pickQuery=v},update:()=>{const target=document.getElementById('catalogue-results');if(target)target.innerHTML=pickerResults()}},'alias-query':{set:v=>{aliasQuery=v},update:()=>{const rows=document.getElementById('alias-results');if(rows)rows.innerHTML=aliasManageRows()}},'master-product-query':{set:v=>{masterQuery=v},update:()=>{const rows=document.getElementById('master-product-results');if(rows)rows.innerHTML=masterProductRows()}},'scan-existing-search':{set:v=>{scanExistingQuery=v},update:()=>{const target=document.getElementById('scan-existing-results');if(target)target.innerHTML=scanExistingProductResults()}}};
 function syncSearch(input,refresh=true){const binding=searchBindings[input.id];if(!binding)return;binding.set(input.value);input.closest('.ui-search')?.querySelector('.clear-search')?.toggleAttribute('hidden',!input.value);if(refresh)binding.update()}
 app.addEventListener('compositionstart',e=>{if(searchBindings[e.target.id])composing=true});
 app.addEventListener('compositionend',e=>{if(searchBindings[e.target.id]){composing=false;syncSearch(e.target)}});

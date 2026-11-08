@@ -1957,6 +1957,37 @@ assert.ok(settingsMaster,'Settings links to the independent product master');
 settingsMaster.click();
 assert.ok(masterUI.window.document.querySelector('#master-product-results'),
  'master list is visible without any item selected');
+const masterSearch=masterUI.window.document.querySelector('#master-product-query');
+const masterClear=masterUI.window.document.querySelector('[data-search-clear="master-product-query"]');
+const masterAdd=masterUI.window.document.querySelector('[data-act="masterProductNew"]');
+const masterResults=masterUI.window.document.querySelector('#master-product-results');
+assert.ok(masterSearch?.closest('.ui-search')&&masterClear,
+ 'Master search is the common searchable field with clear control');
+assert.ok(masterAdd?.classList.contains('secondary'),
+ 'Master add action is the existing shared secondary button');
+assert.ok(masterSearch.compareDocumentPosition(masterAdd)&
+ masterUI.window.Node.DOCUMENT_POSITION_FOLLOWING,
+ 'Master add action remains above the scrollable product list');
+assert.ok(masterAdd.compareDocumentPosition(masterResults)&
+ masterUI.window.Node.DOCUMENT_POSITION_FOLLOWING,
+ 'Master add action appears before product cards');
+const masterOriginalCount=masterResults.querySelectorAll('[data-act="masterProductEdit"]').length;
+assert.ok(masterOriginalCount>0,'Master catalogue starts with existing rows');
+masterSearch.dispatchEvent(new masterUI.window.Event('compositionstart',{bubbles:true}));
+masterSearch.value='存在しない商品ZZZ9999';
+masterSearch.dispatchEvent(new masterUI.window.Event('input',{bubbles:true}));
+assert.equal(masterResults.querySelectorAll('[data-act="masterProductEdit"]').length,
+ masterOriginalCount,'IME composition does not re-render product rows');
+masterSearch.dispatchEvent(new masterUI.window.Event('compositionend',{bubbles:true}));
+assert.equal(masterResults.querySelectorAll('[data-act="masterProductEdit"]').length,0,
+ 'IME finalization filters to zero matching products');
+assert.ok(masterResults.textContent.includes('該当する商品はありません'),
+ 'Zero-result state stays available');
+assert.ok(!masterClear.hidden,'Common clear action shows for nonempty query');
+masterClear.click();
+assert.equal(masterSearch.value,'','Common clear resets the native search field');
+assert.equal(masterResults.querySelectorAll('[data-act="masterProductEdit"]').length,
+ masterOriginalCount,'Common clear restores all master product rows');
 masterUI.window.document.querySelector('[data-act="masterProductNew"]').click();
 const masterForm=masterUI.window.document.querySelector('#masterProductForm');
 assert.ok(masterForm,'independent new product form');

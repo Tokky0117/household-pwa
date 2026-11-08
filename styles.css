@@ -2011,6 +2011,12 @@ html,body {
 .catalogue-row-body .hint,.catalogue-row-body .hint:last-child{font-size:12px;line-height:1.4;margin:0}
 .catalogue-remove{flex:none;display:grid;place-items:center;width:44px;height:44px;font-size:21px;border-radius:11px}
 .manage-add{display:block;width:100%;margin:12px 0;min-height:44px}
+/* Product master: keep the add action reachable above a long result list. */
+.master-product-add-action{
+ display:flex;align-items:center;justify-content:center;gap:8px;
+ width:100%;min-height:44px;margin:12px 0 16px;
+}
+.master-product-add-action svg{width:20px;height:20px;flex:none}
 
 
 
