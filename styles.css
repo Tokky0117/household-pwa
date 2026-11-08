@@ -2434,8 +2434,9 @@ main>.ui-search + .filterrow{margin-bottom:5px}
 /* Record scan and history: use Preview v46 sizing, without custom camera controls. */
 .receipt-history-row{display:flex;flex-direction:column;align-items:stretch;gap:5px;width:100%;text-align:left;cursor:pointer}
 .receipt-history-row>span{font-weight:400}
-.record-detail-actions{display:flex;gap:10px;margin:18px 0}
-.record-detail-actions>*{flex:1;min-height:44px}
+.record-detail-actions{display:flex;flex-direction:column;align-items:stretch;gap:4px;margin:18px 0}
+.record-detail-actions>.primary{width:100%;min-height:48px}
+.record-detail-actions>.record-delete-action{align-self:center;min-height:44px;padding:8px 14px;color:var(--ui-field-error-color)}
 .receipt-chatgpt-page>[data-act]{display:block;min-height:44px;width:100%;margin:12px auto}
 .receipt-chatgpt-page textarea{min-height:170px}
 .receipt-scan-page [data-act="scanAddPhotos"],.receipt-scan-page [data-act="scanStart"]{width:100%;min-height:44px}

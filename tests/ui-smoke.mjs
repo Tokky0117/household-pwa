@@ -25,7 +25,7 @@ const doc={
 const ctx={document:doc,localStorage:{getItem:k=>storage.get(k)??null,setItem:(k,v)=>storage.set(k,v),removeItem:k=>storage.delete(k)},
  navigator:{},window:{scrollTo(){},scrollY:0,KurashiReceiptValidation:validator,KurashiReceiptReview:review},crypto:{randomUUID:()=> 'test-id'},setTimeout:()=>0};
 const ui=vm.runInNewContext(source+`
-({listView,priceCompareView,pickerView,pickerResults,receiptView,receiptScanView,receiptChatGptView,recordDetailView,scanStoreNameIssue,scanValidPurchaseDate,scanReadableError,floatingActionPlacement,applyChatGptOcrAssistance,receiptOcrReference,receiptOcrRows,isUnconfirmedBarcodeLine,makeChatGptReceiptRebuildDraft,scanProductView,scanExistingProductView,scanChainForStore,scanAutolinkUnmatched,scanMatchProduct,render,initializeCompare,
+({listView,priceCompareView,pickerView,pickerResults,receiptView,receiptAllView,receiptScanView,receiptChatGptView,recordDetailView,scanStoreNameIssue,scanValidPurchaseDate,scanReadableError,floatingActionPlacement,applyChatGptOcrAssistance,receiptOcrReference,receiptOcrRows,isUnconfirmedBarcodeLine,makeChatGptReceiptRebuildDraft,scanProductView,scanExistingProductView,scanChainForStore,scanAutolinkUnmatched,scanMatchProduct,render,initializeCompare,
  setProductGroup,reorderProducts,registeredProducts,convertQuantity,setOpenSwipe,storePickerChoices,
  chainMinima,priceCandidates,savePreviewRecord,periodStart,
  demoRecords,demoRecordItems,allPreviewRecords,allPreviewItems,
@@ -205,8 +205,17 @@ assert.ok(!ui.savePreviewRecord({type:'receipt',chainId:'c-life',date:month+'-01
 assert.ok(ui.savePreviewRecord({type:'receipt',chainId:'c-life',date:ui.demoRecords[0].record_date,quantity:2,amount:476,productId:'',category:''}),'Unmatched receipt can be stored locally');
 assert.equal(ui.allPreviewRecords().length,ui.demoRecords.length+1,'Saved header in preview storage');
 assert.equal(ui.allPreviewItems().length,ui.demoRecordItems.length+1,'Saved child with same record');
-assert.ok(ui.receiptView().includes('明細を登録'));
-assert.ok(ui.receiptView().includes('明細一覧'));
+assert.ok(ui.receiptView().includes('明細を登録'),'Keep existing registration wording');
+assert.ok(source.includes("UI.button({label:'編集',variant:'primary',action:'recordEdit'})")&&
+ source.includes("UI.button({label:'記録を削除',variant:'tertiary',action:'recordDelete'")&&
+ css.includes('.record-detail-actions>.record-delete-action{')&&
+ !css.includes('.record-detail-actions>*{flex:1;'),
+ 'History detail uses a full-width primary edit and a restrained tertiary delete, not equal buttons');
+assert.ok(source.includes("scanDraft.recordType==='shelf'")&&
+ source.includes("recordId:r.record_id,recordType:r.record_type,source:'edit'"),
+ 'Editing a shelf record uses its saved kind and correct wording');
+assert.ok(ui.receiptView().includes('記録一覧'));
+assert.ok(ui.receiptAllView().includes('記録一覧'),'Full record history uses the same label');
 assert.ok(ui.receiptView().includes('すべて表示'));
 assert.ok(ui.receiptView().includes('レシート入力'));
 assert.ok(ui.receiptView().includes('値札入力'));
@@ -1350,7 +1359,7 @@ assert.ok(!JSON.stringify(p4Rebuild).includes('ocr-p4'),
 console.log('P4 common review adapter, provenance, row identity and P2 validation OK');
 
 // v0.73: Receipt OCR review information hierarchy; preserve validation/confirmation.
-assert.ok(source.includes("const APP_VERSION='0.85.5'"), 'UI review revision version is current');
+assert.ok(source.includes("const APP_VERSION='0.85.6'"), 'UI review revision version is current');
 assert.ok(source.includes("UI.sectionHeading({title:'読み取り状況'})"), 'OCR and ChatGPT appear under one section');
 assert.ok(source.includes("UI.sectionHeading({title:'購入情報'})"), 'Receipt OCR review groups store and purchase date');
 assert.ok(source.includes("UI.sectionHeading({title:'購入明細',subtitle:scanDraft.items.length+'件'+"), 'Receipt OCR review identifies item list and unmatched count');

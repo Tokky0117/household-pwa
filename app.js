@@ -1,4 +1,4 @@
-const APP_VERSION='0.85.5';
+const APP_VERSION='0.85.6';
 const CATS=['飲食','キッチン','洗面・風呂','洗濯・掃除','その他'];
 const liveMode=!!window.KurashiLive; // Data source only; original Preview v46 UI components remain.
 const SEED=[['牛乳',0,true],['麦茶',0,false],['コーヒー',0,true],['卵',0,false],['キッチンペーパー',1,false],['ラップ',1,true],['食器用洗剤',1,true],['シャンプー',2,false],['歯磨き粉',2,true],['ハンドソープ',2,false],['洗濯洗剤',3,false],['柔軟剤',3,true],['トイレットペーパー',3,false],['乾電池',4,true],['ティッシュ',4,true]];
@@ -218,12 +218,13 @@ function makeChatGptReceiptRebuildDraft(previous,result){
 function recordDetailView(){
  const record=allPreviewRecords().find(r=>r.record_id===recordDetailId);
  if(!record)return `${head('保存済み記録','見つかりません',true)}<main></main>${nav()}`;
+ const isShelf=record.record_type==='shelf';
  const detail=allPreviewItems().filter(x=>x.record_id===recordDetailId&&!x.deleted_at)
   .sort((a,b)=>Number(a.line_order)-Number(b.line_order));
  const total=detail.reduce((sum,x)=>sum+Number(x.amount_tax_included||0),0);
  return `${head(record.record_type==='receipt'?'レシート詳細':'値札詳細',chainLabel(record.chain_id),true)}
  <main class="preview-record-page receipt-detail">
-  <div class="panel"><p>購入日：${esc(record.record_date)}</p>
+  <div class="panel"><p>${isShelf?'値札確認日':'購入日'}：${esc(record.record_date)}</p>
     <p>チェーン：${esc(chainLabel(record.chain_id))}</p>
        <p>明細数：${detail.length}件</p><strong>税込合計：${yen(total)}</strong></div>
   ${detail.map((x,i)=>`<div class="panel preview-record-row">
@@ -232,7 +233,7 @@ function recordDetailView(){
     ${x.confirmed_name?'<span>写真・手入力で確認した明細名：'+esc(x.confirmed_name)+'</span>':x.product_id&&aliasNameFor(x)?'<span>レシートの読み取り名：'+esc(aliasNameFor(x))+'</span>':''}
     <span>${esc(x.quantity)}個　税込 ${yen(Number(x.amount_tax_included))}</span>
     <span>${x.product_id?'照合商品：'+esc(catalogue.products.find(p=>p.id===x.product_id)?.name||'登録済み商品'):'商品未照合'}</span></div>`).join('')}
-  ${liveMode?'<div class="record-detail-actions"><button type="button" class="secondary" data-act="recordEdit">編集</button><button type="button" class="secondary" data-act="recordDelete">削除</button></div>':''}
+  ${liveMode?'<div class="record-detail-actions>'+UI.button({label:'編集',variant:'primary',action:'recordEdit'})+UI.button({label:'記録を削除',variant:'tertiary',action:'recordDelete',className:'record-delete-action'})+'</div>':''}
  </main>${nav()}`;
 }
 
@@ -582,7 +583,7 @@ function scanAssistView(){
  </div>`;
 }
 function scanReadingStatusView(){
- if(!scanDraft)return '';
+ if(!scanDraft||scanDraft.source==='edit')return '';
  const summary=scanStatus||(['ocr','chatgpt-rebuild'].includes(scanDraft.source)?
   scanDraft.items.length+'件の明細を読み取りました。':'');
  return `<section class="scan-reading-status" aria-label="読み取り状況">
@@ -594,11 +595,12 @@ function scanReadingStatusView(){
 }
 function scanFormView(){
  if(!scanDraft)return '';
+ const isShelf=!!scanDraft.recordId&&scanDraft.recordType==='shelf';
  const reviewModel=window.KurashiReceiptReview.buildReviewModel(scanDraft);
  const unmatchedCount=scanDraft.items.filter(x=>!scanResolvedProductId(x)).length;
  return `<form id="scanConfirmForm" class="scan-review" novalidate>
-  <section class="scan-receipt-meta" aria-label="購入情報">
-  ${UI.sectionHeading({title:'購入情報'})}
+  <section class="scan-receipt-meta" aria-label="${isShelf?'値札情報':'購入情報'}">
+  ${UI.sectionHeading({title:isShelf?'値札情報':'購入情報'})}
   <div class="scan-store-picker">
    ${UI.formField({id:'scan-chain',name:'chain',label:'店舗',control:'picker',
      value:scanNewStoreMode?'__new__':scanDraft.chainId||'',
@@ -606,10 +608,10 @@ function scanFormView(){
      action:'storePickerOpen',hint:true})}
    <input type="hidden" name="chain_name" value="${esc(scanNewStoreMode?scanDraft.chainName||'':'')}">
   </div>
-  ${UI.formField({id:'scan-date',name:'date',label:'購入日',control:'date',
+  ${UI.formField({id:'scan-date',name:'date',label:isShelf?'値札確認日':'購入日',control:'date',
    value:scanDraft.date,required:true,hint:true,fieldClass:'scan-date-field'})}
   </section>
-  ${UI.sectionHeading({title:'購入明細',subtitle:scanDraft.items.length+'件'+(unmatchedCount?'・未照合'+unmatchedCount+'件':'')})}
+  ${UI.sectionHeading({title:isShelf?'価格情報':'購入明細',subtitle:scanDraft.items.length+'件'+(unmatchedCount?'・未照合'+unmatchedCount+'件':'')})}
   ${scanDraft.items.map((item,i)=>`<div class="panel scan-review-item">
     <div class="scan-item-head"><strong>明細 ${i+1}</strong><div class="scan-item-tools">
      <button type="button" class="scan-item-tool" data-act="scanRemoveItem" data-scan-row="${i}">${miniIcon('trash')}<span>削除</span></button>
@@ -647,17 +649,17 @@ function scanFormView(){
       hint:true,fieldClass:'scan-manual-name'}):''}
     </div>`).join('')}
   <div class="scan-add-action">${UI.button({label:'明細を追加',variant:'tertiary',action:'scanAddItem',icon:'plus'})}</div>
-  ${UI.sectionHeading({title:'合計の確認'})}
+  ${UI.sectionHeading({title:isShelf?'価格の確認':'合計の確認'})}
   <div class="panel scan-review-total">
-   <p id="scan-sum-text" class="scan-total-figure" aria-live="polite">合計金額：—</p>
-   <p id="scan-count-text" class="scan-total-count">購入点数：—</p>
+   <p id="scan-sum-text" class="scan-total-figure" aria-live="polite">${isShelf?'販売価格合計':'合計金額'}：—</p>
+   <p id="scan-count-text" class="scan-total-count">${isShelf?'販売個数':'購入点数'}：—</p>
    ${scanDraft.taxBasis==='unknown'&&scanDraft.source==='ocr'?'<p class="scan-state-note scan-state-warning">税率を確認</p>':''}
    ${scanDraft.taxBasis==='excluded'&&scanDraft.taxAllocationStatus!=='allocated'?'<p class="scan-state-note scan-state-warning">税込金額を確認</p>':''}
    <div id="scan-total-warning" class="scan-state-note scan-state-warning scan-compare-note" role="status" hidden></div>
    <div id="scan-count-warning" class="scan-state-note scan-state-warning scan-compare-note" role="status" hidden></div>
   </div>
   ${UI.formFeedback({id:'scan-save-feedback'})}
-  ${UI.button({label:scanDraft.recordId?'修正したレシートを保存':'保存',variant:'primary',type:'submit'})}
+  ${UI.button({label:scanDraft.recordId?(isShelf?'修正した値札を保存':'修正したレシートを保存'):'保存',variant:'primary',type:'submit'})}
  </form>`;
 }
 function scanPhotoSection(){
@@ -683,7 +685,9 @@ function scanPhotoSection(){
 }
 function receiptScanView(){
  const reviewing=!!scanDraft;
- return `${head('レシート読取','くらしストック',true)}<main class="preview-record-page receipt-scan-page">
+ const shelfEdit=reviewing&&!!scanDraft.recordId&&scanDraft.recordType==='shelf';
+ const editTitle=reviewing&&scanDraft.source==='edit'?(shelfEdit?'値札を編集':'レシートを編集'):'レシート読取';
+ return `${head(editTitle,'くらしストック',true)}<main class="preview-record-page receipt-scan-page">
  ${reviewing?'':scanPhotoSection()}
  ${!reviewing&&scanPhotos.length?UI.button({label:scanBusy?'読み取り中…':scanReadFailed?'もう一度読み取る':'写真を読み取る',
    variant:'primary',action:'scanStart',icon:'receiptText',disabled:scanBusy,className:'scan-photo-start'}):''}
@@ -692,7 +696,7 @@ function receiptScanView(){
  ${reviewing?scanReadingStatusView():''}
  ${scanFormView()}
  </main>
- ${reviewing?UI.floatingAction({label:'写真を確認',icon:'camera',action:'scanOpenCurrentPhoto',avoidSelector:'#scanConfirmForm button[type="submit"]'}):''}`;
+ ${reviewing&&!shelfEdit?UI.floatingAction({label:'写真を確認',icon:'camera',action:'scanOpenCurrentPhoto',avoidSelector:'#scanConfirmForm button[type="submit"]'}):''}`;
 }
 function closeScanViewer({restore=true}={}){
  const viewer=document.getElementById('scan-photo-viewer');
@@ -1178,13 +1182,13 @@ function receiptView(){
  return `${head('明細','くらしストック')}<main class="preview-record-page receipt-home">
  ${UI.sectionHeading({title:'明細を登録'})}
  <div class="record-entry-actions">${registration.map(x=>UI.button({label:x.label,icon:x.icon,action:x.action,variant:x.primary?'primary':'secondary'})).join('')}</div>
- ${UI.sectionHeading({title:'明細一覧',trailing:UI.textAction({label:'すべて表示',action:'receiptAll'}),className:'receipt-list-heading'})}
+ ${UI.sectionHeading({title:'記録一覧',trailing:UI.textAction({label:'すべて表示',action:'receiptAll'}),className:'receipt-list-heading'})}
  <div class="receipt-record-list">${draft}${receiptHistoryRows(recent)||(!draft?'<div class="empty">記録はまだありません</div>':'')}</div>
  </main>${nav()}`;
 }
 function receiptAllView(){
  const records=allPreviewRecords().filter(r=>!r.deleted_at).slice().reverse();
- return `${head('明細一覧','',true)}<main class="preview-record-page receipt-all">
+ return `${head('記録一覧','',true)}<main class="preview-record-page receipt-all">
  <div class="receipt-record-list">${receiptHistoryRows(records)||'<div class="empty">記録はまだありません</div>'}</div>
  </main>`;
 }
@@ -1485,7 +1489,8 @@ function back(){
    if(scanDraft){syncScanReview();saveScanDraft();}
    if(scanBusy){say('読み取り処理中です');return;}
    if(scanPhotos.length||scanDraft){
-    dialog={title:'読み取り途中の内容を破棄しますか？',message:'写真と読み取り結果は保存せず破棄します。',
+    dialog={title:scanDraft?.source==='edit'?'編集中の変更を破棄しますか？':'読み取り途中の内容を破棄しますか？',
+     message:scanDraft?.source==='edit'?'保存していない変更は失われます。':'写真と読み取り結果は保存せず破棄します。',
      buttons:[{id:'cancel',label:'編集を続ける'},{id:'discardScan',label:'破棄する',critical:true}]};
     renderDialogOnly();return;
    }
@@ -1766,6 +1771,10 @@ app.addEventListener('submit',e=>{e.preventDefault();const form=e.target;const d
     fieldName:(badName?'name-':badQty?'qty-':'amount-')+badRow
    });return;
   }
+  if(scanDraft.recordId&&scanDraft.recordType==='shelf'){
+   const unknown=lines.findIndex(x=>!x.product_id);
+   if(unknown>=0){formSaveFeedback(form,'値札には登録商品を設定してください。',{fieldName:'product-'+unknown});return;}
+  }
   const chain_id=String(d.get('chain')||'');
   const storeName=String(d.get('chain_name')||'').trim();
   const storeError=chain_id==='__new__'?scanStoreNameIssue(storeName):
@@ -1774,11 +1783,11 @@ app.addEventListener('submit',e=>{e.preventDefault();const form=e.target;const d
    formSaveFeedback(form,storeError,{fieldName:'chain'});return;
   }
   if(!scanValidPurchaseDate(String(d.get('date')||''))){
-   formSaveFeedback(form,'購入日を入力してください。',{fieldName:'date'});return;
+   formSaveFeedback(form,scanDraft.recordType==='shelf'?'値札確認日を入力してください。':'購入日を入力してください。',{fieldName:'date'});return;
   }
   const submit=form.querySelector('[type="submit"]');if(submit?.disabled)return;
   if(submit)submit.disabled=true;
-  const values={record_type:'receipt',chain_id,chain_name:chain_id==='__new__'?storeName:'',
+  const values={record_type:scanDraft.recordId&&scanDraft.recordType==='shelf'?'shelf':'receipt',chain_id,chain_name:chain_id==='__new__'?storeName:'',
    branch_name:scanDraft.recordId?scanDraft.branchName||'':'',
    record_date:String(d.get('date')||''),items:lines};
   const work=scanDraft.recordId?
@@ -2140,19 +2149,19 @@ if(action==='recordEdit'){
   say('同期が完了してから編集できます');return;
  }
  scanPhotos=[];scanNewStoreMode=false;scanDraft={
-  recordId:r.record_id,source:'edit',date:r.record_date,chainId:r.chain_id,
+  recordId:r.record_id,recordType:r.record_type,source:'edit',date:r.record_date,chainId:r.chain_id,
   chainName:'',branchName:r.branch_name||'',total:null,
   items:allPreviewItems().filter(x=>x.record_id===r.record_id&&!x.deleted_at)
    .sort((a,b)=>Number(a.line_order)-Number(b.line_order))
-   .map(x=>({name:aliasNameFor(x),inferredName:x.inferred_name||'',
-    ...(!aliasNameFor(x)||x.confirmed_name?{inputOrigin:'manual'}:{ocrRawName:aliasNameFor(x),savedOcrName:true}),
+   .map(x=>({name:aliasNameFor(x),inferredName:r.record_type==='shelf'?'':x.inferred_name||'',
+    ...(r.record_type==='shelf'||!aliasNameFor(x)||x.confirmed_name?{inputOrigin:'manual'}:{ocrRawName:aliasNameFor(x),savedOcrName:true}),
     quantity:x.quantity,amount:x.amount_tax_included,
     productId:x.product_id||'',manuallyLinked:!!x.product_id,issues:[]}))
  };
- saveScanDraft();scanStatus='保存済みの記録を編集中です';page='recordScan';render();return;
+ saveScanDraft();scanStatus='';page='recordScan';render();return;
 }
 if(action==='recordDelete'){
- dialog={title:'記録を削除しますか？',message:'削除すると価格比較と購入履歴から除外されます。',
+ dialog={title:'記録を削除しますか？',message:'削除すると価格比較と記録一覧から除外されます。',
   buttons:[{id:'cancel',label:'キャンセル'},{id:'confirmRecordDelete',label:'削除する',critical:true}],
   pending:{recordId:recordDetailId}};
  renderDialogOnly();return;
@@ -2613,7 +2622,7 @@ function refreshScanTotalUI(){
  mark('chain',chainError?'error':'',chainError);
  const date=String(d.get('date')||'');
  const dateOk=scanValidPurchaseDate(date);
- mark('date',dateOk?'':'error',dateOk?'':'購入日を入力してください。');
+ mark('date',dateOk?'':'error',dateOk?'':scanDraft.recordType==='shelf'?'値札確認日を入力してください。':'購入日を入力してください。');
  scanDraft.items.forEach((item,i)=>{
   const q=rows[i].quantity,v=rows[i].amount;
   const validQty=/^\d+$/.test(q)&&Number.isSafeInteger(Number(q))&&Number(q)>0;
@@ -2630,8 +2639,8 @@ function refreshScanTotalUI(){
   }
  });
  const sum=document.getElementById('scan-sum-text'),count=document.getElementById('scan-count-text');
- if(sum)sum.textContent='合計金額：'+(result.amountSum===null?'—':yen(result.amountSum));
- if(count)count.textContent='購入点数：'+(result.quantitySum===null?'—':result.quantitySum+'点');
+ if(sum)sum.textContent=(scanDraft.recordType==='shelf'?'販売価格合計':'合計金額')+'：'+(result.amountSum===null?'—':yen(result.amountSum));
+ if(count)count.textContent=(scanDraft.recordType==='shelf'?'販売個数':'購入点数')+'：'+(result.quantitySum===null?'—':result.quantitySum+'点');
  const totalWarning=document.getElementById('scan-total-warning');
  const countWarning=document.getElementById('scan-count-warning');
  const codes=(scanDraft.warnings||[]).map(w=>typeof w==='string'?w:w?.code);

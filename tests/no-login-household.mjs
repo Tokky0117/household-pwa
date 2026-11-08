@@ -1174,6 +1174,12 @@ const historyEntry=historyUI.window.document.querySelector(
 assert.ok(historyEntry,'confirmed receipt opens from existing history');
 historyEntry.click();
 assert.match(historyUI.window.document.body.textContent,/税込合計/);
+assert.ok(historyUI.window.document.querySelector('.record-detail-actions>.primary[data-act="recordEdit"]'),
+ 'Receipt detail edit uses the existing shared primary button');
+assert.ok(historyUI.window.document.querySelector('.record-detail-actions>.tertiary.record-delete-action[data-act="recordDelete"]'),
+ 'Receipt detail delete is a separate shared tertiary action');
+assert.equal(historyUI.window.document.querySelector('.record-detail-actions>.record-delete-action').textContent.trim(),
+ '記録を削除','Destructive action states exactly what will be deleted');
 historyUI.window.document.querySelector('[data-act="recordEdit"]').click();
 const editForm=historyUI.window.document.getElementById('scanConfirmForm');
 assert.ok(editForm,'history edit reuses shared multi-line confirmation form');
@@ -1214,8 +1220,50 @@ await waitFor(()=>historyRecovery.window.KurashiLive.state().queued===0&&
  temp.call('bootstrap').data.product_aliases.some(x=>
   x.normalized_alias==='アルファベット商品略称'&&x.product_id===productForAlias),
  'chain-specific learned alias is sent through the offline-safe queue');
+// A shelf observation is not a purchase. Editing it must keep the shelf type,
+// sale conditions and labels, without showing receipt photos or OCR messages.
+const shelfEditDate='2026-10-23';
+await historyRecovery.window.KurashiLive.saveRecord({
+ record_type:'shelf',chain_id:chainForAlias,record_date:shelfEditDate,
+ items:[{raw_name:'',confirmed_name:'棚の値札',product_id:productForAlias,
+  quantity:2,amount_tax_included:300,category_id:null}]
+});
+await waitFor(()=>historyRecovery.window.KurashiLive.state().queued===0&&
+ temp.call('bootstrap').data.records.some(r=>r.record_type==='shelf'&&r.record_date===shelfEditDate),
+ 'shelf price observation saved and synced');
+const shelfEditRecord=temp.call('bootstrap').data.records.find(r=>
+ r.record_type==='shelf'&&r.record_date===shelfEditDate);
+historyRecovery.window.document.querySelector('[data-tab="receipt"]').click();
+assert.match(historyRecovery.window.document.body.textContent,/記録一覧/);
+const shelfHistoryEntry=historyRecovery.window.document.querySelector(
+ '[data-act="recordDetail"][data-record-id="'+shelfEditRecord.record_id+'"]');
+assert.ok(shelfHistoryEntry,'saved shelf observation opens from record list');
+shelfHistoryEntry.click();
+assert.match(historyRecovery.window.document.body.textContent,/値札確認日/);
+historyRecovery.window.document.querySelector('[data-act="recordEdit"]').click();
+const shelfEditForm=historyRecovery.window.document.getElementById('scanConfirmForm');
+assert.ok(shelfEditForm,'shelf uses shared editor with the original saved kind');
+assert.match(historyRecovery.window.document.body.textContent,/値札を編集/);
+assert.match(shelfEditForm.textContent,/値札情報/);
+assert.match(shelfEditForm.textContent,/値札確認日/);
+assert.match(shelfEditForm.textContent,/販売価格合計/);
+assert.match(shelfEditForm.textContent,/販売個数/);
+assert.match(shelfEditForm.textContent,/修正した値札を保存/);
+assert.equal(shelfEditForm.querySelector('[name="name-0"]').value,'棚の値札');
+assert.equal(historyRecovery.window.document.querySelector('[data-act="scanOpenCurrentPhoto"]'),null,
+ 'shelf editor does not offer receipt photo review');
+assert.equal(historyRecovery.window.document.querySelector('.scan-reading-status'),null,
+ 'shelf editor does not show receipt OCR status');
+shelfEditForm.querySelector('[name="amount-0"]').value='280';
+shelfEditForm.dispatchEvent(new historyRecovery.window.Event('submit',{bubbles:true,cancelable:true}));
+await waitFor(()=>historyRecovery.window.KurashiLive.state().queued===0&&
+ temp.call('bootstrap').data.record_items.some(i=>i.record_id===shelfEditRecord.record_id&&
+  Number(i.amount_tax_included)===280),
+ 'shelf edit updates its saved sales price');
+assert.equal(temp.call('bootstrap').data.records.find(r=>r.record_id===shelfEditRecord.record_id).record_type,
+ 'shelf','shelf stays a shelf record after editing and syncing');
 historyRecovery.window.close();
-console.log('v59: record editing, offline restart, deletion, alias training: OK');
+console.log('v59: record editing, offline restart, deletion, alias training, shelf edit: OK');
 // Unnamed manual receipt lines need neither OCR aliases nor new data columns.
 // GAS accepts them for both create and edit; prices are ineligible until linked.
 const unnamedFixture=fixture(api);
