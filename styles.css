@@ -2413,6 +2413,11 @@ main>.ui-search + .filterrow{margin-bottom:5px}
 .scan-add-action .tertiary{display:inline-flex;gap:6px;align-items:center;justify-content:center}
 .scan-add-action .tertiary svg{width:18px;height:18px;flex:none}
 .scan-photo-unavailable{margin:12px 0 18px}
+.scan-photo-unavailable .hint{margin:0 0 8px}
+.scan-photo-unavailable .secondary{display:inline-flex;align-items:center;gap:8px;min-height:44px}
+.scan-photo-unavailable .secondary svg{width:18px;height:18px}
+.ui-form-feedback{margin:12px 0 0;font-size:13px;line-height:1.5;font-weight:600;color:var(--ui-field-error-color)}
+.ui-form-feedback[hidden]{display:none!important}
 .scan-photo-viewer{position:fixed;inset:0;z-index:350;display:flex;flex-direction:column;background:#15171a;color:#fff;padding:env(safe-area-inset-top,0px) 0 env(safe-area-inset-bottom,0px)}
 .scan-viewer-head{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:6px 16px;min-height:54px;font-weight:700}
 .scan-viewer-close{width:44px;height:44px;border:0;background:transparent;color:#fff;font-size:32px;font-weight:400}
