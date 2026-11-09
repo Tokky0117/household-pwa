@@ -110,7 +110,7 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 
 .secondary {
   border: 0;
-  background: #e4e6e9;
+  background: #eceef0;
   color: var(--accent);
   border-radius: 12px;
   min-height: 44px;
@@ -2069,7 +2069,7 @@ html,body {
 .swipe-item[data-item-id].swipe-open .swipe-front::after,
 .swipe-item[data-item-id].swiping .swipe-front::after{
  content:'';position:absolute;inset:0;z-index:2;
- background:rgba(65,70,78,.17);pointer-events:none;
+ background:color-mix(in srgb,var(--line) 40%,var(--card));pointer-events:none;
 }
 .swipe-item[data-item-id].swipe-open .swipe-front > *{pointer-events:none}
 .swipe-item .itemname{display:flex;flex:1 1 0;min-width:0;flex-direction:column;justify-content:center;gap:3px;align-items:flex-start;padding:9px 8px 9px 16px;overflow:hidden}
