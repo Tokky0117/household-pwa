@@ -297,7 +297,8 @@ assert.equal(a.window.KurashiLive.state().queued,beforeSwipeClick,'synthetic cli
 const editAction=exposedRow.querySelector('[data-list-edit]');
 sendPointer('pointerdown',editAction,270);
 editAction.dispatchEvent(new a.window.MouseEvent('click',{bubbles:true,cancelable:true,detail:1}));
-assert.equal(a.window.eval('page'),'edit','the next physical tap immediately opens editing');
+assert.ok(a.window.document.querySelector('#itemForm')?.textContent.includes('変更を保存'),
+ 'the next physical tap immediately opens the real item editing form');
 a.window.close();online=true;
 // Fresh PWA process, same IndexedDB database. It must drain both commands.
 let b=appSession();
