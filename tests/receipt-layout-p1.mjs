@@ -118,4 +118,18 @@ assert.deepEqual(Object.keys(reference.nameLinkDiagnostics[0]),
 assert.equal(reference.nameLinkDiagnostics[0].status,'nearby-text-not-name');
 assert.equal(JSON.stringify(reference).includes('xx'),false);
 
+
+// An unknown code row must not borrow the next merchandise row's name.
+const nextName=layout.groupLines([
+ obs('2000211787545 ¥2,990',100,75,260),
+ obs('衣料商品B',100,116,195),
+ obs('2000211287069 ¥2,990',100,145,260),
+ obs('合計 ¥5,980',100,220,240)
+]);
+const nextParsed=layout.attachAdjacentCodeNames(structure.parse(nextName.text),nextName);
+assert.equal(nextParsed.items.length,2);
+assert.equal(nextParsed.items[0].name,'2000211787545');
+assert.equal(nextParsed.items[1].name,'衣料商品B');
+assert.equal(nextParsed.items[0].nameLinkEvidence.status,'ambiguous-name-position');
+
 console.log('P1 receipt region separation and safe product-code association OK');

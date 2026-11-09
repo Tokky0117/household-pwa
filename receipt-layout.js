@@ -138,7 +138,9 @@
   const source=String(receipt.rawText||'').split(/\r?\n/);
   const used=new Set(receipt.items.flatMap(item=>Array.isArray(item.sourceLines)?item.sourceLines:[]));
   const itemLines=[...used];
-  const codeLines=receipt.items.filter(x=>/^\d{13}$/.test(String(x.rawName||x.name||'').trim())&&x.sourceLines?.length===1).map(x=>x.sourceLines[0]);
+  // Include already-named priced rows as competitors: an unlinked code must
+  // never steal the printed name immediately above the *next* product.
+  const pricedLines=[...new Set(receipt.items.map(x=>x.sourceLines?.[0]).filter(Number.isInteger))];
   const notName=/^(?:合\s*計|小\s*計|総額|お買上|お買上点数|領収|ユニクロ|コストコ|COSTCO|コノミヤ|税|内税|外税|現金|支払|取引|会員|カード|レジ|JAN|TEL|電話|割引|値引|ありがとうございます)/i;
   const possibleName=value=>{
    const text=String(value||'').normalize('NFKC').trim();
@@ -176,9 +178,9 @@
     return {line:n,distance:Math.abs((anchor.y0+anchor.y1-b.y0-b.y1)/2)+
      (above?0:height)};
    }).sort((a,b)=>a.distance-b.distance);
-   // Reject a name that is as close or closer to another code-only product.
+   // Reject a name that is as close or closer to another priced product.
    const best=candidates[0];
-   const conflicting=best&&codeLines.some(other=>{
+   const conflicting=best&&pricedLines.some(other=>{
     if(other===line)return false;
     const b=layout.lines[other-1]?.bounds;
     if(!b||!near(b,layout.lines[best.line-1]?.bounds))return false;
