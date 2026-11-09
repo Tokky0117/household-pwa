@@ -606,8 +606,6 @@
     throw Error('明細の商品名を確認してください');
    if(productId!==null&&!snap.products.some(p=>p.product_id===productId&&!p.deleted_at))
     throw Error('商品が見つかりません');
-   if(kind==='shelf'&&productId===null)
-    throw Error('値札には商品を選択してください');
    if(!Number.isSafeInteger(line.quantity)||line.quantity<=0||
       !Number.isSafeInteger(line.amount_tax_included)||line.amount_tax_included<0||
       (kind==='shelf'?cat!==null:
