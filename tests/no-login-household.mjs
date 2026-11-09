@@ -835,9 +835,24 @@ assert.equal(recordFixture.db.record_items.length,3,'no duplicate receipt rows')
 assert.equal(recordFixture.call('record.create',{...receiptPayload,
  record_date:'2026-02-31'},'op-record-bad-date-abcdef12345').error.code,
  'BAD_REQUEST','invalid calendar dates cannot be saved');
-assert.equal(recordFixture.call('record.create',{...receiptPayload,
- record_type:'shelf'},'op-record-shelf-no-product-abcdef12345').error.code,
- 'BAD_REQUEST','shelf requires product identification');
+const unlinkedShelfFixture=fixture(api);
+const unlinkedShelfStore=unlinkedShelfFixture.call('store.create',{name:'商品未紐付け値札店舗'},
+ 'op-shelf-unlinked-store-abcdef12345').data.entity.chain_id;
+const unlinkedShelfSaved=unlinkedShelfFixture.call('record.create',{
+ record_type:'shelf',chain_id:unlinkedShelfStore,record_date:'2026-11-09',
+ items:[{raw_name:'',product_id:null,quantity:1,amount_tax_included:250,category_id:null}]
+},'op-record-shelf-no-product-abcdef12345');
+assert.equal(unlinkedShelfSaved.ok,true,'Unlinked shelf is allowed without a product');
+assert.equal(unlinkedShelfSaved.data.record.record_type,'shelf');
+assert.equal(unlinkedShelfSaved.data.items[0].product_id,'');
+assert.equal(unlinkedShelfSaved.data.items[0].price_eligible,false,
+ 'Unlinked shelf is recorded but not eligible for product price comparison');
+const unlinkShelfEdit=unlinkedShelfFixture.call('record.update',{
+ record_id:unlinkedShelfSaved.data.record.record_id,version:1,
+ chain_id:unlinkedShelfStore,record_date:'2026-11-09',branch_name:'',
+ items:[{raw_name:'',product_id:null,quantity:1,amount_tax_included:230,category_id:null}]
+},'op-update-shelf-no-product-abcdef12345');
+assert.equal(unlinkShelfEdit.ok,true,'Unlinked shelf remains editable');
 const itemForPrice=recordFixture.call('item.create',{name:'値札グループ',category_id:0},
  'op-record-item-price-abcdef12345').data.entity;
 const productForPrice=recordFixture.call('product.create',{
@@ -930,85 +945,180 @@ assert.equal(interruptedRecord.db.records.length,2);
 assert.equal(interruptedRecord.db.record_items.length,3);
 assert.equal(interruptedRecord.call('bootstrap').ok,true);
 
-// The live original v46 receipt modal now persists an unlinked receipt and
-// its explicitly named chain. Both operations must survive one offline reboot.
+// Receipt input and shelf input share the OCR confirmation editor, including
+// multiple lines, optional master product, the original queue and Sheets schema.
 let recordUI=appSession();
 await waitFor(()=>recordUI.window.KurashiLive.state().loaded,'record UI bootstrap');
 recordUI.window.document.querySelector('[data-tab="receipt"]').click();
 recordUI.window.document.querySelector('[data-act="newReceipt"]').click();
-let recordForm=recordUI.window.document.getElementById('recordForm');
-assert.ok(recordForm,'v46 receipt form reachable without test-only buttons');
-assert.equal(recordForm.querySelector('input[name="chain"]').value,'__new__');
+await waitFor(()=>!!recordUI.window.document.getElementById('scanConfirmForm'),'manual receipt editor');
+let recordForm=recordUI.window.document.getElementById('scanConfirmForm');
+assert.match(recordUI.window.document.body.textContent,/レシート入力/);
+assert.ok(recordForm.querySelector('[data-act="scanAddItem"]'),
+ 'Manual receipt can add lines using the existing review form');
+assert.equal(recordForm.querySelector('[name="chain"]').value,'');
 recordForm.querySelector('[data-act="storePickerOpen"]').click();
 let recordStoreSheet=recordUI.window.document.querySelector('.store-picker-overlay');
-assert.ok(recordStoreSheet,'manual receipt uses the same store selection half sheet');
+assert.ok(recordStoreSheet,'manual receipt opens a single shared store selection sheet');
 assert.equal(recordUI.window.document.body.style.position,'fixed',
- 'nested store modal keeps its underlying record entry sheet locked');
+ 'Store picker locks a full-page editor while it is open');
 assert.ok(recordStoreSheet.querySelector('.store-picker-create>.secondary>span'),
- 'new-store entry button uses the common secondary button component');
+ 'new store uses the common secondary action');
 recordStoreSheet.querySelector('[data-act="storePickerShowNew"]').click();
 recordStoreSheet.querySelector('#store-picker-new-name').value='アプリ実機試験用チェーン';
 recordStoreSheet.querySelector('#storePickerNewForm').dispatchEvent(
  new recordUI.window.Event('submit',{bubbles:true,cancelable:true}));
 assert.equal(recordForm.querySelector('[name="chain_name"]').value,'アプリ実機試験用チェーン',
- 'manual receipt retains new store name in deferred save payload');
-assert.equal(recordUI.window.document.body.style.position,'fixed',
- 'closing nested picker leaves the underlying manual receipt modal locked');
-recordForm.querySelector('[name="quantity"]').value='2';
-recordForm.querySelector('[name="amount"]').value='340';
-recordForm.querySelector('[name="raw"]').value='未照合商品';
+ 'manual receipt retains the new store name in a single form');
+assert.equal(recordUI.window.document.body.style.position,'',
+ 'Store chooser closing unlocks the full-page editor');
+recordForm.querySelector('[name="qty-0"]').value='2';
+recordForm.querySelector('[name="amount-0"]').value='340';
+recordForm.querySelector('[name="name-0"]').value='未照合商品';
+recordForm.querySelector('[data-act="scanAddItem"]').click();
+recordForm=recordUI.window.document.getElementById('scanConfirmForm');
+assert.equal(recordForm.querySelectorAll('.scan-review-item').length,2,
+ 'New manual receipt supports two lines without entering the store again');
+recordForm.querySelector('[name="amount-1"]').value='110';
+recordForm.querySelector('[name="qty-1"]').value='1';
 assert.equal(recordForm.querySelector('[name="category"]'),null,'budget category is retired');
 online=false;
 recordForm.dispatchEvent(new recordUI.window.Event('submit',{bubbles:true,cancelable:true}));
 await waitFor(()=>recordUI.window.KurashiLive.state().queued===2,
- 'store and record queued atomically offline');
-const projectedReceipt=recordUI.window.document.querySelector('.ui-record-row');
-assert.ok(projectedReceipt,'receipt appears immediately in the real UI');
+ 'store and multi-line receipt queued atomically while offline');
+await waitFor(()=>!!recordUI.window.document.querySelector('.ui-record-row'),
+ 'New manual receipt appears immediately in the original UI');
+await pause(70);
 recordUI.window.close();online=true;
 let recordReopened=appSession();
 await waitFor(()=>recordReopened.window.KurashiLive.state().loaded&&
  recordReopened.window.KurashiLive.state().queued===0&&
  temp.call('bootstrap').data.records.some(r=>r.record_type==='receipt'),
- 'store and receipt replay after PWA restart');
+ 'store and two receipt details replay after PWA restart');
 const storedReceipt=temp.call('bootstrap').data.records.find(r=>r.record_type==='receipt');
 assert.ok(storedReceipt);
-const storedDetail=temp.call('bootstrap').data.record_items.find(x=>x.record_id===storedReceipt.record_id);
-assert.equal(Number(storedDetail.amount_tax_included),340);
-assert.equal(Number(storedDetail.quantity),2);
-assert.equal(String(storedDetail.category_id),'','budget category is retired');
+const storedDetails=temp.call('bootstrap').data.record_items.filter(x=>x.record_id===storedReceipt.record_id);
+assert.equal(storedDetails.length,2,'both manual receipt lines saved under one record');
+assert.equal(Number(storedDetails[0].amount_tax_included),340);
+assert.equal(Number(storedDetails[0].quantity),2);
+assert.equal(Number(storedDetails[1].amount_tax_included),110);
+assert.equal(String(storedDetails[0].category_id),'','budget category is retired');
 assert.equal(recordReopened.window.document.querySelector('[data-tab="budget"]'),null,
  'budget tab has been removed');
 recordReopened.window.document.querySelector('[data-tab="receipt"]').click();
 assert.ok(recordReopened.window.document.body.textContent.includes('アプリ実機試験用チェーン'));
 recordReopened.window.document.querySelector('[data-act="newShelf"]').click();
-recordForm=recordReopened.window.document.getElementById('recordForm');
-assert.ok(recordForm,'shelf form is active in live mode');
+await waitFor(()=>!!recordReopened.window.document.getElementById('scanConfirmForm'),
+ 'shelf uses shared full-page editor');
+recordForm=recordReopened.window.document.getElementById('scanConfirmForm');
+assert.match(recordReopened.window.document.body.textContent,/値札入力/);
+assert.equal(recordForm.querySelector('[name="qty-0"]'),null,
+ 'Shelf has no visible quantity field');
 recordForm.querySelector('[data-act="storePickerOpen"]').click();
 const shelfStoreSheet=recordReopened.window.document.querySelector('.store-picker-overlay');
-assert.ok(shelfStoreSheet,'shelf input uses the same shared store-selection half sheet');
+assert.ok(shelfStoreSheet,'shelf uses the shared store selection sheet');
 const savedStoreChoice=shelfStoreSheet.querySelector(
  '.store-picker-results [data-ui-choice="'+storedReceipt.chain_id+'"]');
-assert.ok(savedStoreChoice,'previously saved store is available as a choice');
+assert.ok(savedStoreChoice,'previously saved store is available');
 savedStoreChoice.click();
 assert.equal(recordForm.querySelector('[name="chain"]').value,storedReceipt.chain_id,
- 'manual shelf form updates the existing hidden chain field on selection');
-assert.equal(recordForm.querySelector('.ui-picker-value').textContent,'アプリ実機試験用チェーン',
- 'shelf form shows chosen store name with no new text field');
-assert.equal(recordReopened.window.document.body.style.position,'fixed',
- 'choosing a shelf store retains scroll lock while parent sheet is open');
-const productToRecord=temp.call('bootstrap').data.products.find(p=>p.household_id==='household-one');
-assert.ok(productToRecord,'product exists for shelf');
-recordForm.querySelector('[name="product"]').value=productToRecord.product_id;
-recordForm.querySelector('[name="quantity"]').value='2';
-recordForm.querySelector('[name="amount"]').value='300';
-recordForm.querySelector('[name="raw"]').value='値札商品';
+ 'shelf choice updates the existing hidden store input');
+assert.equal(recordForm.querySelector('.ui-picker-value').textContent,'アプリ実機試験用チェーン');
+assert.equal(recordReopened.window.document.body.style.position,'',
+ 'shelf chooser returns to a full page, not a stacked modal');
+recordForm.querySelector('[name="amount-0"]').value='300';
+recordForm.querySelector('[data-act="scanAddItem"]').click();
+recordForm=recordReopened.window.document.getElementById('scanConfirmForm');
+assert.equal(recordForm.querySelector('[name="qty-1"]'),null);
+recordForm.querySelector('[name="amount-1"]').value='280';
 recordForm.dispatchEvent(new recordReopened.window.Event('submit',{bubbles:true,cancelable:true}));
 await waitFor(()=>recordReopened.window.KurashiLive.state().queued===0&&
  temp.call('bootstrap').data.records.some(r=>r.record_type==='shelf'),
- 'shelf form writes to same records/record_items schema');
+ 'unlinked two-line shelf saves through shared record schema');
+const savedShelf=temp.call('bootstrap').data.records.find(r=>r.record_type==='shelf');
+const shelfDetails=temp.call('bootstrap').data.record_items.filter(x=>x.record_id===savedShelf.record_id);
+assert.equal(shelfDetails.length,2);
+assert.ok(shelfDetails.every(i=>Number(i.quantity)===1&&
+ !i.product_id&&!i.price_eligible),'Shelf lines use fixed quantity 1 and optional product');
 assert.equal(recordReopened.window.document.querySelector('[data-tab="budget"]'),null,
  'receipt and shelf saves do not restore the budget tab');
 recordReopened.window.close();
+
+// A previously saved draft must be protected when opening manual input
+// or editing an existing saved record. No photo data is persisted.
+let draftSeed=appSession();
+await waitFor(()=>draftSeed.window.KurashiLive.state().loaded,'draft fixture startup');
+await draftSeed.window.KurashiLive.saveReceiptDraft({
+ source:'manual',recordType:'receipt',date:'2026-11-09',
+ chainId:storedReceipt.chain_id,total:null,
+ items:[{name:'以前の下書きの商品',inputOrigin:'manual',quantity:1,
+  amount:180,productId:'',issues:[]}]
+});
+draftSeed.window.close();
+const draftUI=appSession();
+await waitFor(()=>draftUI.window.KurashiLive.state().loaded,'draft conflict session startup');
+draftUI.window.document.querySelector('[data-tab="receipt"]').click();
+await waitFor(()=>!!draftUI.window.document.querySelector('[data-act="resumeScanDraft"]'),
+ 'existing local draft detected in receipt tab');
+draftUI.window.document.querySelector('[data-act="newShelf"]').click();
+await waitFor(()=>!!draftUI.window.document.querySelector('[data-dialog="confirmReplaceDraft"]'),
+ 'new shelf input protects previous draft');
+assert.equal(draftUI.window.document.querySelector('.dialog-description').textContent.trim(),
+ '以前の下書きは破棄されます。');
+draftUI.window.document.querySelector('[data-dialog="cancel"]').click();
+assert.equal((await draftUI.window.KurashiLive.loadReceiptDraft()).items[0].name,
+ '以前の下書きの商品','cancel preserves the prior draft');
+draftUI.window.document.querySelector('[data-act="newReceipt"]').click();
+await waitFor(()=>!!draftUI.window.document.querySelector('[data-dialog="confirmReplaceDraft"]'),
+ 'manual receipt also protects the same draft');
+draftUI.window.document.querySelector('[data-dialog="confirmReplaceDraft"]').click();
+await waitFor(()=>!!draftUI.window.document.querySelector('#scanConfirmForm'),
+ 'confirmed replacement opens the shared manual receipt editor');
+let draftForm=draftUI.window.document.querySelector('#scanConfirmForm');
+draftForm.querySelector('[name="name-0"]').value='新しい下書き';
+draftForm.querySelector('[name="amount-0"]').value='450';
+draftForm.querySelector('[data-act="scanSaveDraft"]').click();
+await waitFor(()=>!!draftUI.window.document.querySelector('[data-act="resumeScanDraft"]'),
+ 'explicit draft save returns to the receipt list');
+assert.equal((await draftUI.window.KurashiLive.loadReceiptDraft()).items[0].name,
+ '新しい下書き','explicit draft save persists latest input in IndexedDB');
+draftUI.window.document.querySelector('[data-act="resumeScanDraft"]').click();
+await waitFor(()=>!!draftUI.window.document.querySelector('#scanConfirmForm'),'manual draft resumes');
+assert.equal(draftUI.window.document.querySelector('[data-act="scanOpenCurrentPhoto"]'),null,
+ 'resuming draft without in-memory photos does not show photo button');
+draftUI.window.document.querySelector('[data-act="back"]').click();
+assert.ok(draftUI.window.document.querySelector('[data-dialog="saveScanDraftAndExit"]'),
+ 'back dialog has explicit save-draft option');
+draftUI.window.document.querySelector('[data-dialog="saveScanDraftAndExit"]').click();
+await waitFor(()=>!!draftUI.window.document.querySelector('[data-act="resumeScanDraft"]'),
+ 'back dialog saves draft and exits');
+draftUI.window.document.querySelector(
+ '[data-act="recordDetail"][data-record-id="'+storedReceipt.record_id+'"]').click();
+draftUI.window.document.querySelector('[data-act="recordEdit"]').click();
+await waitFor(()=>!!draftUI.window.document.querySelector('[data-dialog="confirmReplaceDraft"]'),
+ 'editing a saved receipt protects existing manual draft');
+draftUI.window.document.querySelector('[data-dialog="cancel"]').click();
+assert.equal((await draftUI.window.KurashiLive.loadReceiptDraft()).items[0].name,
+ '新しい下書き','canceling saved receipt edit keeps prior draft');
+draftUI.window.document.querySelector('[data-act="recordEdit"]').click();
+await waitFor(()=>!!draftUI.window.document.querySelector('[data-dialog="confirmReplaceDraft"]'),
+ 'repeated edit attempt can explicitly replace draft');
+draftUI.window.document.querySelector('[data-dialog="confirmReplaceDraft"]').click();
+await waitFor(()=>!!draftUI.window.document.querySelector('#scanConfirmForm'),
+ 'confirmed edit starts with the existing saved receipt');
+await pause(75);
+const editDraft=await draftUI.window.KurashiLive.loadReceiptDraft();
+assert.equal(editDraft?.source,'edit');
+assert.equal(editDraft?.recordId,storedReceipt.record_id);
+assert.equal(draftUI.window.document.querySelector('[data-act="scanOpenCurrentPhoto"]'),null,
+ 'saved receipt edit has no photo action');
+draftUI.window.document.querySelector('[data-act="back"]').click();
+draftUI.window.document.querySelector('[data-dialog="discardScan"]').click();
+await pause(75);
+assert.equal(await draftUI.window.KurashiLive.loadReceiptDraft(),null,
+ 'discard cleans only the authorized edit draft');
+draftUI.window.close();
+console.log('v87: draft conflict, cancel, explicit save, resume and saved edit safeguards OK');
 
 // Server committed a receipt, but HTTP response was lost. On restarting,
 // same operation_id must be resent without duplicating parent or children.
@@ -1209,6 +1319,7 @@ assert.ok(historyUI.window.document.querySelector('.detail-record-info .ui-stati
 assert.ok(historyUI.window.document.querySelector('.detail-record-total'),
  'Total is separately visible outside the detail cards');
 historyUI.window.document.querySelector('[data-act="recordEdit"]').click();
+await waitFor(()=>!!historyUI.window.document.getElementById('scanConfirmForm'),'history edit shared form');
 const editForm=historyUI.window.document.getElementById('scanConfirmForm');
 assert.ok(editForm,'history edit reuses shared multi-line confirmation form');
 editForm.querySelector('[name="amount-0"]').value='345';
@@ -1229,7 +1340,7 @@ await waitFor(()=>historyRecovery.window.KurashiLive.state().loaded&&
   x.record_id===storedReceipt.record_id&&Number(x.amount_tax_included)===345),
  'history edit resumes after offline iPhone restart');
 assert.equal(temp.call('bootstrap').data.record_items.filter(x=>
- x.record_id===storedReceipt.record_id).length,1,
+ x.record_id===storedReceipt.record_id).length,2,
  'replaced receipt line does not appear twice');
 historyRecovery.window.document.querySelector('[data-tab="receipt"]').click();
 historyRecovery.window.document.querySelector(
@@ -1269,13 +1380,14 @@ assert.ok(shelfHistoryEntry,'saved shelf observation opens from record list');
 shelfHistoryEntry.click();
 assert.match(historyRecovery.window.document.body.textContent,/値札確認日/);
 historyRecovery.window.document.querySelector('[data-act="recordEdit"]').click();
+await waitFor(()=>!!historyRecovery.window.document.getElementById('scanConfirmForm'),'shelf edit shared form');
 const shelfEditForm=historyRecovery.window.document.getElementById('scanConfirmForm');
 assert.ok(shelfEditForm,'shelf uses shared editor with the original saved kind');
 assert.match(historyRecovery.window.document.body.textContent,/値札を編集/);
 assert.match(shelfEditForm.textContent,/値札情報/);
 assert.match(shelfEditForm.textContent,/値札確認日/);
 assert.match(shelfEditForm.textContent,/販売価格合計/);
-assert.match(shelfEditForm.textContent,/販売個数/);
+assert.equal(shelfEditForm.querySelector('[name="qty-0"]'),null,'Shelf editor hides quantity');
 assert.match(shelfEditForm.textContent,/修正した値札を保存/);
 assert.equal(shelfEditForm.querySelector('[name="name-0"]').value,'棚の値札');
 assert.equal(historyRecovery.window.document.querySelector('[data-act="scanOpenCurrentPhoto"]'),null,
@@ -1572,6 +1684,7 @@ const storedName=aliasText(temp,purchasedLine);
 thirdPhone.window.document.querySelector(
  '[data-act="recordDetail"][data-record-id="'+purchasedReceiptId+'"]').click();
 thirdPhone.window.document.querySelector('[data-act="recordEdit"]').click();
+await waitFor(()=>!!thirdPhone.window.document.getElementById('scanConfirmForm'),'saved OCR edit');
 let savedEditForm=thirdPhone.window.document.getElementById('scanConfirmForm');
 assert.equal(savedEditForm.querySelector('[name="name-0"]'),null,
  'original saved OCR name cannot be edited');
@@ -2603,25 +2716,11 @@ optionalUI.window.document.querySelector('#chatgpt-input').value=JSON.stringify(
  }]
 });
 await completeOcrImport(optionalUI);
-// Real user recovery: a resumed receipt loses in-memory photos, but selecting
-// the original reference image must not discard already imported item changes.
-const restorePhoto=optionalUI.window.document.querySelector('[data-act="scanOpenCurrentPhoto"]');
-assert.ok(restorePhoto,'resumed receipt exposes the same fixed photo action even without reference bytes');
-assert.equal(restorePhoto.closest('.ui-floating-action')?.hidden,false,
- 'the fixed photo action is not hidden merely because save is visible');
-const beforeRestore=optionalUI.window.document.querySelector('[name="amount-0"]').value;
-const referencePicker=optionalUI.window.document.querySelector('#scan-add-picker');
-Object.defineProperty(referencePicker,'files',{configurable:true,value:[
- new optionalUI.window.File(['mock image bytes'],'original-receipt.jpg',{type:'image/jpeg'})
-]});
-restorePhoto.click();
-referencePicker.dispatchEvent(new optionalUI.window.Event('input',{bubbles:true}));
-assert.equal(optionalUI.window.document.querySelectorAll('[data-act="scanOpenCurrentPhoto"]').length,1,
- 'reselecting the photo keeps a single fixed confirmation action');
-assert.equal(optionalUI.window.document.querySelector('[name="amount-0"]').value,beforeRestore,
- 'reselecting a reference photo preserves existing OCR and ChatGPT corrections');
+// No stored photograph accompanies an imported/resumed OCR draft.
+assert.equal(optionalUI.window.document.querySelector('[data-act="scanOpenCurrentPhoto"]'),null,
+ 'An OCR draft without in-memory photos has no photo/reselection control');
 assert.equal(optionalUI.window.document.querySelectorAll('.scan-review-item').length,1,
- 'reselecting does not recreate or erase scanned receipt items');
+ 'The imported receipt items remain editable without reference photos');
 assert.ok(optionalUI.window.document.querySelector('#scanConfirmForm').noValidate,
  'receipt form uses app-level validation consistently');
 // Empty required quantity must show the same shared feedback and field hints.
@@ -2669,6 +2768,7 @@ optionalUI.window.document.querySelector(
 assert.match(optionalUI.window.document.body.textContent,/明細名なし/,
  'receipt detail displays a neutral name fallback');
 optionalUI.window.document.querySelector('[data-act="recordEdit"]').click();
+await waitFor(()=>!!optionalUI.window.document.getElementById('scanConfirmForm'),'optional receipt edit');
 optionalForm=optionalUI.window.document.querySelector('#scanConfirmForm');
 assert.equal(optionalForm.querySelector('[name="name-1"]')?.value,'',
  'the blank manual field is editable with no generated name on receipt reopen');

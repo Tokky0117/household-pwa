@@ -2437,6 +2437,8 @@ main>.ui-search + .filterrow{margin-bottom:5px}
 .scan-reading-status #scan-status{margin:0 0 6px}
 .scan-reading-status .scan-assist-area{margin:0}
 .scan-reading-status .scan-photo-unavailable{margin:8px 0 0}
+.scan-price-single,.scan-price-single .formfield{width:100%;min-width:0;max-width:100%;box-sizing:border-box}
+.scan-draft-save{display:flex;justify-content:center;align-items:center;width:100%;min-height:44px;margin-top:10px}
 .scan-add-action{display:flex;justify-content:center;margin:4px 0 12px}
 .scan-add-action .tertiary{display:inline-flex;gap:6px;align-items:center;justify-content:center}
 .scan-add-action .tertiary svg{width:18px;height:18px;flex:none}

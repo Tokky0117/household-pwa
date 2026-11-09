@@ -31,7 +31,7 @@ const ui=vm.runInNewContext(source+`
  demoRecords,demoRecordItems,allPreviewRecords,allPreviewItems,
  setSelected(v){selected=v},setMasterProductId(v){masterProductId=v},setAliasPickerId(v){aliasPickerId=v},setAliasQuery(v){aliasQuery=v;aliasVisibleLimit=100},setAliasVisibleLimit(v){aliasVisibleLimit=v},setPage(v){page=v},setMode(v){priceScope=v},setDock(v){shopExpanded=v},
  setPeriod(v){period=v},setQty(v){compareQuantity=v},setUnit(v){compareUnit=v},
- setNewRecordType(v){newRecordType=v},recordAddView,scanDate,
+ createManualRecord,scanDate,
   detailLineName,settingsView,settingsSyncSummary,settingsLastSyncText,setRecordDetailId(v){recordDetailId=v},
  setScanDraft(v){scanDraft=v},setScanPhotos(v){scanPhotos=v},setScanState({busy=false,status='',error='',failed=false}){scanBusy=busy;scanStatus=status;scanError=error;scanReadFailed=failed},setScanProductRow(v){scanProductRow=v},setScanExistingQuery(v){scanExistingQuery=v},setOcrLearning(v){ocrLearning=v},getScanDraft(){return scanDraft},
  getCompare(){return [compareQuantity,compareUnit]},getSwipe(){return openSwipeId},
@@ -347,12 +347,34 @@ const p=ui.catalogue().products.find(x=>x.id==='p-milk-3');
 ui.setProductGroup(p,'demo-1');assert.equal(p.itemGroupOrder,3);
 ui.setProductGroup(p,null);assert.equal(p.itemGroupOrder,null);
 ui.setProductGroup(p,'demo-15');assert.equal(p.itemGroupOrder,1,'First product in empty group begins with order 1');
-ui.setNewRecordType('receipt');
-assert.ok(ui.recordAddView().includes('id="recordForm"')&&!ui.recordAddView().includes('id="record-category"'));
-ui.setNewRecordType('shelf');
-assert.ok(ui.recordAddView().includes('id="recordForm"')&&!ui.recordAddView().includes('id="record-category"'));
-const month=ui.demoRecords[0].record_date.slice(0,7);
-assert.ok(!ui.savePreviewRecord({type:'shelf',chainId:'c-life',date:month+'-01',quantity:1,amount:123,productId:''}),'Shelf needs product');
+
+const exampleManual=ui.createManualRecord('receipt');
+ui.setScanDraft(exampleManual);ui.setScanPhotos([]);
+const manualReceiptPage=ui.receiptScanView();
+assert.ok(manualReceiptPage.includes('レシート入力')&&
+ manualReceiptPage.includes('id="scanConfirmForm"')&&
+ manualReceiptPage.includes('data-act="scanAddItem"')&&
+ manualReceiptPage.includes('data-act="scanSaveDraft"')&&
+ manualReceiptPage.includes('name="qty-0"')&&
+ manualReceiptPage.includes('name="amount-0"')&&
+ !manualReceiptPage.includes('読み取り状況')&&
+ !manualReceiptPage.includes('data-act="scanOpenCurrentPhoto"'),
+ 'Manual receipt reuses OCR multi-line confirmation with no photo/OCR buttons');
+const exampleShelf=ui.createManualRecord('shelf');
+ui.setScanDraft(exampleShelf);
+const manualShelfPage=ui.receiptScanView();
+assert.ok(manualShelfPage.includes('値札入力')&&
+ manualShelfPage.includes('値札確認日')&&
+ manualShelfPage.includes('販売価格（税込・円）')&&
+ manualShelfPage.includes('name="product-0"')&&
+ !manualShelfPage.includes('name="qty-0"')&&
+ !manualShelfPage.includes('販売個数')&&
+ manualShelfPage.includes('data-act="scanAddItem"')&&
+ manualShelfPage.includes('data-act="scanSaveDraft"'),
+ 'Shelf uses the same multi-line form without visible quantity and with optional product');
+assert.ok(!source.includes("if(input.type==='shelf'&&!input.productId)return false"),
+ 'Unlinked shelf can be recorded without a product in preview validation');
+
 assert.ok(!ui.savePreviewRecord({type:'receipt',chainId:'c-life',date:'2026-02-31',quantity:1,amount:123,productId:''}),'Invalid calendar date rejected');
 assert.ok(!ui.savePreviewRecord({type:'receipt',chainId:'c-life',date:month+'-01',quantity:1,amount:'',productId:''}),'Empty amount cannot silently become zero');
 assert.ok(!ui.savePreviewRecord({type:'receipt',chainId:'c-life',date:month+'-01',quantity:1,amount:123,productId:'',category:'99'}),'Invalid category rejected');
@@ -772,15 +794,13 @@ assert.ok(!source.includes('scanPhotosExpanded')&&!source.includes('scanTogglePh
 ui.setScanPhotos([]);
 ui.setScanDraft({...rowOcr,items:[{...rowOcr.items[0],savedOcrName:true}]});
 const resumedReviewWithoutPhoto=ui.receiptScanView();
-assert.equal((resumedReviewWithoutPhoto.match(/data-act="scanOpenCurrentPhoto"/g)||[]).length,1,
- 'a restored receipt always shows one fixed photo-confirm action even without in-memory photos');
-assert.ok(!resumedReviewWithoutPhoto.includes('data-act="scanRestorePhoto"')&&
- source.includes("if(scanPhotos.length)openScanViewer(")&&
- source.includes("scanRestoringPhoto=true;\n  openReceiptPhotoPicker("),
- 'the same fixed photo action opens the chooser when the original image is no longer in memory');
-assert.ok(source.includes('const restoring=scanRestoringPhoto')&&
- source.includes("if(!restoring){scanDraft=null;scanAssistMessage='';scanToken++;"),
- 'selecting reference photos does not erase receipt review data');
+assert.equal((resumedReviewWithoutPhoto.match(/data-act="scanOpenCurrentPhoto"/g)||[]).length,0,
+ 'Resumed OCR draft with no in-memory photos has no photo button');
+assert.ok(!source.includes('scanRestoringPhoto')&&
+ !source.includes("if(scanPhotos.length)openScanViewer(")&&
+ source.includes("scanPhotos.length?UI.floatingAction("),
+ 'Photo library restoration is removed; button requires in-memory photos');
+
 const shortReceiptAction={top:780,bottom:828};
 const saveVisibleNoCollision=ui.floatingActionPlacement({
  anchorRect:{top:630,bottom:680},actionRect:shortReceiptAction,topInset:90});
@@ -1563,7 +1583,7 @@ assert.ok(!JSON.stringify(p4Rebuild).includes('ocr-p4'),
 console.log('P4 common review adapter, provenance, row identity and P2 validation OK');
 
 // v0.73: Receipt OCR review information hierarchy; preserve validation/confirmation.
-assert.ok(source.includes("const APP_VERSION='0.86.1'"), 'UI review revision version is current');
+assert.ok(source.includes("const APP_VERSION='0.87.0'"), 'UI review revision version is current');
 assert.ok(source.includes("UI.sectionHeading({title:'読み取り状況'})"), 'OCR and ChatGPT appear under one section');
 assert.ok(source.includes("UI.sectionHeading({title:isShelf?'値札情報':'購入情報'})"), 'Receipt OCR review groups store and purchase date');
 assert.ok(source.includes("UI.sectionHeading({title:isShelf?'価格情報':'購入明細',subtitle:scanDraft.items.length+'件'+"), 'Receipt OCR review identifies item list and unmatched count');
@@ -1662,7 +1682,7 @@ assert.ok(compactDateView.includes('class="ui-date-control"')&&
  compactDateView.includes('aria-label="購入日"')&&
  compactDateView.includes('2026/11/07'),
  'Receipt confirmation displays a full-width shared date field with the native iOS picker');
-ui.setNewRecordType('receipt');
-assert.ok(ui.recordAddView().includes('class="ui-date-control"')&&
- ui.recordAddView().includes('id="record-date"'),
- 'Manual receipt entry uses the same shared full-width date picker');
+ui.setScanDraft(ui.createManualRecord('receipt'));
+assert.ok(ui.receiptScanView().includes('class="ui-date-control"')&&
+ ui.receiptScanView().includes('id="scan-date"'),
+ 'Manual receipt entry shares the native date UI with OCR confirmation');

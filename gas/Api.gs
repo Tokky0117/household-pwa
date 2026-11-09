@@ -1078,8 +1078,6 @@ function kurashiCreateRecord_(user,payload,id){
         const prod=line.product_id;
         if(prod!==null&&(typeof prod!=='string'||!productIds.has(prod)))
           kurashiFail_('NOT_FOUND','商品が見つかりません');
-        if(payload.record_type==='shelf'&&prod===null)
-          kurashiFail_('BAD_REQUEST','値札では商品を選択してください');
         const qty=line.quantity,amount=line.amount_tax_included,cat=line.category_id;
         if(!Number.isSafeInteger(qty)||qty<=0||
            !Number.isSafeInteger(amount)||amount<0||
@@ -1188,8 +1186,6 @@ function kurashiMutateRecord_(user,action,payload,id){
      const prod=line.product_id,cat=line.category_id;
      if(prod!==null&&(!known.has(prod)||typeof prod!=='string'))
        kurashiFail_('NOT_FOUND','商品がありません');
-     if(original.record_type==='shelf'&&prod===null)
-       kurashiFail_('BAD_REQUEST','値札には商品選択が必要です');
      if(!Number.isSafeInteger(line.quantity)||line.quantity<=0||
         !Number.isSafeInteger(line.amount_tax_included)||line.amount_tax_included<0||
         (original.record_type==='shelf'?cat!==null:
