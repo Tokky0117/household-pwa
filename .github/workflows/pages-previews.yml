@@ -34,6 +34,7 @@ jobs:
         run: |
           node tests/ui-smoke.mjs
           node tests/no-login-household.mjs
+          node tests/receipt-baseline.mjs
 
       - name: Build verified prior PaddleOCR for the main receipt screen
         shell: bash
