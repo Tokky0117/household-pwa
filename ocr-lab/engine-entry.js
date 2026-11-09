@@ -32,7 +32,9 @@ export async function scanReceiptImage(file,{mode='gray',crop=null}={}){
  try{
   prepared=await prepareImage(file,mode,crop);
   const r=await (await reader()).readImage(prepared.image);
-  const layout=window.KurashiReceiptLayout.joinSplitPriceColumns({text:r.text,lines:r.lines});
+  const region=window.KurashiReceiptLayout.selectReceiptObservations(r.observations);
+  const baseLayout=region.status==='isolated'?window.KurashiReceiptLayout.groupLines(region.observations):{text:r.text,lines:r.lines};
+  const layout=window.KurashiReceiptLayout.joinSplitPriceColumns(baseLayout);
    const japanese=normalizeJapaneseOcr(layout.text);
   const normalized=normalizeYenGrouping(japanese.text);
   const parsed=window.KurashiReceiptLayout.attachAdjacentCodeNames(
@@ -44,10 +46,10 @@ export async function scanReceiptImage(file,{mode='gray',crop=null}={}){
   parsed.reconciliation=parsed.validation.reconciliation;
   return {
    engine:'PP-OCRv6_small',
-   parsed,originalText:r.text,text:normalized.text,
+   parsed,originalText:baseLayout.text,text:normalized.text,
    metadata:prepared.metadata,
    metrics:{...(r.metrics||{}),observations:r.observations?.length||0,
-    lineCount:layout.lines?.length||0,priceColumnJoins:(r.lines?.length||0)-(layout.lines?.length||0),japaneseGlyphChanges:japanese.changes.length,
+    lineCount:layout.lines?.length||0,receiptRegionStatus:region.status,excludedObservations:region.excluded,priceColumnJoins:(r.lines?.length||0)-(layout.lines?.length||0),japaneseGlyphChanges:japanese.changes.length,
     yenGroupingChanges:normalized.changes.length}
   };
  }finally{prepared?.release();active=false;}

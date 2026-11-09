@@ -2,6 +2,72 @@
 (function(root){
  'use strict';
  const median=a=>{const b=[...a].sort((x,y)=>x-y);return b.length%2?b[(b.length-1)/2]:(b[b.length/2-1]+b[b.length/2])/2;};
+
+ // Conservative geometric region isolation; never infer text or amounts.
+ // A cut requires a wide vertical gap plus a unique, independent receipt footer.
+ // Both plausible receipts or mere separated name/price columns remain intact.
+ function selectReceiptObservations(observations){
+  if(!Array.isArray(observations)||observations.length<8)
+   return {observations,status:'unchanged',excluded:0};
+  const boxes=observations.map((o,index)=>{
+   if(typeof o?.text!=='string'||!Array.isArray(o.poly)||o.poly.length!==4||
+    !o.poly.every(p=>Array.isArray(p)&&p.length===2&&p.every(Number.isFinite)))
+    return null;
+   const xs=o.poly.map(p=>p[0]),ys=o.poly.map(p=>p[1]);
+   return {index,text:o.text,x0:Math.min(...xs),x1:Math.max(...xs),y0:Math.min(...ys),y1:Math.max(...ys)};
+  });
+  if(boxes.some(b=>!b))return {observations,status:'unchanged',excluded:0};
+  const width=Math.max(...boxes.map(b=>b.x1))-Math.min(...boxes.map(b=>b.x0));
+  const heights=boxes.map(b=>Math.max(1,b.y1-b.y0)).sort((a,b)=>a-b);
+  const minGap=Math.max(6*heights[Math.floor(heights.length/2)],.20*width);
+  const merged=[];
+  for(const b of [...boxes].sort((a,c)=>a.x0-c.x0)){
+   const prior=merged[merged.length-1];
+   if(prior&&b.x0<=prior.end)prior.end=Math.max(prior.end,b.x1);
+   else merged.push({start:b.x0,end:b.x1});
+  }
+  const compact=s=>String(s).normalize('NFKC').replace(/[\s　]/g,'');
+  const summary=s=>{
+   const t=compact(s);
+   if(/^(?:小計|税抜小計)/.test(t))return 'subtotal';
+   if(/^(?:合計|総合計|お買上(?:金額)?|税込合計)/.test(t))return 'total';
+   if(/^(?:(?:お|御)?買上(?:げ)?点数|購入点数|買上品数)/.test(t))return 'count';
+   if(/^(?:内消費税|外税額|税8%|税10%|消費税|内税)/.test(t))return 'tax';
+   return null;
+  };
+  const isName=s=>{
+   const t=compact(s);
+   return t.length>=2&&!summary(t)&&
+    !/^(?:領収|レジ|カード|支払|クレジット|お預|電話|TEL|品番|JAN|会員|レシートNo)/i.test(t)&&
+    !/^[¥￥\d.,+\-−－()()%]+$/.test(t)&&
+    /[A-Za-z\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}]/u.test(t);
+  };
+  const isPrice=s=>/[¥￥][\d,]+|[\d,]{2,}(?:円|内)$/u.test(compact(s));
+  const check=group=>{
+   const categories=new Set(group.map(b=>summary(b.text)).filter(Boolean));
+   return {categories,names:group.filter(b=>isName(b.text)).length,
+    prices:group.filter(b=>isPrice(b.text)).length};
+  };
+  const strong=e=>e.categories.has('total')&&e.categories.size>=2&&e.names>=2&&e.prices>=2;
+  const side=e=>e.categories.size<2&&e.names>=2&&e.prices>=2;
+  const choices=[];
+  for(let i=0;i<merged.length-1;i++){
+   const gap=merged[i+1].start-merged[i].end;
+   if(gap<minGap)continue;
+   const cut=(merged[i+1].start+merged[i].end)/2;
+   const left=boxes.filter(b=>(b.x0+b.x1)/2<cut);
+   const right=boxes.filter(b=>(b.x0+b.x1)/2>cut);
+   if(left.length<3||right.length<3)continue;
+   const a=check(left),b=check(right);
+   if(strong(a)&&side(b))choices.push({keep:left,drop:right});
+   if(strong(b)&&side(a))choices.push({keep:right,drop:left});
+  }
+  if(choices.length!==1)return {observations,status:choices.length?'ambiguous':'unchanged',excluded:0};
+  const chosen=choices[0];
+  return {observations:chosen.keep.sort((a,b)=>a.index-b.index).map(b=>observations[b.index]),
+   status:'isolated',excluded:chosen.drop.length};
+ }
+
  function groupLines(observations){
   if(!Array.isArray(observations))throw new TypeError('observations must be an array');
   const boxes=observations.map((o,index)=>{
@@ -92,7 +158,7 @@
    if(!/^\d{13}$/.test(oldName)||!Array.isArray(item.sourceLines)||
     item.sourceLines.length!==1)continue;
    const line=item.sourceLines[0],anchor=layout.lines[line-1]?.bounds;
-   const candidates=[line-1,line+1].filter(n=>n>0&&n<=layout.lines.length&&
+   const candidates=[line-2,line-1,line+1,line+2].filter(n=>n>0&&n<=layout.lines.length&&
     !used.has(n)&&possibleName(source[n-1])&&
     near(anchor,layout.lines[n-1]?.bounds));
    if(candidates.length!==1){
@@ -146,5 +212,5 @@
   }
   return receipt;
  }
- root.KurashiReceiptLayout={groupLines,joinSplitPriceColumns,attachAdjacentCodeNames,attachSourceGeometry};
+ root.KurashiReceiptLayout={selectReceiptObservations,groupLines,joinSplitPriceColumns,attachAdjacentCodeNames,attachSourceGeometry};
 })(typeof window==='undefined'?globalThis:window);
