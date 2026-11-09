@@ -450,7 +450,7 @@ assert.ok(unnamedReceiptDetail.includes('明細名なし')&&
  unnamedReceiptDetail.includes('数量 2'),
  'Unnamed and unmatched saved receipt line remains accessible');
 
-assert.ok(css.includes('background: #e4e6e9;')&&
+assert.ok(css.includes('background: #eceef0;')&&
  ruleBody('.secondary').some(x=>x.includes('font-weight: 600;')),
  'Secondary retains the shared gray fill and uses medium-weight action text');
 assert.ok(css.includes('.tertiary{\n background:transparent;'),'Tertiary is transparent');
