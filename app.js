@@ -1,4 +1,4 @@
-const APP_VERSION='0.87.5';
+const APP_VERSION='0.87.6';
 const CATS=['飲食','キッチン','洗面・風呂','洗濯・掃除','その他'];
 const liveMode=!!window.KurashiLive; // Data source only; original Preview v46 UI components remain.
 const SEED=[['牛乳',0,true],['麦茶',0,false],['コーヒー',0,true],['卵',0,false],['キッチンペーパー',1,false],['ラップ',1,true],['食器用洗剤',1,true],['シャンプー',2,false],['歯磨き粉',2,true],['ハンドソープ',2,false],['洗濯洗剤',3,false],['柔軟剤',3,true],['トイレットペーパー',3,false],['乾電池',4,true],['ティッシュ',4,true]];
@@ -1718,12 +1718,13 @@ function back(){
   if(page==='recordScan'){
    if(scanDraft){syncScanReview();saveScanDraft();}
    if(scanBusy){say('読み取り処理中です');return;}
-   if(scanPhotos.length||scanDraft){
-    dialog={title:scanDraft?'下書きに保存しますか？':'読み取りを中止しますか？',message:'',
+   if(scanDraft){
+    dialog={title:'下書きに保存しますか？',message:'',
      buttons:[{id:'discardScan',label:'破棄して終了',critical:true},
-      ...(scanDraft?[{id:'saveScanDraftAndExit',label:'下書きに保存',primary:true}]:[])]};
-     renderDialogOnly();return;
+      {id:'saveScanDraftAndExit',label:'下書きに保存',primary:true}]};
+    renderDialogOnly();return;
    }
+   // Before analysis, photos exist only in memory and there is no draft to save.
    resetScan();page='list';tab='receipt';render();return;
   }
   if(!['add','edit','productEdit'].includes(page)&&hasUnsavedFormChanges()){

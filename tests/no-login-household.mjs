@@ -1322,9 +1322,14 @@ assert.equal(scanSession.window.document.querySelectorAll('.scan-photo-tile').le
 assert.equal(scanSession.window.document.querySelector('.scan-status-error'),null,
  'reselecting does not leave stale warnings');
 scanSession.window.document.querySelector('[data-act="back"]').click();
-assert.ok(scanSession.window.document.querySelector('[data-dialog="discardScan"]'),
- 'unsaved OCR input is protected');
-scanSession.window.document.querySelector('[data-dialog="discardScan"]').click();
+assert.equal(scanSession.window.document.querySelector('.dialog'),null,
+ 'photo-only scan exits without a redundant one-action confirmation');
+assert.ok(scanSession.window.document.querySelector('.detail-home'),
+ 'photo-only back returns directly to the receipt tab');
+await waitFor(()=>!scanSession.window.document.querySelector('.receipt-scan-page'),
+ 'photo-only scan screen has closed');
+assert.equal(await scanSession.window.KurashiLive.loadReceiptDraft(),null,
+ 'photo-only back did not persist a structured draft');
 assert.ok(scanSession.window.document.querySelector('#receipt-source-picker'));
 prepareOcrImport(scanSession);
 assert.ok(scanSession.window.document.querySelector('#chatgpt-input'));
