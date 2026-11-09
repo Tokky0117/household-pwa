@@ -2065,6 +2065,13 @@ html,body {
 .swipe-item{position:relative;display:block;overflow:hidden;min-width:0;touch-action:pan-y;-webkit-touch-callout:none}
 .swipe-front{display:flex;align-items:stretch;width:100%;min-height:67px;position:relative;z-index:1;background:var(--card);transition:transform .18s ease;touch-action:pan-y}
 .swipe-item.swipe-open .swipe-front{transform:translateX(-132px)}
+/* A revealed inventory row is inactive, as in iOS Notes. Keep actions uncovered. */
+.swipe-item[data-item-id].swipe-open .swipe-front::after,
+.swipe-item[data-item-id].swiping .swipe-front::after{
+ content:'';position:absolute;inset:0;z-index:2;
+ background:rgba(65,70,78,.17);pointer-events:none;
+}
+.swipe-item[data-item-id].swipe-open .swipe-front > *{pointer-events:none}
 .swipe-item .itemname{display:flex;flex:1 1 0;min-width:0;flex-direction:column;justify-content:center;gap:3px;align-items:flex-start;padding:9px 8px 9px 16px;overflow:hidden}
 .swipe-item .item-title{display:block;width:100%;font-size:15px;line-height:1.35;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .swipe-item .list-prices{display:block;width:100%;margin:0;font-size:12px;line-height:1.5;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}

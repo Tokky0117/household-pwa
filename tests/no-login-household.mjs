@@ -250,6 +250,17 @@ await waitFor(()=>pill(a)==='なし'&&a.window.KurashiLive.state().queued===1,
 clickStock(a);
 await waitFor(()=>pill(a)==='あり'&&a.window.KurashiLive.state().queued===2,
  'second tap accepted before previous GAS write');
+// An exposed Notes-style swipe card is dimmed and must not toggle stock.
+a.window.eval('setOpenSwipe('+JSON.stringify(id)+')');
+const exposedRow=a.window.document.querySelector('[data-item-id="'+id+'"]');
+assert.ok(exposedRow.classList.contains('swipe-open'),'item swipe is revealed');
+const beforeSwipeClick=a.window.KurashiLive.state().queued;
+clickStock(a);
+assert.equal(a.window.KurashiLive.state().queued,beforeSwipeClick,
+ 'tapping exposed inventory control does not enqueue a stock toggle');
+assert.equal(pill(a),'あり','tapping exposed stock keeps current value');
+assert.equal(exposedRow.classList.contains('swipe-open'),false,
+ 'tapping the exposed stock area dismisses its actions');
 assert.equal(a.window.document.querySelector('[data-stock="'+id+'"]'),sameStockButton,
  'v46 stock button retains the same DOM node across repeated taps and network status');
 assert.equal(getVersion(),2,'server unchanged during offline actions');

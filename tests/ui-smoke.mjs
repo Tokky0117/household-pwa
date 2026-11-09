@@ -482,6 +482,13 @@ assert.equal(source.split(swipeStartExclusion).length-1,2,'Mouse and Safari touc
 assert.ok(source.includes("if(e.target.closest('input,textarea,select,[data-stock]"),'Long-press on stock button still excluded');
 assert.ok(source.includes("if(el.dataset.stock){"),'Stock tap still handled');
 assert.ok(source.includes("suppressClick=true;setTimeout(()=>{suppressClick=false},300)"),'Safari swipe suppresses synthesized stock click');
+assert.ok(css.includes('.swipe-item[data-item-id].swipe-open .swipe-front::after')&&
+ css.includes('background:rgba(65,70,78,.17)')&&
+ css.includes('.swipe-item[data-item-id].swipe-open .swipe-front > *{pointer-events:none}'),
+ 'Only revealed inventory cards dim and block front controls');
+assert.ok(source.includes("e.target.closest('.swipe-item[data-item-id].swipe-open .swipe-front')")&&
+ source.includes('e.preventDefault();setOpenSwipe(null);return;'),
+ 'Tap on a revealed inventory row dismisses swipe rather than toggling stock');
 
 assert.ok(!source.includes("form.id==='compareForm'"),'Obsolete comparison submit handler stays removed');
 assert.ok(!source.includes('if(el.dataset.move)')&&!source.includes('if(el.dataset.period)'),'Retired event routes stay removed');
