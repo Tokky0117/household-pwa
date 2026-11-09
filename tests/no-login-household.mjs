@@ -972,6 +972,7 @@ assert.equal(recordForm.querySelector('[name="chain_name"]').value,'アプリ実
  'manual receipt retains the new store name in a single form');
 assert.equal(recordUI.window.document.body.style.position,'',
  'Store chooser closing unlocks the full-page editor');
+recordForm=recordUI.window.document.getElementById('scanConfirmForm');
 recordForm.querySelector('[name="qty-0"]').value='2';
 recordForm.querySelector('[name="amount-0"]').value='340';
 recordForm.querySelector('[name="name-0"]').value='未照合商品';
@@ -1026,6 +1027,7 @@ assert.equal(recordForm.querySelector('[name="chain"]').value,storedReceipt.chai
 assert.equal(recordForm.querySelector('.ui-picker-value').textContent,'アプリ実機試験用チェーン');
 assert.equal(recordReopened.window.document.body.style.position,'',
  'shelf chooser returns to a full page, not a stacked modal');
+recordForm=recordReopened.window.document.getElementById('scanConfirmForm');
 recordForm.querySelector('[name="amount-0"]').value='300';
 recordForm.querySelector('[data-act="scanAddItem"]').click();
 recordForm=recordReopened.window.document.getElementById('scanConfirmForm');
