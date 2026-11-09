@@ -99,8 +99,9 @@ assert.equal(unlinked.items[0].nameLinkEvidence.status,'nearby-text-not-name');
 assert.equal(unlinked.items[0].nameLinkEvidence.nearbyTextRows,1);
 // Two plausible names cannot be assigned by arbitrary order.
 const ambiguous=layout.groupLines([
- obs('候補AAA',100,47,180),obs('候補BBB',100,55,180),
+ obs('候補AAA',100,51,180),
  obs('2000211787545 ¥2,990',100,83,260),
+ obs('候補BBB',100,100,180),
  obs('小計 ¥2,990',100,143,230),obs('合計 ¥2,990',100,172,230)
 ]);
 const uncertain=layout.attachAdjacentCodeNames(structure.parse(ambiguous.text),ambiguous);
