@@ -375,6 +375,7 @@ assert.ok(manualShelfPage.includes('値札入力')&&
 assert.ok(!source.includes("if(input.type==='shelf'&&!input.productId)return false"),
  'Unlinked shelf can be recorded without a product in preview validation');
 
+const month=ui.demoRecords[0].record_date.slice(0,7);
 assert.ok(!ui.savePreviewRecord({type:'receipt',chainId:'c-life',date:'2026-02-31',quantity:1,amount:123,productId:''}),'Invalid calendar date rejected');
 assert.ok(!ui.savePreviewRecord({type:'receipt',chainId:'c-life',date:month+'-01',quantity:1,amount:'',productId:''}),'Empty amount cannot silently become zero');
 assert.ok(!ui.savePreviewRecord({type:'receipt',chainId:'c-life',date:month+'-01',quantity:1,amount:123,productId:'',category:'99'}),'Invalid category rejected');
