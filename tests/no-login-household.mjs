@@ -280,21 +280,29 @@ assert.equal(exposedFront.hasAttribute('inert'),false,'Escape restores front');
 assert.equal(a.window.document.querySelector('[data-stock="'+id+'"]'),sameStockButton,
  'v46 stock button retains the same DOM node across repeated taps and network status');
 assert.equal(getVersion(),2,'server unchanged during offline actions');
+// A full rerender must preserve the inert state of an already opened swipe.
+a.window.eval('setOpenSwipe('+JSON.stringify(id)+')');
+a.window.eval('render()');
+const refreshedRow=a.window.document.querySelector('[data-item-id="'+id+'"]');
+assert.ok(refreshedRow.classList.contains('swipe-open')&&
+ refreshedRow.querySelector('.swipe-front').hasAttribute('inert'),
+ 'rerendered open row retains its keyboard-safe state');
+a.window.eval('setOpenSwipe(null)');
 // A swipe-generated click is swallowed, while the very next physical edit tap works.
 const sendPointer=(type,target,x)=>{const event=new a.window.Event(type,{bubbles:true,cancelable:true});
  Object.defineProperties(event,{pointerId:{value:73},pointerType:{value:'mouse'},button:{value:0},
  clientX:{value:x},clientY:{value:100}});
  target.dispatchEvent(event);
 };
-sendPointer('pointerdown',exposedFront,250);
-sendPointer('pointermove',exposedFront,150);
-sendPointer('pointerup',exposedFront,150);
-assert.equal(exposedRow.classList.contains('swipe-open'),true,'mouse left swipe reveals actions');
-exposedRow.querySelector('[data-stock]').dispatchEvent(new a.window.MouseEvent('click',
+sendPointer('pointerdown',refreshedRow.querySelector('.swipe-front'),250);
+sendPointer('pointermove',refreshedRow.querySelector('.swipe-front'),150);
+sendPointer('pointerup',refreshedRow.querySelector('.swipe-front'),150);
+assert.equal(refreshedRow.classList.contains('swipe-open'),true,'mouse left swipe reveals actions');
+refreshedRow.querySelector('[data-stock]').dispatchEvent(new a.window.MouseEvent('click',
  {bubbles:true,cancelable:true,detail:1}));
-assert.equal(exposedRow.classList.contains('swipe-open'),true,'synthetic click does not collapse swipe');
+assert.equal(refreshedRow.classList.contains('swipe-open'),true,'synthetic click does not collapse swipe');
 assert.equal(a.window.KurashiLive.state().queued,beforeSwipeClick,'synthetic click does not alter stock');
-const editAction=exposedRow.querySelector('[data-list-edit]');
+const editAction=refreshedRow.querySelector('[data-list-edit]');
 sendPointer('pointerdown',editAction,270);
 editAction.dispatchEvent(new a.window.MouseEvent('click',{bubbles:true,cancelable:true,detail:1}));
 assert.ok(a.window.document.querySelector('#itemForm')?.textContent.includes('変更を保存'),

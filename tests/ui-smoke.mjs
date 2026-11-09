@@ -494,6 +494,9 @@ assert.ok(css.includes('.swipe-item[data-item-id].swipe-open .swipe-front::after
 assert.ok(source.includes("e.target.closest('.swipe-item[data-item-id].swipe-open')")&&
  source.includes("!e.target.closest('.swipe-actions')"),
  'Tap anywhere on exposed inventory row dismisses swipe, excluding editing actions');
+assert.ok(source.includes('if(openSwipeId)setOpenSwipe(openSwipeId);')&&
+ source.includes('target.innerHTML=listResults();if(openSwipeId)setOpenSwipe(openSwipeId)'),
+ 'Freshly rendered inventory cards restore open-swipe inert state');
 assert.ok(source.includes("front.toggleAttribute('inert',opened)")&&
  source.includes("front.setAttribute('aria-hidden','true')")&&source.includes('button.tabIndex=-1'),
  'Revealed inventory front is disabled for pointer, keyboard and assistive tech');
