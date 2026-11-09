@@ -137,6 +137,8 @@
   if(!Array.isArray(receipt?.items)||!Array.isArray(layout?.lines))return receipt;
   const source=String(receipt.rawText||'').split(/\r?\n/);
   const used=new Set(receipt.items.flatMap(item=>Array.isArray(item.sourceLines)?item.sourceLines:[]));
+  const itemLines=[...used];
+  const codeLines=receipt.items.filter(x=>/^\d{13}$/.test(String(x.rawName||x.name||'').trim())&&x.sourceLines?.length===1).map(x=>x.sourceLines[0]);
   const notName=/^(?:合\s*計|小\s*計|総額|お買上|お買上点数|領収|ユニクロ|コストコ|COSTCO|コノミヤ|税|内税|外税|現金|支払|取引|会員|カード|レジ|JAN|TEL|電話|割引|値引|ありがとうございます)/i;
   const possibleName=value=>{
    const text=String(value||'').normalize('NFKC').trim();
@@ -151,28 +153,45 @@
    if(aw<=0||bw<=0||ah<=0||bh<=0)return false;
    const overlap=Math.max(0,Math.min(a.x1,b.x1)-Math.max(a.x0,b.x0));
    const gap=Math.max(0,Math.max(a.y0,b.y0)-Math.min(a.y1,b.y1));
-   return overlap>=0.3*Math.min(aw,bw)&&gap<=1.7*Math.max(ah,bh);
+   return overlap>=0.3*Math.min(aw,bw)&&gap<=3.3*Math.max(ah,bh);
   };
   for(const item of receipt.items){
    const oldName=String(item.rawName||item.name||'').normalize('NFKC').trim();
    if(!/^\d{13}$/.test(oldName)||!Array.isArray(item.sourceLines)||
     item.sourceLines.length!==1)continue;
    const line=item.sourceLines[0],anchor=layout.lines[line-1]?.bounds;
-   const candidates=[line-2,line-1,line+1,line+2].filter(n=>n>0&&n<=layout.lines.length&&
-    !used.has(n)&&possibleName(source[n-1])&&
-    near(anchor,layout.lines[n-1]?.bounds))
-    .map(n=>{
-     const b=layout.lines[n-1].bounds;
-     return {line:n,distance:Math.abs((anchor.y0+anchor.y1-b.y0-b.y1)/2)};
-    }).sort((a,b)=>a.distance-b.distance);
-   const height=anchor?.y1-anchor?.y0||0;
-   // A nearby following product must not steal this code from a clearly
-   // closer preceding name. Equidistant alternatives remain unlinked.
-   if(!candidates.length||candidates.length>1&&
-    candidates[1].distance-candidates[0].distance<=.35*height){
+   const height=Math.max(1,(anchor?.y1||0)-(anchor?.y0||0));
+   // OCR may interleave name fragments and other text observations. Search
+   // beyond two OCR rows only where independent geometry supports it.
+   const close=Array.from({length:Math.min(source.length,line+7)-Math.max(1,line-7)+1},
+    (_,j)=>j+Math.max(1,line-7)).filter(n=>n!==line&&!used.has(n)&&
+     near(anchor,layout.lines[n-1]?.bounds)&&
+     !itemLines.some(other=>other!==line&&
+      ((n<other&&other<line)||(line<other&&other<n))));
+   const candidates=close.filter(n=>possibleName(source[n-1])).map(n=>{
+    const b=layout.lines[n-1].bounds,above=b.y0<anchor.y0;
+    return {line:n,distance:Math.abs((anchor.y0+anchor.y1-b.y0-b.y1)/2)+
+     (above?0:height)};
+   }).sort((a,b)=>a.distance-b.distance);
+   // Reject a name that is as close or closer to another code-only product.
+   const best=candidates[0];
+   const conflicting=best&&codeLines.some(other=>{
+    if(other===line)return false;
+    const b=layout.lines[other-1]?.bounds;
+    if(!b||!near(b,layout.lines[best.line-1]?.bounds))return false;
+    const nb=layout.lines[best.line-1].bounds;
+    const distance=Math.abs((b.y0+b.y1-nb.y0-nb.y1)/2)+
+     (nb.y0<b.y0?0:Math.max(1,b.y1-b.y0));
+    return distance<=best.distance+.35*height;
+   });
+   if(!best||conflicting||candidates.length>1&&
+    candidates[1].distance-best.distance<=.35*height){
     item.issues=item.issues||[];
     if(!item.issues.includes('商品コードのみ（商品名を確認）'))
      item.issues.push('商品コードのみ（商品名を確認）');
+    item.nameLinkEvidence={status:best?'ambiguous-name-position':
+     close.length?'nearby-text-not-name':'no-nearby-text',
+     nearbyTextRows:close.length,eligibleNameRows:candidates.length};
     continue;
    }
    const nameLine=candidates[0].line,printed=source[nameLine-1].trim();
@@ -181,6 +200,10 @@
    item.rawLines=item.sourceLines.map(n=>source[n-1]);
    item.issues=item.issues||[];
    item.issues.push('商品コードと商品名の対応を確認');
+   item.nameLinkEvidence={status:'linked',nearbyTextRows:close.length,
+    eligibleNameRows:candidates.length};
+   if(Array.isArray(receipt.unresolvedRows))
+    receipt.unresolvedRows=receipt.unresolvedRows.filter(row=>row.line!==nameLine);
    receipt.warnings=(receipt.warnings||[]).filter(w=>
     !(w.code==='unpriced_name'&&w.line===nameLine));
    used.add(nameLine);
