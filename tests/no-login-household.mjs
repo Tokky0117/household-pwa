@@ -254,6 +254,11 @@ await waitFor(()=>pill(a)==='あり'&&a.window.KurashiLive.state().queued===2,
 a.window.eval('setOpenSwipe('+JSON.stringify(id)+')');
 const exposedRow=a.window.document.querySelector('[data-item-id="'+id+'"]');
 assert.ok(exposedRow.classList.contains('swipe-open'),'item swipe is revealed');
+const exposedFront=exposedRow.querySelector('.swipe-front');
+assert.equal(exposedFront.hasAttribute('inert'),true,'revealed front is inert');
+assert.equal(exposedFront.getAttribute('aria-hidden'),'true','revealed front is inaccessible to screen readers');
+assert.equal(exposedRow.querySelector('[data-stock]').tabIndex,-1,'stock cannot receive focus while revealed');
+assert.equal(exposedRow.querySelector('[data-list-edit]').tabIndex,0,'editing action remains keyboard reachable');
 const beforeSwipeClick=a.window.KurashiLive.state().queued;
 clickStock(a);
 assert.equal(a.window.KurashiLive.state().queued,beforeSwipeClick,
@@ -261,9 +266,38 @@ assert.equal(a.window.KurashiLive.state().queued,beforeSwipeClick,
 assert.equal(pill(a),'あり','tapping exposed stock keeps current value');
 assert.equal(exposedRow.classList.contains('swipe-open'),false,
  'tapping the exposed stock area dismisses its actions');
+assert.equal(exposedFront.hasAttribute('inert'),false,'closing restores interactive front');
+assert.equal(exposedRow.querySelector('[data-stock]').tabIndex,0,'closing restores stock focusability');
+a.window.eval('setOpenSwipe('+JSON.stringify(id)+')');
+exposedFront.click();
+assert.equal(exposedRow.classList.contains('swipe-open'),false,'tapping blank exposed front also closes');
+a.window.eval('setOpenSwipe('+JSON.stringify(id)+')');
+exposedRow.querySelector('[data-list-edit]').focus();
+exposedRow.querySelector('[data-list-edit]').dispatchEvent(new a.window.KeyboardEvent('keydown',
+ {key:'Escape',bubbles:true,cancelable:true}));
+assert.equal(exposedRow.classList.contains('swipe-open'),false,'Escape closes swipe actions');
+assert.equal(exposedFront.hasAttribute('inert'),false,'Escape restores front');
 assert.equal(a.window.document.querySelector('[data-stock="'+id+'"]'),sameStockButton,
  'v46 stock button retains the same DOM node across repeated taps and network status');
 assert.equal(getVersion(),2,'server unchanged during offline actions');
+// A swipe-generated click is swallowed, while the very next physical edit tap works.
+const sendPointer=(type,target,x)=>{const event=new a.window.Event(type,{bubbles:true,cancelable:true});
+ Object.defineProperties(event,{pointerId:{value:73},pointerType:{value:'mouse'},button:{value:0},
+ clientX:{value:x},clientY:{value:100}});
+ target.dispatchEvent(event);
+};
+sendPointer('pointerdown',exposedFront,250);
+sendPointer('pointermove',exposedFront,150);
+sendPointer('pointerup',exposedFront,150);
+assert.equal(exposedRow.classList.contains('swipe-open'),true,'mouse left swipe reveals actions');
+exposedRow.querySelector('[data-stock]').dispatchEvent(new a.window.MouseEvent('click',
+ {bubbles:true,cancelable:true,detail:1}));
+assert.equal(exposedRow.classList.contains('swipe-open'),true,'synthetic click does not collapse swipe');
+assert.equal(a.window.KurashiLive.state().queued,beforeSwipeClick,'synthetic click does not alter stock');
+const editAction=exposedRow.querySelector('[data-list-edit]');
+sendPointer('pointerdown',editAction,270);
+editAction.dispatchEvent(new a.window.MouseEvent('click',{bubbles:true,cancelable:true,detail:1}));
+assert.equal(a.window.eval('page'),'edit','the next physical tap immediately opens editing');
 a.window.close();online=true;
 // Fresh PWA process, same IndexedDB database. It must drain both commands.
 let b=appSession();

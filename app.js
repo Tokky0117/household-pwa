@@ -1,4 +1,4 @@
-const APP_VERSION='0.87.4';
+const APP_VERSION='0.87.5';
 const CATS=['飲食','キッチン','洗面・風呂','洗濯・掃除','その他'];
 const liveMode=!!window.KurashiLive; // Data source only; original Preview v46 UI components remain.
 const SEED=[['牛乳',0,true],['麦茶',0,false],['コーヒー',0,true],['卵',0,false],['キッチンペーパー',1,false],['ラップ',1,true],['食器用洗剤',1,true],['シャンプー',2,false],['歯磨き粉',2,true],['ハンドソープ',2,false],['洗濯洗剤',3,false],['柔軟剤',3,true],['トイレットペーパー',3,false],['乾電池',4,true],['ティッシュ',4,true]];
@@ -2088,7 +2088,14 @@ if(form.id==='productCreateForm'){
  if(page==='productEdit'){const p=catalogue.products.find(x=>x.id===editingProductId&&x.itemGroupId===selected);if(!p){fieldNotice(form,'商品が見つかりません','new-product-name');return}Object.assign(p,{name,packageQuantity:productQty,packageUnit:productUnit})}else{catalogue.products.push({id:id(),name,packageQuantity:productQty,packageUnit:productUnit,itemGroupId:selected,itemGroupOrder:registeredProducts(selected).length+1,aliases:[]})}
  persistCatalogue();page='compare';initializeCompare();render();
 }});
-app.addEventListener('click',e=>{if(e.target.classList?.contains('alias-product-picker-overlay')){closeAliasProductPicker();return}if(e.target.classList?.contains('master-group-picker-overlay')){closeMasterGroupPicker();return}if(e.target.classList?.contains('store-picker-overlay')){closeStorePicker();return}if(e.target.classList?.contains('sheet-back')&&['add','edit','productEdit','productPick','scanProduct', 'scanExistingProduct'].includes(page)){back();return}if(suppressClick){e.preventDefault();e.stopPropagation();suppressClick=false;return}const clear=e.target.closest('[data-search-clear]');if(clear){const input=document.getElementById(clear.dataset.searchClear);if(input){input.value='';syncSearch(input);input.focus()}return}const el=e.target.closest('[data-tab],[data-cat],[data-stock],[data-open],[data-act],[data-ui-toggle],[data-ui-choice],[data-dialog],[data-premove],[data-pedit],[data-pick],[data-product-menu],[data-list-edit],[data-list-hide]');if(!el)return;if(el.hasAttribute('data-ui-toggle')){
+app.addEventListener('click',e=>{if(e.target.classList?.contains('alias-product-picker-overlay')){closeAliasProductPicker();return}if(e.target.classList?.contains('master-group-picker-overlay')){closeMasterGroupPicker();return}if(e.target.classList?.contains('store-picker-overlay')){closeStorePicker();return}if(e.target.classList?.contains('sheet-back')&&['add','edit','productEdit','productPick','scanProduct', 'scanExistingProduct'].includes(page)){back();return}if(suppressClick){e.preventDefault();e.stopPropagation();suppressClick=false;return}
+if(swipeClickGuard&&e.detail!==0){e.preventDefault();e.stopPropagation();swipeClickGuard=null;return;}
+const exposedItem=e.target.closest('.swipe-item[data-item-id].swipe-open');
+if(exposedItem&&!e.target.closest('.swipe-actions')){
+ // The revealed front can be inert, so its row can receive the click instead.
+ e.preventDefault();setOpenSwipe(null);return;
+}
+const clear=e.target.closest('[data-search-clear]');if(clear){const input=document.getElementById(clear.dataset.searchClear);if(input){input.value='';syncSearch(input);input.focus()}return}const el=e.target.closest('[data-tab],[data-cat],[data-stock],[data-open],[data-act],[data-ui-toggle],[data-ui-choice],[data-dialog],[data-premove],[data-pedit],[data-pick],[data-product-menu],[data-list-edit],[data-list-hide]');if(!el)return;if(el.hasAttribute('data-ui-toggle')){
  const wrapper=el.closest('.ui-select'),open=el.getAttribute('aria-expanded')==='true';
  closeAllDropdowns();
  if(!open&&wrapper){const popup=wrapper.querySelector('.ui-menu');if(popup)popup.hidden=false;el.setAttribute('aria-expanded','true');if(wrapper.dataset.uiSelect==='price-period')periodMenu=true}
@@ -2115,11 +2122,6 @@ if(el.dataset.uiChoice!==undefined){
  wrapper.querySelector('.ui-select-trigger')?.focus();return;
 }
 
-const activeItemFront=e.target.closest('.swipe-item[data-item-id].swipe-open .swipe-front');
-if(activeItemFront){
- // An exposed list row is navigation chrome, not an active stock control.
- e.preventDefault();setOpenSwipe(null);return;
-}
 if(el.dataset.listEdit){duplicateItemId=null;selected=el.dataset.listEdit;editReturnPage='list';openSwipeId=null;page='edit';render();return}if(el.dataset.listHide){selected=el.dataset.listHide;setOpenSwipe(null);dialog={title:'日用品を削除',message:'日用品リストから削除します。',buttons:[{id:'cancel',label:'キャンセル'},{id:'confirmHide',label:'削除',critical:true}]};render();return}
 if(el.dataset.tab){tab=el.dataset.tab;page='list';openSwipeId=null;menu=false;render();return}if(el.dataset.cat!==undefined){if(onlyOut)return;const c=Number(el.dataset.cat);collapsed.has(c)?collapsed.delete(c):collapsed.add(c);render();return}if(el.dataset.stock){const i=items.find(x=>x.id===el.dataset.stock);if(!i)return;
  if(liveMode){
@@ -2491,7 +2493,10 @@ function closeAllDropdowns(){
 app.addEventListener('keydown',e=>{
  if(e.key==='Escape'){
   const open=document.querySelector('.ui-select-trigger[aria-expanded="true"]');
-  if(open){e.preventDefault();closeAllDropdowns();open.focus()}
+  if(open){e.preventDefault();closeAllDropdowns();open.focus();return}
+   if(openSwipeId&&!dialog&&['list','compare'].includes(page)){
+    e.preventDefault();setOpenSwipe(null);
+   }
  }
 });
 function dismissMenusOutside(target){
@@ -2684,14 +2689,35 @@ app.addEventListener('touchend',e=>{for(const t of e.changedTouches)endDrag({poi
 app.addEventListener('touchcancel',e=>{for(const t of e.changedTouches)endDrag({pointerId:t.identifier},true)});
 
 // List row swipe, separate from long-press reordering. No one-time tutorial is required.
-let swipeGesture=null;
+let swipeGesture=null,swipeClickGuard=null;
 const swipeRowId=row=>row?.dataset?.itemId||row?.dataset?.productId||null;
+function guardSwipeReleaseClick(){
+ const guard={};swipeClickGuard=guard;
+ setTimeout(()=>{if(swipeClickGuard===guard)swipeClickGuard=null;},350);
+}
+// Clear the old swipe's click guard when a new physical interaction begins.
+app.addEventListener('pointerdown',()=>{swipeClickGuard=null;},{capture:true});
+app.addEventListener('touchstart',()=>{swipeClickGuard=null;},{capture:true,passive:true});
 function setOpenSwipe(id){
  openSwipeId=id??null;
  document.querySelectorAll('.swipe-item:not(.drag-ghost)').forEach(row=>{
   const opened=Boolean(openSwipeId)&&swipeRowId(row)===openSwipeId;
   row.classList.toggle('swipe-open',opened);
   row.querySelectorAll('.swipe-actions button').forEach(b=>b.tabIndex=opened?0:-1);
+  if(!row.dataset.itemId)return;
+  const front=row.querySelector('.swipe-front'),actions=row.querySelector('.swipe-actions');
+  if(!front)return;
+  if(opened&&front.contains(document.activeElement)){
+   actions?.querySelector('button')?.focus({preventScroll:true});
+  }
+  front.toggleAttribute('inert',opened);
+  if(opened)front.setAttribute('aria-hidden','true');else front.removeAttribute('aria-hidden');
+  front.querySelectorAll('button').forEach(button=>{
+   if(opened)button.tabIndex=-1;else button.removeAttribute('tabindex');
+  });
+  if(!opened&&actions?.contains(document.activeElement)){
+   front.querySelector('button')?.focus({preventScroll:true});
+  }
  });
 }
 app.addEventListener('pointerdown',e=>{
@@ -2718,7 +2744,7 @@ app.addEventListener('pointerup',e=>{
  if(dx < -48){setOpenSwipe(swipeRowId(g.row))}
  else if(dx > 45){setOpenSwipe(null)}
  else return;
- suppressClick=true;setTimeout(()=>{suppressClick=false},250);
+ guardSwipeReleaseClick();
 });
 app.addEventListener('pointercancel',e=>{if(swipeGesture?.id===e.pointerId)swipeGesture=null});
 
@@ -2756,7 +2782,7 @@ app.addEventListener('touchend',e=>{
   setOpenSwipe(next);
   g.row.querySelector('.swipe-front')?.style.removeProperty('transform');
   g.row.classList.remove('swiping');
-  suppressClick=true;setTimeout(()=>{suppressClick=false},300);
+  guardSwipeReleaseClick();
  }
 },{passive:true});
 app.addEventListener('touchcancel',()=>{if(listTouchSwipe){listTouchSwipe.row.querySelector('.swipe-front')?.style.removeProperty('transform');listTouchSwipe.row.classList.remove('swiping');listTouchSwipe=null}});
