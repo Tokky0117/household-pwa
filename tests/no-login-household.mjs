@@ -1333,7 +1333,17 @@ assert.ok(historyUI.window.document.querySelector('.detail-record-info .ui-stati
 assert.ok(historyUI.window.document.querySelector('.detail-record-total'),
  'Total is separately visible outside the detail cards');
 historyUI.window.document.querySelector('[data-act="recordEdit"]').click();
-await waitFor(()=>!!historyUI.window.document.getElementById('scanConfirmForm'),'history edit shared form');
+try{
+ await waitFor(()=>!!historyUI.window.document.getElementById('scanConfirmForm'),'history edit shared form');
+}catch(e){
+ console.log('EDIT DIAGNOSTIC',JSON.stringify({
+  state:historyUI.window.KurashiLive.state(),
+  dialog:historyUI.window.document.querySelector('.dialog')?.textContent,
+  screen:historyUI.window.document.body.textContent.slice(-650),
+  draft:await historyUI.window.KurashiLive.loadReceiptDraft()
+ }));
+ throw e;
+}
 const editForm=historyUI.window.document.getElementById('scanConfirmForm');
 assert.ok(editForm,'history edit reuses shared multi-line confirmation form');
 editForm.querySelector('[name="amount-0"]').value='345';
