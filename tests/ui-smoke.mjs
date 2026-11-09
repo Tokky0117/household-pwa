@@ -374,6 +374,7 @@ assert.ok(manualShelfPage.includes('値札入力')&&
  'Shelf uses the same multi-line form without visible quantity and with optional product');
 assert.ok(!source.includes("if(input.type==='shelf'&&!input.productId)return false"),
  'Unlinked shelf can be recorded without a product in preview validation');
+ui.setScanDraft(null);
 
 const month=ui.demoRecords[0].record_date.slice(0,7);
 assert.ok(!ui.savePreviewRecord({type:'receipt',chainId:'c-life',date:'2026-02-31',quantity:1,amount:123,productId:''}),'Invalid calendar date rejected');
