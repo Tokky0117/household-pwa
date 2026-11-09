@@ -219,6 +219,20 @@ async function waitFor(test,description){
  while(Date.now()<limit){if(test())return;await pause(12)}
  throw Error('Timeout: '+description);
 }
+async function openSavedEdit(session,description){
+ session.window.document.querySelector('[data-act="recordEdit"]').click();
+ await waitFor(()=>!!session.window.document.querySelector('#scanConfirmForm')||
+  !!session.window.document.querySelector('[data-dialog="confirmReplaceDraft"]'),
+  description+' entry');
+ const confirmation=session.window.document.querySelector('[data-dialog="confirmReplaceDraft"]');
+ if(confirmation){
+  assert.equal(session.window.document.querySelector('.dialog-description').textContent.trim(),
+   '以前の下書きは破棄されます。');
+  confirmation.click();
+ }
+ await waitFor(()=>!!session.window.document.querySelector('#scanConfirmForm'),description+' form');
+ return session.window.document.querySelector('#scanConfirmForm');
+}
 const pill=dom=>dom.window.document.querySelector('[data-stock="'+id+'"] .stock-pill')?.textContent;
 const clickStock=dom=>{
  const button=dom.window.document.querySelector('[data-stock="'+id+'"]');
@@ -1332,19 +1346,7 @@ assert.ok(historyUI.window.document.querySelector('.detail-record-info .ui-stati
  'Purchase metadata uses shared static form labels without a panel');
 assert.ok(historyUI.window.document.querySelector('.detail-record-total'),
  'Total is separately visible outside the detail cards');
-historyUI.window.document.querySelector('[data-act="recordEdit"]').click();
-try{
- await waitFor(()=>!!historyUI.window.document.getElementById('scanConfirmForm'),'history edit shared form');
-}catch(e){
- console.log('EDIT DIAGNOSTIC',JSON.stringify({
-  state:historyUI.window.KurashiLive.state(),
-  dialog:historyUI.window.document.querySelector('.dialog')?.textContent,
-  screen:historyUI.window.document.body.textContent.slice(-650),
-  draft:await historyUI.window.KurashiLive.loadReceiptDraft()
- }));
- throw e;
-}
-const editForm=historyUI.window.document.getElementById('scanConfirmForm');
+const editForm=await openSavedEdit(historyUI,'history receipt edit');
 assert.ok(editForm,'history edit reuses shared multi-line confirmation form');
 editForm.querySelector('[name="amount-0"]').value='345';
 online=false;
@@ -1403,9 +1405,7 @@ const shelfHistoryEntry=historyRecovery.window.document.querySelector(
 assert.ok(shelfHistoryEntry,'saved shelf observation opens from record list');
 shelfHistoryEntry.click();
 assert.match(historyRecovery.window.document.body.textContent,/値札確認日/);
-historyRecovery.window.document.querySelector('[data-act="recordEdit"]').click();
-await waitFor(()=>!!historyRecovery.window.document.getElementById('scanConfirmForm'),'shelf edit shared form');
-const shelfEditForm=historyRecovery.window.document.getElementById('scanConfirmForm');
+const shelfEditForm=await openSavedEdit(historyRecovery,'saved shelf edit');
 assert.ok(shelfEditForm,'shelf uses shared editor with the original saved kind');
 assert.match(historyRecovery.window.document.body.textContent,/値札を編集/);
 assert.match(shelfEditForm.textContent,/値札情報/);
@@ -1707,9 +1707,7 @@ const purchasedReceiptId=purchasedLine.record_id;
 const storedName=aliasText(temp,purchasedLine);
 thirdPhone.window.document.querySelector(
  '[data-act="recordDetail"][data-record-id="'+purchasedReceiptId+'"]').click();
-thirdPhone.window.document.querySelector('[data-act="recordEdit"]').click();
-await waitFor(()=>!!thirdPhone.window.document.getElementById('scanConfirmForm'),'saved OCR edit');
-let savedEditForm=thirdPhone.window.document.getElementById('scanConfirmForm');
+let savedEditForm=await openSavedEdit(thirdPhone,'saved OCR receipt edit');
 assert.equal(savedEditForm.querySelector('[name="name-0"]'),null,
  'original saved OCR name cannot be edited');
 assert.equal(savedEditForm.querySelector('.scan-ocr-name').textContent,storedName,
@@ -2791,9 +2789,7 @@ optionalUI.window.document.querySelector(
  '[data-act="recordDetail"][data-record-id="'+optionalRecord.record_id+'"]').click();
 assert.match(optionalUI.window.document.body.textContent,/明細名なし/,
  'receipt detail displays a neutral name fallback');
-optionalUI.window.document.querySelector('[data-act="recordEdit"]').click();
-await waitFor(()=>!!optionalUI.window.document.getElementById('scanConfirmForm'),'optional receipt edit');
-optionalForm=optionalUI.window.document.querySelector('#scanConfirmForm');
+optionalForm=await openSavedEdit(optionalUI,'optional-name receipt edit');
 assert.equal(optionalForm.querySelector('[name="name-1"]')?.value,'',
  'the blank manual field is editable with no generated name on receipt reopen');
 assert.equal(optionalForm.querySelector('[name="name-1"]')?.required,false);
