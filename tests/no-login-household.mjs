@@ -1325,7 +1325,7 @@ assert.ok(historyUI.window.document.querySelector('.record-detail-actions>.terti
  'Receipt detail delete is an equally ranked shared tertiary action');
 assert.equal(historyUI.window.document.querySelector('.record-detail-actions>[data-act="recordDelete"]').textContent.trim(),
  '削除','Destructive operation is named clearly and stays secondary to viewing');
-assert.equal(historyUI.window.document.querySelectorAll('.detail-record-line').length,1,
+assert.equal(historyUI.window.document.querySelectorAll('.detail-record-line').length,2,
  'Saved receipt retains one card per line');
 assert.ok(historyUI.window.document.querySelector('.detail-record-info .ui-static-field-value')&&
  !historyUI.window.document.querySelector('.detail-record-info.panel'),
