@@ -1034,9 +1034,21 @@ recordForm=recordReopened.window.document.getElementById('scanConfirmForm');
 assert.equal(recordForm.querySelector('[name="qty-1"]'),null);
 recordForm.querySelector('[name="amount-1"]').value='280';
 recordForm.dispatchEvent(new recordReopened.window.Event('submit',{bubbles:true,cancelable:true}));
-await waitFor(()=>recordReopened.window.KurashiLive.state().queued===0&&
- temp.call('bootstrap').data.records.some(r=>r.record_type==='shelf'),
- 'unlinked two-line shelf saves through shared record schema');
+try{
+ await waitFor(()=>recordReopened.window.KurashiLive.state().queued===0&&
+  temp.call('bootstrap').data.records.some(r=>r.record_type==='shelf'),
+  'unlinked two-line shelf saves through shared record schema');
+}catch(err){
+ console.log('SHELF DIAGNOSTIC',JSON.stringify({
+  state:recordReopened.window.KurashiLive.state(),
+  formFeedback:recordReopened.window.document.querySelector('#scan-save-feedback')?.textContent,
+  form:recordReopened.window.document.querySelector('#scanConfirmForm')?.textContent.slice(-650),
+  records:temp.call('bootstrap').data.records.map(r=>r.record_type),
+  date:recordReopened.window.document.querySelector('[name="date"]')?.value,
+  chain:recordReopened.window.document.querySelector('[name="chain"]')?.value
+ }));
+ throw err;
+}
 const savedShelf=temp.call('bootstrap').data.records.find(r=>r.record_type==='shelf');
 const shelfDetails=temp.call('bootstrap').data.record_items.filter(x=>x.record_id===savedShelf.record_id);
 assert.equal(shelfDetails.length,2);
