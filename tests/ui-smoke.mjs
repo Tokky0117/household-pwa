@@ -485,7 +485,7 @@ assert.ok(source.includes("suppressClick=true;setTimeout(()=>{suppressClick=fals
 assert.ok(css.includes('.secondary {')&&css.includes('background: #eceef0;'),
  'Shared secondary buttons use the softened grey');
 assert.ok(css.includes('.swipe-item[data-item-id].swipe-open .swipe-front::after')&&
- css.includes('background:color-mix(in srgb,var(--line) 40%,var(--card))')&&
+ css.includes('background:var(--line);opacity:.40;pointer-events:none')&&
  css.includes('.swipe-item[data-item-id].swipe-open .swipe-front > *{pointer-events:none}'),
  'Only revealed inventory cards dim and block front controls');
 assert.ok(source.includes("e.target.closest('.swipe-item[data-item-id].swipe-open .swipe-front')")&&
@@ -1594,7 +1594,7 @@ assert.ok(!JSON.stringify(p4Rebuild).includes('ocr-p4'),
 console.log('P4 common review adapter, provenance, row identity and P2 validation OK');
 
 // v0.73: Receipt OCR review information hierarchy; preserve validation/confirmation.
-assert.ok(source.includes("const APP_VERSION='0.87.3'"), 'UI review revision version is current');
+assert.ok(source.includes("const APP_VERSION='0.87.4'"), 'UI review revision version is current');
 assert.ok(source.includes("UI.sectionHeading({title:'読み取り状況'})"), 'OCR and ChatGPT appear under one section');
 assert.ok(source.includes("UI.sectionHeading({title:isShelf?'値札情報':'購入情報'})"), 'Receipt OCR review groups store and purchase date');
 assert.ok(source.includes("UI.sectionHeading({title:isShelf?'価格情報':'購入明細',subtitle:scanDraft.items.length+'件'+"), 'Receipt OCR review identifies item list and unmatched count');
