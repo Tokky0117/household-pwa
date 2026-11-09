@@ -160,14 +160,22 @@
    const line=item.sourceLines[0],anchor=layout.lines[line-1]?.bounds;
    const candidates=[line-2,line-1,line+1,line+2].filter(n=>n>0&&n<=layout.lines.length&&
     !used.has(n)&&possibleName(source[n-1])&&
-    near(anchor,layout.lines[n-1]?.bounds));
-   if(candidates.length!==1){
+    near(anchor,layout.lines[n-1]?.bounds))
+    .map(n=>{
+     const b=layout.lines[n-1].bounds;
+     return {line:n,distance:Math.abs((anchor.y0+anchor.y1-b.y0-b.y1)/2)};
+    }).sort((a,b)=>a.distance-b.distance);
+   const height=anchor?.y1-anchor?.y0||0;
+   // A nearby following product must not steal this code from a clearly
+   // closer preceding name. Equidistant alternatives remain unlinked.
+   if(!candidates.length||candidates.length>1&&
+    candidates[1].distance-candidates[0].distance<=.35*height){
     item.issues=item.issues||[];
     if(!item.issues.includes('商品コードのみ（商品名を確認）'))
      item.issues.push('商品コードのみ（商品名を確認）');
     continue;
    }
-   const nameLine=candidates[0],printed=source[nameLine-1].trim();
+   const nameLine=candidates[0].line,printed=source[nameLine-1].trim();
    item.name=printed;item.rawName=printed;item.productCode=oldName;
    item.sourceLines=[line,nameLine].sort((a,b)=>a-b);
    item.rawLines=item.sourceLines.map(n=>source[n-1]);
