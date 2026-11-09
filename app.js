@@ -739,8 +739,10 @@ function scanFormView(){
    ${isShelf?'':'<p id="scan-count-text" class="scan-total-count">購入点数：—</p>'}
    ${scanDraft.taxBasis==='unknown'&&scanDraft.source==='ocr'?'<p class="scan-state-note scan-state-warning">税率を確認</p>':''}
    ${scanDraft.taxBasis==='excluded'&&scanDraft.taxAllocationStatus!=='allocated'?'<p class="scan-state-note scan-state-warning">税込金額を確認</p>':''}
+${['manual','edit'].includes(scanDraft.source)?'':`
    <div id="scan-total-warning" class="scan-state-note scan-state-warning scan-compare-note" role="status" hidden></div>
    <div id="scan-count-warning" class="scan-state-note scan-state-warning scan-compare-note" role="status" hidden></div>
+   `}
   </div>
   ${UI.formFeedback({id:'scan-save-feedback'})}
   ${UI.button({label:scanDraft.recordId?(isShelf?'修正した値札を保存':'修正したレシートを保存'):'保存',variant:'primary',type:'submit'})}
