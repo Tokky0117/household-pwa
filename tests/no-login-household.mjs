@@ -1115,8 +1115,13 @@ await waitFor(()=>!!draftUI.window.document.querySelector('#scanConfirmForm'),'m
 assert.equal(draftUI.window.document.querySelector('[data-act="scanOpenCurrentPhoto"]'),null,
  'resuming draft without in-memory photos does not show photo button');
 draftUI.window.document.querySelector('[data-act="back"]').click();
-assert.ok(draftUI.window.document.querySelector('[data-dialog="saveScanDraftAndExit"]'),
- 'back dialog has explicit save-draft option');
+const exitActions=Array.from(draftUI.window.document.querySelectorAll('.dialog-actions [data-dialog]'));
+assert.deepEqual(exitActions.map(button=>button.dataset.dialog),
+ ['saveScanDraftAndExit','discardScan'],
+ 'exit dialog uses shared UI with save and discard only, in that order');
+assert.deepEqual(exitActions.map(button=>button.textContent.trim()),
+ ['下書きを保存','破棄して終了'],
+ 'exit dialog uses the agreed short action labels');
 draftUI.window.document.querySelector('[data-dialog="saveScanDraftAndExit"]').click();
 await waitFor(()=>!!draftUI.window.document.querySelector('[data-act="resumeScanDraft"]'),
  'back dialog saves draft and exits');

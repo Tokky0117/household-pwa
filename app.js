@@ -1719,9 +1719,8 @@ function back(){
    if(scanBusy){say('読み取り処理中です');return;}
    if(scanPhotos.length||scanDraft){
     dialog={title:'入力を終了しますか？',message:'破棄すると入力内容は失われます。',
-     buttons:[{id:'cancel',label:'編集を続ける'},
-      ...(scanDraft?[{id:'saveScanDraftAndExit',label:'下書きとして保存',primary:true}]:[]),
-      {id:'discardScan',label:'破棄する',critical:true}]};
+     buttons:[...(scanDraft?[{id:'saveScanDraftAndExit',label:'下書きを保存',primary:true}]:[]),
+      {id:'discardScan',label:'破棄して終了',critical:true}]};
      renderDialogOnly();return;
    }
    resetScan();page='list';tab='receipt';render();return;
