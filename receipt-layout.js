@@ -168,7 +168,10 @@
      near(anchor,layout.lines[n-1]?.bounds)&&
      !itemLines.some(other=>other!==line&&
       ((n<other&&other<line)||(line<other&&other<n))));
-   const candidates=close.filter(n=>possibleName(source[n-1])).map(n=>{
+   // Footer and payment text must not count as unreadable product names.
+   const unpricedText=close.filter(n=>!(/^(?:小\s*計|合\s*計|総額|お買上|買上点数|税|消費税|内消費税|外税|領収|カード|クレジット|現金|レジ|TEL|会員)/i
+    .test(source[n-1].trim())||/^\d{13}(?:\s|$)/.test(source[n-1].trim())));
+   const candidates=unpricedText.filter(n=>possibleName(source[n-1])).map(n=>{
     const b=layout.lines[n-1].bounds,above=b.y0<anchor.y0;
     return {line:n,distance:Math.abs((anchor.y0+anchor.y1-b.y0-b.y1)/2)+
      (above?0:height)};
@@ -190,8 +193,8 @@
     if(!item.issues.includes('商品コードのみ（商品名を確認）'))
      item.issues.push('商品コードのみ（商品名を確認）');
     item.nameLinkEvidence={status:best?'ambiguous-name-position':
-     close.length?'nearby-text-not-name':'no-nearby-text',
-     nearbyTextRows:close.length,eligibleNameRows:candidates.length};
+     unpricedText.length?'nearby-text-not-name':'no-nearby-text',
+     nearbyTextRows:unpricedText.length,eligibleNameRows:candidates.length};
     continue;
    }
    const nameLine=candidates[0].line,printed=source[nameLine-1].trim();
@@ -200,7 +203,7 @@
    item.rawLines=item.sourceLines.map(n=>source[n-1]);
    item.issues=item.issues||[];
    item.issues.push('商品コードと商品名の対応を確認');
-   item.nameLinkEvidence={status:'linked',nearbyTextRows:close.length,
+   item.nameLinkEvidence={status:'linked',nearbyTextRows:unpricedText.length,
     eligibleNameRows:candidates.length};
    if(Array.isArray(receipt.unresolvedRows))
     receipt.unresolvedRows=receipt.unresolvedRows.filter(row=>row.line!==nameLine);

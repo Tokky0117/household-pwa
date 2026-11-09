@@ -906,7 +906,8 @@ async function runReceiptScan(){
     reviewEvidence.itemSources.push({rowId,imageIndex:i,
      sourceLines:[...(item.sourceLines||[])],
      observationIndices:[...(item.layoutEvidence?.observationIndices||[])],
-     priceLinks:[...(item.layoutEvidence?.priceLinks||[])]});
+     priceLinks:[...(item.layoutEvidence?.priceLinks||[])],
+     nameLinkEvidence:item.nameLinkEvidence?{...item.nameLinkEvidence}:null});
    }
    for(const row of out.parsed.unresolvedRows||[]){
     reviewEvidence.unresolvedRows.push({imageIndex:i,line:row.line,role:row.role,

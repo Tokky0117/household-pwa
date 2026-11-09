@@ -14,16 +14,29 @@
    .filter(({item})=>!['manual','photo'].includes(item.inputOrigin)&&item.ocrRawName!==undefined);
  }
  function ocrReference(draft,chainLabel){
+  const rows=ocrRows(draft);
+  const sources=new Map((draft?.reviewEvidence?.itemSources||[])
+   .filter(x=>x?.rowId).map(x=>[x.rowId,x]));
+  const nameLinkDiagnostics=rows.map(({item,i})=>{
+   const rowId=item.ocrRowId||'row-'+(i+1);
+   if(!/^\d{13}$/.test(String(item.ocrRawName||'').trim()))return null;
+   const e=sources.get(rowId)?.nameLinkEvidence;
+   return {rowId,status:e?.status||'not-recorded',
+    nearbyTextRows:e?.nearbyTextRows??null,
+    eligibleNameRows:e?.eligibleNameRows??null};
+  }).filter(Boolean);
   return JSON.stringify({
    receiptDate:draft?.date||null,
    store:draft?.chainId?chainLabel(draft.chainId):draft?.chainName||null,
    receiptTotal:draft?.total??null,
-   items:ocrRows(draft).map(({item,i})=>({
+   printedCount:draft?.printedCount??null,
+   items:rows.map(({item,i})=>({
     rowId:item.ocrRowId||'row-'+(i+1),
     ocrName:String(item.ocrRawName||''),
     quantity:Number(item.quantity)||null,
     taxIncludedAmount:String(item.amount)===''?null:Number(item.amount)
-   }))
+   })),
+   ...(nameLinkDiagnostics.length?{nameLinkDiagnostics}:{})
   },null,2);
  }
  function fromOcrItem(item,{rowId,taxBasis}={}){

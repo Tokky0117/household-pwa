@@ -5,10 +5,10 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import vm from 'node:vm';
 const scripts=['receipt-layout.js','receipt-line-rules.js','receipt-item-assembler.js',
- 'receipt-amounts.js','receipt-validation.js','receipt-structure.js']
+ 'receipt-amounts.js','receipt-validation.js','receipt-structure.js','receipt-review-model.js']
  .map(p=>readFileSync(new URL('../'+p,import.meta.url),'utf8')).join('\n');
-const {layout,structure,validation}=vm.runInNewContext(scripts+
- '\n;({layout:KurashiReceiptLayout,structure:KurashiReceiptStructure,validation:KurashiReceiptValidation})');
+const {layout,structure,validation,review}=vm.runInNewContext(scripts+
+ '\n;({layout:KurashiReceiptLayout,structure:KurashiReceiptStructure,validation:KurashiReceiptValidation,review:KurashiReceiptReview})');
 const obs=(text,x,y,w=200,h=16)=>({text,poly:[[x,y],[x+w,y],[x+w,y+h],[x,y+h]]});
 const side=[
  obs('品目X ¥283',0,20,125),obs('品目Y ¥116',0,58,125),
@@ -67,4 +67,54 @@ const twoAway=layout.groupLines([
  obs('2000211787545 ¥2,990',110,95,260),obs('合計 ¥2,990',110,180,235)]);
 const linked=layout.attachAdjacentCodeNames(structure.parse(twoAway.text),twoAway);
 assert.equal(linked.items[0].name,'衣料商品A');
+
+// A uniquely positioned name can be recovered even with several unrelated
+// OCR fragments between the printed name and its 13-digit code line.
+const between=layout.groupLines([
+ obs('衣料商品A',100,45,180),
+ obs('x',900,62,10),obs('q',900,69,10),obs('r',900,76,10),
+ obs('2000211787545 ¥2,990',100,89,250),
+ obs('合計 ¥2,990',100,180,220)
+]);
+const recovered=layout.attachAdjacentCodeNames(structure.parse(between.text),between);
+assert.equal(recovered.items[0].name,'衣料商品A');
+assert.equal(recovered.items[0].nameLinkEvidence.status,'linked');
+assert.equal(recovered.unresolvedRows.some(row=>row.line===1),false);
+// Missing name observations must never be fabricated; distinguish no text
+// from OCR fragments that do not qualify as merchandise names.
+const missing=layout.groupLines([
+ obs('2000211787545 ¥2,990',100,80,250),
+ obs('小計 ¥2,990',100,141,230),obs('合計 ¥2,990',100,171,230)
+]);
+const codeOnly=layout.attachAdjacentCodeNames(structure.parse(missing.text),missing);
+assert.equal(codeOnly.items[0].name,'2000211787545');
+assert.equal(codeOnly.items[0].nameLinkEvidence.status,'no-nearby-text');
+const fragment=layout.groupLines([
+ obs('xx',100,52,180),obs('2000211787545 ¥2,990',100,80,250),
+ obs('小計 ¥2,990',100,141,230),obs('合計 ¥2,990',100,171,230)
+]);
+const unlinked=layout.attachAdjacentCodeNames(structure.parse(fragment.text),fragment);
+assert.equal(unlinked.items[0].name,'2000211787545');
+assert.equal(unlinked.items[0].nameLinkEvidence.status,'nearby-text-not-name');
+assert.equal(unlinked.items[0].nameLinkEvidence.nearbyTextRows,1);
+// Two plausible names cannot be assigned by arbitrary order.
+const ambiguous=layout.groupLines([
+ obs('候補AAA',100,47,180),obs('候補BBB',100,55,180),
+ obs('2000211787545 ¥2,990',100,83,260),
+ obs('小計 ¥2,990',100,143,230),obs('合計 ¥2,990',100,172,230)
+]);
+const uncertain=layout.attachAdjacentCodeNames(structure.parse(ambiguous.text),ambiguous);
+assert.equal(uncertain.items[0].name,'2000211787545');
+assert.equal(uncertain.items[0].nameLinkEvidence.status,'ambiguous-name-position');
+// Clipboard OCR reference includes numeric evidence but never nearby raw text.
+const fakeDraft={source:'ocr',date:null,total:2990,printedCount:1,
+ reviewEvidence:{itemSources:[{rowId:'ocr-code',nameLinkEvidence:unlinked.items[0].nameLinkEvidence}]},
+ items:[{ocrRowId:'ocr-code',ocrRawName:'2000211787545',quantity:1,amount:2990}]};
+const reference=JSON.parse(review.ocrReference(fakeDraft,()=>null));
+assert.equal(reference.printedCount,1);
+assert.deepEqual(Object.keys(reference.nameLinkDiagnostics[0]),
+ ['rowId','status','nearbyTextRows','eligibleNameRows']);
+assert.equal(reference.nameLinkDiagnostics[0].status,'nearby-text-not-name');
+assert.equal(JSON.stringify(reference).includes('xx'),false);
+
 console.log('P1 receipt region separation and safe product-code association OK');
