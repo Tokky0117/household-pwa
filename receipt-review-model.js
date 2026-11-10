@@ -13,33 +13,47 @@
   return (draft.items||[]).map((item,i)=>({item,i}))
    .filter(({item})=>!['manual','photo'].includes(item.inputOrigin)&&item.ocrRawName!==undefined);
  }
- function ocrReference(draft,chainLabel){
-  const rows=ocrRows(draft);
-  const sources=new Map((draft?.reviewEvidence?.itemSources||[])
-   .filter(x=>x?.rowId).map(x=>[x.rowId,x]));
-  const nameLinkDiagnostics=rows.map(({item,i})=>{
-   const rowId=item.ocrRowId||'row-'+(i+1);
-   if(!/^\d{13}$/.test(String(item.ocrRawName||'').trim()))return null;
-   const e=sources.get(rowId)?.nameLinkEvidence;
-   return {rowId,status:e?.status||'not-recorded',
-    nearbyTextRows:e?.nearbyTextRows??null,
-    eligibleNameRows:e?.eligibleNameRows??null};
-  }).filter(Boolean);
-  return JSON.stringify({
-   receiptDate:draft?.date||null,
-   store:draft?.chainId?chainLabel(draft.chainId):draft?.chainName||null,
-   receiptTotal:draft?.total??null,
-   printedCount:draft?.printedCount??null,
-   items:rows.map(({item,i})=>({
-    rowId:item.ocrRowId||'row-'+(i+1),
-    ocrName:String(item.ocrRawName||''),
-    quantity:Number(item.quantity)||null,
-    taxIncludedAmount:String(item.amount)===''?null:Number(item.amount)
-   })),
-   ...(nameLinkDiagnostics.length?{nameLinkDiagnostics}:{})
-  },null,2);
- }
- function fromOcrItem(item,{rowId,taxBasis}={}){
+ // OCR reference is a candidate, not a photo-verified record or Sheets payload.
+function ocrReference(draft,chainLabel){
+ const rows=ocrRows(draft);
+ const sources=new Map((draft?.reviewEvidence?.itemSources||[])
+  .filter(x=>x?.rowId).map(x=>[x.rowId,x]));
+ const nameLinkDiagnostics=rows.map(({item,i})=>{
+  const rowId=item.ocrRowId||'row-'+(i+1);
+  if(!/^\d{13}$/.test(String(item.ocrRawName||'').trim()))return null;
+  const e=sources.get(rowId)?.nameLinkEvidence;
+  return {rowId,status:e?.status||'not-recorded',
+   nearbyTextRows:e?.nearbyTextRows??null,
+   eligibleNameRows:e?.eligibleNameRows??null};
+ }).filter(Boolean);
+ const numeric=value=>(value===null||value===undefined||value===''||
+  !Number.isSafeInteger(Number(value)))?null:Number(value);
+ return JSON.stringify({
+  receiptDate:draft?.date||null,
+  store:draft?.chainId?chainLabel(draft.chainId):draft?.chainName||null,
+  receiptTotal:numeric(draft?.total),
+  printedCount:numeric(draft?.printedCount),
+  taxBasis:draft?.taxBasis||'unknown',
+  taxAllocationStatus:draft?.taxAllocationStatus||'unknown',
+  taxDiagnostics:draft?.taxDiagnostics?{
+   netSum:numeric(draft.taxDiagnostics.netSum),
+   subtotal:numeric(draft.taxDiagnostics.subtotal),
+   taxTotal:numeric(draft.taxDiagnostics.taxTotal)
+  }:null,
+  items:rows.map(({item,i})=>({
+   rowId:item.ocrRowId||'row-'+(i+1),
+   ocrName:String(item.ocrRawName||''),
+   quantity:numeric(item.quantity),
+   quantityUncertain:!!item.quantityUncertain,
+   taxIncludedAmount:numeric(item.amount),
+   amountOrigin:item.amountOrigin||'unknown',
+   taxExcludedAmount:numeric(item.taxExcludedAmount),
+   allocatedTax:numeric(item.allocatedTax)
+  })),
+  ...(nameLinkDiagnostics.length?{nameLinkDiagnostics}:{})
+ },null,2);
+}
+function fromOcrItem(item,{rowId,taxBasis}={}){
   const printedName=String(item.name||'').trim();
   const price=validAmount(item.taxIncludedAmount)?item.taxIncludedAmount:'';
   const issues=[...(item.issues||[])];
