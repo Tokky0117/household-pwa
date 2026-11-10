@@ -63,15 +63,23 @@ export function shortNameRetryRegions(parsed,{width,height}={},limit=2,layoutLin
   const y0=Math.max(0,centerY-halfHeight);
   const y1=Math.min(height,centerY+halfHeight);
   if((x1-x0)/width<.05||(y1-y0)/height<.025)continue;
+  // Second attempt excludes the distant price column. On receipts such
+  // as R03, the initial OCR can see a price marker but miss the name.
+  const nameRight=Math.min(x1,x0+Math.max(width*.22,(x1-x0)*.60));
   result.push({index,baselineName:String(item.name||item.rawName||''),
    amount:item.grossAmount,
    crop:{x:x0/width,y:y0/height,width:(x1-x0)/width,height:(y1-y0)/height},
+   nameCrop:{x:x0/width,y:y0/height,width:(nameRight-x0)/width,height:(y1-y0)/height},
    targetY:(centerY-y0)/(y1-y0)});
  }
  return result;
 }
 function candidateLine(text,expectedAmount){
- const input=String(text||'').normalize('NFKC').trim();
+ const full=String(text||'').normalize('NFKC').trim();
+ // The detector sometimes merges a product with the next discount row.
+ // Remove ONLY a clearly separate trailing "分類一括割引" component.
+ // No dictionary completion or invented product characters.
+ const input=full.replace(/\s+分類\s*一括\s*割引(?:.*)?$/u,'').trim();
  // Only merchandise names, not discounts, taxes, quantity or the footer.
  if(!input||/(?:割引|値引|クーポン|小計|合計|消費税|対象額|買上点数|分類一括)/.test(input)||
   /%|％/.test(input))return null;
@@ -89,21 +97,30 @@ export function inspectRecoveredNameFromLines(lines,{targetY,amount}={},imageHei
  if(!Array.isArray(lines)||!goodNumber(imageHeight)||
   !Number.isFinite(targetY)||targetY<0||targetY>1||
   !Number.isSafeInteger(amount)||amount<0)
-   return {name:null,reason:'invalid',detectedRows:0,nearbyRows:0,eligibleRows:0};
+   return {name:null,reason:'invalid',detectedRows:0,nearbyRows:0,
+    eligibleRows:0,japaneseNearbyRows:0,shortJapaneseRows:0};
  const candidates=[];
- let nearbyRows=0;
+ let nearbyRows=0,japaneseNearbyRows=0,shortJapaneseRows=0;
  for(const line of lines){
   const b=line?.bounds;
   if(!b||!Number.isFinite(b.y0)||!Number.isFinite(b.y1))continue;
   const distance=Math.abs((b.y0+b.y1)/(2*imageHeight)-targetY);
   if(distance>.22)continue;
   nearbyRows++;
+  const observed=String(line.text||'').normalize('NFKC');
+  const natural=observed.replace(/^[※*＊]\s*/u,'').trim();
+  if(!/(?:分類|割引|値引|税|小計|合計)/.test(natural)&&
+   /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}]/u.test(natural)){
+   japaneseNearbyRows++;
+   if([...natural].length<=2)shortJapaneseRows++;
+  }
   const candidate=candidateLine(line.text,amount);
   if(candidate)candidates.push({...candidate,distance,
    score:distance-(candidate.hasAmount?.018:0)});
  }
  candidates.sort((a,b)=>a.score-b.score);
- const counts={detectedRows:lines.length,nearbyRows,eligibleRows:candidates.length};
+ const counts={detectedRows:lines.length,nearbyRows,eligibleRows:candidates.length,
+  japaneseNearbyRows,shortJapaneseRows};
  if(!candidates.length)
   return {name:null,reason:nearbyRows?'unrecognized-name':'no-nearby-rows',...counts};
  // Two equally close conflicting readings must remain unresolved.

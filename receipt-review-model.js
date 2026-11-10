@@ -40,6 +40,8 @@ function ocrReference(draft,chainLabel){
    detectedRows:numeric(draft.reviewEvidence.nameRetry.detectedRows),
    nearbyRows:numeric(draft.reviewEvidence.nameRetry.nearbyRows),
    eligibleRows:numeric(draft.reviewEvidence.nameRetry.eligibleRows),
+   japaneseNearbyRows:numeric(draft.reviewEvidence.nameRetry.japaneseNearbyRows),
+   shortJapaneseRows:numeric(draft.reviewEvidence.nameRetry.shortJapaneseRows),
    preparationErrors:numeric(draft.reviewEvidence.nameRetry.preparationErrors),
    readErrors:numeric(draft.reviewEvidence.nameRetry.readErrors)
   }:null,

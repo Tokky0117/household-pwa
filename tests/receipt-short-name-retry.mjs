@@ -10,6 +10,12 @@ const sample={items:[
 const regions=shortNameRetryRegions(sample,{width:1600,height:2200});
 assert.equal(regions.length,1);
 assert.equal(regions[0].index,0);
+assert.ok(regions[0].nameCrop.width<regions[0].crop.width,
+ 'the fallback re-read must exclude the unrelated price column');
+assert.equal(regions[0].nameCrop.y,regions[0].crop.y);
+assert.equal(regions[0].nameCrop.height,regions[0].crop.height);
+const secondPassCrop=cropPixels(regions[0].nameCrop,1600,2200,{allowSmallCrop:true});
+assert.ok(secondPassCrop.width>0&&secondPassCrop.height>0);
 const narrowExample={x:.22,y:.31,width:.43,height:.038};
 assert.throws(()=>cropPixels(narrowExample,1600,2200),/切り抜く範囲/,
  'normal crop restrictions must remain unchanged');
@@ -90,6 +96,11 @@ assert.equal(found.name,'エリンギ');
 assert.equal(found.reason,'candidate');
 assert.equal(found.detectedRows,3);
 assert.equal(found.eligibleRows,1);
+assert.equal(found.japaneseNearbyRows,1);
+assert.equal(found.shortJapaneseRows,0);
+assert.equal(recoveredNameFromLines([line('※ エリンギ 分類一括割引 10%',115)],
+ {targetY:.5,amount:148},230),'エリンギ',
+ 'a combined discount row must preserve the observed product prefix');
 const missing=inspectRecoveredNameFromLines([
  line('※',115),line('! ¥148',117)
 ],{targetY:.5,amount:148},230);
@@ -98,4 +109,13 @@ assert.equal(missing.name,null,
 assert.equal(missing.reason,'unrecognized-name');
 assert.equal(missing.detectedRows,2);
 assert.equal(missing.eligibleRows,0);
+assert.equal(missing.japaneseNearbyRows,0);
+assert.equal(missing.shortJapaneseRows,0);
+const partial=inspectRecoveredNameFromLines([
+ line('※ エリ',115)
+],{targetY:.5,amount:148},230);
+assert.equal(partial.eligibleRows,0);
+assert.equal(partial.japaneseNearbyRows,1);
+assert.equal(partial.shortJapaneseRows,1,
+ 'a Japanese two-character fragment must be diagnosed but not invented into a name');
 console.log('targeted OCR retry: internal small crop, detection stages, no fabricated names OK');

@@ -47,29 +47,40 @@ export async function scanReceiptImage(file,{mode='gray',crop=null}={}){
   // name, row count, quantity, discount and amounts remain untouched.
   let nameRetryAttempted=0,nameRetrySuggested=0;
   let nameRetryImageReads=0,nameRetryDetectedRows=0,nameRetryNearbyRows=0,
-   nameRetryEligibleRows=0,nameRetryPreparationErrors=0,nameRetryReadErrors=0;
+   nameRetryEligibleRows=0,nameRetryPreparationErrors=0,nameRetryReadErrors=0,
+   nameRetryJapaneseNearbyRows=0,nameRetryShortJapaneseRows=0;
   if(mode==='gray'&&!crop){
    const targets=shortNameRetryRegions(parsed,prepared.metadata,2,layout.lines);
    for(const target of targets){
     nameRetryAttempted++;
-    // The first pass isolates the merchandise column in grayscale.
-    // Preserve the original color as a bounded fallback for pale ink/folds.
-    for(const imageMode of ['gray','original']){
+    // Default detection first, then an independent name-column-only crop
+    // with weaker detection thresholds for faint/damaged lettering.
+    // A fallback candidate is ALWAYS provisional and never changes totals.
+    const passes=[
+     {imageMode:'gray',crop:target.crop,params:undefined},
+     {imageMode:'original',crop:target.nameCrop,params:{
+      textDetThresh:.20,textDetBoxThresh:.38,textDetUnclipRatio:1.8,
+      textRecScoreThresh:0
+     }}
+    ];
+    for(const {imageMode,crop:retryCrop,params:retryParams} of passes){
      let focused;
      try{
       // Only internal OCR may use a crop smaller than the public 5% bound.
-      focused=await prepareImage(file,imageMode,target.crop,{allowSmallCrop:true});
+      focused=await prepareImage(file,imageMode,retryCrop,{allowSmallCrop:true});
      }catch{
       nameRetryPreparationErrors++;
       continue;
      }
      try{
       nameRetryImageReads++;
-      const retry=await (await reader()).readImage(focused.image);
+      const retry=await (await reader()).readImage(focused.image,retryParams);
       const inspected=inspectRecoveredNameFromLines(retry.lines,target,focused.metadata.height);
       nameRetryDetectedRows+=inspected.detectedRows;
       nameRetryNearbyRows+=inspected.nearbyRows;
       nameRetryEligibleRows+=inspected.eligibleRows;
+      nameRetryJapaneseNearbyRows+=inspected.japaneseNearbyRows;
+      nameRetryShortJapaneseRows+=inspected.shortJapaneseRows;
       if(inspected.name&&inspected.name!==target.baselineName){
        parsed.items[target.index].ocrRetryName=inspected.name;
        nameRetrySuggested++;
@@ -95,7 +106,8 @@ export async function scanReceiptImage(file,{mode='gray',crop=null}={}){
     yenGroupingChanges:normalized.changes.length,
     nameRetryAttempted,nameRetrySuggested,nameRetryImageReads,
     nameRetryDetectedRows,nameRetryNearbyRows,nameRetryEligibleRows,
-    nameRetryPreparationErrors,nameRetryReadErrors}
+    nameRetryPreparationErrors,nameRetryReadErrors,
+    nameRetryJapaneseNearbyRows,nameRetryShortJapaneseRows}
   };
  }finally{prepared?.release();active=false;}
 }

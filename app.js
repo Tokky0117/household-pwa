@@ -1,4 +1,4 @@
-const APP_VERSION='0.88.3';
+const APP_VERSION='0.88.4';
 const CATS=['飲食','キッチン','洗面・風呂','洗濯・掃除','その他'];
 const liveMode=!!window.KurashiLive; // Data source only; original Preview v46 UI components remain.
 const SEED=[['牛乳',0,true],['麦茶',0,false],['コーヒー',0,true],['卵',0,false],['キッチンペーパー',1,false],['ラップ',1,true],['食器用洗剤',1,true],['シャンプー',2,false],['歯磨き粉',2,true],['ハンドソープ',2,false],['洗濯洗剤',3,false],['柔軟剤',3,true],['トイレットペーパー',3,false],['乾電池',4,true],['ティッシュ',4,true]];
@@ -948,7 +948,8 @@ async function runReceiptScan(){
   const scanWarnings=new Set();
   const reviewEvidence={itemSources:[],unresolvedRows:[],
    nameRetry:{attempted:0,suggested:0,imageReads:0,detectedRows:0,
-    nearbyRows:0,eligibleRows:0,preparationErrors:0,readErrors:0},
+    nearbyRows:0,eligibleRows:0,japaneseNearbyRows:0,shortJapaneseRows:0,
+    preparationErrors:0,readErrors:0},
    quantitySignals:{recognizedRows:0,linkedRows:0,unresolvedRows:0,fragmentRows:0,linkedItemNumbers:[]}};
   for(let i=0;i<scanPhotos.length;i++){
    if(token!==scanToken)return;
@@ -964,6 +965,8 @@ async function runReceiptScan(){
    for(const [key,metric] of [['imageReads','nameRetryImageReads'],
     ['detectedRows','nameRetryDetectedRows'],['nearbyRows','nameRetryNearbyRows'],
     ['eligibleRows','nameRetryEligibleRows'],
+    ['japaneseNearbyRows','nameRetryJapaneseNearbyRows'],
+    ['shortJapaneseRows','nameRetryShortJapaneseRows'],
     ['preparationErrors','nameRetryPreparationErrors'],['readErrors','nameRetryReadErrors']]){
     if(Number.isSafeInteger(out.metrics?.[metric])&&out.metrics[metric]>=0)
      reviewEvidence.nameRetry[key]+=out.metrics[metric];
