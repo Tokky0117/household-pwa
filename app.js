@@ -1,4 +1,4 @@
-const APP_VERSION='0.88.6';
+const APP_VERSION='0.88.7';
 const CATS=['飲食','キッチン','洗面・風呂','洗濯・掃除','その他'];
 const liveMode=!!window.KurashiLive; // Data source only; original Preview v46 UI components remain.
 const SEED=[['牛乳',0,true],['麦茶',0,false],['コーヒー',0,true],['卵',0,false],['キッチンペーパー',1,false],['ラップ',1,true],['食器用洗剤',1,true],['シャンプー',2,false],['歯磨き粉',2,true],['ハンドソープ',2,false],['洗濯洗剤',3,false],['柔軟剤',3,true],['トイレットペーパー',3,false],['乾電池',4,true],['ティッシュ',4,true]];
@@ -642,17 +642,23 @@ function scanSuggestionButtons(item,row){
    (linkedItemLabel(p)?' （日用品リスト：'+esc(linkedItemLabel(p))+'）':'')+'</button>').join('')+'</div>';
 }
 const scanDate=text=>{
- const pattern=/(?:^|[^\d])(?:20)?(2[0-9])\s*[\/-年.]\s*(0?[1-9]|1[0-2])\s*[\/-月.]\s*([0-2]?[0-9]|3[01])\s*日?(?!\d)/g;
- const matches=[...String(text).matchAll(pattern)];
- if(!matches.length)return '';
+ // Only explicit printed dates are evidence; no current-date fallback.
+ const source=String(text||'').normalize('NFKC');
+ const formats=[
+  {pattern:/(?:^|[^\p{Letter}\d])(20\d{2}|2\d)\s*[\/-年.]\s*(0?[1-9]|1[0-2])\s*[\/-月.]\s*([0-2]?\d|3[01])\s*日?(?![\p{Letter}\d])/gu,
+   year:token=>token.length===4?Number(token):2000+Number(token)},
+  {pattern:/(?:^|[^\p{Letter}\d])(?:令和|R\s*\.?\s*)(元|0?[1-9]|[1-9]\d)\s*[\/-年.]\s*(0?[1-9]|1[0-2])\s*[\/-月.]\s*([0-2]?\d|3[01])\s*日?(?![\p{Letter}\d])/giu,
+   year:token=>2018+(token==='元'?1:Number(token))}
+ ];
  const valid=new Set();
- for(const found of matches){
-  const y=2000+Number(found[1]),m=Number(found[2]),d=Number(found[3]);
+ for(const format of formats)for(const found of source.matchAll(format.pattern)){
+  const y=format.year(found[1]),m=Number(found[2]),d=Number(found[3]);
   const actual=new Date(y,m-1,d);
-  if(actual.getFullYear()!==y||actual.getMonth()!==m-1||actual.getDate()!==d)return '';
+  if(y<2000||y>2099||actual.getFullYear()!==y||
+   actual.getMonth()!==m-1||actual.getDate()!==d)return '';
   valid.add([y,String(m).padStart(2,'0'),String(d).padStart(2,'0')].join('-'));
  }
- // Two conflicting dates can belong to a second receipt; require review.
+ // Distinct dates might be another receipt. Never pick one arbitrarily.
  return valid.size===1?[...valid][0]:'';
 };
 function scanOptionsProduct(selected='',rawName=''){

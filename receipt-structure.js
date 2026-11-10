@@ -62,9 +62,9 @@
     pending=null;janPending=null;continue;
    }
    if(m=l.match(/^小計(?:金額)?\s*[¥]?\s*([\d,]+)$/)){subtotal=num(m[1]);summary=true;pending=null;janPending=null;continue;}
-   if(m=l.match(/^(?:(?:お|御)?買上(?:げ)?点数)\s*(\d{1,3})(?:\s*点)?(?:\s*\([A-Za-z0-9]{1,3}\))?$/)){printedCount=+m[1];printedCounts.push(printedCount);continue;}
+   if(m=l.match(/^(?:(?:お|御)?買上(?:げ)?点数|買上品数|購入点数)\s*[:：]?\s*(\d{1,3})(?:\s*点)?(?:\s*\([A-Za-z0-9]{1,3}\))?$/)){printedCount=+m[1];printedCounts.push(printedCount);continue;}
    // A truncated footer cannot become an extra merchandise item.
-   if(/^(?:(?:お|御)?買上(?:げ)?点数|買上品数)(?:\s*[:：]?)?$/.test(l)){
+   if(/^(?:(?:お|御)?買上(?:げ)?点数|買上品数|購入点数)(?:\s*[:：]?)?$/.test(l)){
     warn('unreadable_printed_count',ix);countPending=true;pending=null;continue;
    }
    if(m=l.match(/^(?:税\s*(8|10)\s*%|外税(?:額)?\s*(8|10)\s*%|消費税\s*(8|10)\s*%)\s*[¥￥]([\d,]+)$/)){
@@ -207,7 +207,7 @@
    const priced=lineRules.recognizePricedName(l,lines[i]);
    if(priced){
     const {raw,candidate,amount,firstGroup}=priced;
-    if(/^(?:(?:お|御)?買上(?:げ)?点数|買上品数)/.test(candidate)){
+    if(/^(?:(?:お|御)?買上(?:げ)?点数|買上品数|購入点数)/.test(candidate)){
      warn('unreadable_printed_count',ix);pending=null;continue;
     }
     // A stand-alone OCR fragment like "! ¥98" is a price, not a product.

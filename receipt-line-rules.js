@@ -66,7 +66,7 @@
   else if(janTaxPrice.test(text))role='jan_price';
   else if(/^(?:\*+\s*)?(?:合\s*計|お買上)\s*[¥\\]?\s*[\d,]+$/.test(text))role='total';
   else if(/^小計(?:金額)?\s*[¥]?\s*[\d,]+$/.test(text))role='subtotal';
-  else if(/^(?:(?:お|御)?買上(?:げ)?点数|買上品数)/.test(text))role='printed_count';
+  else if(/^(?:(?:お|御)?買上(?:げ)?点数|買上品数|購入点数)/.test(text))role='printed_count';
   else if(/値引|割引|^CPN$/i.test(text))role='discount';
   else if(quantityUnit.test(text)||quantityUnitKo.test(text)||quantityPrice.test(text)||ambiguousUnitRow.test(text)||janQuantityPrice.test(text))role='quantity';
   else if(/^[-−－]\s*[¥￥]?\s*[\d,]+(?:円)?$/.test(text))role='negative_amount';

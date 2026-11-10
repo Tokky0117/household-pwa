@@ -1096,6 +1096,16 @@ assert.equal(ui.scanDate('2026/11/03\n2026年11月3日'),'2026-11-03',
  'Repeated identical purchase dates are safe to use');
 assert.equal(ui.scanDate('2026/02/30\n2026/11/03'),'',
  'An invalid date alongside a valid date still needs review');
+assert.equal(ui.scanDate('令和8年10月12日(月) 15:03'),'2026-10-12');
+assert.equal(ui.scanDate('R08.10.12 15:03'),'2026-10-12');
+assert.equal(ui.scanDate('令和元年5月1日'),'2019-05-01');
+assert.equal(ui.scanDate('２０２６年１０月１２日'),'2026-10-12');
+assert.equal(ui.scanDate('2031/11/03'),'2031-11-03');
+assert.equal(ui.scanDate('2026年10月12日\n令和8年10月12日'),'2026-10-12');
+assert.equal(ui.scanDate('令和8年10月12日\n2026/10/13'),'');
+assert.equal(ui.scanDate('令和8年2月30日\n2026/03/01'),'');
+assert.equal(ui.scanDate('R8.10.12abc'),'');
+
 
 const layoutScript=readFileSync(new URL('../receipt-layout.js',import.meta.url),'utf8');
 const amountsScript=readFileSync(new URL('../receipt-amounts.js',import.meta.url),'utf8');
@@ -1168,7 +1178,7 @@ assert.equal(ui.getScanDraft().items[0].productId,'',
 ui.catalogue().products=beforeOcrCandidates;
 ui.setScanDraft(null);
 
-assert.ok(source.includes("const APP_VERSION='0.88.6'"),
+assert.ok(source.includes("const APP_VERSION='0.88.7'"),
  'app version advances with the OCR-name candidate matching improvement');
 assert.ok(source.includes('reviewEvidence.storeHeader={status:storeMatch.status'),
  'store matching diagnostic must distinguish OCR from registered name matching');
@@ -1232,6 +1242,16 @@ assert.equal(externalFixture.items.length,3,'discounts and a split printed-count
 assert.equal(structure.parse('品目A ¥100\n買上点数 ¥2\n合計 ¥100').items.length,1,
  'even an OCR-fragmented printed-count line with a price glyph is not merchandise');
 assert.equal(externalFixture.printedCount,4,'printed count can follow its label on a separate line');
+const countSpelling=structure.parse('※ 合成食品 ¥100\n購入点数：1点\n合計 ¥100');
+assert.equal(countSpelling.printedCount,1);
+assert.equal(countSpelling.items.length,1);
+assert.equal(roles.classifyLine('購入点数：1点').role,'printed_count');
+const separatedCount=structure.parse('※ 合成食品 ¥100\n購入点数\n1点\n合計 ¥100');
+assert.equal(separatedCount.printedCount,1);
+assert.equal(separatedCount.items.length,1);
+const contradictoryCount=structure.parse('商品A ¥100\n買上点数 1\n購入点数：2点\n合計 ¥100');
+assert.equal(contradictoryCount.printedCount,null);
+assert.equal(structure.parse('商品A ¥100\n購入点数 ¥2\n合計 ¥100').items.length,1);
 assert.deepEqual(Array.from(externalFixture.items,x=>x.netAmount),[88,115,194],
  'item net amounts include each adjacent category discount');
 assert.equal(externalFixture.taxBasis,'excluded');
@@ -1754,7 +1774,7 @@ assert.ok(!JSON.stringify(p4Rebuild).includes('ocr-p4'),
 console.log('P4 common review adapter, provenance, row identity and P2 validation OK');
 
 // v0.73: Receipt OCR review information hierarchy; preserve validation/confirmation.
-assert.ok(source.includes("const APP_VERSION='0.88.6'"), 'UI review revision version is current');
+assert.ok(source.includes("const APP_VERSION='0.88.7'"), 'UI review revision version is current');
 assert.ok(source.includes("UI.sectionHeading({title:'読み取り状況'})"), 'OCR and ChatGPT appear under one section');
 assert.ok(source.includes("UI.sectionHeading({title:isShelf?'値札情報':'購入情報'})"), 'Receipt OCR review groups store and purchase date');
 assert.ok(source.includes("UI.sectionHeading({title:isShelf?'価格情報':'購入明細',subtitle:scanDraft.items.length+'件'+"), 'Receipt OCR review identifies item list and unmatched count');
