@@ -1178,8 +1178,11 @@ assert.equal(ui.getScanDraft().items[0].productId,'',
 ui.catalogue().products=beforeOcrCandidates;
 ui.setScanDraft(null);
 
-assert.ok(source.includes("const APP_VERSION='0.88.7'"),
- 'app version advances with the OCR-name candidate matching improvement');
+const declaredVersion=source.match(/^const APP_VERSION='(\\d+)\\.(\\d+)\\.(\\d+)';/m);
+assert.ok(declaredVersion&&
+ (Number(declaredVersion[1])>0||Number(declaredVersion[2])>88||
+ (Number(declaredVersion[2])===88&&Number(declaredVersion[3])>=7)),
+ 'app version must not regress below the verified OCR-name candidate release');
 assert.ok(source.includes('reviewEvidence.storeHeader={status:storeMatch.status'),
  'store matching diagnostic must distinguish OCR from registered name matching');
 const engineEntry=readFileSync(new URL('../ocr-lab/engine-entry.js',import.meta.url),'utf8');
