@@ -79,7 +79,10 @@ function fromOcrItem(item,{rowId,taxBasis}={}){
   const excluded=taxBasis==='excluded'&&validAmount(item.netAmount)?item.netAmount:null;
   return {
    name:printedName,ocrRawName:printedName,ocrRowId:rowId,
-   quantity:uncertain?1:item.quantity,quantityUncertain:uncertain,
+   // Keep a mathematically supported OCR quantity candidate visible, but
+   // never promote an ambiguous glyph to a verified printed quantity.
+   // Replacing every uncertain quantity with 1 hid the candidate in R04.
+   quantity:validQuantity(item.quantity)?item.quantity:1,quantityUncertain:uncertain,
    amount:price,taxExcludedAmount:excluded,ocrDiscount:item.discount||0,
    allocatedTax:item.allocatedTax??null,taxRate:item.taxRate??null,
    taxCalculation:item.taxCalculation||null,

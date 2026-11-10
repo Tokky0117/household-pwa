@@ -1129,8 +1129,8 @@ assert.ok(source.includes('reviewEvidence.quantitySignals.recognizedRows+=qtyRol
  'quantity row evidence must be counted separately from item quantity');
 assert.ok(source.includes('reviewEvidence.quantitySignals.linkedItemNumbers.push(itemOffset+itemIndex+1)'),
  'quantity row diagnosis retains only numeric OCR item order');
-assert.ok(source.includes("const APP_VERSION='0.87.7'"),
- 'app version is advanced for the newly deployed receipt diagnosis');
+assert.ok(source.includes("const APP_VERSION='0.87.8'"),
+ 'app version is advanced for the retained uncertain OCR quantity candidate');
 assert.ok(source.includes('reviewEvidence.storeHeader={status:storeMatch.status'),
  'store matching diagnostic must distinguish OCR from registered name matching');
 const engineEntry=readFileSync(new URL('../ocr-lab/engine-entry.js',import.meta.url),'utf8');
@@ -1596,6 +1596,32 @@ assert.equal(pricedInlineQuantity.items[0].quantity,2,
 assert.equal(pricedInlineQuantity.items[0].unitPrice,105);
 assert.deepEqual(Array.from(pricedInlineQuantity.items[0].sourceLines),[1,2]);
 assert.equal(pricedInlineQuantity.validation.checks.count,'match');
+// An OCR-deformed quantity glyph may still support a candidate via
+// independent quantity × unit-price = line-total evidence. Keep that value
+// visible in the editor, but require explicit confirmation.
+const ambiguousPotato=structure.parse('ばれいしょ\n210×単105 ¥210\nレジ袋大 ¥5\n合計 ¥215\nお買上点数 3');
+assert.equal(ambiguousPotato.items.length,2);
+assert.equal(ambiguousPotato.items[0].quantity,2);
+assert.equal(ambiguousPotato.items[0].quantitySource,'inferred_candidate');
+assert.equal(ambiguousPotato.items[0].grossAmount,210);
+assert.equal(ambiguousPotato.items[1].quantity,1,
+ 'the bag remains a separate purchased item');
+assert.equal(ambiguousPotato.validation.checks.count,'match');
+assert.equal(ambiguousPotato.validation.checks.printedQuantity,'unknown',
+ 'matching the printed count cannot certify the OCR-deformed quantity');
+const potatoDraft=review.fromOcrItem(ambiguousPotato.items[0],{rowId:'potato-ocr',taxBasis:'included'});
+const bagDraft=review.fromOcrItem(ambiguousPotato.items[1],{rowId:'bag-ocr',taxBasis:'included'});
+assert.equal(potatoDraft.quantity,2,
+ 'the UI must not overwrite a supported candidate quantity with 1');
+assert.equal(potatoDraft.quantityUncertain,true,
+ 'the OCR-deformed quantity still requires review');
+assert.equal(potatoDraft.quantityOrigin,'ocr-candidate');
+const potatoReview=review.evaluateDraft({source:'ocr',printedCount:3,total:215,
+ items:[potatoDraft,bagDraft]});
+assert.equal(potatoReview.checks.count,'match');
+assert.equal(potatoReview.quantityVerified,false,
+ 'numeric agreement is not user confirmation');
+
 const invalidInlineQuantity=structure.parse('商品A ¥210\n2コ×単105 ¥211\n合計 ¥210');
 assert.equal(invalidInlineQuantity.items[0].quantity,1,
  'mismatched multiplication does not replace the original quantity');
@@ -1681,7 +1707,7 @@ assert.ok(!JSON.stringify(p4Rebuild).includes('ocr-p4'),
 console.log('P4 common review adapter, provenance, row identity and P2 validation OK');
 
 // v0.73: Receipt OCR review information hierarchy; preserve validation/confirmation.
-assert.ok(source.includes("const APP_VERSION='0.87.7'"), 'UI review revision version is current');
+assert.ok(source.includes("const APP_VERSION='0.87.8'"), 'UI review revision version is current');
 assert.ok(source.includes("UI.sectionHeading({title:'読み取り状況'})"), 'OCR and ChatGPT appear under one section');
 assert.ok(source.includes("UI.sectionHeading({title:isShelf?'値札情報':'購入情報'})"), 'Receipt OCR review groups store and purchase date');
 assert.ok(source.includes("UI.sectionHeading({title:isShelf?'価格情報':'購入明細',subtitle:scanDraft.items.length+'件'+"), 'Receipt OCR review identifies item list and unmatched count');
