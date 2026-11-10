@@ -1,3 +1,35 @@
+# くらしストック｜現行開発版 v0.88.10
+
+家庭用の日用品・購入履歴を夫婦2人の端末で共有するPWAです。
+
+**現行仕様の正本は [CURRENT_REQUIREMENTS.md](CURRENT_REQUIREMENTS.md) です。** 下記の古い試作履歴ではなく、次の文書と実装を参照してください。
+
+- [現行要件定義](CURRENT_REQUIREMENTS.md)：機能範囲、データと同期、本番受入条件
+- [本番環境セットアップ](PRODUCTION_SETUP.md)：**`main` を本番、`preview-v46-clean-base` を開発・試験にする手順**
+- [保存・同期設計](OPERATION_QUEUE.md)：IndexedDB操作キュー、GAS、Google Sheets
+- [データモデル](DATA_MODEL.md)、[画面仕様](SCREEN_UI_SPEC.md)
+- [GitHub Actions](.github/workflows/pages-previews.yml)：静的PWAの回帰テストと配信
+
+## 現行実装
+
+- 日用品の登録・在庫切替・非表示・並べ替え、商品マスタ・店舗・OCR辞書・価格比較
+- レシートOCR、写真とChatGPT解析結果の確認、手入力／値札、購入履歴の編集・削除
+- ローカルIndexedDBに操作を永続保存し、GASを通じて共有Google Sheetsへ非同期反映
+- オフライン→再起動→同期復旧、2端末模擬試験、操作IDの重複適用防止
+- 同じレシートの競合編集・削除は自動上書きせず保留し、内容のコピーと明示的な取り消しを提供
+
+## リリースと現在の状態
+
+- **開発版**：https://tokky0117.github.io/household-pwa/previews/preview-v46-clean-base/
+- **本番予定**：https://tokky0117.github.io/household-pwa/ （`main`）
+- 本番用GAS・Google Sheetsは**まだ新規作成・接続されていません**。試験版の保存先を本番に流用しません。
+- 認証はユーザー指定により一時省略（`temporary-household`）。GAS URLを知る者によるアクセスを制限できない構成です。
+- OCRの実写真精度と夫婦2台の実iPhone接続は、モック自動テストの合格とは別途受入が必要です。
+
+---
+
+## 以下は過去の試作履歴（現行要件・実装状態を表しません）
+
 # くらしストック｜Preview v29（v1.8試作）
  
 > **現行試作：v0.69.0（2026-11-04）**。開発ブランチ `preview-v46-clean-base`。3タブ（日用品／レシート／設定）、既存GAS・Google Sheets同期、写真OCRの原表記を表示専用化、数量不明時の黄色い「1」、OCR後のChatGPT商品名候補を実装。仕様は [画面仕様](./SCREEN_UI_SPEC.md)・[データモデル](./DATA_MODEL.md)・[同期・レシート設計](./OPERATION_QUEUE.md) を参照。実iPhoneでの写真OCR受入とGoogleログインによる利用者制限は未完了です。以下のv29の説明は履歴です。
