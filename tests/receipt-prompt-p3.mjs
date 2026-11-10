@@ -64,3 +64,57 @@ const diag=JSON.parse(review.ocrReference(barcode,()=>null));
 assert.equal(diag.nameLinkDiagnostics[0].status,'nearby-text-not-name');
 assert.ok(imports.makeChatGptOcrAssistPrompt(JSON.stringify(diag)).includes('近傍文字行2'));
 console.log('P3: readable reference and concise photo-first prompt contract OK');
+
+// R04/R06 use anonymized numerical baselines only; no actual receipt text or IDs.
+const baseline=JSON.parse(readFileSync(new URL('./receipt-baseline.json',import.meta.url),'utf8'));
+const getCase=id=>baseline.cases.find(x=>x.id===id);
+function anonymousOcrDraft(c,{taxBasis,allocatedTaxes=null}){
+ return {source:'ocr',taxBasis,total:c.gold.total,printedCount:c.gold.printedCount,
+  items:c.ocrSnapshot.amounts.map((amount,i)=>({
+   ocrRowId:'anon-'+c.id.toLowerCase()+'-'+(i+1),
+   ocrRawName:'匿名品目'+(i+1),quantity:c.ocrSnapshot.quantities[i],
+   quantityUncertain:true,amount,amountOrigin:allocatedTaxes?'allocated':'ocr-parsed',
+   taxExcludedAmount:allocatedTaxes?c.gold.tax.netAmounts[i]:null,
+   allocatedTax:allocatedTaxes?allocatedTaxes[i]:null
+  }))};
+}
+function assistFromBaseline(c,draft){
+ return {version:'kurashi-receipt-assist-1',items:draft.items.map((item,i)=>({
+  rowId:item.ocrRowId,ocrName:item.ocrRawName,nameCandidate:null,
+  quantity:c.gold.quantities[i],amount:c.gold.amounts[i]
+ }))};
+}
+const importOptions={findProduct:()=>'',isUnconfirmedBarcodeLine:()=>false};
+const case4=getCase('R04');
+const draft4=anonymousOcrDraft(case4,{taxBasis:'included'});
+const json4=assistFromBaseline(case4,draft4);
+const imported4=imports.parseChatGptOcrResponse(
+ fence+'json\n'+JSON.stringify(json4)+'\n'+fence+'\n\nOCR診断：匿名化R04');
+const merged4=review.applyAssistance(draft4,imported4,importOptions);
+assert.equal(merged4.items.length,14,'R04 assist must not rebuild rows');
+assert.equal(merged4.items[10].quantity,2,'R04 printed 2-pack corrects OCR default 1');
+assert.equal(merged4.items[10].quantityOrigin,'chatgpt-photo-candidate');
+assert.equal(merged4.items.reduce((n,x)=>n+x.quantity,0),15);
+assert.equal(merged4.items.reduce((n,x)=>n+x.amount,0),2920);
+assert.equal(review.buildReviewModel(merged4).validation.checks.total,'match');
+assert.equal(draft4.items[10].quantity,1,'OCR source remains unchanged');
+const case6=getCase('R06');
+const draft6=anonymousOcrDraft(case6,{taxBasis:'excluded',allocatedTaxes:[11,2,36]});
+const json6=assistFromBaseline(case6,draft6);
+const merged6=review.applyAssistance(draft6,
+ imports.parseChatGptOcrResponse(JSON.stringify(json6)),importOptions);
+assert.equal(merged6.items.length,3);
+assert.equal(merged6.items.reduce((n,x)=>n+x.quantity,0),7);
+assert.equal(merged6.items.reduce((n,x)=>n+x.amount,0),672);
+assert.ok(merged6.items.every(x=>x.amountOrigin==='allocated'),
+ 'unchanged external-tax allocated amounts retain calculated provenance');
+assert.deepEqual(Array.from(merged6.items,x=>x.allocatedTax),[11,2,36]);
+assert.ok(review.buildReviewModel(merged6).items.every(x=>x.amount.origin==='allocated'));
+const adjusted6={...json6,items:json6.items.map(x=>({...x}))};
+adjusted6.items[0].amount=156;
+const altered6=review.applyAssistance(draft6,adjusted6,importOptions);
+assert.equal(altered6.items[0].amountOrigin,'chatgpt-photo-candidate',
+ 'changed allocated amount is no longer the previous calculated value');
+assert.equal(review.buildReviewModel(altered6).validation.checks.total,'mismatch');
+console.log('R04/R06 anonymized ChatGPT assist import and allocated provenance OK');
+

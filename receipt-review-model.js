@@ -106,8 +106,13 @@ function fromOcrItem(item,{rowId,taxBasis}={}){
     item.productId='';next.unmatchedCount++;
    }
    if(validAmount(proposedLine.amount)){
+    // Re-confirming the same allocated total must not turn a calculated
+    // tax-inclusive value into a supposedly photo-printed item amount.
+    // A changed figure is a new photo candidate, not the old allocation.
+    const unchangedAllocation=item.amountOrigin==='allocated'&&
+     validAmount(Number(item.amount))&&Number(item.amount)===proposedLine.amount;
     item.amount=proposedLine.amount;
-    item.amountOrigin='chatgpt-photo-candidate';
+    item.amountOrigin=unchangedAllocation?'allocated':'chatgpt-photo-candidate';
     item.issues=(item.issues||[]).filter(x=>x!=='税込金額を原本で確認');
    }
    if(validQuantity(proposedLine.quantity)){
