@@ -59,14 +59,14 @@ assert.ok(!css.includes('grid-template-areas:"name value" "name date"'),'Obsolet
 assert.ok(ui.listView().includes('data-stock=')&&ui.listView().includes('data-list-edit='),'Stock and swipe list preserved');
 assert.ok(ui.listView().includes('class="ui-search"')&&ui.listView().includes('id="search"'),'Daily list uses shared search component');
 assert.ok(source.includes('iconButton({label,action,iconHtml,title=')&&
- source.includes("const copy=UI.iconButton(")&&source.includes("const add=UI.iconButton(")&&
+ source.includes("const add=UI.iconButton(")&&
  source.includes("registration.map(x=>UI.button("),
- 'Daily header icons and receipt entry actions use shared builders');
-assert.ok(ui.listView().includes('data-act="copyList" aria-label="在庫なしをコピー"')&&
+ 'Daily add action and receipt entry actions use shared builders');
+assert.ok(!ui.listView().includes('data-act="copyList"')&&
  ui.listView().includes('data-act="add" aria-label="日用品を追加"')&&
  source.includes("label:'レシート読取'")&&
  ui.detailHomeView().includes('data-act="newReceipt"'),
- 'Common action builders preserve existing user labels and event hooks');
+ 'Retained action builders preserve existing user labels without inventory copy');
 assert.ok(!ui.listView().includes('※ 価格・店舗はサンプル'),'Daily list no longer shows temporary sample notice');
 
 const masterListing=ui.masterProductsView();
@@ -275,7 +275,7 @@ let listWithHelp=ui.listView();
 assert.ok(listWithHelp.indexOf('class="list-help"')>listWithHelp.indexOf('id="item-results"'),'Usage guide follows category list');
 assert.ok(listWithHelp.includes('aria-expanded="true"')&&listWithHelp.includes('id="list-help-content"'),'Guide accessible expanded state');
 assert.ok(listWithHelp.includes('日用品名を押して価格情報を確認')&&listWithHelp.includes('左スワイプで編集・削除')&&listWithHelp.includes('長押しして上下に並び替え'),'Guide covers non-obvious actions');
-assert.ok(listWithHelp.includes('右上の＋で日用品を追加')&&listWithHelp.includes('在庫なしをコピー'),'Guide covers add and copy actions');
+assert.ok(listWithHelp.includes('右上の＋で日用品を追加')&&!listWithHelp.includes('在庫なしをコピー'),'Guide explains the add action but not removed copying');
 assert.ok(css.includes('.list-help-toggle{')&&css.includes('min-height:44px'),'Accordion has shared accessible tap target');
 storage.set('household_pwa_list_help_open_v1','false');
 assert.equal(ui.readListHelpOpen(),false,'Collapsed state is restored from device storage');
@@ -519,7 +519,7 @@ assert.ok(source.includes('function fieldNotice(form,message,fieldId)'),'Persist
 assert.ok(css.includes('.ui-field-notice{'),'Field error styling');
 
 assert.ok(source.includes('function inlineActionNotice(anchor,message)'),'Inline feedback helper exists');
-assert.ok(source.includes("say('在庫なしをコピーしました'"),'Clipboard success feedback stays');
+assert.ok(!source.includes("say('在庫なしをコピーしました'")&&!source.includes("if(action==='copyList')"),'Removed inventory copying has no stale handler or feedback');
 assert.ok(!source.includes("say('表示順を保存しました'")&&!source.includes("say('商品を登録しました'"),'Redundant success toasts removed');
 assert.ok(source.includes("inlineActionNotice(el,'この商品は登録済みです')"),'Duplicate product notice by candidate');
 assert.ok(css.includes('.ui-action-notice-floating'),'Header feedback stays separate from layout');
