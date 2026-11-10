@@ -558,6 +558,13 @@ assert.ok(serviceWorker.includes("'./receipt-review-model.js'"),
  'P4 offline cache preloads the review adapter');
 assert.ok(serviceWorker.includes("'./receipt-validation.js'"),
  'P2 offline cache preloads the shared validation script');
+assert.ok(serviceWorker.includes('name.startsWith(SCOPE_CACHE_PREFIX)')&&
+ serviceWorker.includes("cache.match(event.request,{ignoreSearch:true})"),
+ 'Production and preview cache cleanup is scope-specific; versioned scripts remain available offline');
+assert.ok(previewWorkflow.includes('copy_site refs/remotes/origin/main _site')&&
+ previewWorkflow.includes('node scripts/build-production.mjs "_site/live-client.js"')&&
+ !previewWorkflow.includes('_site/production'),
+ 'The release is built from main at root, not from an intermediate production-v1 directory');
 assert.equal((indexHtml.match(/id="receipt-source-picker"/g)||[]).length,1);
 assert.equal((indexHtml.match(/id="scan-add-picker"/g)||[]).length,1);
 assert.ok(!ui.receiptScanView().includes('id="scan-add-picker"'));
