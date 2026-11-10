@@ -1127,6 +1127,10 @@ assert.equal(afterGeometry.checks.itemIntegrity,'unknown',
 assert.ok(afterGeometry.blockers.some(x=>x.code==='商品コードと商品名の対応を確認'));
 assert.ok(source.includes('reviewEvidence.quantitySignals.recognizedRows+=qtyRoleLines.size'),
  'quantity row evidence must be counted separately from item quantity');
+assert.ok(source.includes('reviewEvidence.quantitySignals.linkedItemNumbers.push(itemOffset+itemIndex+1)'),
+ 'quantity row diagnosis retains only numeric OCR item order');
+assert.ok(source.includes("const APP_VERSION='0.87.7'"),
+ 'app version is advanced for the newly deployed receipt diagnosis');
 assert.ok(source.includes('reviewEvidence.storeHeader={status:storeMatch.status'),
  'store matching diagnostic must distinguish OCR from registered name matching');
 const engineEntry=readFileSync(new URL('../ocr-lab/engine-entry.js',import.meta.url),'utf8');

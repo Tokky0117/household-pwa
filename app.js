@@ -1,4 +1,4 @@
-const APP_VERSION='0.87.6';
+const APP_VERSION='0.87.7';
 const CATS=['飲食','キッチン','洗面・風呂','洗濯・掃除','その他'];
 const liveMode=!!window.KurashiLive; // Data source only; original Preview v46 UI components remain.
 const SEED=[['牛乳',0,true],['麦茶',0,false],['コーヒー',0,true],['卵',0,false],['キッチンペーパー',1,false],['ラップ',1,true],['食器用洗剤',1,true],['シャンプー',2,false],['歯磨き粉',2,true],['ハンドソープ',2,false],['洗濯洗剤',3,false],['柔軟剤',3,true],['トイレットペーパー',3,false],['乾電池',4,true],['ティッシュ',4,true]];
@@ -926,7 +926,7 @@ async function runReceiptScan(){
   const observations=[],allItems=[],receiptTotals=[],taxModes=[],allocationModes=[],allocationReasons=[],taxDiagnostics=[],taxInferredModes=[],taxRateCandidateModes=[];let total=null,printedCount=null;
   const scanWarnings=new Set();
   const reviewEvidence={itemSources:[],unresolvedRows:[],
-   quantitySignals:{recognizedRows:0,linkedRows:0,unresolvedRows:0,fragmentRows:0}};
+   quantitySignals:{recognizedRows:0,linkedRows:0,unresolvedRows:0,fragmentRows:0,linkedItemNumbers:[]}};
   for(let i=0;i<scanPhotos.length;i++){
    if(token!==scanToken)return;
    scanStatus='写真'+(i+1)+'/'+scanPhotos.length+'を読み取り中…';
@@ -941,6 +941,13 @@ async function runReceiptScan(){
     (item.sourceLines||[]).filter(line=>qtyRoleLines.has(line))));
    reviewEvidence.quantitySignals.recognizedRows+=qtyRoleLines.size;
    reviewEvidence.quantitySignals.linkedRows+=linkedQuantityLines.size;
+   // Count-only item positions tell which OCR row received quantity evidence.
+   // Store no source OCR text, product name or recognized numeral.
+   const itemOffset=allItems.length;
+   for(const [itemIndex,item] of out.parsed.items.entries()){
+    if((item.sourceLines||[]).some(line=>linkedQuantityLines.has(line)))
+     reviewEvidence.quantitySignals.linkedItemNumbers.push(itemOffset+itemIndex+1);
+   }
    reviewEvidence.quantitySignals.unresolvedRows+=(out.parsed.unresolvedRows||[])
     .filter(row=>qtyRoleLines.has(row.line)).length;
    reviewEvidence.quantitySignals.fragmentRows+=String(out.text||'').split(/\r?\n/)

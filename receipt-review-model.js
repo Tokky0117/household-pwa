@@ -37,7 +37,11 @@ function ocrReference(draft,chainLabel){
    recognizedRows:numeric(draft.reviewEvidence.quantitySignals.recognizedRows),
    linkedRows:numeric(draft.reviewEvidence.quantitySignals.linkedRows),
    unresolvedRows:numeric(draft.reviewEvidence.quantitySignals.unresolvedRows),
-   fragmentRows:numeric(draft.reviewEvidence.quantitySignals.fragmentRows)
+   fragmentRows:numeric(draft.reviewEvidence.quantitySignals.fragmentRows),
+   ...(Array.isArray(draft.reviewEvidence.quantitySignals.linkedItemNumbers)?{
+    linkedItemNumbers:draft.reviewEvidence.quantitySignals.linkedItemNumbers
+     .filter(x=>Number.isSafeInteger(x)&&x>=1&&x<=rows.length).slice(0,100)
+   }:{})
   }:null,
   storeMatchDiagnostics:draft?.reviewEvidence?.storeHeader?{
    status:['matched','ambiguous','no-registered-match','no-header']

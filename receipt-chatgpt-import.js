@@ -409,7 +409,12 @@ function makeChatGptOcrAssistPrompt(ocrReference){
    '行 / 明細への対応='+show(r.quantitySignals.linkedRows)+
    '行 / 未対応='+show(r.quantitySignals.unresolvedRows)+
    '行 / 数量×単価の文字候補='+show(r.quantitySignals.fragmentRows)+
-   '行（いずれもOCR候補で、写真の確認ではない）']:[]),
+   '行（いずれもOCR候補で、写真の確認ではない）',
+   ...(Array.isArray(r.quantitySignals.linkedItemNumbers)?
+    ['数量行を結合したOCR明細番号：'+
+     (r.quantitySignals.linkedItemNumbers.length?
+      r.quantitySignals.linkedItemNumbers.join('、'):'なし')+
+     '（番号は上記OCR明細の順番。数量が正しいことを意味しない）']:[])]:[]),
   ...(r.storeMatchDiagnostics?['OCR店舗照合診断：'+
    (storeStatus[r.storeMatchDiagnostics.status]||'状態不明')+
    ' / 上部の英字候補='+show(r.storeMatchDiagnostics.headerLatinCandidates)+
