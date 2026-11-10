@@ -1093,7 +1093,7 @@
       // Preserve the entire durable operation and stop until reviewed.
       const message='レシートが別の端末で変更されています。自動上書きを避けるため、この端末の未反映操作を保留しました。';
       await modify(ws=>{
-       if(ws.queue[0]?.id===op.id)ws.blocked={id:op.id,message};
+       if(ws.queue[0]?.id===op.id)ws.blocked={id:op.id,reason:'RECORD_CONFLICT',message};
        return ws;
       });
       error=message;notify();return;
@@ -1151,8 +1151,60 @@
   }).catch(e=>{error=e.message||'同期に失敗しました';notify()});
   return task;
  }
+ // Keep rejected whole-receipt edits/deletes in IndexedDB until the
+ // user has copied the intent and explicitly chosen to discard it.
+ function blockedReceiptChange(){
+  const op=workspace.queue[0],blocked=workspace.blocked;
+  if(!op||blocked?.id!==op.id||blocked.reason!=='RECORD_CONFLICT'||
+     !['record-update','record-delete'].includes(op.kind))return null;
+  const original=workspace.base?.records.find(r=>r.record_id===op.targetId);
+  const store=workspace.base?.stores.find(s=>s.chain_id===op.chainId);
+  const kind=op.kind==='record-update'?'edit':'delete';
+  const lines=[
+   'くらしストック｜他の端末と競合した未反映の記録',
+   '操作：'+(kind==='edit'?'レシートの編集':'レシートの削除'),
+   'レシートID：'+op.targetId,
+   '購入日：'+(op.date||original?.record_date||''),
+   '店舗：'+(store?.canonical_name||op.chainId||''),
+   '支店：'+(op.branchName||'')
+  ];
+  if(kind==='edit'){
+   lines.push('明細（この端末に保存されていた内容）：');
+   (op.items||[]).forEach((line,i)=>lines.push(
+    String(i+1)+'. '+(line.confirmed_name||line.raw_name||'明細名なし')+
+    '／数量 '+line.quantity+'／税込明細合計 '+line.amount_tax_included+'円'+
+    (line.product_id?'／商品ID '+line.product_id:'')+
+    (line.inferred_name?'／推定名 '+line.inferred_name:'')
+   ));
+  }
+  return {kind,recordId:op.targetId,text:lines.join('\n')};
+ }
+ async function discardBlockedReceipt(){
+  await boot();
+  const held=blockedReceiptChange();
+  if(!held)throw Error('取り消せる競合レシートがありません');
+  const oldId=workspace.queue[0].id;
+  // Fetch first. If offline, leave both the original draft and queue intact.
+  const latest=validateSnapshot(await request('bootstrap'));
+  await modify(ws=>{
+   if(ws.queue[0]?.id!==oldId||ws.blocked?.id!==oldId||
+      ws.blocked.reason!=='RECORD_CONFLICT'||
+      ws.queue[0].targetId!==held.recordId)throw Error('QUEUE_CHANGED');
+   if(ws.base&&ws.base.household_id!==latest.household_id)
+    throw Error('HOUSEHOLD_CHANGED');
+   ws.queue.shift();
+   ws.blocked=null;
+   ws.base=latest;
+   return ws;
+  });
+  error='';lastSync=Date.now();notify();
+  if(workspace.queue.length)void flush();
+  return true;
+ }
+
  async function retry(){
   await boot();
+  if(workspace.blocked?.reason==='RECORD_CONFLICT')return false;
   if(workspace.blocked)await modify(ws=>({...ws,blocked:null}));
   clearTimeout(retryTimer);retryTimer=null;retryMs=3000;
   return flush();
@@ -1192,7 +1244,7 @@
    else void load();
   }).catch(e=>{error=e.message||'端末内の保存領域を開けません';notify()});
  };
- window.KurashiLive={state,load,save,saveRecord,updateRecord,deleteRecord,learnAliases,linkAlias,learnStoreAlias,
+ window.KurashiLive={state,load,save,saveRecord,updateRecord,deleteRecord,blockedReceiptChange,discardBlockedReceipt,learnAliases,linkAlias,learnStoreAlias,
   saveReceiptDraft,loadReceiptDraft,saveOcrCorrections,loadOcrCorrections,toggleStock,reorderItems,reorderProducts,retry,logout,renderLogin,
   subscribe:fn=>{listeners.add(fn);return()=>listeners.delete(fn)},itemsOf,catalogueOf};
  window.addEventListener('kurashi-gis-ready',initialize);
