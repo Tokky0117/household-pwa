@@ -241,6 +241,10 @@ const clickStock=dom=>{
 };
 let a=appSession();
 await waitFor(()=>a.window.KurashiLive.state().loaded&&pill(a)==='あり','first Sheets bootstrap');
+assert.equal(a.window.document.querySelector('[data-act="copyList"]'),null,
+ 'the inventory header no longer exposes the removed copy action');
+assert.ok(!a.window.document.querySelector('.list-help')?.textContent.includes('左上のコピー'),
+ 'inventory help no longer advertises the removed copy action');
 // Each offline tap saves to IndexedDB and flips the same DOM button immediately.
 online=false;
 const sameStockButton=a.window.document.querySelector('[data-stock="'+id+'"]');
@@ -2865,3 +2869,47 @@ assert.equal(optionalForm.querySelector('[name="name-1"]')?.required,false);
 optionalUI.window.close();
 console.log('v0.84: optional unnamed receipt detail UI -> queue -> GAS -> history -> edit OK');
 
+
+
+// Two truly independent client stores, one shared GAS mock: simultaneous offline
+// edits to the same stock item must serialize and rebase without lost intentions.
+const concurrentA=appSession(new IDBFactory());
+const concurrentB=appSession(new IDBFactory());
+await waitFor(()=>[concurrentA,concurrentB].every(phone=>
+  phone.window.KurashiLive.state().loaded&&!phone.window.KurashiLive.state().cached),
+ 'both independent devices bootstrap the shared Sheets snapshot');
+const sharedBefore=temp.call('bootstrap').data.item_groups.find(x=>x.item_group_id===id);
+assert.ok(sharedBefore,'the same stock item exists on the server for both devices');
+const sharedStartVersion=Number(sharedBefore.version);
+const sharedDesired=!Boolean(sharedBefore.in_stock);
+online=false;
+const aIntent=await concurrentA.window.KurashiLive.toggleStock(id);
+const bIntent=await concurrentB.window.KurashiLive.toggleStock(id);
+assert.equal(aIntent.in_stock,sharedDesired);
+assert.equal(bIntent.in_stock,sharedDesired);
+assert.equal(concurrentA.window.KurashiLive.state().queued,1);
+assert.equal(concurrentB.window.KurashiLive.state().queued,1);
+assert.equal(Number(temp.call('bootstrap').data.item_groups.find(x=>
+ x.item_group_id===id).version),sharedStartVersion,'offline taps leave Sheets unchanged');
+await waitFor(()=>!concurrentA.window.KurashiLive.state().syncing&&
+ !concurrentB.window.KurashiLive.state().syncing,
+ 'both offline requests remain committed only in their independent stores');
+online=true;
+await concurrentA.window.KurashiLive.retry();
+await waitFor(()=>concurrentA.window.KurashiLive.state().queued===0&&
+ Number(temp.call('bootstrap').data.item_groups.find(x=>
+ x.item_group_id===id).version)===sharedStartVersion+1,
+ 'first device commits while the other remains on an old version');
+await concurrentB.window.KurashiLive.retry();
+await waitFor(()=>concurrentB.window.KurashiLive.state().queued===0,
+ 'second device rebases after its stale version is rejected');
+const sharedAfter=temp.call('bootstrap').data.item_groups.find(x=>x.item_group_id===id);
+assert.equal(sharedAfter.in_stock,sharedDesired,'both device intentions converge');
+assert.equal(Number(sharedAfter.version),sharedStartVersion+2,
+ 'both independently queued updates are committed exactly once');
+assert.equal(await concurrentA.window.KurashiLive.load(),true);
+assert.equal(await concurrentB.window.KurashiLive.load(),true);
+assert.equal(concurrentA.window.KurashiLive.state().queued,0);
+assert.equal(concurrentB.window.KurashiLive.state().queued,0);
+concurrentA.window.close();concurrentB.window.close();
+console.log('v0.88.8: independent device IndexedDB stores, same-item conflict rebase and shared Sheets convergence OK');
