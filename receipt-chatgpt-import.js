@@ -363,6 +363,10 @@ function makeChatGptOcrAssistPrompt(ocrReference){
   return (i+1)+'. 行ID='+x.rowId+' / OCR名='+JSON.stringify(x.ocrName)+
    ' / 数量='+qty+' / '+amount;
  });
+ const quantityCandidates=r.items.every(x=>Number.isSafeInteger(x.quantity)&&x.quantity>0)?
+  r.items.reduce((sum,x)=>sum+x.quantity,0):null;
+ const countMismatch=Number.isSafeInteger(r.printedCount)&&quantityCandidates!==null&&
+  r.printedCount!==quantityCandidates;
  const diagnostics=(r.nameLinkDiagnostics||[]).map(x=>x.rowId+'：'+
   show(x.status)+'（近傍文字行'+show(x.nearbyTextRows)+
   '、名前候補'+show(x.eligibleNameRows)+'）');
@@ -379,7 +383,7 @@ function makeChatGptOcrAssistPrompt(ocrReference){
   '',
   '【独立した検算】',
   '購入商品と商品コード行、値引きやクーポン、税額、ポイント、決済情報、小計・合計を区別する。同じ商品が別行なら統合せず、商品名中の内容量を購入数量と誤認しない。',
-  '値引き後の明細金額、数量合計と印字点数、税率別の課税対象額・税額・印字合計を照合する。税や値引きを二重計上せず、ポイント支払は商品値引きにしない。',
+  '値引き後の明細金額、数量合計と印字点数、税率別の課税対象額・税額・印字合計を照合する。数量1が仮値の場合は写真の数量・単価行を調べ、数量差だけで商品や個数を推測しない。税や値引きを二重計上せず、ポイント支払は商品値引きにしない。',
   '商品別税込額が印字されない外税レシートで、値引き後税抜明細額と税率別印字税額が確定していれば、税率ごとに税抜金額比で配賦し、端数は最大剰余法（同点は印字順）で割り当てる。全額を検算した商品別税込額は計算値として使用可。印字額と偽らず、根拠が不足する額はnull。',
   '',
   '【2種類のJSONのどちらか1つだけを選ぶ】',
@@ -395,6 +399,9 @@ function makeChatGptOcrAssistPrompt(ocrReference){
   '【参考OCR結果（写真より優先しない候補）】',
   '購入日候補：'+show(r.receiptDate)+' / 店舗候補：'+show(r.store),
   '印字合計候補：'+show(r.receiptTotal)+'円 / 印字購入点数候補：'+show(r.printedCount)+'点',
+  'OCR数量候補合計：'+show(quantityCandidates)+'点'+
+   (r.items.some(x=>x.quantityUncertain)?'（仮値を含む）':''),
+  ...(countMismatch?['数量不一致：印字点数とOCR数量候補が異なる。写真の数量・単価行を確認し、差の分だけ推測で変更しない。']:[]),
   '税区分：'+({included:'内税',excluded:'外税'}[r.taxBasis]||'不明')+
    ' / 税額配賦：'+(r.taxBasis==='included'?'対象外（内税）':show(r.taxAllocationStatus)),
   '値引後'+({included:'税込',excluded:'税抜'}[r.taxBasis]||'税区分不明')+'明細合計：'+

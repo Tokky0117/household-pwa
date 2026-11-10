@@ -98,11 +98,18 @@ assert.equal(merged4.items.reduce((n,x)=>n+x.quantity,0),15);
 assert.equal(merged4.items.reduce((n,x)=>n+x.amount,0),2920);
 assert.equal(review.buildReviewModel(merged4).validation.checks.total,'match');
 assert.equal(draft4.items[10].quantity,1,'OCR source remains unchanged');
+const prompt4=imports.makeChatGptOcrAssistPrompt(review.ocrReference(draft4,()=>null));
+assert.match(prompt4,/OCR数量候補合計：14点（仮値を含む）/);
+assert.match(prompt4,/数量不一致：印字点数とOCR数量候補が異なる/);
+assert.match(prompt4,/数量差だけで商品や個数を推測しない/);
 const case6=getCase('R06');
 const draft6=anonymousOcrDraft(case6,{taxBasis:'excluded',allocatedTaxes:[11,2,36]});
 const json6=assistFromBaseline(case6,draft6);
 const merged6=review.applyAssistance(draft6,
  imports.parseChatGptOcrResponse(JSON.stringify(json6)),importOptions);
+const prompt6=imports.makeChatGptOcrAssistPrompt(review.ocrReference(draft6,()=>null));
+assert.match(prompt6,/OCR数量候補合計：7点（仮値を含む）/);
+assert.doesNotMatch(prompt6,/数量不一致：/);
 assert.equal(merged6.items.length,3);
 assert.equal(merged6.items.reduce((n,x)=>n+x.quantity,0),7);
 assert.equal(merged6.items.reduce((n,x)=>n+x.amount,0),672);
