@@ -4,13 +4,14 @@
  const lineRules=root.KurashiReceiptLineRules;
  const itemAssembler=root.KurashiReceiptItemAssembler;
  const {norm,num,skuRow,ambiguousUnitRow,registerMetadata,janHeader,janTaxPrice,
-  quantityUnit,quantityPrice,janQuantityPrice,pricedWithYen,pricedPlain,name,validJan13}=lineRules;
+  quantityUnit,quantityUnitKo,quantityPrice,janQuantityPrice,pricedWithYen,pricedPlain,name,validJan13}=lineRules;
  function parse(source){
   const rawText=String(source||''), items=[], warnings=[], adjustments=[];
   const taxBreakdown=[],rateBases=new Map();
   const lines=rawText.split(/\r?\n/);
   const lineTokens=lines.map((raw,i)=>({...lineRules.classifyLine(raw),line:i+1}));
   let pending=null,last=null,janPending=null,coupon=false,summary=false,discountPending=null,countPending=false;
+  let splitQuantity=null;
   let receiptTotal=null,subtotal=null,taxTotal=null,printedCount=null;
   const receiptTotals=[],printedCounts=[];
   const recordTotal=value=>{receiptTotals.push(value);receiptTotal=value;};
@@ -28,6 +29,18 @@
   };
   for(let i=0;i<lines.length;i++){
    const l=lineTokens[i].text;if(!l)continue;const ix=i+1;let m;
+   if(splitQuantity){
+    // Accept the next stand-alone price only when the multiplication is exact.
+    const standalone=l.match(/^[¥￥]?([\d,]+)$/);
+    const info=splitQuantity;splitQuantity=null;
+    if(standalone&&num(standalone[1])===info.quantity*info.unit){
+     const item=add(info.raw,info.quantity,info.unit,num(standalone[1]),
+      [info.nameLine,info.quantityLine,ix]);
+     if(item)item.quantitySource='printed';
+     continue;
+    }
+    warn('ambiguous_quantity_row',info.quantityLine);
+   }
    if(countPending){
     countPending=false;
     if(m=l.match(/^(\d{1,3})\s*点?$/)){
@@ -150,6 +163,23 @@
     }else warn('ambiguous_quantity_row',ix);
     pending=null;continue;
    }
+   if(m=l.match(quantityUnitKo)){
+    const q=+m[1],unit=num(m[2]);
+    if(q<1||q>99||!Number.isSafeInteger(unit)||unit<=0){
+     warn('invalid_quantity',ix);continue;
+    }
+    if(pending){
+     splitQuantity={raw:pending.raw,nameLine:pending.line,
+      quantity:q,unit,quantityLine:ix};
+    }else if(last&&last.sourceLines?.[last.sourceLines.length-1]===ix-1&&
+     last.discount===0&&last.grossAmount===q*unit){
+     Object.assign(last,itemAssembler.applyQuantity(last,q,unit,ix,lines[i]));
+    }else{
+     warn(last&&last.sourceLines?.[last.sourceLines.length-1]===ix-1?
+      'ambiguous_quantity_row':'orphan_quantity',ix);
+    }
+    continue;
+   }
    if(m=l.match(quantityPrice)){
     if(num(m[3])<0){if(num(m[2])*(+m[1])!==num(m[3]))warn('discount_quantity_mismatch',ix);discount(-num(m[3]),ix);}
     else if(pending){const item=add(pending.raw,+m[1],num(m[2]),num(m[3]),[pending.line,ix]);if(item)item.quantitySource='printed';}
@@ -233,7 +263,7 @@
   // the first product) also remain traceable, without promoting them to items.
   const issueCodes=new Set(['unpriced_name','unassigned_price','unassigned_discount',
    'orphan_quantity','orphan_quantity_price','orphan_product_code','orphan_sku',
-   'ambiguous_quantity_row','jan_incomplete_item','jan_missing_price',
+   'ambiguous_quantity_row','invalid_quantity','jan_incomplete_item','jan_missing_price',
    'jan_missing_product_name','coupon_positive_without_item']);
   for(const w of warnings){
    if(!issueCodes.has(w.code)||!Number.isInteger(w.line)||w.line<1||

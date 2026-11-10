@@ -1537,6 +1537,23 @@ assert.ok(orphanPrice.unresolvedRows.some(x=>x.line===1&&x.reasons.includes('una
 const quantityCorrection=structure.parse('商品A ¥200\n2個 × @100\n合計 ¥200');
 assert.equal(quantityCorrection.items[0].quantity,2);
 assert.equal(quantityCorrection.items[0].unitPrice,100);
+// An OCR-split quantity annotation must never become a priced merchandise row.
+const splitMulti=structure.parse('商品A\n2コ×単105\n¥210\n合計 ¥210\nお買上点数 2');
+assert.equal(splitMulti.items.length,1);
+assert.equal(splitMulti.items[0].name,'商品A');
+assert.equal(splitMulti.items[0].quantity,2);
+assert.equal(splitMulti.items[0].grossAmount,210);
+assert.equal(splitMulti.items[0].sourceLines.join(','),'1,2,3');
+assert.equal(splitMulti.lineRoles[1].role,'quantity');
+const pricedBeforeQuantity=structure.parse('商品A ¥210\n2コ×単105\n合計 ¥210');
+assert.equal(pricedBeforeQuantity.items.length,1);
+assert.equal(pricedBeforeQuantity.items[0].quantity,2);
+const ambiguousSplit=structure.parse('商品A\n2コ×単105\n¥211\n合計 ¥211');
+assert.equal(ambiguousSplit.items.length,0,'price mismatch cannot invent a product');
+assert.ok(ambiguousSplit.warnings.some(x=>x.code==='ambiguous_quantity_row'));
+assert.ok(ambiguousSplit.unresolvedRows.some(x=>x.line===2));
+const contentQuantity=structure.parse('商品A 2個入 ¥210\n合計 ¥210');
+assert.equal(contentQuantity.items[0].quantity,1);
 assert.deepEqual(Array.from(quantityCorrection.items[0].sourceLines),[1,2]);
 const splitDiscountP3=structure.parse('商品A ¥100\n分類一括割引 10%\n-10\n合計 ¥90');
 assert.equal(splitDiscountP3.items[0].netAmount,90,

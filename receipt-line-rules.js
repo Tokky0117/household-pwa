@@ -32,6 +32,9 @@
 
  const quantityUnit=/^\(?\s*(\d+)個\s*[x×]\s*@([\d,]+)\s*\)?$/i;
  const quantityPrice=/^(\d+)(?:コ|個)\s*[x×]\s*単\s*(-?[\d,]+)\s*[¥]?\s*(-?[\d,]+)$/i;
+ // OCR may put the final line total on a separate row. The unit price alone
+ // must never be mistaken for a complete purchasable item.
+ const quantityUnitKo=/^(\d+)(?:コ|個)\s*[x×]\s*単\s*([\d,]+)$/i;
  const janQuantityPrice=/^(\d{13})\s+(\d+)\s*¥([\d,]+)$/;
  const pricedWithYen=/^(.+?)\s*¥([\d,]+)$/;
  const pricedPlain=/^(.+?)\s+([\d,]+)(?:円)?$/;
@@ -65,7 +68,7 @@
   else if(/^小計(?:金額)?\s*[¥]?\s*[\d,]+$/.test(text))role='subtotal';
   else if(/^(?:(?:お|御)?買上(?:げ)?点数|買上品数)/.test(text))role='printed_count';
   else if(/値引|割引|^CPN$/i.test(text))role='discount';
-  else if(quantityUnit.test(text)||quantityPrice.test(text)||ambiguousUnitRow.test(text)||janQuantityPrice.test(text))role='quantity';
+  else if(quantityUnit.test(text)||quantityUnitKo.test(text)||quantityPrice.test(text)||ambiguousUnitRow.test(text)||janQuantityPrice.test(text))role='quantity';
   else if(/^[-−－]\s*[¥￥]?\s*[\d,]+(?:円)?$/.test(text))role='negative_amount';
   else if(/^(?:\(?\s*(?:内税|外税|税|消費税|内消費税)|(?:8|10)%\s*対象)/.test(text))role='tax';
   else if(pricedWithYen.test(text)||pricedPlain.test(text))role='priced_candidate';
@@ -96,7 +99,7 @@
   return {raw,candidate:name(raw),amount:num(m[2]),firstGroup:m[1]};
  }
  root.KurashiReceiptLineRules={norm,num,skuAmount,skuRow,ambiguousUnitRow,registerMetadata,
-  janHeader,janTaxPrice,quantityUnit,quantityPrice,janQuantityPrice,pricedWithYen,
+  janHeader,janTaxPrice,quantityUnit,quantityUnitKo,quantityPrice,janQuantityPrice,pricedWithYen,
   pricedPlain,name,validJan13,interpretWarehouseRow,classifyLine,readNegativeAmount,
   isDiscountLabel,isPaymentOrFooter,isPossibleName,recognizePricedName};
 })(typeof window==='undefined'?globalThis:window);
