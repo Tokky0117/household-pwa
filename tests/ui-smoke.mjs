@@ -1392,7 +1392,7 @@ assert.ok(ui.receiptScanView().includes('ui-static-field-label">推定商品名<
  'Proposed product name uses a shared supporting-value field, not a freeform candidate paragraph');
 assert.ok(source.includes('inferred_name:inferredName'));
 assert.ok(source.includes('const aliasLines=lines.filter'));
-assert.match(imports.makeChatGptOcrAssistPrompt(ocrRef),/構造認識の失敗/);
+assert.match(imports.makeChatGptOcrAssistPrompt(ocrRef),/構造問題/);
 console.log('v70: obsolete OCR adoption/detachment buttons removed OK');
 const codeOnly={source:'ocr',date:'2026-10-12',chainId:'c-a',items:[
  {name:'2000211787545',ocrRawName:'2000211787545',ocrRowId:'barcode-1',
