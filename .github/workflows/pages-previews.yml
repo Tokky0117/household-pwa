@@ -72,8 +72,22 @@ jobs:
             [[ -f "$dest/index.html" ]]
           }
 
-          # Keep the default branch at the normal project Pages URL.
+          # Root / is production after main receives the verified app.
+          # Until that release, preserve the existing main site unchanged.
           copy_site refs/remotes/origin/main _site
+          if git cat-file -e refs/remotes/origin/main:CURRENT_REQUIREMENTS.md 2>/dev/null \
+            && git cat-file -e refs/remotes/origin/main:live-client.js 2>/dev/null; then
+            if [[ -z "${PROD_GAS_EXEC_URL:-}" ]]; then
+              echo "::error::Configure KURASHI_PRODUCTION_GAS_EXEC before deploying main."
+              exit 1
+            fi
+            mkdir -p _site/ocr-engine
+            cp -a ocr-lab/dist-app/. _site/ocr-engine/
+            node scripts/build-production.mjs "_site/live-client.js"
+            revision="$(git rev-parse --short=12 refs/remotes/origin/main)"
+            sed -i "s/^const CACHE=[^;]*;/const CACHE='household-production-main-$revision';/" "_site/sw.js"
+            echo "Production: / (main; isolated GAS, IndexedDB and service-worker cache)"
+          fi
 
           while IFS= read -r remote_ref; do
             branch="${remote_ref#origin/}"
@@ -99,19 +113,6 @@ jobs:
               rm -rf "$dest"
             fi
           done < <(git for-each-ref --format='%(refname:short)' refs/remotes/origin)
-
-          # Stable production URL. Its GAS and IndexedDB are always isolated
-          # from development. Without a dedicated GAS URL it fails closed.
-          if git cat-file -e refs/remotes/origin/production-v1:index.html 2>/dev/null; then
-            prod="_site/production"
-            copy_site refs/remotes/origin/production-v1 "$prod"
-            mkdir -p "$prod/ocr-engine"
-            cp -a ocr-lab/dist-app/. "$prod/ocr-engine/"
-            node scripts/build-production.mjs "$prod/live-client.js"
-            revision="$(git rev-parse --short=12 refs/remotes/origin/production-v1)"
-            sed -i "s/^const CACHE=[^;]*;/const CACHE='household-production-$revision';/" "$prod/sw.js"
-            echo "Production frontend: /production/ (separate GAS configuration)"
-          fi
 
           # GitHub Pages should serve the copied files as-is.
           touch _site/.nojekyll
