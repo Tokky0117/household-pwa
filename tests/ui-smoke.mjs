@@ -1168,8 +1168,8 @@ assert.equal(ui.getScanDraft().items[0].productId,'',
 ui.catalogue().products=beforeOcrCandidates;
 ui.setScanDraft(null);
 
-assert.ok(source.includes("const APP_VERSION='0.88.0'"),
- 'app version advances with targeted high-resolution OCR rereading');
+assert.ok(source.includes("const APP_VERSION='0.88.1'"),
+ 'app version advances with targeted OCR retry diagnostics');
 assert.ok(source.includes('reviewEvidence.storeHeader={status:storeMatch.status'),
  'store matching diagnostic must distinguish OCR from registered name matching');
 const engineEntry=readFileSync(new URL('../ocr-lab/engine-entry.js',import.meta.url),'utf8');
@@ -1758,7 +1758,7 @@ assert.ok(!JSON.stringify(p4Rebuild).includes('ocr-p4'),
 console.log('P4 common review adapter, provenance, row identity and P2 validation OK');
 
 // v0.73: Receipt OCR review information hierarchy; preserve validation/confirmation.
-assert.ok(source.includes("const APP_VERSION='0.88.0'"), 'UI review revision version is current');
+assert.ok(source.includes("const APP_VERSION='0.88.1'"), 'UI review revision version is current');
 assert.ok(source.includes("UI.sectionHeading({title:'読み取り状況'})"), 'OCR and ChatGPT appear under one section');
 assert.ok(source.includes("UI.sectionHeading({title:isShelf?'値札情報':'購入情報'})"), 'Receipt OCR review groups store and purchase date');
 assert.ok(source.includes("UI.sectionHeading({title:isShelf?'価格情報':'購入明細',subtitle:scanDraft.items.length+'件'+"), 'Receipt OCR review identifies item list and unmatched count');

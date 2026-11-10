@@ -33,6 +33,10 @@ function ocrReference(draft,chainLabel){
   store:draft?.chainId?chainLabel(draft.chainId):draft?.chainName||null,
   receiptTotal:numeric(draft?.total),
   printedCount:numeric(draft?.printedCount),
+  nameRetry:draft?.reviewEvidence?.nameRetry?{
+   attempted:numeric(draft.reviewEvidence.nameRetry.attempted),
+   suggested:numeric(draft.reviewEvidence.nameRetry.suggested)
+  }:null,
   quantitySignals:draft?.reviewEvidence?.quantitySignals?{
    recognizedRows:numeric(draft.reviewEvidence.quantitySignals.recognizedRows),
    linkedRows:numeric(draft.reviewEvidence.quantitySignals.linkedRows),

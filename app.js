@@ -1,4 +1,4 @@
-const APP_VERSION='0.88.0';
+const APP_VERSION='0.88.1';
 const CATS=['飲食','キッチン','洗面・風呂','洗濯・掃除','その他'];
 const liveMode=!!window.KurashiLive; // Data source only; original Preview v46 UI components remain.
 const SEED=[['牛乳',0,true],['麦茶',0,false],['コーヒー',0,true],['卵',0,false],['キッチンペーパー',1,false],['ラップ',1,true],['食器用洗剤',1,true],['シャンプー',2,false],['歯磨き粉',2,true],['ハンドソープ',2,false],['洗濯洗剤',3,false],['柔軟剤',3,true],['トイレットペーパー',3,false],['乾電池',4,true],['ティッシュ',4,true]];
@@ -947,6 +947,7 @@ async function runReceiptScan(){
   const observations=[],allItems=[],receiptTotals=[],taxModes=[],allocationModes=[],allocationReasons=[],taxDiagnostics=[],taxInferredModes=[],taxRateCandidateModes=[];let total=null,printedCount=null;
   const scanWarnings=new Set();
   const reviewEvidence={itemSources:[],unresolvedRows:[],
+   nameRetry:{attempted:0,suggested:0},
    quantitySignals:{recognizedRows:0,linkedRows:0,unresolvedRows:0,fragmentRows:0,linkedItemNumbers:[]}};
   for(let i=0;i<scanPhotos.length;i++){
    if(token!==scanToken)return;
@@ -954,6 +955,11 @@ async function runReceiptScan(){
    const status=document.getElementById('scan-status');if(status)status.textContent=scanStatus;
    const out=await engine.scanReceiptImage(scanPhotos[i],{mode:'gray',crop:null});
    observations.push(out.text);taxModes.push(out.parsed.taxBasis);
+   // Keep only numerical re-read diagnostics, not the cropped image/text.
+   reviewEvidence.nameRetry.attempted+=Number.isSafeInteger(out.metrics?.nameRetryAttempted)?
+    out.metrics.nameRetryAttempted:0;
+   reviewEvidence.nameRetry.suggested+=Number.isSafeInteger(out.metrics?.nameRetrySuggested)?
+    out.metrics.nameRetrySuggested:0;
    // Aggregate numeric-only quantity evidence. No OCR line text, photo or
    // item identity enters persistent drafts or ChatGPT diagnostics.
    const qtyRoleLines=new Set((out.parsed.lineRoles||[])
