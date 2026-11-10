@@ -25,7 +25,7 @@ const doc={
 const ctx={document:doc,localStorage:{getItem:k=>storage.get(k)??null,setItem:(k,v)=>storage.set(k,v),removeItem:k=>storage.delete(k)},
  navigator:{},window:{scrollTo(){},scrollY:0,KurashiReceiptValidation:validator,KurashiReceiptReview:review},crypto:{randomUUID:()=> 'test-id'},setTimeout:()=>0};
 const ui=vm.runInNewContext(source+`
-({listView,priceCompareView,pickerView,pickerResults,masterProductsView,masterProductRows,masterProductEditorView,masterGroupPickerView,masterGroupPickerRows,aliasManageView,aliasManageRows,aliasProductPickerView,aliasProductPickerRows,detailHomeView,detailAllView,receiptScanView,receiptChatGptView,recordDetailView,scanStoreNameIssue,scanValidPurchaseDate,scanReadableError,floatingActionPlacement,applyChatGptOcrAssistance,receiptOcrReference,receiptOcrRows,isUnconfirmedBarcodeLine,makeChatGptReceiptRebuildDraft,scanProductView,scanExistingProductView,scanChainForStore,scanAutolinkUnmatched,scanMatchProduct,render,initializeCompare,
+({listView,priceCompareView,pickerView,pickerResults,masterProductsView,masterProductRows,masterProductEditorView,masterGroupPickerView,masterGroupPickerRows,aliasManageView,aliasManageRows,aliasProductPickerView,aliasProductPickerRows,detailHomeView,detailAllView,receiptScanView,receiptChatGptView,recordDetailView,scanStoreNameIssue,scanValidPurchaseDate,scanReadableError,floatingActionPlacement,applyChatGptOcrAssistance,receiptOcrReference,receiptOcrRows,isUnconfirmedBarcodeLine,makeChatGptReceiptRebuildDraft,scanProductView,scanExistingProductView,scanChainForStore,scanStoreHeaderMatch,scanAutolinkUnmatched,scanMatchProduct,render,initializeCompare,
  setProductGroup,reorderProducts,registeredProducts,convertQuantity,setOpenSwipe,storePickerChoices,
  chainMinima,priceCandidates,savePreviewRecord,periodStart,
  demoRecords,demoRecordItems,allPreviewRecords,allPreviewItems,
@@ -1032,6 +1032,10 @@ assert.equal(ui.scanChainForStore('架空衣料店 駅南店\nTEL 012-3456')?.id
  sampleClothing.id,'brand and branch on one header line identify the registered chain');
 assert.equal(ui.scanChainForStore('SAMPLE APPAREL\n領収証')?.id,
  sampleClothing.id,'an explicitly registered Latin alias can identify a store');
+assert.equal(ui.scanStoreHeaderMatch('UNKNOWN APPAREL\n領収証').status,
+ 'no-registered-match','an unregistered logo is not guessed');
+assert.equal(ui.scanStoreHeaderMatch('UNKNOWN APPAREL\n領収証').headerLatinCandidates,1);
+assert.equal(ui.scanStoreHeaderMatch('').status,'no-header');
 assert.equal(ui.scanChainForStore('SAMPLE\nAPPAREL\n領収証')?.id,
  sampleClothing.id,'adjacent split logo lines match the exact registered alias');
 assert.equal(ui.scanChainForStore('架空衣料店風の商品 ¥500'),null,
@@ -1040,6 +1044,7 @@ assert.equal(ui.scanChainForStore('スーパー青空 商品A ¥123'),null,
  'a brand followed by arbitrary product words is not a store header');
 assert.equal(ui.scanChainForStore('架空衣料店\nコノミヤ'),null,
  'two matched store headers are ambiguous; never auto-select one');
+assert.equal(ui.scanStoreHeaderMatch('架空衣料店\nコノミヤ').status,'ambiguous');
 const secondMatch={id:'c-synthetic-duplicate',name:'架空衣料店'};
 catalog.chains.push(secondMatch);
 assert.equal(ui.scanChainForStore('架空衣料店'),null,
@@ -1114,6 +1119,10 @@ const afterGeometry=validation.validateReceipt(structured);
 assert.equal(afterGeometry.checks.itemIntegrity,'unknown',
  'P2 revalidation detects barcode/name linking review issue after geometry changes');
 assert.ok(afterGeometry.blockers.some(x=>x.code==='商品コードと商品名の対応を確認'));
+assert.ok(source.includes('reviewEvidence.quantitySignals.recognizedRows+=qtyRoleLines.size'),
+ 'quantity row evidence must be counted separately from item quantity');
+assert.ok(source.includes('reviewEvidence.storeHeader={status:storeMatch.status'),
+ 'store matching diagnostic must distinguish OCR from registered name matching');
 const engineEntry=readFileSync(new URL('../ocr-lab/engine-entry.js',import.meta.url),'utf8');
 assert.ok(engineEntry.includes('parsed.validation=window.KurashiReceiptValidation.validateReceipt(parsed)'),
  'OCR engine must refresh validation after layout linking');

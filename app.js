@@ -479,16 +479,19 @@ function receiptChatGptView(){
  '<p id="chatgpt-error" class="scan-warning" role="status">'+esc(chatGptError)+'</p>'+
  '<button type="button" class="primary" data-act="chatGptImport">解析結果を取り込む</button></main>';
 }
-function scanChainForStore(raw){
+function scanStoreHeaderMatch(raw){
  // Match confirmed store masters/aliases against separate OCR header lines,
  // not the concatenated receipt body (which may mention other stores).
  // Spaces/punctuation inside OCR lettering may vary; no guessed new aliases.
  const source=String(raw||'').slice(0,1200);
- if(!source.trim())return null;
+ if(!source.trim())return {chain:null,status:'no-header',headerLatinCandidates:0};
  const compact=value=>norm(value).replace(/[\s\p{P}\p{S}]/gu,'');
  const lines=source.split(/\r?\n/).slice(0,16).map(line=>line
   .replace(/\s+(?:TEL|FAX|電話(?:番号)?|〒|0\d{1,4}[-‐‑–ー]|20\d{2}[年/-])[\s\S]*$/i,'')
   .replace(/^(?:ご利用店舗|店舗名|店名)\s*[:：]?\s*/,'').trim()).filter(Boolean);
+ // Count alphabetic header rows only. Never keep/send the raw header text.
+ const headerLatinCandidates=lines.slice(0,8).filter(text=>
+  /[A-Za-z]{3,}/.test(text)&&!/[¥￥0-9]/.test(text)).length;
  const keys=lines.map(compact).filter(Boolean);
  // A logo/brand may be split across consecutive OCR text rows. Accept
  // only an exact master/alias match across two lines, not a fuzzy guess.
@@ -512,8 +515,11 @@ function scanChainForStore(raw){
   }
  }
  // Two independently matched store names could mean a background receipt.
- return matches.size===1?[...matches.values()][0]:null;
+ return {chain:matches.size===1?[...matches.values()][0]:null,
+  status:matches.size===1?'matched':matches.size?'ambiguous':'no-registered-match',
+  headerLatinCandidates};
 }
+function scanChainForStore(raw){return scanStoreHeaderMatch(raw).chain;}
 function scanAutolinkUnmatched(){
  if(!scanDraft)return 0;
  let added=0;
@@ -909,13 +915,26 @@ async function runReceiptScan(){
   const engine=scanRuntime||(scanRuntime=await import('./ocr-engine/engine.js'));
   const observations=[],allItems=[],receiptTotals=[],taxModes=[],allocationModes=[],allocationReasons=[],taxDiagnostics=[],taxInferredModes=[],taxRateCandidateModes=[];let total=null,printedCount=null;
   const scanWarnings=new Set();
-  const reviewEvidence={itemSources:[],unresolvedRows:[]};
+  const reviewEvidence={itemSources:[],unresolvedRows:[],
+   quantitySignals:{recognizedRows:0,linkedRows:0,unresolvedRows:0,fragmentRows:0}};
   for(let i=0;i<scanPhotos.length;i++){
    if(token!==scanToken)return;
    scanStatus='写真'+(i+1)+'/'+scanPhotos.length+'を読み取り中…';
    const status=document.getElementById('scan-status');if(status)status.textContent=scanStatus;
    const out=await engine.scanReceiptImage(scanPhotos[i],{mode:'gray',crop:null});
    observations.push(out.text);taxModes.push(out.parsed.taxBasis);
+   // Aggregate numeric-only quantity evidence. No OCR line text, photo or
+   // item identity enters persistent drafts or ChatGPT diagnostics.
+   const qtyRoleLines=new Set((out.parsed.lineRoles||[])
+    .filter(row=>row.role==='quantity').map(row=>row.line));
+   const linkedQuantityLines=new Set(out.parsed.items.flatMap(item=>
+    (item.sourceLines||[]).filter(line=>qtyRoleLines.has(line))));
+   reviewEvidence.quantitySignals.recognizedRows+=qtyRoleLines.size;
+   reviewEvidence.quantitySignals.linkedRows+=linkedQuantityLines.size;
+   reviewEvidence.quantitySignals.unresolvedRows+=(out.parsed.unresolvedRows||[])
+    .filter(row=>qtyRoleLines.has(row.line)).length;
+   reviewEvidence.quantitySignals.fragmentRows+=String(out.text||'').split(/\r?\n/)
+    .filter(line=>/\d{1,2}\s*(?:コ|個)\s*[x×*]\s*(?:単|@)\s*\d{1,5}/i.test(line)).length;
    allocationModes.push(out.parsed.taxAllocation?.status||'unresolved');
    allocationReasons.push(out.parsed.taxAllocation?.reason||null);
    taxInferredModes.push(out.parsed.taxBreakdown?.some(t=>t.evidence==='printed-total-minus-verified-net-items'||t.evidence==='difference-of-printed-total-and-subtotal'||t.evidence==='rate-candidate-from-printed-totals')||false);
@@ -948,7 +967,10 @@ async function runReceiptScan(){
   const raw=observations.join('\n');
   if(new Set(receiptTotals).size>1){total=null;scanWarnings.add('conflicting_receipt_totals');}
   const date=scanDate(raw);
-  const chain=scanChainForStore(raw.slice(0,800));
+  const storeMatch=scanStoreHeaderMatch(raw.slice(0,800));
+  const chain=storeMatch.chain;
+  reviewEvidence.storeHeader={status:storeMatch.status,
+   headerLatinCandidates:storeMatch.headerLatinCandidates};
   scanDraft={items:allItems,total,printedCount,date,source:'ocr',recordType:'receipt',
    taxBasis:taxModes.every(t=>t==='excluded')?'excluded':taxModes.every(t=>t==='included')?'included':'unknown',
    taxAllocationStatus:allocationModes.every(t=>t==='allocated')?'allocated':'unresolved',

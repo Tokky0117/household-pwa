@@ -33,6 +33,18 @@ function ocrReference(draft,chainLabel){
   store:draft?.chainId?chainLabel(draft.chainId):draft?.chainName||null,
   receiptTotal:numeric(draft?.total),
   printedCount:numeric(draft?.printedCount),
+  quantitySignals:draft?.reviewEvidence?.quantitySignals?{
+   recognizedRows:numeric(draft.reviewEvidence.quantitySignals.recognizedRows),
+   linkedRows:numeric(draft.reviewEvidence.quantitySignals.linkedRows),
+   unresolvedRows:numeric(draft.reviewEvidence.quantitySignals.unresolvedRows),
+   fragmentRows:numeric(draft.reviewEvidence.quantitySignals.fragmentRows)
+  }:null,
+  storeMatchDiagnostics:draft?.reviewEvidence?.storeHeader?{
+   status:['matched','ambiguous','no-registered-match','no-header']
+    .includes(draft.reviewEvidence.storeHeader.status)?
+     draft.reviewEvidence.storeHeader.status:'unknown',
+   headerLatinCandidates:numeric(draft.reviewEvidence.storeHeader.headerLatinCandidates)
+  }:null,
   taxBasis:draft?.taxBasis||'unknown',
   taxAllocationStatus:draft?.taxAllocationStatus||'unknown',
   taxDiagnostics:draft?.taxDiagnostics?{

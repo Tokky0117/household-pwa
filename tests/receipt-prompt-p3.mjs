@@ -25,6 +25,18 @@ assert.equal(ref.items[0].taxExcludedAmount,144);
 assert.equal(ref.items[0].allocatedTax,11);
 assert.equal(ref.items[0].amountOrigin,'allocated');
 assert.equal(ref.taxDiagnostics.taxTotal,49);
+const signalDraft={...fixture,reviewEvidence:{
+ quantitySignals:{recognizedRows:2,linkedRows:1,unresolvedRows:1,fragmentRows:2},
+ storeHeader:{status:'no-registered-match',headerLatinCandidates:1}
+}};
+const signalRef=JSON.parse(review.ocrReference(signalDraft,()=>null));
+assert.equal(signalRef.quantitySignals.linkedRows,1);
+assert.equal(signalRef.storeMatchDiagnostics.status,'no-registered-match');
+const signalPrompt=imports.makeChatGptOcrAssistPrompt(JSON.stringify(signalRef));
+assert.match(signalPrompt,/OCR数量行診断：数量行分類=2行 \/ 明細への対応=1行 \/ 未対応=1行/);
+assert.match(signalPrompt,/OCR店舗照合診断：登録済み店舗名・別名と一致せず/);
+assert.match(signalPrompt,/上部の英字候補=1行（店舗名とは限らない）/);
+assert.doesNotMatch(signalPrompt,/UNKNOWN APPAREL/);
 const prompt=imports.makeChatGptOcrAssistPrompt(JSON.stringify(ref));
 assert.match(prompt,/写真そのものを目視/);
 assert.match(prompt,/最大剰余法/);

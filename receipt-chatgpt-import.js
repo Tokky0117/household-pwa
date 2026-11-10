@@ -367,6 +367,9 @@ function makeChatGptOcrAssistPrompt(ocrReference){
   r.items.reduce((sum,x)=>sum+x.quantity,0):null;
  const countMismatch=Number.isSafeInteger(r.printedCount)&&quantityCandidates!==null&&
   r.printedCount!==quantityCandidates;
+ const storeStatus={matched:'登録店舗1件と一致',ambiguous:'複数の登録店舗と一致（自動選択せず）',
+  'no-registered-match':'登録済み店舗名・別名と一致せず',
+  'no-header':'OCR上部に店舗名を特定できる根拠なし'};
  const diagnostics=(r.nameLinkDiagnostics||[]).map(x=>x.rowId+'：'+
   show(x.status)+'（近傍文字行'+show(x.nearbyTextRows)+
   '、名前候補'+show(x.eligibleNameRows)+'）');
@@ -402,6 +405,15 @@ function makeChatGptOcrAssistPrompt(ocrReference){
   'OCR数量候補合計：'+show(quantityCandidates)+'点'+
    (r.items.some(x=>x.quantityUncertain)?'（仮値を含む）':''),
   ...(countMismatch?['数量不一致：印字点数とOCR数量候補が異なる。写真の数量・単価行を確認し、差の分だけ推測で変更しない。']:[]),
+  ...(r.quantitySignals?['OCR数量行診断：数量行分類='+show(r.quantitySignals.recognizedRows)+
+   '行 / 明細への対応='+show(r.quantitySignals.linkedRows)+
+   '行 / 未対応='+show(r.quantitySignals.unresolvedRows)+
+   '行 / 数量×単価の文字候補='+show(r.quantitySignals.fragmentRows)+
+   '行（いずれもOCR候補で、写真の確認ではない）']:[]),
+  ...(r.storeMatchDiagnostics?['OCR店舗照合診断：'+
+   (storeStatus[r.storeMatchDiagnostics.status]||'状態不明')+
+   ' / 上部の英字候補='+show(r.storeMatchDiagnostics.headerLatinCandidates)+
+   '行（店舗名とは限らない）']:[]),
   '税区分：'+({included:'内税',excluded:'外税'}[r.taxBasis]||'不明')+
    ' / 税額配賦：'+(r.taxBasis==='included'?'対象外（内税）':show(r.taxAllocationStatus)),
   '値引後'+({included:'税込',excluded:'税抜'}[r.taxBasis]||'税区分不明')+'明細合計：'+
