@@ -413,7 +413,8 @@ function makeChatGptOcrAssistPrompt(ocrReference){
    '行 / 切り出し失敗='+show(r.nameRetry.preparationErrors)+
    '回 / 認識失敗='+show(r.nameRetry.readErrors)+'回']:[]),
   ...(r.nameRetry?.japaneseNearbyRows!=null?[
-   'OCR再読取の候補分析：付近の日本語検出行='+show(r.nameRetry.japaneseNearbyRows)+
+   'OCR再読取の候補分析：全域の日本語検出行='+show(r.nameRetry.japaneseAnywhereRows)+
+   '行 / 付近の日本語検出行='+show(r.nameRetry.japaneseNearbyRows)+
    '行 / 2文字以下の日本語断片='+show(r.nameRetry.shortJapaneseRows)+
    '行（文字内容や商品名の正解を示すものではない）']:[]),
   'OCR数量候補合計：'+show(quantityCandidates)+'点'+

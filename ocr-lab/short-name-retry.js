@@ -65,14 +65,33 @@ export function shortNameRetryRegions(parsed,{width,height}={},limit=2,layoutLin
   if((x1-x0)/width<.05||(y1-y0)/height<.025)continue;
   // Second attempt excludes the distant price column. On receipts such
   // as R03, the initial OCR can see a price marker but miss the name.
-  const nameRight=Math.min(x1,x0+Math.max(width*.22,(x1-x0)*.60));
+  // Anchor the fallback inside the neighboring merchandise-name column.
+  // For R03 this avoids the separately printed ※ marker and price column.
+  const nameLeft=neighbors.length>=2?
+   Math.max(x0,Math.min(b.x0,columnLeft)+width*.012):x0;
+  const nameRight=Math.min(x1,Math.max(nameLeft+width*.22,
+   nameLeft+Math.min(width*.27,(x1-nameLeft)*.7)));
   result.push({index,baselineName:String(item.name||item.rawName||''),
    amount:item.grossAmount,
    crop:{x:x0/width,y:y0/height,width:(x1-x0)/width,height:(y1-y0)/height},
-   nameCrop:{x:x0/width,y:y0/height,width:(nameRight-x0)/width,height:(y1-y0)/height},
+   nameCrop:{x:nameLeft/width,y:y0/height,width:(nameRight-nameLeft)/width,height:(y1-y0)/height},
    targetY:(centerY-y0)/(y1-y0)});
  }
  return result;
+}
+// The alternate pass enlarges short text for detection instead of
+// repeatedly applying the same pipeline to the same pixels.
+export function shortNameRetryPasses(target){
+ if(!target?.crop||!target?.nameCrop)return [];
+ return [
+  {mode:'gray',crop:target.crop,params:undefined},
+  {mode:'contrast',crop:target.nameCrop,params:{
+   textDetLimitType:'min',textDetLimitSideLen:192,
+   textDetMaxSideLimit:3072,textDetThresh:.18,
+   textDetBoxThresh:.28,textDetUnclipRatio:1.7,
+   textRecScoreThresh:0
+  }}
+ ];
 }
 function candidateLine(text,expectedAmount){
  const full=String(text||'').normalize('NFKC').trim();

@@ -27,7 +27,8 @@ assert.equal(ref.items[0].amountOrigin,'allocated');
 assert.equal(ref.taxDiagnostics.taxTotal,49);
 const signalDraft={...fixture,reviewEvidence:{
  nameRetry:{attempted:1,suggested:1,imageReads:2,detectedRows:3,
-  nearbyRows:2,eligibleRows:1,japaneseNearbyRows:1,shortJapaneseRows:0,
+  nearbyRows:2,eligibleRows:1,japaneseAnywhereRows:3,
+  japaneseNearbyRows:1,shortJapaneseRows:0,
   preparationErrors:0,readErrors:0},
  quantitySignals:{recognizedRows:2,linkedRows:1,unresolvedRows:1,fragmentRows:2,linkedItemNumbers:[3]},
  storeHeader:{status:'no-registered-match',headerLatinCandidates:1}
@@ -39,13 +40,14 @@ assert.equal(signalRef.nameRetry.suggested,1);
 assert.equal(signalRef.nameRetry.imageReads,2);
 assert.equal(signalRef.nameRetry.preparationErrors,0);
 assert.equal(signalRef.nameRetry.japaneseNearbyRows,1);
+assert.equal(signalRef.nameRetry.japaneseAnywhereRows,3);
 assert.deepEqual(signalRef.quantitySignals.linkedItemNumbers,[3]);
 assert.equal(signalRef.storeMatchDiagnostics.status,'no-registered-match');
 const signalPrompt=imports.makeChatGptOcrAssistPrompt(JSON.stringify(signalRef));
 assert.match(signalPrompt,/OCR商品名再読取診断：再試行=1行 \/ 別候補=1行（候補は未確認）/);
 assert.match(signalPrompt,/OCR再読取の処理内訳：画像OCR実行=2回 \/ 検出行=3行 \/ 対象位置付近=2行/);
 assert.match(signalPrompt,/切り出し失敗=0回 \/ 認識失敗=0回/);
-assert.match(signalPrompt,/OCR再読取の候補分析：付近の日本語検出行=1行 \/ 2文字以下の日本語断片=0行/);
+assert.match(signalPrompt,/OCR再読取の候補分析：全域の日本語検出行=3行 \/ 付近の日本語検出行=1行 \/ 2文字以下の日本語断片=0行/);
 assert.match(signalPrompt,/OCR数量行診断：数量行分類=2行 \/ 明細への対応=1行 \/ 未対応=1行/);
 assert.match(signalPrompt,/数量行を結合したOCR明細番号：3/);
 assert.match(signalPrompt,/OCR店舗照合診断：登録済み店舗名・別名と一致せず/);

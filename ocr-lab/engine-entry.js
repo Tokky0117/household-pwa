@@ -48,7 +48,8 @@ export async function scanReceiptImage(file,{mode='gray',crop=null}={}){
   let nameRetryAttempted=0,nameRetrySuggested=0;
   let nameRetryImageReads=0,nameRetryDetectedRows=0,nameRetryNearbyRows=0,
    nameRetryEligibleRows=0,nameRetryPreparationErrors=0,nameRetryReadErrors=0,
-   nameRetryJapaneseNearbyRows=0,nameRetryShortJapaneseRows=0;
+   nameRetryJapaneseNearbyRows=0,nameRetryShortJapaneseRows=0,
+   nameRetryJapaneseAnywhereRows=0;
   if(mode==='gray'&&!crop){
    const targets=shortNameRetryRegions(parsed,prepared.metadata,2,layout.lines);
    for(const target of targets){
@@ -77,6 +78,9 @@ export async function scanReceiptImage(file,{mode='gray',crop=null}={}){
       const retry=await (await reader()).readImage(focused.image,retryParams);
       const inspected=inspectRecoveredNameFromLines(retry.lines,target,focused.metadata.height);
       nameRetryDetectedRows+=inspected.detectedRows;
+      nameRetryJapaneseAnywhereRows+=retry.lines.filter(line=>
+       /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}]/u
+        .test(String(line.text||''))).length;
       nameRetryNearbyRows+=inspected.nearbyRows;
       nameRetryEligibleRows+=inspected.eligibleRows;
       nameRetryJapaneseNearbyRows+=inspected.japaneseNearbyRows;
@@ -107,7 +111,8 @@ export async function scanReceiptImage(file,{mode='gray',crop=null}={}){
     nameRetryAttempted,nameRetrySuggested,nameRetryImageReads,
     nameRetryDetectedRows,nameRetryNearbyRows,nameRetryEligibleRows,
     nameRetryPreparationErrors,nameRetryReadErrors,
-    nameRetryJapaneseNearbyRows,nameRetryShortJapaneseRows}
+    nameRetryJapaneseNearbyRows,nameRetryShortJapaneseRows,
+    nameRetryJapaneseAnywhereRows}
   };
  }finally{prepared?.release();active=false;}
 }

@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import {shortNameRetryRegions,recoveredNameFromLines,inspectRecoveredNameFromLines} from '../ocr-lab/short-name-retry.js';
+import {shortNameRetryRegions,shortNameRetryPasses,recoveredNameFromLines,inspectRecoveredNameFromLines} from '../ocr-lab/short-name-retry.js';
 import {cropPixels} from '../ocr-lab/prepare-image.js';
 const region={x0:300,x1:1240,y0:800,y1:835};
 const sample={items:[
@@ -12,6 +12,15 @@ assert.equal(regions.length,1);
 assert.equal(regions[0].index,0);
 assert.ok(regions[0].nameCrop.width<regions[0].crop.width,
  'the fallback re-read must exclude the unrelated price column');
+const readPasses=shortNameRetryPasses(regions[0]);
+assert.equal(readPasses.length,2,'two reads at most per short product name');
+assert.equal(readPasses[0].mode,'gray');
+assert.equal(readPasses[1].mode,'contrast',
+ 'the fallback uses a distinct preprocessing mode for faint text');
+assert.equal(readPasses[1].params.textDetLimitType,'min');
+assert.ok(readPasses[1].params.textDetLimitSideLen>=192);
+assert.ok(readPasses[1].params.textDetBoxThresh<.4);
+assert.deepEqual(shortNameRetryPasses({}),[]);
 assert.equal(regions[0].nameCrop.y,regions[0].crop.y);
 assert.equal(regions[0].nameCrop.height,regions[0].crop.height);
 const secondPassCrop=cropPixels(regions[0].nameCrop,1600,2200,{allowSmallCrop:true});
@@ -76,6 +85,9 @@ assert.equal(corrected.length,1);
 assert.equal(corrected[0].index,1);
 assert.ok(corrected[0].crop.x*1600<310,
  'the neighboring name column is included even when the short OCR is at the right price');
+assert.ok(corrected[0].nameCrop.x*1600>=corrected[0].crop.x*1600);
+assert.ok(corrected[0].nameCrop.x*1600<330,
+ 'the fallback name crop must not cut away the first printed character');
 const actualPricedY=852.5;
 const cropCenterY=(corrected[0].crop.y+
  corrected[0].crop.height*corrected[0].targetY)*2200;
