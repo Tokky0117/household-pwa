@@ -31,6 +31,7 @@
   householdId:workspace.base?.household_id||null,
   busy:!!refreshPromise||!!flushPromise,
   syncing:!!flushPromise,queued:workspace.queue.length,
+  blocked:!!workspace.blocked,
   pending:workspace.queue.length?{count:workspace.queue.length}:null,
   error:error||workspace.blocked?.message||'',lastSync
  });
