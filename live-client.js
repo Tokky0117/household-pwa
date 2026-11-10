@@ -1085,6 +1085,18 @@
       await modify(ws=>ws);
       continue;
      }
+     if(e.code==='VERSION_CONFLICT'&&
+       (op.kind==='record-update'||op.kind==='record-delete')){
+      // A record update replaces every line. Rebasing it onto another
+      // device's newer version would silently erase that device's edit.
+      // Preserve the entire durable operation and stop until reviewed.
+      const message='レシートが別の端末で変更されています。自動上書きを避けるため、この端末の未反映操作を保留しました。';
+      await modify(ws=>{
+       if(ws.queue[0]?.id===op.id)ws.blocked={id:op.id,message};
+       return ws;
+      });
+      error=message;notify();return;
+     }
      if(e.code==='VERSION_CONFLICT'&&!op.migrated){
       try{await rebaseRejected(op);continue}
       catch(rebaseError){e=rebaseError}
