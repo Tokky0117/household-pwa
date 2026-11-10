@@ -20,5 +20,5 @@ self.addEventListener('fetch',event=>{
   const copy=response.clone();
   caches.open(SCOPED_CACHE).then(cache=>cache.put(event.request,copy)).catch(()=>{});
   return response;
- }).catch(()=>caches.open(SCOPED_CACHE).then(cache=>cache.match(event.request))));
+ }).catch(()=>caches.open(SCOPED_CACHE).then(cache=>cache.match(event.request,{ignoreSearch:true}))));
 });
