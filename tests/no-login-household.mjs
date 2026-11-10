@@ -2950,7 +2950,7 @@ await waitFor(()=>editTwo.window.KurashiLive.state().queued===1&&
  'stale receipt edit is blocked locally, not silently rebased');
 const editAfter=temp.call('bootstrap').data;
 assert.deepEqual(editAfter.record_items.filter(r=>r.record_id===editTarget.record_id)
- .map(x=>x.raw_name),['端末Aで確定した明細'],
+ .map(x=>aliasText(temp,x)),['端末Aで確定した明細'],
  'stale editor cannot overwrite the first editor\'s confirmed receipt');
 assert.equal(Number(editAfter.records.find(x=>x.record_id===editTarget.record_id).version),
  initialReceiptVersion+1,'blocked stale update did not touch server version');
@@ -2982,7 +2982,7 @@ const afterDelete=temp.call('bootstrap').data;
 assert.ok(afterDelete.records.find(r=>r.record_id===editTarget.record_id&&!r.deleted_at),
  'competing receipt is not deleted by another device\'s stale request');
 assert.deepEqual(afterDelete.record_items.filter(x=>x.record_id===editTarget.record_id)
- .map(x=>x.raw_name),['削除競合前に追加した変更']);
+ .map(x=>aliasText(temp,x)),['削除競合前に追加した変更']);
 deleteOne.window.close();
 deleteTwo.window.close();
 console.log('v0.88.8: independent-device stale receipt edit/delete are preserved but cannot overwrite new Sheets data OK');
