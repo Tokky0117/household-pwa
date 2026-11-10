@@ -402,21 +402,6 @@ function makeChatGptOcrAssistPrompt(ocrReference){
   '【参考OCR結果（写真より優先しない候補）】',
   '購入日候補：'+show(r.receiptDate)+' / 店舗候補：'+show(r.store),
   '印字合計候補：'+show(r.receiptTotal)+'円 / 印字購入点数候補：'+show(r.printedCount)+'点',
-  ...(r.nameRetry?['OCR商品名再読取診断：再試行='+show(r.nameRetry.attempted)+
-   '行 / 別候補='+show(r.nameRetry.suggested)+
-   '行（候補は未確認）']:[]),
-  ...(r.nameRetry?.imageReads!=null?[
-   'OCR再読取の処理内訳：画像OCR実行='+show(r.nameRetry.imageReads)+
-   '回 / 検出行='+show(r.nameRetry.detectedRows)+
-   '行 / 対象位置付近='+show(r.nameRetry.nearbyRows)+
-   '行 / 商品名候補='+show(r.nameRetry.eligibleRows)+
-   '行 / 切り出し失敗='+show(r.nameRetry.preparationErrors)+
-   '回 / 認識失敗='+show(r.nameRetry.readErrors)+'回']:[]),
-  ...(r.nameRetry?.japaneseNearbyRows!=null?[
-   'OCR再読取の候補分析：全域の日本語検出行='+show(r.nameRetry.japaneseAnywhereRows)+
-   '行 / 付近の日本語検出行='+show(r.nameRetry.japaneseNearbyRows)+
-   '行 / 2文字以下の日本語断片='+show(r.nameRetry.shortJapaneseRows)+
-   '行（文字内容や商品名の正解を示すものではない）']:[]),
   'OCR数量候補合計：'+show(quantityCandidates)+'点'+
    (r.items.some(x=>x.quantityUncertain)?'（仮値を含む）':''),
   ...(countMismatch?['数量不一致：印字点数とOCR数量候補が異なる。写真の数量・単価行を確認し、差の分だけ推測で変更しない。']:[]),

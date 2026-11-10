@@ -33,19 +33,6 @@ function ocrReference(draft,chainLabel){
   store:draft?.chainId?chainLabel(draft.chainId):draft?.chainName||null,
   receiptTotal:numeric(draft?.total),
   printedCount:numeric(draft?.printedCount),
-  nameRetry:draft?.reviewEvidence?.nameRetry?{
-   attempted:numeric(draft.reviewEvidence.nameRetry.attempted),
-   suggested:numeric(draft.reviewEvidence.nameRetry.suggested),
-   imageReads:numeric(draft.reviewEvidence.nameRetry.imageReads),
-   detectedRows:numeric(draft.reviewEvidence.nameRetry.detectedRows),
-   nearbyRows:numeric(draft.reviewEvidence.nameRetry.nearbyRows),
-   eligibleRows:numeric(draft.reviewEvidence.nameRetry.eligibleRows),
-   japaneseAnywhereRows:numeric(draft.reviewEvidence.nameRetry.japaneseAnywhereRows),
-   japaneseNearbyRows:numeric(draft.reviewEvidence.nameRetry.japaneseNearbyRows),
-   shortJapaneseRows:numeric(draft.reviewEvidence.nameRetry.shortJapaneseRows),
-   preparationErrors:numeric(draft.reviewEvidence.nameRetry.preparationErrors),
-   readErrors:numeric(draft.reviewEvidence.nameRetry.readErrors)
-  }:null,
   quantitySignals:draft?.reviewEvidence?.quantitySignals?{
    recognizedRows:numeric(draft.reviewEvidence.quantitySignals.recognizedRows),
    linkedRows:numeric(draft.reviewEvidence.quantitySignals.linkedRows),
@@ -92,10 +79,6 @@ function fromOcrItem(item,{rowId,taxBasis}={}){
   const excluded=taxBasis==='excluded'&&validAmount(item.netAmount)?item.netAmount:null;
   return {
    name:printedName,ocrRawName:printedName,ocrRowId:rowId,
-   // A second OCR pass may suggest a fuller name. Retain the original
-   // recognition verbatim; the user must explicitly confirm the proposal.
-   nameCandidate:typeof item.ocrRetryName==='string'&&item.ocrRetryName!==printedName?
-    item.ocrRetryName:'',
    // Keep a mathematically supported OCR quantity candidate visible, but
    // never promote an ambiguous glyph to a verified printed quantity.
    // Replacing every uncertain quantity with 1 hid the candidate in R04.
