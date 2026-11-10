@@ -7,7 +7,23 @@ const models=JSON.parse(await fs.readFile(path.join(root,'model-assets.json'),'u
 for(const asset of models){
  const role=asset.model.endsWith('_det')?'det':'rec';let bytes;
  if(process.env.OCR_LAB_MODEL_DIR)bytes=await fs.readFile(path.join(process.env.OCR_LAB_MODEL_DIR,`v6-${role}.tar`));
- else {const r=await fetch(asset.url,{signal:AbortSignal.timeout(120000)});if(!r.ok)throw Error(`Model download failed: ${r.status}`);bytes=Buffer.from(await r.arrayBuffer());}
+ else {
+  // The upstream model host may be unreachable from a GitHub Actions runner.
+  // Reuse only the previously deployed public model, subject to the same
+  // byte-length and SHA-256 checks below. Never pull unverified models.
+  const mirror='https://tokky0117.github.io/household-pwa/previews/preview-v46-clean-base/ocr-engine/models/'+role+'.tar';
+  const download=async url=>{
+   const r=await fetch(url,{signal:AbortSignal.timeout(120000)});
+   if(!r.ok)throw Error(`Model download failed: ${r.status}`);
+   return Buffer.from(await r.arrayBuffer());
+  };
+  try{bytes=await download(asset.url);}
+  catch(upstreamError){
+   console.warn('Upstream model download unavailable; trying verified deployed copy:',role);
+   try{bytes=await download(mirror);}
+   catch(mirrorError){throw new AggregateError([upstreamError,mirrorError],`Model download unavailable: ${role}`);}
+  }
+ }
  if(bytes.length!==asset.bytes||createHash('sha256').update(bytes).digest('hex')!==asset.sha256)throw Error(`Model hash mismatch: ${asset.model}`);
  await fs.writeFile(path.join(out,'models',`${role}.tar`),bytes);
 }
