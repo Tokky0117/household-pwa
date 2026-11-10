@@ -9,26 +9,60 @@ const isShortName=value=>{
   /[A-Za-z\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}]/u.test(clean)&&
   !/^\d{13}$/.test(clean);
 };
-export function shortNameRetryRegions(parsed,{width,height}={},limit=2){
- if(!Array.isArray(parsed?.items)||!goodNumber(width)||!goodNumber(height))return [];
+// Discounts are appended to item.sourceLines. Their merged bounding box is
+// centered BELOW the merchandise line, so it cannot anchor a focused re-read.
+// Use the first merchandise line when its geometry is available.
+function validBox(b,width,height){
+ return !!b&&[b.x0,b.x1,b.y0,b.y1].every(Number.isFinite)&&
+  b.x0>=0&&b.y0>=0&&b.x1<=width&&b.y1<=height&&
+  b.x1>b.x0&&b.y1>b.y0;
+}
+const median=values=>{
+ const a=[...values].sort((x,y)=>x-y);
+ return a.length%2?a[(a.length-1)/2]:(a[a.length/2-1]+a[a.length/2])/2;
+};
+export function shortNameRetryRegions(parsed,{width,height}={},limit=2,layoutLines=null){
+ if(!Array.isArray(parsed?.items)||!goodNumber(width)||!goodNumber(height)||
+  !Number.isInteger(limit)||limit<1)return [];
+ const lineBox=item=>{
+  const first=item.sourceLines?.[0];
+  const b=Number.isSafeInteger(first)&&first>0?
+   layoutLines?.[first-1]?.bounds:null;
+  const fallback=item.layoutEvidence?.bounds;
+  return validBox(b,width,height)?b:validBox(fallback,width,height)?fallback:null;
+ };
  const result=[];
  for(const [index,item] of parsed.items.entries()){
   if(result.length>=limit)break;
   if(!isShortName(item.name||item.rawName)||
    !Number.isSafeInteger(item.grossAmount)||item.grossAmount<0)continue;
-  const b=item.layoutEvidence?.bounds;
-  if(!b||![b.x0,b.x1,b.y0,b.y1].every(Number.isFinite)||
-   b.x0<0||b.x1>width||b.y0<0||b.y1>height||
-   b.x1<=b.x0||b.y1<=b.y0)continue;
+  const b=lineBox(item);
+  if(!b)continue;
   const centerY=(b.y0+b.y1)/2;
-  // A small crop is read at up to 2x native resolution instead of the
-  // full receipt's pixel-budget-limited scale. Keep neighboring lines out
-  // of the central target zone and preserve the original item position.
-  const halfHeight=Math.max(height*.055,(b.y1-b.y0)*2.4);
-  const y0=Math.max(0,centerY-halfHeight),y1=Math.min(height,centerY+halfHeight);
-  const x0=Math.max(0,b.x0-width*.055);
-  const x1=Math.min(width,Math.max(b.x1+width*.012,b.x0+width*.52));
-  if((x1-x0)/width<.05||(y1-y0)/height<.05)continue;
+  const neighbors=parsed.items.map((other,j)=>{
+   if(j===index||isShortName(other.name||other.rawName)||
+    [...String(other.name||other.rawName||'')].length<3)return null;
+   const next=lineBox(other);
+   if(!next)return null;
+   const gap=Math.abs((next.y0+next.y1)/2-centerY);
+   return gap<=height*.25?{left:next.x0,gap}:null;
+  }).filter(Boolean).sort((a,b)=>a.gap-b.gap).slice(0,6);
+  // If the first OCR detected ONLY the right-edge taxable/price marker,
+  // b.x0 is to the right of the missing product name. Nearby priced items
+  // give an independent estimate of the receipt's product-name column.
+  const columnLeft=neighbors.length>=2?median(neighbors.map(n=>n.left)):
+   Math.max(0,b.x0-width*.24);
+  const x0=Math.max(0,Math.min(b.x0,columnLeft)-width*.027);
+  const x1=Math.min(width,Math.max(b.x1+width*.018,x0+width*.43));
+  // A bounded crop centered on the *priced merchandise line*, not its
+  // discount, avoids crowding the detector with adjacent products.
+  let halfHeight=Math.max(height*.018,Math.min(height*.039,(b.y1-b.y0)*1.65));
+  const nearest=neighbors[0]?.gap;
+  if(goodNumber(nearest))halfHeight=Math.min(halfHeight,
+   Math.max(height*.018,nearest*.46));
+  const y0=Math.max(0,centerY-halfHeight);
+  const y1=Math.min(height,centerY+halfHeight);
+  if((x1-x0)/width<.05||(y1-y0)/height<.025)continue;
   result.push({index,baselineName:String(item.name||item.rawName||''),
    amount:item.grossAmount,
    crop:{x:x0/width,y:y0/height,width:(x1-x0)/width,height:(y1-y0)/height},
@@ -60,7 +94,7 @@ export function recoveredNameFromLines(lines,{targetY,amount}={},imageHeight){
   const b=line?.bounds;
   if(!b||!Number.isFinite(b.y0)||!Number.isFinite(b.y1))continue;
   const distance=Math.abs((b.y0+b.y1)/(2*imageHeight)-targetY);
-  if(distance>.14)continue;
+  if(distance>.22)continue;
   const candidate=candidateLine(line.text,amount);
   if(candidate)candidates.push({...candidate,distance,
    score:distance-(candidate.hasAmount?.018:0)});

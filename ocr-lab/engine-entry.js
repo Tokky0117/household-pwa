@@ -47,21 +47,26 @@ export async function scanReceiptImage(file,{mode='gray',crop=null}={}){
   // name, row count, quantity, discount and amounts remain untouched.
   let nameRetryAttempted=0,nameRetrySuggested=0;
   if(mode==='gray'&&!crop){
-   const targets=shortNameRetryRegions(parsed,prepared.metadata,2);
+   const targets=shortNameRetryRegions(parsed,prepared.metadata,2,layout.lines);
    for(const target of targets){
-    let focused;
-    try{
-     focused=await prepareImage(file,'gray',target.crop);
-     nameRetryAttempted++;
-     const retry=await (await reader()).readImage(focused.image);
-     const suggested=recoveredNameFromLines(retry.lines,target,focused.metadata.height);
-     if(suggested&&suggested!==target.baselineName){
-      parsed.items[target.index].ocrRetryName=suggested;
-      nameRetrySuggested++;
-     }
-    }catch{
-     // A failed optional read must never discard the successful primary OCR.
-    }finally{focused?.release();}
+    nameRetryAttempted++;
+    // The first pass isolates the merchandise column in grayscale.
+    // Preserve the original color as a bounded fallback for pale ink/folds.
+    for(const imageMode of ['gray','original']){
+     let focused;
+     try{
+      focused=await prepareImage(file,imageMode,target.crop);
+      const retry=await (await reader()).readImage(focused.image);
+      const suggested=recoveredNameFromLines(retry.lines,target,focused.metadata.height);
+      if(suggested&&suggested!==target.baselineName){
+       parsed.items[target.index].ocrRetryName=suggested;
+       nameRetrySuggested++;
+       break;
+      }
+     }catch{
+      // An optional failure must not undo successful main OCR processing.
+     }finally{focused?.release();}
+    }
    }
   }
   // Positional barcode/name linking may change item issues and suppress an
