@@ -33,6 +33,8 @@ assert.match(prompt,/仮値・要確認/);
 assert.match(prompt,/数量だけの誤読/);
 assert.match(prompt,/1\. 行ID=r-1/);
 assert.match(prompt,/形式Bの形/);
+assert.match(prompt,/写真に印字された商品名/);
+assert.match(prompt,/写真から確認できた店舗名/);
 assert.equal(prompt.includes(String.fromCharCode(96).repeat(3)+'json'),false,
  'no confusing paired fenced JSON examples');
 assert.ok(prompt.length<5000,'longer than intended for a three-row receipt');

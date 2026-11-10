@@ -369,7 +369,7 @@ function makeChatGptOcrAssistPrompt(ocrReference){
  const assist={version:ASSIST_VERSION,items:[{rowId:'OCR行IDをそのまま',
   ocrName:'OCR名をそのまま',nameCandidate:null,quantity:null,amount:null}]};
  const rebuild={version:REBUILD_VERSION,receiptDate:null,storeName:null,
-  receiptTotal:null,printedCount:null,items:[{name:null,quantity:null,amount:null}]};
+  receiptTotal:null,printedCount:null,items:[{name:'写真に印字された商品名',quantity:null,amount:null}]};
  return [
   'くらしストック｜レシート写真の確認',
   '',
@@ -388,9 +388,9 @@ function makeChatGptOcrAssistPrompt(ocrReference){
   '不明な文字や税込明細合計はnullで表し、アプリ確認画面に残す。対象レシートが確定できない、または重大な矛盾が未解決のときだけJSONを停止し、何番目の商品のどの値を確認する必要があるか質問する。ユーザー確認後は確定内容を維持して再検算。',
   '',
   '【出力】',
-  '最初のjsonコードブロックに1つだけJSON。その後に短い「OCR診断」（商品行数・誤読・構造問題・未確定事項）を書く。両形式同時出力、余分なキー、カード・決済・会員番号・電話番号・住所の出力は禁止。',
-  '形式Aの形：'+JSON.stringify(assist),
-  '形式Bの形：'+JSON.stringify(rebuild),
+  '最初のjsonコードブロックに1つだけJSON。その後に短い「OCR診断」（商品行数・誤読・構造問題・未確定事項・写真から確認できた店舗名）を書く。両形式同時出力、余分なキー、カード・決済・会員番号・電話番号・住所の出力は禁止。',
+  '形式Aの形（雛形。itemsは実際のOCR全行分）：'+JSON.stringify(assist),
+  '形式Bの形（雛形。写真の全購入行分）：'+JSON.stringify(rebuild),
   '',
   '【参考OCR結果（写真より優先しない候補）】',
   '購入日候補：'+show(r.receiptDate)+' / 店舗候補：'+show(r.store),
