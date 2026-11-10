@@ -10,7 +10,8 @@ const regions=shortNameRetryRegions(sample,{width:1600,height:2200});
 assert.equal(regions.length,1);
 assert.equal(regions[0].index,0);
 assert.equal(regions[0].amount,148);
-assert.ok(regions[0].crop.width>=.05&&regions[0].crop.height>=.05);
+assert.ok(regions[0].crop.width>=.05&&regions[0].crop.height>=.025,
+ 'tighter target crops no longer include adjacent product lines');
 assert.ok(regions[0].crop.x>=0&&regions[0].crop.y>=0);
 assert.ok(regions[0].crop.x+regions[0].crop.width<=1.001);
 assert.ok(regions[0].crop.y+regions[0].crop.height<=1.001);
