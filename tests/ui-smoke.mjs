@@ -694,17 +694,17 @@ assert.throws(()=>imports.parseChatGptOcrAssistJson(JSON.stringify({
  ]})),/NAME_OR_STORE_UNSAFE/,'sensitive personal patterns remain prohibited in candidate names');
 const newPrompt=imports.makeChatGptOcrAssistPrompt(ocrRef);
 assert.match(newPrompt,/独立した検算/);
-assert.match(newPrompt,/JSONコードブロックは出さず/);
+assert.match(newPrompt,/JSONを停止し/);
 assert.match(newPrompt,/何番目の商品/);
 assert.match(newPrompt,/ユーザー確認後/);
-assert.match(newPrompt,/商品別税込額が印字されず/);
-assert.match(newPrompt,/値引きやクーポンを商品として数えず/);
-assert.match(newPrompt,/停止せず全面再解析/);
+assert.match(newPrompt,/商品別税込額が印字されない/);
+assert.match(newPrompt,/値引きやクーポン/);
+assert.match(newPrompt,/数量だけの誤読は/);
 
 assert.match(newPrompt,/画像がない／開けない場合/,'no photo means no JSON');
 assert.match(newPrompt,/写真そのものを目視/,'visual reading must precede OCR comparison');
 assert.match(newPrompt,/OCR診断/,'correction reasoning must be separate from JSON');
-assert.match(newPrompt,/商品行数が一致/,'OCR splitting mismatches are inspected');
+assert.match(newPrompt,/商品行が1対1対応/,'OCR splitting mismatches are inspected');
 ui.setScanDraft({...rowOcr,items:[{...rowOcr.items[0],quantityUncertain:true}]});
 const uncertainHtml=ui.receiptScanView();
 assert.ok(uncertainHtml.includes('data-field-hint="qty-0"'), 'uncertain quantity uses the shared form validation hint');
