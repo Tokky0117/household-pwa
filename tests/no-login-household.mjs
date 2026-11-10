@@ -2913,3 +2913,76 @@ assert.equal(concurrentA.window.KurashiLive.state().queued,0);
 assert.equal(concurrentB.window.KurashiLive.state().queued,0);
 concurrentA.window.close();concurrentB.window.close();
 console.log('v0.88.8: independent device IndexedDB stores, same-item conflict rebase and shared Sheets convergence OK');
+
+// Two independently cached iPhones must not overwrite an intervening edit
+// by automatically rebasing a whole-receipt replacement or deletion.
+const freshShared=temp.call('bootstrap').data;
+const editTarget=freshShared.records.find(x=>x.record_type==='receipt'&&!x.deleted_at &&
+ freshShared.stores.some(store=>store.chain_id===x.chain_id));
+assert.ok(editTarget,'an existing shared receipt is available for conflict tests');
+const initialReceiptVersion=Number(editTarget.version);
+const editOne=appSession(new IDBFactory());
+const editTwo=appSession(new IDBFactory());
+await waitFor(()=>[editOne,editTwo].every(phone=>
+ phone.window.KurashiLive.state().loaded&&!phone.window.KurashiLive.state().cached),
+ 'independent receipt editors load the same confirmed version');
+const receiptInput={
+ record_id:editTarget.record_id,record_type:'receipt',chain_id:editTarget.chain_id,
+ record_date:editTarget.record_date,branch_name:editTarget.branch_name||'',
+ items:[{raw_name:'端末Aで確定した明細',product_id:null,quantity:1,
+  amount_tax_included:551,category_id:null}]
+};
+online=false;
+await editOne.window.KurashiLive.updateRecord(receiptInput);
+await editTwo.window.KurashiLive.updateRecord({...receiptInput,items:[
+ {...receiptInput.items[0],raw_name:'端末Bの競合明細',amount_tax_included:552}]});
+assert.equal(editOne.window.KurashiLive.state().queued,1);
+assert.equal(editTwo.window.KurashiLive.state().queued,1);
+online=true;
+await editOne.window.KurashiLive.retry();
+await waitFor(()=>editOne.window.KurashiLive.state().queued===0&&
+ Number(temp.call('bootstrap').data.records.find(r=>
+ r.record_id===editTarget.record_id).version)===initialReceiptVersion+1,
+ 'first independent receipt editor saves successfully');
+await editTwo.window.KurashiLive.retry();
+await waitFor(()=>editTwo.window.KurashiLive.state().queued===1&&
+ /保留/.test(editTwo.window.KurashiLive.state().error),
+ 'stale receipt edit is blocked locally, not silently rebased');
+const editAfter=temp.call('bootstrap').data;
+assert.deepEqual(editAfter.record_items.filter(r=>r.record_id===editTarget.record_id)
+ .map(x=>x.raw_name),['端末Aで確定した明細'],
+ 'stale editor cannot overwrite the first editor\'s confirmed receipt');
+assert.equal(Number(editAfter.records.find(x=>x.record_id===editTarget.record_id).version),
+ initialReceiptVersion+1,'blocked stale update did not touch server version');
+editOne.window.close();
+editTwo.window.close();
+
+const deleteOne=appSession(new IDBFactory());
+const deleteTwo=appSession(new IDBFactory());
+await waitFor(()=>[deleteOne,deleteTwo].every(phone=>
+ phone.window.KurashiLive.state().loaded&&!phone.window.KurashiLive.state().cached),
+ 'receipt edit and delete devices read one shared version');
+const beforeDeleteVersion=Number(temp.call('bootstrap').data.records.find(
+ x=>x.record_id===editTarget.record_id).version);
+online=false;
+await deleteOne.window.KurashiLive.updateRecord({...receiptInput,items:[
+ {...receiptInput.items[0],raw_name:'削除競合前に追加した変更',amount_tax_included:553}]});
+await deleteTwo.window.KurashiLive.deleteRecord(editTarget.record_id);
+online=true;
+await deleteOne.window.KurashiLive.retry();
+await waitFor(()=>deleteOne.window.KurashiLive.state().queued===0&&
+ Number(temp.call('bootstrap').data.records.find(r=>
+ r.record_id===editTarget.record_id).version)===beforeDeleteVersion+1,
+ 'the competing edit commits before the stale delete');
+await deleteTwo.window.KurashiLive.retry();
+await waitFor(()=>deleteTwo.window.KurashiLive.state().queued===1&&
+ /保留/.test(deleteTwo.window.KurashiLive.state().error),
+ 'stale deletion is blocked rather than rebased and executed');
+const afterDelete=temp.call('bootstrap').data;
+assert.ok(afterDelete.records.find(r=>r.record_id===editTarget.record_id&&!r.deleted_at),
+ 'competing receipt is not deleted by another device\'s stale request');
+assert.deepEqual(afterDelete.record_items.filter(x=>x.record_id===editTarget.record_id)
+ .map(x=>x.raw_name),['削除競合前に追加した変更']);
+deleteOne.window.close();
+deleteTwo.window.close();
+console.log('v0.88.8: independent-device stale receipt edit/delete are preserved but cannot overwrite new Sheets data OK');
