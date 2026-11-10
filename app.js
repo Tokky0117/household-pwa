@@ -1,4 +1,4 @@
-const APP_VERSION='0.88.7';
+const APP_VERSION='0.88.8';
 const CATS=['飲食','キッチン','洗面・風呂','洗濯・掃除','その他'];
 const liveMode=!!window.KurashiLive; // Data source only; original Preview v46 UI components remain.
 const SEED=[['牛乳',0,true],['麦茶',0,false],['コーヒー',0,true],['卵',0,false],['キッチンペーパー',1,false],['ラップ',1,true],['食器用洗剤',1,true],['シャンプー',2,false],['歯磨き粉',2,true],['ハンドソープ',2,false],['洗濯洗剤',3,false],['柔軟剤',3,true],['トイレットペーパー',3,false],['乾電池',4,true],['ティッシュ',4,true]];
@@ -1163,8 +1163,7 @@ function listHelpView(){
   '日用品名を押して価格情報を確認',
   '左スワイプで編集・削除',
   '長押しして上下に並び替え',
-  '右上の＋で日用品を追加',
-  '左上のコピーアイコンで在庫なしをコピー'
+  '右上の＋で日用品を追加'
  ];
  return `<section class="list-help" aria-label="日用品リストの使い方">
  <button type="button" class="list-help-toggle" data-act="toggleListHelp" aria-controls="list-help-content" aria-expanded="${listHelpOpen}">
@@ -1180,9 +1179,8 @@ function listView(){
    s.queued?'未反映の操作 '+s.queued+'件（自動で保存します）':
    s.cached?'前回取得した内容を表示中。Google Sheetsと再接続しています。':
    s.busy&&!s.loaded?'家庭の日用品を読み込み中…':''):'';
- const copy=UI.iconButton({label:'在庫なしをコピー',action:'copyList',iconHtml:miniIcon('copy'),title:'在庫なしをコピー'});
  const add=UI.iconButton({label:'日用品を追加',action:'add',iconHtml:miniIcon('plus'),title:'日用品を追加'});
- return `${head('日用品','くらしストック',false,add,copy)}<main>${UI.searchField({id:'search',label:'日用品を検索',placeholder:'日用品を検索',value:query,extra:'autocomplete="off"'})}<div class="filterrow"><label class="switchlabel"><input type="checkbox" id="onlyOut" ${onlyOut?'checked':''}>在庫なしのみ表示</label></div><div id="item-results">${listResults()}</div>${liveMode?'<p id="list-sync-status" class="hint" role="status" '+(notice?'':'hidden')+'>'+esc(notice)+'</p>':''}${listHelpView()}</main>${nav()}`;
+ return `${head('日用品','くらしストック',false,add)}<main>${UI.searchField({id:'search',label:'日用品を検索',placeholder:'日用品を検索',value:query,extra:'autocomplete="off"'})}<div class="filterrow"><label class="switchlabel"><input type="checkbox" id="onlyOut" ${onlyOut?'checked':''}>在庫なしのみ表示</label></div><div id="item-results">${listResults()}</div>${liveMode?'<p id="list-sync-status" class="hint" role="status" '+(notice?'':'hidden')+'>'+esc(notice)+'</p>':''}${listHelpView()}</main>${nav()}`;
 }
 function priceCompareView(){
  const i=current();if(!i){page='list';return listView()}
@@ -2389,7 +2387,7 @@ if(action==='productCreate'){
  document.activeElement?.blur?.(); // dismiss search keyboard before leaving picker
  page='productCreate';openSwipeId=null;
 }if(action==='shopToggle'){shopExpanded=!shopExpanded;priceScope=shopExpanded?'unit':'product';if(!shopExpanded)compareQuantity=null;render();return}
-if(action==='catalogueList'){pickerAll=!pickerAll;const heading=document.querySelector('.catalogue-list-heading');if(heading)heading.textContent=pickerAll?'登録一覧':'候補（最大3件）';const target=document.getElementById('catalogue-results');if(target)target.innerHTML=pickerResults();el.textContent=pickerAll?'候補に戻る':'登録一覧から選ぶ';return}if(action==='hide'){menu=false;dialog={title:'日用品を削除',message:'日用品リストから削除します',buttons:[{id:'cancel',label:'キャンセル'},{id:'confirmHide',label:'削除',primary:true}]}}if(action==='copyList'){const txt=CATS.map((cat,idx)=>{const rows=visible().filter(i=>i.category===idx&&!i.inStock).sort((a,b)=>a.order-b.order);return rows.length?cat+'\n'+rows.map(i=>'- '+i.name).join('\n'):''}).filter(Boolean).join('\n\n');menu=false;render();if(!txt){inlineActionNotice(document.querySelector('[data-act="copyList"]'),'在庫なしの日用品はありません');return}navigator.clipboard.writeText(txt).then(()=>say('在庫なしをコピーしました',{anchor:'[data-act="copyList"]'})).catch(()=>inlineActionNotice(document.querySelector('[data-act="copyList"]'),'コピーできませんでした'));return}if(action==='receiptScan'){
+if(action==='catalogueList'){pickerAll=!pickerAll;const heading=document.querySelector('.catalogue-list-heading');if(heading)heading.textContent=pickerAll?'登録一覧':'候補（最大3件）';const target=document.getElementById('catalogue-results');if(target)target.innerHTML=pickerResults();el.textContent=pickerAll?'候補に戻る':'登録一覧から選ぶ';return}if(action==='hide'){menu=false;dialog={title:'日用品を削除',message:'日用品リストから削除します',buttons:[{id:'cancel',label:'キャンセル'},{id:'confirmHide',label:'削除',primary:true}]}}if(action==='receiptScan'){
  beginRecordEntry('photo');return;
 }
 
