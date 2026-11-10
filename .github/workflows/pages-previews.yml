@@ -87,6 +87,7 @@ jobs:
             node scripts/build-production.mjs "_site/live-client.js"
             # A formal release must not retain the preview-only app name.
             sed -i 's/くらしストック_試作/くらしストック/g; s/PWA試作/PWA/g' _site/index.html _site/manifest.webmanifest
+            sed -i 's/<span>試作 v/<span>v/' _site/app.js
             revision="$(git rev-parse --short=12 refs/remotes/origin/main)"
             sed -i "s/^const CACHE=[^;]*;/const CACHE='household-production-main-$revision';/" "_site/sw.js"
             echo "Production: / (main; isolated GAS, IndexedDB and service-worker cache)"
