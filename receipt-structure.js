@@ -183,7 +183,19 @@
    if(m=l.match(quantityPrice)){
     if(num(m[3])<0){if(num(m[2])*(+m[1])!==num(m[3]))warn('discount_quantity_mismatch',ix);discount(-num(m[3]),ix);}
     else if(pending){const item=add(pending.raw,+m[1],num(m[2]),num(m[3]),[pending.line,ix]);if(item)item.quantitySource='printed';}
-    else warn('orphan_quantity_price',ix);continue;
+    else {
+     const quantity=+m[1],unit=num(m[2]),amount=num(m[3]);
+     // OCR may attach the full amount to the preceding name before it reads
+     // the adjacent quantity annotation. Require independent arithmetic and
+     // immediate adjacency; a printed count alone is never sufficient.
+     if(last&&last.sourceLines?.[last.sourceLines.length-1]===ix-1&&
+       last.discount===0&&Number.isSafeInteger(quantity)&&quantity>0&&quantity<=99&&
+       Number.isSafeInteger(unit)&&unit>0&&unit*quantity===amount&&
+       last.grossAmount===amount){
+      Object.assign(last,itemAssembler.applyQuantity(last,quantity,unit,ix,lines[i]));
+     }else warn('orphan_quantity_price',ix);
+    }
+    continue;
    }
    if(m=l.match(janQuantityPrice)){
     if(pending){const item=add(pending.raw,+m[2],num(m[3])/(+m[2]),num(m[3]),[pending.line,ix]);if(item){item.quantitySource='printed';item.productCode=m[1];}}

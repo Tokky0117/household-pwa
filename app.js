@@ -496,6 +496,16 @@ function scanStoreHeaderMatch(raw){
  // A logo/brand may be split across consecutive OCR text rows. Accept
  // only an exact master/alias match across two lines, not a fuzzy guess.
  const paired=lines.slice(0,-1).map((line,i)=>compact(line+lines[i+1]));
+ // A bilingual logo can print a registered Japanese name beside an
+ // independent Latin brand word. Do not match arbitrary substrings.
+ const japaneseLogoPart='[\\p{Script=Han}\\p{Script=Hiragana}\\p{Script=Katakana}ー\\s]';
+ const japaneseThenLatin=new RegExp('^('+japaneseLogoPart+'{2,50})\\s+([A-Z]{3,16})$','u');
+ const latinThenJapanese=new RegExp('^([A-Z]{3,16})\\s+('+japaneseLogoPart+'{2,50})$','u');
+ const bilingualKeys=lines.slice(0,8).map(line=>{
+  const jpFirst=line.match(japaneseThenLatin);
+  const jpLast=line.match(latinThenJapanese);
+  return compact(jpFirst?.[1]||jpLast?.[2]||'');
+ }).filter(Boolean);
  const matches=new Map();
  for(const chain of catalogue.chains){
   if(!chain?.id)continue;
@@ -510,7 +520,7 @@ function scanStoreHeaderMatch(raw){
     // A branch name follows the registered chain name. Arbitrary
     // product words or OCR text after the name are not store evidence.
     return suffix.length<=40&&/^(?:.{1,35}(?:店|支店|営業所)|(?:本店|支店|営業所|店))$/u.test(suffix);
-   })||paired.some(key=>key===alias);
+   })||paired.some(key=>key===alias)||bilingualKeys.some(key=>key===alias);
    if(match){matches.set(chain.id,chain);break;}
   }
  }

@@ -1038,6 +1038,12 @@ assert.equal(ui.scanStoreHeaderMatch('UNKNOWN APPAREL\n領収証').headerLatinCa
 assert.equal(ui.scanStoreHeaderMatch('').status,'no-header');
 assert.equal(ui.scanChainForStore('SAMPLE\nAPPAREL\n領収証')?.id,
  sampleClothing.id,'adjacent split logo lines match the exact registered alias');
+assert.equal(ui.scanChainForStore('架 空 衣 料 店 SAMPLE')?.id,
+ sampleClothing.id,'registered Japanese brand beside a Latin co-logo is matched');
+assert.equal(ui.scanChainForStore('SAMPLE 架空衣料店')?.id,
+ sampleClothing.id,'Latin-first co-logo retains the registered Japanese name');
+assert.equal(ui.scanChainForStore('スーパー青空 商品A'),null,
+ 'unrelated merchandise after a chain name is not accepted as co-logo');
 assert.equal(ui.scanChainForStore('架空衣料店風の商品 ¥500'),null,
  'a merchandise description containing a brand-like substring is not evidence');
 assert.equal(ui.scanChainForStore('スーパー青空 商品A ¥123'),null,
@@ -1579,6 +1585,21 @@ assert.equal(splitMulti.lineRoles[1].role,'quantity');
 const pricedBeforeQuantity=structure.parse('商品A ¥210\n2コ×単105\n合計 ¥210');
 assert.equal(pricedBeforeQuantity.items.length,1);
 assert.equal(pricedBeforeQuantity.items[0].quantity,2);
+const pricedInlineQuantity=structure.parse('商品A ¥210\n2コ×単105 ¥210\n合計 ¥210\nお買上点数 2');
+assert.equal(pricedInlineQuantity.items.length,1);
+assert.equal(pricedInlineQuantity.items[0].quantity,2,
+ 'adjacent priced item accepts a full quantity/unit/total annotation');
+assert.equal(pricedInlineQuantity.items[0].unitPrice,105);
+assert.deepEqual(pricedInlineQuantity.items[0].sourceLines,[1,2]);
+assert.equal(pricedInlineQuantity.validation.checks.count,'match');
+const invalidInlineQuantity=structure.parse('商品A ¥210\n2コ×単105 ¥211\n合計 ¥210');
+assert.equal(invalidInlineQuantity.items[0].quantity,1,
+ 'mismatched multiplication does not replace the original quantity');
+assert.ok(invalidInlineQuantity.warnings.some(x=>x.code==='orphan_quantity_price'));
+const detachedInlineQuantity=structure.parse('商品A ¥210\n商品B ¥50\n2コ×単105 ¥210\n合計 ¥260');
+assert.equal(detachedInlineQuantity.items[0].quantity,1);
+assert.equal(detachedInlineQuantity.items[1].quantity,1,
+ 'a quantity annotation cannot leap over an intervening item');
 const ambiguousSplit=structure.parse('商品A\n2コ×単105\n¥211\n合計 ¥211');
 assert.equal(ambiguousSplit.items.length,0,'price mismatch cannot invent a product');
 assert.ok(ambiguousSplit.warnings.some(x=>x.code==='ambiguous_quantity_row'));
