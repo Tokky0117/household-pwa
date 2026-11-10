@@ -1184,6 +1184,7 @@ assert.ok(versionParts.length===3&&versionParts.every(Number.isInteger)&&
  (versionParts[0]>0||versionParts[1]>88||
  (versionParts[1]===88&&versionParts[2]>=7)),
  'app version must not regress below the verified OCR-name candidate release');
+assert.ok(source.includes('reviewEvidence.storeHeader={status:storeMatch.status'),
  'store matching diagnostic must distinguish OCR from registered name matching');
 const engineEntry=readFileSync(new URL('../ocr-lab/engine-entry.js',import.meta.url),'utf8');
 assert.ok(engineEntry.includes('parsed.validation=window.KurashiReceiptValidation.validateReceipt(parsed)'),
