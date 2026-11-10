@@ -1,4 +1,4 @@
-const APP_VERSION='0.88.9';
+const APP_VERSION='0.88.10';
 const CATS=['飲食','キッチン','洗面・風呂','洗濯・掃除','その他'];
 const liveMode=!!window.KurashiLive; // Data source only; original Preview v46 UI components remain.
 const SEED=[['牛乳',0,true],['麦茶',0,false],['コーヒー',0,true],['卵',0,false],['キッチンペーパー',1,false],['ラップ',1,true],['食器用洗剤',1,true],['シャンプー',2,false],['歯磨き粉',2,true],['ハンドソープ',2,false],['洗濯洗剤',3,false],['柔軟剤',3,true],['トイレットペーパー',3,false],['乾電池',4,true],['ティッシュ',4,true]];
@@ -1508,6 +1508,7 @@ function settingsView(){
  if(liveMode){
   const s=window.KurashiLive.state();
   const sync=settingsSyncSummary(s),lastSync=settingsLastSyncText(s.lastSync);
+  const conflict=window.KurashiLive.blockedReceiptChange?.();
   return `${head('設定','くらしストック')}<main class="settings-main settings-overview">
    <section class="settings-overview-section" aria-label="データと同期">
     ${UI.sectionHeading({title:'データと同期'})}
@@ -1517,6 +1518,13 @@ function settingsView(){
     </dl>
     ${sync.note?`<p class="settings-sync-note hint" ${s.error?'role="alert"':''}>${esc(sync.note)}</p>`:''}
     ${s.temporary?'<p class="settings-sync-note hint">Googleログイン一時停止中</p>':''}
+    ${conflict?`<div class="settings-conflict-recovery">
+     <p class="settings-sync-note hint">他の端末の記録を守るため、この操作を保留しています。必要なら内容をコピーしてから取り消してください。</p>
+     <div class="formactions">
+      ${conflict.kind==='edit'?UI.button({label:'保留した編集内容をコピー',variant:'secondary',action:'blockedReceiptCopy'}):''}
+      ${UI.button({label:'保留した操作を取り消す',variant:'tertiary',action:'blockedReceiptDiscard'})}
+     </div>
+    </div>`:''}
     ${s.error&&s.queued&&!s.blocked?'<p class="settings-sync-note hint">通信が回復すると自動で再送します。未反映の操作は端末に残っています。</p>':''}
     ${s.loginRequired?(s.signedIn?UI.button({label:'ログアウト',variant:'secondary',action:'liveLogout'}):'<div id="google-login-button"></div>'):''}
    </section>
@@ -2334,6 +2342,15 @@ if(action==='confirmScanProductMove'&&p){
  }).catch(err=>say(err.message||'紐付け先を変更できませんでした'));
  return;
 }
+if(action==='confirmDiscardBlockedReceipt'&&liveMode){
+ renderDialogOnly();
+ window.KurashiLive.discardBlockedReceipt().then(()=>{
+  if(tab==='settings'&&page==='list')render();
+  say('保留した操作を取り消しました');
+ }).catch(e=>inlineActionNotice(document.querySelector('.settings-conflict-recovery')||
+  document.querySelector('#settings-sync-status'),e.message||'操作を取り消せませんでした'));
+ return;
+}
 if(action==='confirmRecordDelete'&&p?.recordId){
  window.KurashiLive.deleteRecord(p.recordId).then(()=>{
   page='list';tab='receipt';recordDetailId=null;render();
@@ -2351,7 +2368,22 @@ if(action==='discardChanges'){goBack();return}if(action==='confirmHide'){if(live
    .then(()=>{page='list';openSwipeId=null;render()})
    .catch(err=>inlineActionNotice(document.querySelector('[data-list-hide="'+i.id+'"]'),err.message||'削除できませんでした'));
    render();return}
- current().hidden=true;current().version++;persist();page='list';openSwipeId=null}if(action==='resetYes'){items=makeSeed();catalogue=sampleCatalogue();previewRecords={records:[],record_items:[]};localStorage.removeItem(previewRecordsKey);persist();persistCatalogue();page='list';tab='items'}render();return}const action=el.dataset.act;if(!action)return;if(action==='toggleListHelp'){
+ current().hidden=true;current().version++;persist();page='list';openSwipeId=null}if(action==='resetYes'){items=makeSeed();catalogue=sampleCatalogue();previewRecords={records:[],record_items:[]};localStorage.removeItem(previewRecordsKey);persist();persistCatalogue();page='list';tab='items'}render();return}const action=el.dataset.act;if(!action)return;if(action==='blockedReceiptCopy'&&liveMode){
+ const change=window.KurashiLive.blockedReceiptChange?.();
+ if(!change||change.kind!=='edit'){inlineActionNotice(el,'保留した編集が見つかりません');return}
+ navigator.clipboard.writeText(change.text)
+  .then(()=>say('保留した編集内容をコピーしました'))
+  .catch(()=>inlineActionNotice(el,'コピーできませんでした'));
+ return;
+}
+if(action==='blockedReceiptDiscard'&&liveMode){
+ if(!window.KurashiLive.blockedReceiptChange?.()){inlineActionNotice(el,'保留した操作が見つかりません');return}
+ dialog={title:'保留した操作を取り消しますか？',
+  message:'この端末の未反映の編集・削除操作は消えます。必要な編集内容は、先にコピーして保管してください。取り消した後、他の端末が保存した最新の記録を読み込みます。',
+  buttons:[{id:'cancel',label:'キャンセル'},{id:'confirmDiscardBlockedReceipt',label:'操作を取り消す',critical:true}]};
+ render();return;
+}
+if(action==='toggleListHelp'){
  listHelpOpen=!listHelpOpen;
  try{localStorage.setItem(helpOpenKey,String(listHelpOpen))}catch{}
  const control=document.querySelector('.list-help-toggle');
