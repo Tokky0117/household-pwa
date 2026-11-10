@@ -1,59 +1,67 @@
-# くらしストック｜本番環境セットアップと受入（2026-11-10）
+# くらしストック｜本番環境の作成・移行手順（現行版）
 
-## 0. 現在の状態
+2026-11-10 更新。本書は本番構築の実行手順。要件の正本は [CURRENT_REQUIREMENTS.md](CURRENT_REQUIREMENTS.md)。
 
-- 開発環境：`preview-v46-clean-base`、既存の試験用GAS/Sheetを変更せず継続。
-- 本番用ソース：`production-v1`（`main` は変更しない）。
-- 固定公開予定先：`https://tokky0117.github.io/household-pwa/production/`。
-- GitHub Pagesのビルドは `production-v1` のソースを `/production/` に配信する。
-- 本番生成物は試験用GAS URLを許可せず、専用の `kurashi-stock-operations-production-v1` IndexedDBを使用する。旧試作localStorage操作・snapshotの自動取込は無効。
-- **専用GAS/Sheetがまだ作成・接続されていない場合、保存先は空で起動し、試験用GASに接続しない（fail closed）。**
-- 現段階の「本番URL配備」と「本番データの利用開始」は別の工程。データ受入前に実機検証する。
+## 1. 確定した運用構成
 
-## 1. 本番の初期構築（試験用環境に影響させない）
+| 項目 | 開発・試験 | 本番 |
+| --- | --- | --- |
+| Gitブランチ | `preview-v46-clean-base` | **`main`** |
+| PWA URL | `/household-pwa/previews/preview-v46-clean-base/` | **`/household-pwa/`** |
+| Google Apps Script | 既存の試験用GAS | **新規・独立したGAS** |
+| Google Sheets | 既存の試験用12シート | **新規・独立した12シート** |
+| IndexedDB | `kurashi-stock-operations-v1` | `kurashi-stock-operations-production-v1` |
+| SWキャッシュ | プレビューのパスにスコープ固定 | ルートパスにスコープ固定 |
+| 認証 | `temporary-household` | **同じく `temporary-household`**（ユーザー指定） |
 
-1. **新しい独立したGASプロジェクト**を作成。既存の試験用GASは使用しない。
-2. `production-v1` の `gas/Setup.gs` と `gas/Api.gs` をその新プロジェクトへ配置。旧試験用GASと取り違えない。
-3. 新プロジェクトで `setupNewWorkbook()` を**初回だけ**実行。新しいGoogle Sheet（12シート）が生成されたことを確認する。
-4. プロジェクトのScript Propertiesに `SPREADSHEET_ID`、`KURASHI_NEW_WORKBOOK_ID`、`KURASHI_SCHEMA_VERSION=1` が**同じ新ブック**を指すことを確認。旧試験ブックのIDは不可。
-5. `KURASHI_AUTH_MODE='temporary-household'` を採用。Webアプリは「自分として実行」「アクセスできるユーザー：全員」。Googleログインを要求しない。URLの秘密性による認可はないことを理解する。
-6. 新GASのWebアプリ `/exec` URLとGAS **スクリプトID（別物）** を控える。URLをGitHub公開ファイルやレシートに貼り付ける必要はない。
+- **`production-v1` は使わない**。旧コミットがGitHub上に残っていても公開・移行経路に含めない。
+- コードの機能・UIは検証済みの開発版を `main` に移す。本番専用に作り直さない。
+- 現在の `main` は旧UIのまま。**新しい本番GASとSheetの接続確認までは `main` を変更しない**。
+- 新しい本番構成への切替は、既存の試験GAS/Sheetsに一切書き込まずに行う。
 
-> 旧試験用の `gas-deploy-new.yml` は `preview-v46-clean-base` の旧試験用GAS専用。**本番用のスクリプトID／デプロイIDをこの設定に上書きしない**。
+## 2. 本番用GAS・Sheetを最初の1回だけ作成
 
-## 2. 本番フロントエンドの接続
+この工程は新しいGoogleアカウント資源を作る操作を含み、GitHubソースの変更だけでは完了しない。
 
-1. GitHub リポジトリの Actions/Variables に **`KURASHI_PRODUCTION_GAS_EXEC`** を設定し、新GASの `https://script.google.com/macros/s/＜本番デプロイID＞/exec` を指定する。
-2. 試験用URLと完全一致する値はビルドで拒否する。形式が不正なURLも拒否する。
-3. `production-v1` のPagesワークフローを再実行する。ビルド時に本番URLが組み込まれる。
-4. `/production/` を開き、試験用レシートや日用品が表示されていないこと、新Sheetsへ接続することを確認する。
-5. 試験URL `/previews/preview-v46-clean-base/` との両方を開いても、端末内の未同期操作キューが相互移行されないことを確認する。
+1. `https://script.google.com/home/projects/create` で、**既存の試験用とは別の**Apps Scriptプロジェクトを新規作成する。
+2. 開発版GitHubの `gas/Setup.gs` と `gas/Api.gs` の現行コードをその新プロジェクトに配置する。試験GASには貼り付けない。
+3. 新プロジェクトで `setupNewWorkbook()` を実行する。専用のGoogle Sheetsを作り、**家庭1件、固定カテゴリ5件、12シート**を確認する。サンプル商品・レシートは入れない。
+4. 新GASプロジェクトのスクリプトプロパティで `SPREADSHEET_ID` と `KURASHI_NEW_WORKBOOK_ID` が**同じ新Sheets**を指すことを確認する。既存試験ブックIDなら中止。再実行時も同じブックを再利用する設計。
+5. `gas/Api.gs` の認証モードを `temporary-household` のままにする。GASをWebアプリとして「自分として実行」「アクセスできるユーザー：全員」で新規デプロイする。
+6. **新GASの /exec URL** を控える。これは公開用アプリに組み込む接続先であり、GASのスクリプトIDやGoogle Sheets IDとは別物。
 
-※ 本番用URL変数を設定しただけでは既存のGitHub Pages配信物は更新されない。Pagesワークフローの成功を必ず確認する。
+**アクセス上の制約**：認証省略方式ではGAS URLを知る者に読み書き権限がある。URLの秘密性は認証ではない。実個人情報の取り扱いに注意する。
 
-## 3. 本番利用開始の受入条件
+**重要**：`.github/workflows/gas-deploy-new.yml` は既存試験用GAS専用。本番GASのスクリプトIDを試験用のGitHub変数・Secretsへ上書きしない。
 
-- 日用品の追加・在庫切替・2回連続操作が即時反映され、本番Sheetへ保存される。
-- オフラインで操作し、アプリ再起動後に同じ操作IDで本番Sheetへ反映される。
-- 異なる2端末で本番用日用品・商品・レシートの作成と読み込みが一致する。
-- 同じ日用品を両端末が更新してもデータが二重作成されない。
-- レシート写真→OCR→確認→保存、ChatGPT JSON取込、手入力、値札、下書き、編集を確認する。
-- 購入数量全体の税込金額が二重計算されず、元OCR名と確定名が混同されない。
-- **保存済みレシートの同時編集で、他端末が追加した明細を失わない**。現在の自動再調整方式はここが未受入のため、問題が解消するまでは同一レシートを同時編集しない。
-- 認証省略の公開アクセスリスクを了承し、個人識別情報・決済情報・原写真を外部公開やGitHubへ置かない。
+## 3. 本番の接続設定
 
-## 4. バックアップと復旧
+1. GitHubリポジトリの `Settings → Secrets and variables → Actions → Variables` で `KURASHI_PRODUCTION_GAS_EXEC` に**新GASの /exec URL**を登録する。
+2. `scripts/build-production.mjs` は、本番のGASが未指定・不正な形式・既知の試験用GAS URLと一致する場合に試験GASへの接続を許可しない。
+3. 同ビルドは `live-client.js` を本番専用のGAS URL／IndexedDB名／旧試験端末の移行禁止設定へ変換する。開発版のソースは変更しない。
+4. 端末内データはURLのパスだけでは分離されないため、**本番用DB名の分離**が必須。既存プレビューの未送信キューを本番へ移さない。
 
-- 本番Sheetは試験Sheetと別に管理する。新規構築で既存Sheetを初期化しない。
-- 定期的に本番Sheetをコピー／エクスポートして保管し、復旧時には更新の差分を確認する。
-- 保存失敗時にキューを端末から消さない。ブラウザーのサイトデータ消去、PWA再インストール、データ移行を行う前に未反映操作数を確認する。
-- `processed_operations` と `change_log` の操作ID冪等性を保持し、安易な手作業での行削除・行番号変更をしない。
+## 4. mainへ直接移行し公開
 
-## 5. 作業停止条件
+1. 開発版の全自動テスト・Pages公開が成功し、同じレシートに対する2端末の競合編集・削除が勝手に上書きされないことを確認する。
+2. 既存 `main` には開発版と独立したコミットがある。既存mainの履歴を無理に強制上書きせず、差分を確認して検証済みの開発版を `main` へ統合する。
+3. `.github/workflows/pages-previews.yml` は `main` のファイルを配信ルートへコピーし、独立した本番GAS接続を組み込む。**`/production/` は作成しない**。
+4. 本番GAS URLの登録が確認できないときは新 `main` の公開を失敗として停止し、既存試験GASへの自動接続はしない。
+5. GitHub Actionsの成功と `https://tokky0117.github.io/household-pwa/` の配信を確認する。
 
-- 専用GASとSheetの実体・設定が確認できない。
-- `KURASHI_PRODUCTION_GAS_EXEC` が試験用URLと一致する。
-- 2端末で実データの上書き・消失が再現する。
-- Pages/GASワークフローが失敗し、実際の配信版とソースの一致を検証できない。
+## 5. 最小の実機受入
 
-いずれの場合も、試験用GAS/Sheetに自動切替したり、`main` を書き換えて回避しない。
+- 本番と試験プレビューで、元の試験用日用品・履歴が本番に表示されない。
+- 日用品を本番で1件作り、在庫を連続切替。端末内に保存後、専用Sheetsへ反映される。
+- 電波を切って操作 → 再起動 → 復帰で操作キューを再送できる。
+- 別の端末で初回登録した日用品・商品・レシートが参照できる。OCRの自動取込、手入力、レシート編集を1回ずつ確認する。
+- 同時レシート編集の競合は新しい正本を消さずに保留し、保留内容をコピー・取り消して同期を再開できる。
+- 本番Sheetはバックアップ用にコピー／エクスポートを継続する。元の `processed_operations` や `change_log` の行を手作業で削除しない。
+
+## 6. 現在の完了／未完了
+
+**コードとして準備済み**：`main` を本番とするPagesワークフロー、本番専用DB・接続先の安全なビルド、2端末模擬テスト、レシート競合保留処理。
+
+**実Google側で未完了**：新GASプロジェクト作成、新Sheet作成・初期化、Webアプリの新規デプロイ、GitHub変数の設定、本番実機受入。
+
+上記が完了する前に試験用GASを本番に流用したり、`main` への反映を本番利用開始完了と表現しない。
