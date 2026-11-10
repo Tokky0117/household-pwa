@@ -51,6 +51,8 @@ jobs:
           test -s ocr-lab/dist-app/runtime/ort-wasm-simd-threaded.wasm
 
       - name: Build isolated static previews
+        env:
+          PROD_GAS_EXEC_URL: ${{ vars.KURASHI_PRODUCTION_GAS_EXEC }}
         shell: bash
         run: |
           set -euo pipefail
@@ -75,7 +77,7 @@ jobs:
 
           while IFS= read -r remote_ref; do
             branch="${remote_ref#origin/}"
-            [[ "$branch" == main || "$branch" == gh-pages || "$branch" == HEAD ]] && continue
+            [[ "$branch" == main || "$branch" == gh-pages || "$branch" == HEAD || "$branch" == production-v1 ]] && continue
             # URL-safe branch name; original slashes become hyphens.
             slug="$(printf '%s' "$branch" | sed -E 's/[^A-Za-z0-9._-]+/-/g')"
             [[ -n "$slug" ]] || continue
@@ -97,6 +99,19 @@ jobs:
               rm -rf "$dest"
             fi
           done < <(git for-each-ref --format='%(refname:short)' refs/remotes/origin)
+
+          # Stable production URL. Its GAS and IndexedDB are always isolated
+          # from development. Without a dedicated GAS URL it fails closed.
+          if git cat-file -e refs/remotes/origin/production-v1:index.html 2>/dev/null; then
+            prod="_site/production"
+            copy_site refs/remotes/origin/production-v1 "$prod"
+            mkdir -p "$prod/ocr-engine"
+            cp -a ocr-lab/dist-app/. "$prod/ocr-engine/"
+            node scripts/build-production.mjs "$prod/live-client.js"
+            revision="$(git rev-parse --short=12 refs/remotes/origin/production-v1)"
+            sed -i "s/^const CACHE=[^;]*;/const CACHE='household-production-$revision';/" "$prod/sw.js"
+            echo "Production frontend: /production/ (separate GAS configuration)"
+          fi
 
           # GitHub Pages should serve the copied files as-is.
           touch _site/.nojekyll
