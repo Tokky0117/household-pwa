@@ -1590,7 +1590,7 @@ assert.equal(pricedInlineQuantity.items.length,1);
 assert.equal(pricedInlineQuantity.items[0].quantity,2,
  'adjacent priced item accepts a full quantity/unit/total annotation');
 assert.equal(pricedInlineQuantity.items[0].unitPrice,105);
-assert.deepEqual(pricedInlineQuantity.items[0].sourceLines,[1,2]);
+assert.deepEqual(Array.from(pricedInlineQuantity.items[0].sourceLines),[1,2]);
 assert.equal(pricedInlineQuantity.validation.checks.count,'match');
 const invalidInlineQuantity=structure.parse('商品A ¥210\n2コ×単105 ¥211\n合計 ¥210');
 assert.equal(invalidInlineQuantity.items[0].quantity,1,
