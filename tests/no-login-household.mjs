@@ -2954,6 +2954,39 @@ assert.deepEqual(editAfter.record_items.filter(r=>r.record_id===editTarget.recor
  'stale editor cannot overwrite the first editor\'s confirmed receipt');
 assert.equal(Number(editAfter.records.find(x=>x.record_id===editTarget.record_id).version),
  initialReceiptVersion+1,'blocked stale update did not touch server version');
+const heldEdit=editTwo.window.KurashiLive.blockedReceiptChange();
+assert.equal(heldEdit?.kind,'edit','a rejected receipt edit can be reviewed safely');
+assert.match(heldEdit.text,/端末Bの競合明細/);
+assert.equal(await editTwo.window.KurashiLive.retry(),false,
+ 'manual retry must not bypass a confirmed multi-device receipt conflict');
+assert.equal(editTwo.window.KurashiLive.state().queued,1);
+let copiedConflict='';
+Object.defineProperty(editTwo.window.navigator,'clipboard',{configurable:true,value:{
+ writeText:async value=>{copiedConflict=String(value);}
+}});
+editTwo.window.document.querySelector('[data-tab="settings"]').click();
+assert.ok(editTwo.window.document.querySelector('[data-act="blockedReceiptCopy"]'),
+ 'blocked receipt editing offers an explicit copy option in existing settings');
+assert.ok(!/通信が回復すると自動で再送/.test(
+ editTwo.window.document.querySelector('.settings-main').textContent),
+ 'confirmed record conflict is not incorrectly described as transient network failure');
+editTwo.window.document.querySelector('[data-act="blockedReceiptCopy"]').click();
+await waitFor(()=>copiedConflict.includes('端末Bの競合明細'),
+ 'the full held edit is copied before discarding');
+online=false;
+await assert.rejects(editTwo.window.KurashiLive.discardBlockedReceipt(),/SIMULATED_OFFLINE/,
+ 'offline recovery cannot destroy held changes without refreshing Sheets');
+assert.equal(editTwo.window.KurashiLive.state().queued,1);
+online=true;
+editTwo.window.document.querySelector('[data-act="blockedReceiptDiscard"]').click();
+assert.match(editTwo.window.document.querySelector('.dialog-back').textContent,/先にコピーして保管/);
+editTwo.window.document.querySelector('[data-dialog="confirmDiscardBlockedReceipt"]').click();
+await waitFor(()=>editTwo.window.KurashiLive.state().queued===0&&
+ !editTwo.window.KurashiLive.state().blocked,
+ 'explicitly confirmed cancellation recovers the latest Sheets snapshot');
+assert.deepEqual(temp.call('bootstrap').data.record_items.filter(x=>
+ x.record_id===editTarget.record_id).map(x=>aliasText(temp,x)),
+ ['端末Aで確定した明細'],'conflict recovery does not roll back another device');
 editOne.window.close();
 editTwo.window.close();
 
@@ -2983,6 +3016,17 @@ assert.ok(afterDelete.records.find(r=>r.record_id===editTarget.record_id&&!r.del
  'competing receipt is not deleted by another device\'s stale request');
 assert.deepEqual(afterDelete.record_items.filter(x=>x.record_id===editTarget.record_id)
  .map(x=>aliasText(temp,x)),['削除競合前に追加した変更']);
+const heldDelete=deleteTwo.window.KurashiLive.blockedReceiptChange();
+assert.equal(heldDelete?.kind,'delete','stale deletion is explicitly recoverable');
+deleteTwo.window.document.querySelector('[data-tab="settings"]').click();
+assert.equal(deleteTwo.window.document.querySelector('[data-act="blockedReceiptCopy"]'),null,
+ 'a stale deletion offers no misleading edit-content export button');
+assert.ok(deleteTwo.window.document.querySelector('[data-act="blockedReceiptDiscard"]'));
+await deleteTwo.window.KurashiLive.discardBlockedReceipt();
+assert.equal(deleteTwo.window.KurashiLive.state().queued,0);
+assert.ok(temp.call('bootstrap').data.records.some(x=>
+ x.record_id===editTarget.record_id&&!x.deleted_at),
+ 'cancelling stale deletion preserves the other device receipt');
 deleteOne.window.close();
 deleteTwo.window.close();
-console.log('v0.88.8: independent-device stale receipt edit/delete are preserved but cannot overwrite new Sheets data OK');
+console.log('v0.88.10: two-device receipt conflicts preserve drafts, offer explicit export and safe cancellation OK');
