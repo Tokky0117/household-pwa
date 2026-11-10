@@ -13,6 +13,7 @@ import {PaddleOCR} from '@paddleocr/paddleocr-js';
 import {prepareImage} from './prepare-image.js';
 import {normalizeJapaneseOcr} from './normalize-japanese.js';
 import {normalizeYenGrouping} from './normalize-money.js';
+import {shortNameRetryRegions,recoveredNameFromLines} from './short-name-retry.js';
 
 let engine=null,active=false;
 const modelAssets={
@@ -40,6 +41,29 @@ export async function scanReceiptImage(file,{mode='gray',crop=null}={}){
   const parsed=window.KurashiReceiptLayout.attachAdjacentCodeNames(
    window.KurashiReceiptStructure.parse(normalized.text),{lines:layout.lines});
   window.KurashiReceiptLayout.attachSourceGeometry(parsed,{lines:layout.lines});
+  // Retry only severely shortened, priced item names. This re-runs the SAME
+  // PaddleOCR engine on a small 2x gray crop from the original photo; it is
+  // not a dictionary lookup or a whole-receipt second pass. The original OCR
+  // name, row count, quantity, discount and amounts remain untouched.
+  let nameRetryAttempted=0,nameRetrySuggested=0;
+  if(mode==='gray'&&!crop){
+   const targets=shortNameRetryRegions(parsed,prepared.metadata,2);
+   for(const target of targets){
+    let focused;
+    try{
+     focused=await prepareImage(file,'gray',target.crop);
+     nameRetryAttempted++;
+     const retry=await (await reader()).readImage(focused.image);
+     const suggested=recoveredNameFromLines(retry.lines,target,focused.metadata.height);
+     if(suggested&&suggested!==target.baselineName){
+      parsed.items[target.index].ocrRetryName=suggested;
+      nameRetrySuggested++;
+     }
+    }catch{
+     // A failed optional read must never discard the successful primary OCR.
+    }finally{focused?.release();}
+   }
+  }
   // Positional barcode/name linking may change item issues and suppress an
   // orphan-name warning; validate the final assembled items, not stale ones.
   parsed.validation=window.KurashiReceiptValidation.validateReceipt(parsed);
@@ -50,7 +74,8 @@ export async function scanReceiptImage(file,{mode='gray',crop=null}={}){
    metadata:prepared.metadata,
    metrics:{...(r.metrics||{}),observations:r.observations?.length||0,
     lineCount:layout.lines?.length||0,receiptRegionStatus:region.status,excludedObservations:region.excluded,priceColumnJoins:(r.lines?.length||0)-(layout.lines?.length||0),japaneseGlyphChanges:japanese.changes.length,
-    yenGroupingChanges:normalized.changes.length}
+    yenGroupingChanges:normalized.changes.length,
+    nameRetryAttempted,nameRetrySuggested}
   };
  }finally{prepared?.release();active=false;}
 }

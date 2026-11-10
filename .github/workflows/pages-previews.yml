@@ -37,6 +37,7 @@ jobs:
           node tests/receipt-baseline.mjs
           node tests/receipt-layout-p1.mjs
           node tests/receipt-prompt-p3.mjs
+          node tests/receipt-short-name-retry.mjs
 
       - name: Build verified prior PaddleOCR for the main receipt screen
         shell: bash

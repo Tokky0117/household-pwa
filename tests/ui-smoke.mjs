@@ -1168,8 +1168,8 @@ assert.equal(ui.getScanDraft().items[0].productId,'',
 ui.catalogue().products=beforeOcrCandidates;
 ui.setScanDraft(null);
 
-assert.ok(source.includes("const APP_VERSION='0.87.9'"),
- 'app version advances with the OCR-name candidate matching improvement');
+assert.ok(source.includes("const APP_VERSION='0.88.0'"),
+ 'app version advances with targeted high-resolution OCR rereading');
 assert.ok(source.includes('reviewEvidence.storeHeader={status:storeMatch.status'),
  'store matching diagnostic must distinguish OCR from registered name matching');
 const engineEntry=readFileSync(new URL('../ocr-lab/engine-entry.js',import.meta.url),'utf8');
@@ -1728,6 +1728,18 @@ assert.equal(review.buildReviewModel(p4Assist).unresolvedRows.length,1);
 assert.throws(()=>review.applyAssistance(p4Draft,{
  items:[{rowId:'ocr-p4',ocrName:'改変したOCR原文',nameCandidate:'候補'}]},{
  findProduct:()=>'',isUnconfirmedBarcodeLine:()=>false}),/OCR行IDまたは原表記/);
+const shortenedOcr=review.fromOcrItem({
+ name:'I',grossAmount:148,netAmount:135,taxIncludedAmount:135,
+ quantity:1,quantitySource:'default',issues:[],
+ ocrRetryName:'エリンギ'
+},{rowId:'retry-name-1',taxBasis:'included'});
+assert.equal(shortenedOcr.ocrRawName,'I','the original OCR name is immutable');
+assert.equal(shortenedOcr.name,'I','the printed-name field stays the first OCR reading');
+assert.equal(shortenedOcr.nameCandidate,'エリンギ',
+ 'the second OCR reading is an unconfirmed name candidate only');
+assert.equal(shortenedOcr.amount,135);
+assert.equal(shortenedOcr.quantity,1);
+assert.equal(shortenedOcr.productId,'','the OCR suggestion must not select a product');
 const p4Rebuild=review.fromChatGptRebuild(p4Draft,{
  version:'kurashi-receipt-rebuild-1',receiptDate:'2026-11-05',
  storeName:'不明な店舗',receiptTotal:80,printedCount:1,
@@ -1746,7 +1758,7 @@ assert.ok(!JSON.stringify(p4Rebuild).includes('ocr-p4'),
 console.log('P4 common review adapter, provenance, row identity and P2 validation OK');
 
 // v0.73: Receipt OCR review information hierarchy; preserve validation/confirmation.
-assert.ok(source.includes("const APP_VERSION='0.87.9'"), 'UI review revision version is current');
+assert.ok(source.includes("const APP_VERSION='0.88.0'"), 'UI review revision version is current');
 assert.ok(source.includes("UI.sectionHeading({title:'読み取り状況'})"), 'OCR and ChatGPT appear under one section');
 assert.ok(source.includes("UI.sectionHeading({title:isShelf?'値札情報':'購入情報'})"), 'Receipt OCR review groups store and purchase date');
 assert.ok(source.includes("UI.sectionHeading({title:isShelf?'価格情報':'購入明細',subtitle:scanDraft.items.length+'件'+"), 'Receipt OCR review identifies item list and unmatched count');
