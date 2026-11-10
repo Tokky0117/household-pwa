@@ -35,7 +35,13 @@ function ocrReference(draft,chainLabel){
   printedCount:numeric(draft?.printedCount),
   nameRetry:draft?.reviewEvidence?.nameRetry?{
    attempted:numeric(draft.reviewEvidence.nameRetry.attempted),
-   suggested:numeric(draft.reviewEvidence.nameRetry.suggested)
+   suggested:numeric(draft.reviewEvidence.nameRetry.suggested),
+   imageReads:numeric(draft.reviewEvidence.nameRetry.imageReads),
+   detectedRows:numeric(draft.reviewEvidence.nameRetry.detectedRows),
+   nearbyRows:numeric(draft.reviewEvidence.nameRetry.nearbyRows),
+   eligibleRows:numeric(draft.reviewEvidence.nameRetry.eligibleRows),
+   preparationErrors:numeric(draft.reviewEvidence.nameRetry.preparationErrors),
+   readErrors:numeric(draft.reviewEvidence.nameRetry.readErrors)
   }:null,
   quantitySignals:draft?.reviewEvidence?.quantitySignals?{
    recognizedRows:numeric(draft.reviewEvidence.quantitySignals.recognizedRows),

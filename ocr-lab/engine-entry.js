@@ -13,7 +13,7 @@ import {PaddleOCR} from '@paddleocr/paddleocr-js';
 import {prepareImage} from './prepare-image.js';
 import {normalizeJapaneseOcr} from './normalize-japanese.js';
 import {normalizeYenGrouping} from './normalize-money.js';
-import {shortNameRetryRegions,recoveredNameFromLines} from './short-name-retry.js';
+import {shortNameRetryRegions,inspectRecoveredNameFromLines} from './short-name-retry.js';
 
 let engine=null,active=false;
 const modelAssets={
@@ -46,6 +46,8 @@ export async function scanReceiptImage(file,{mode='gray',crop=null}={}){
   // not a dictionary lookup or a whole-receipt second pass. The original OCR
   // name, row count, quantity, discount and amounts remain untouched.
   let nameRetryAttempted=0,nameRetrySuggested=0;
+  let nameRetryImageReads=0,nameRetryDetectedRows=0,nameRetryNearbyRows=0,
+   nameRetryEligibleRows=0,nameRetryPreparationErrors=0,nameRetryReadErrors=0;
   if(mode==='gray'&&!crop){
    const targets=shortNameRetryRegions(parsed,prepared.metadata,2,layout.lines);
    for(const target of targets){
@@ -55,17 +57,28 @@ export async function scanReceiptImage(file,{mode='gray',crop=null}={}){
     for(const imageMode of ['gray','original']){
      let focused;
      try{
-      focused=await prepareImage(file,imageMode,target.crop);
+      // Only internal OCR may use a crop smaller than the public 5% bound.
+      focused=await prepareImage(file,imageMode,target.crop,{allowSmallCrop:true});
+     }catch{
+      nameRetryPreparationErrors++;
+      continue;
+     }
+     try{
+      nameRetryImageReads++;
       const retry=await (await reader()).readImage(focused.image);
-      const suggested=recoveredNameFromLines(retry.lines,target,focused.metadata.height);
-      if(suggested&&suggested!==target.baselineName){
-       parsed.items[target.index].ocrRetryName=suggested;
+      const inspected=inspectRecoveredNameFromLines(retry.lines,target,focused.metadata.height);
+      nameRetryDetectedRows+=inspected.detectedRows;
+      nameRetryNearbyRows+=inspected.nearbyRows;
+      nameRetryEligibleRows+=inspected.eligibleRows;
+      if(inspected.name&&inspected.name!==target.baselineName){
+       parsed.items[target.index].ocrRetryName=inspected.name;
        nameRetrySuggested++;
        break;
       }
      }catch{
-      // An optional failure must not undo successful main OCR processing.
-     }finally{focused?.release();}
+      // An optional failure must not discard successful primary OCR results.
+      nameRetryReadErrors++;
+     }finally{focused.release();}
     }
    }
   }
@@ -80,7 +93,9 @@ export async function scanReceiptImage(file,{mode='gray',crop=null}={}){
    metrics:{...(r.metrics||{}),observations:r.observations?.length||0,
     lineCount:layout.lines?.length||0,receiptRegionStatus:region.status,excludedObservations:region.excluded,priceColumnJoins:(r.lines?.length||0)-(layout.lines?.length||0),japaneseGlyphChanges:japanese.changes.length,
     yenGroupingChanges:normalized.changes.length,
-    nameRetryAttempted,nameRetrySuggested}
+    nameRetryAttempted,nameRetrySuggested,nameRetryImageReads,
+    nameRetryDetectedRows,nameRetryNearbyRows,nameRetryEligibleRows,
+    nameRetryPreparationErrors,nameRetryReadErrors}
   };
  }finally{prepared?.release();active=false;}
 }

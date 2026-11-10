@@ -85,24 +85,33 @@ function candidateLine(text,expectedAmount){
   /[¥￥\r\n]|^\d+\s*[×xX]/u.test(name))return null;
  return {name,hasAmount:!!money};
 }
-export function recoveredNameFromLines(lines,{targetY,amount}={},imageHeight){
+export function inspectRecoveredNameFromLines(lines,{targetY,amount}={},imageHeight){
  if(!Array.isArray(lines)||!goodNumber(imageHeight)||
   !Number.isFinite(targetY)||targetY<0||targetY>1||
-  !Number.isSafeInteger(amount)||amount<0)return null;
+  !Number.isSafeInteger(amount)||amount<0)
+   return {name:null,reason:'invalid',detectedRows:0,nearbyRows:0,eligibleRows:0};
  const candidates=[];
+ let nearbyRows=0;
  for(const line of lines){
   const b=line?.bounds;
   if(!b||!Number.isFinite(b.y0)||!Number.isFinite(b.y1))continue;
   const distance=Math.abs((b.y0+b.y1)/(2*imageHeight)-targetY);
   if(distance>.22)continue;
+  nearbyRows++;
   const candidate=candidateLine(line.text,amount);
   if(candidate)candidates.push({...candidate,distance,
    score:distance-(candidate.hasAmount?.018:0)});
  }
  candidates.sort((a,b)=>a.score-b.score);
- if(!candidates.length)return null;
+ const counts={detectedRows:lines.length,nearbyRows,eligibleRows:candidates.length};
+ if(!candidates.length)
+  return {name:null,reason:nearbyRows?'unrecognized-name':'no-nearby-rows',...counts};
  // Two equally close conflicting readings must remain unresolved.
  if(candidates.length>1&&candidates[0].name!==candidates[1].name&&
-  candidates[1].score-candidates[0].score<.028)return null;
- return candidates[0].name;
+  candidates[1].score-candidates[0].score<.028)
+  return {name:null,reason:'ambiguous',...counts};
+ return {name:candidates[0].name,reason:'candidate',...counts};
+}
+export function recoveredNameFromLines(lines,target,imageHeight){
+ return inspectRecoveredNameFromLines(lines,target,imageHeight).name;
 }

@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
-import {shortNameRetryRegions,recoveredNameFromLines} from '../ocr-lab/short-name-retry.js';
+import {shortNameRetryRegions,recoveredNameFromLines,inspectRecoveredNameFromLines} from '../ocr-lab/short-name-retry.js';
+import {cropPixels} from '../ocr-lab/prepare-image.js';
 const region={x0:300,x1:1240,y0:800,y1:835};
 const sample={items:[
  {name:'I',rawName:'I',grossAmount:148,layoutEvidence:{bounds:region}},
@@ -9,6 +10,15 @@ const sample={items:[
 const regions=shortNameRetryRegions(sample,{width:1600,height:2200});
 assert.equal(regions.length,1);
 assert.equal(regions[0].index,0);
+const narrowExample={x:.22,y:.31,width:.43,height:.038};
+assert.throws(()=>cropPixels(narrowExample,1600,2200),/切り抜く範囲/,
+ 'normal crop restrictions must remain unchanged');
+const privateRegion=cropPixels(narrowExample,1600,2200,{allowSmallCrop:true});
+assert.ok(privateRegion.width>0&&privateRegion.height>0,
+ 'a focused product-name crop must be accepted by the image preparer');
+assert.throws(()=>cropPixels({...narrowExample,height:.012},1600,2200,
+ {allowSmallCrop:true}),/切り抜く範囲/,
+ 'internal crops still enforce a safe minimum size');
 assert.equal(regions[0].amount,148);
 assert.ok(regions[0].crop.width>=.05&&regions[0].crop.height>=.025,
  'tighter target crops no longer include adjacent product lines');
@@ -72,4 +82,20 @@ assert.equal(recoveredNameFromLines([
  line('分類一括割引 10%',141)
 ],{targetY:.5,amount:148},230),'エリンギ',
  'a geometrically unique name must be usable without price on the cropped image');
-console.log('targeted 2x OCR retry: geometry, price guard, no fabricated names OK');
+const found=inspectRecoveredNameFromLines([
+ line('※ エリンギ',115),line('分類一括割引 10%',141),
+ line('※',130)
+],{targetY:.5,amount:148},230);
+assert.equal(found.name,'エリンギ');
+assert.equal(found.reason,'candidate');
+assert.equal(found.detectedRows,3);
+assert.equal(found.eligibleRows,1);
+const missing=inspectRecoveredNameFromLines([
+ line('※',115),line('! ¥148',117)
+],{targetY:.5,amount:148},230);
+assert.equal(missing.name,null,
+ 'neither the receipt star marker nor the price marker is a product');
+assert.equal(missing.reason,'unrecognized-name');
+assert.equal(missing.detectedRows,2);
+assert.equal(missing.eligibleRows,0);
+console.log('targeted OCR retry: internal small crop, detection stages, no fabricated names OK');

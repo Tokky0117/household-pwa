@@ -405,6 +405,13 @@ function makeChatGptOcrAssistPrompt(ocrReference){
   ...(r.nameRetry?['OCR商品名再読取診断：再試行='+show(r.nameRetry.attempted)+
    '行 / 別候補='+show(r.nameRetry.suggested)+
    '行（候補は未確認）']:[]),
+  ...(r.nameRetry?.imageReads!=null?[
+   'OCR再読取の処理内訳：画像OCR実行='+show(r.nameRetry.imageReads)+
+   '回 / 検出行='+show(r.nameRetry.detectedRows)+
+   '行 / 対象位置付近='+show(r.nameRetry.nearbyRows)+
+   '行 / 商品名候補='+show(r.nameRetry.eligibleRows)+
+   '行 / 切り出し失敗='+show(r.nameRetry.preparationErrors)+
+   '回 / 認識失敗='+show(r.nameRetry.readErrors)+'回']:[]),
   'OCR数量候補合計：'+show(quantityCandidates)+'点'+
    (r.items.some(x=>x.quantityUncertain)?'（仮値を含む）':''),
   ...(countMismatch?['数量不一致：印字点数とOCR数量候補が異なる。写真の数量・単価行を確認し、差の分だけ推測で変更しない。']:[]),

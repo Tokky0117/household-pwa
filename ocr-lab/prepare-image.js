@@ -1,11 +1,14 @@
 /* Local-only receipt image preparation. No image/result persistence or network calls. */
 const LIMIT_PIXELS=3600000, LIMIT_LONG=2880;
 const clamp=(v,lo,hi)=>Math.min(hi,Math.max(lo,v));
-export function cropPixels(crop,width,height){
+export function cropPixels(crop,width,height,{allowSmallCrop=false}={}){
+ // Normal/user crops require >=5% of each side. Only the private
+ // short-name retry may use a narrow >=2% product-name strip.
+ const minFraction=allowSmallCrop ? 0.02 : 0.05;
  if(!crop)return {x:0,y:0,width,height};
  const x=clamp(Number(crop.x),0,1),y=clamp(Number(crop.y),0,1);
  const w=clamp(Number(crop.width),0,1-x),h=clamp(Number(crop.height),0,1-y);
- if(![x,y,w,h].every(Number.isFinite)||w<.05||h<.05)throw Error('切り抜く範囲をもう少し広く指定してください。');
+ if(![x,y,w,h].every(Number.isFinite)||w<minFraction||h<minFraction)throw Error('切り抜く範囲をもう少し広く指定してください。');
  const x0=clamp(Math.floor(x*width),0,width-1),y0=clamp(Math.floor(y*height),0,height-1);
  const x1=clamp(Math.ceil((x+w)*width),x0+1,width),y1=clamp(Math.ceil((y+h)*height),y0+1,height);
  return {x:x0,y:y0,width:x1-x0,height:y1-y0};
@@ -69,11 +72,11 @@ export function filterImage(imageData,mode){
  for(let j=0;j<result.length;j++){const k=j*4;data[k]=data[k+1]=data[k+2]=result[j];}
  return imageData;
 }
-export async function prepareImage(file,mode='gray',crop=null){
+export async function prepareImage(file,mode='gray',crop=null,{allowSmallCrop=false}={}){
  if(!file||file.size>12*1024*1024)throw Error('12MB以下の写真を選んでください。');
  let bitmap;try{bitmap=await createImageBitmap(file);}catch{throw Error('写真を開けませんでした。JPEGまたはPNGで試してください。');}
  try{
-  const region=cropPixels(crop,bitmap.width,bitmap.height);
+  const region=cropPixels(crop,bitmap.width,bitmap.height,{allowSmallCrop});
   const factor=Math.min(mode==='original'?1:2,Math.sqrt(LIMIT_PIXELS/(region.width*region.height)),LIMIT_LONG/Math.max(region.width,region.height));
   const canvas=document.createElement('canvas');canvas.width=Math.max(1,Math.round(region.width*factor));canvas.height=Math.max(1,Math.round(region.height*factor));
   const ctx=canvas.getContext('2d',{willReadFrequently:true});if(!ctx)throw Error('画像処理を開始できませんでした。');
