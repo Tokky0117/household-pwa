@@ -27,13 +27,39 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Install browser and IndexedDB regression-test dependencies
+        run: npm install --no-save --no-package-lock --ignore-scripts fake-indexeddb@6.2.4 jsdom@26.1.0
+
+      - name: Validate v1.8 preview behavior
+        run: |
+          node tests/ui-smoke.mjs
+          node tests/no-login-household.mjs
+          node tests/receipt-baseline.mjs
+          node tests/receipt-seven-case-acceptance.mjs
+          node tests/receipt-layout-p1.mjs
+          node tests/receipt-prompt-p3.mjs
+          node tests/production-build.mjs
+
+      - name: Build verified prior PaddleOCR for the main receipt screen
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm ci --prefix ocr-lab --ignore-scripts
+          (cd ocr-lab && npx vite build --config vite.app.config.mjs && OCR_LAB_OUT="$PWD/dist-app" node prepare-assets.mjs)
+          test -s ocr-lab/dist-app/engine.js
+          test -s ocr-lab/dist-app/models/det.tar
+          test -s ocr-lab/dist-app/models/rec.tar
+          test -s ocr-lab/dist-app/runtime/ort-wasm-simd-threaded.wasm
+
       - name: Build isolated static previews
+        env:
+          PROD_GAS_EXEC_URL: ${{ vars.KURASHI_PRODUCTION_GAS_EXEC }}
         shell: bash
         run: |
           set -euo pipefail
           git fetch --prune origin '+refs/heads/*:refs/remotes/origin/*'
           mkdir -p _site/previews
-          files=(index.html app.js styles.css manifest.webmanifest icon.svg sw.js)
+          files=(index.html app.js styles.css manifest.webmanifest icon.svg sw.js live-client.js receipt-chatgpt-import.js receipt-validation.js receipt-review-model.js)
 
           copy_site() {
             local ref="$1"
@@ -47,12 +73,29 @@ jobs:
             [[ -f "$dest/index.html" ]]
           }
 
-          # Keep the default branch at the normal project Pages URL.
+          # Root / is production after main receives the verified app.
+          # Until that release, preserve the existing main site unchanged.
           copy_site refs/remotes/origin/main _site
+          if git cat-file -e refs/remotes/origin/main:CURRENT_REQUIREMENTS.md 2>/dev/null \
+            && git cat-file -e refs/remotes/origin/main:live-client.js 2>/dev/null; then
+            if [[ -z "${PROD_GAS_EXEC_URL:-}" ]]; then
+              echo "::error::Configure KURASHI_PRODUCTION_GAS_EXEC before deploying main."
+              exit 1
+            fi
+            mkdir -p _site/ocr-engine
+            cp -a ocr-lab/dist-app/. _site/ocr-engine/
+            node scripts/build-production.mjs "_site/live-client.js"
+            # A formal release must not retain the preview-only app name.
+            sed -i 's/くらしストック_試作/くらしストック/g; s/PWA試作/PWA/g' _site/index.html _site/manifest.webmanifest
+            sed -i 's/<span>試作 v/<span>v/' _site/app.js
+            revision="$(git rev-parse --short=12 refs/remotes/origin/main)"
+            sed -i "s/^const CACHE=[^;]*;/const CACHE='household-production-main-$revision';/" "_site/sw.js"
+            echo "Production: / (main; isolated GAS, IndexedDB and service-worker cache)"
+          fi
 
           while IFS= read -r remote_ref; do
             branch="${remote_ref#origin/}"
-            [[ "$branch" == main || "$branch" == gh-pages || "$branch" == HEAD ]] && continue
+            [[ "$branch" == main || "$branch" == gh-pages || "$branch" == HEAD || "$branch" == production-v1 ]] && continue
             # URL-safe branch name; original slashes become hyphens.
             slug="$(printf '%s' "$branch" | sed -E 's/[^A-Za-z0-9._-]+/-/g')"
             [[ -n "$slug" ]] || continue
@@ -60,7 +103,14 @@ jobs:
             if copy_site "refs/remotes/$remote_ref" "$dest"; then
               # Scope the Service Worker cache per preview to avoid cross-branch conflicts.
               if [[ -f "$dest/sw.js" ]]; then
-                sed -i "s/^const CACHE=.*;/const CACHE='household-preview-$slug';/" "$dest/sw.js"
+                # Rotate the preview cache when this branch revision changes.
+                # A fixed branch-only key retained stale app CSS/JS across releases.
+                revision="$(git rev-parse --short=12 "refs/remotes/$remote_ref")"
+                sed -i "s/^const CACHE=[^;]*;/const CACHE='household-preview-$slug-$revision';/" "$dest/sw.js"
+              fi
+              if [[ "$branch" == "preview-v46-clean-base" ]]; then
+                mkdir -p "$dest/ocr-engine"
+                cp -a ocr-lab/dist-app/. "$dest/ocr-engine/"
               fi
               echo "Preview: /previews/$slug/"
             else
@@ -74,11 +124,17 @@ jobs:
       - name: Configure GitHub Pages
         uses: actions/configure-pages@v5
 
+      # Use a different artifact for each retry attempt. GitHub Actions
+      # retains the earlier attempt's artifact under the same workflow run,
+      # and deploy-pages fails when multiple artifacts share a name.
       - name: Upload site
         uses: actions/upload-pages-artifact@v3
         with:
+          name: github-pages-${{ github.run_id }}-${{ github.run_attempt }}
           path: _site
 
       - name: Deploy previews and main
         id: deployment
         uses: actions/deploy-pages@v4
+        with:
+          artifact_name: github-pages-${{ github.run_id }}-${{ github.run_attempt }}

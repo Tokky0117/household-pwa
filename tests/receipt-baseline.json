@@ -1,0 +1,490 @@
+{
+  "schemaVersion": "receipt-ocr-baseline-1",
+  "recordedAt": "2026-11-10",
+  "referenceRevision": "f09d5473d450b995cdc650c3dfad7fd4fd20fde4",
+  "description": "Seven anonymous numerical/structural snapshots from user-supplied receipt photos and real app OCR references. NO photos, payment details, store names, dates, raw OCR, or personal identifiers.",
+  "caveat": "Printed/external-tax-allocation values are not the same kind of evidence. Existing OCR snapshots document defects, not validated target behavior. Do not claim image-to-OCR accuracy from synthetic test success.",
+  "cases": [
+    {
+      "id": "R01",
+      "kind": "tax-included-coupons",
+      "gold": {
+        "amounts": [
+          2638,
+          2380,
+          1678,
+          788,
+          1798,
+          719,
+          1498,
+          568,
+          328,
+          899,
+          898,
+          298,
+          268
+        ],
+        "quantities": [
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1
+        ],
+        "total": 14758,
+        "printedCount": 13,
+        "amountEvidence": "printed-included"
+      },
+      "ocrSnapshot": {
+        "amounts": [
+          2638,
+          2380,
+          1678,
+          788,
+          1798,
+          719,
+          1498,
+          568,
+          328,
+          899,
+          898,
+          298,
+          268
+        ],
+        "quantities": [
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1
+        ],
+        "receiptTotal": 14758
+      },
+      "knownIssue": "Some merchandise names require review; coupon rows are not products."
+    },
+    {
+      "id": "R02",
+      "kind": "external-tax-item-discounts",
+      "gold": {
+        "amounts": [
+          138,
+          433,
+          430,
+          660,
+          198,
+          418,
+          382,
+          138
+        ],
+        "quantities": [
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1
+        ],
+        "total": 2797,
+        "printedCount": 8,
+        "amountEvidence": "allocated-external",
+        "tax": {
+          "netAmounts": [
+            128,
+            401,
+            398,
+            611,
+            183,
+            387,
+            354,
+            128
+          ],
+          "printedTax": 207,
+          "rate": 8
+        }
+      },
+      "ocrSnapshot": {
+        "amounts": [
+          138,
+          433,
+          430,
+          660,
+          198,
+          418,
+          382,
+          138
+        ],
+        "quantities": [
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1
+        ],
+        "receiptTotal": 2797
+      },
+      "knownIssue": "Tax-inclusive per-item amounts are calculated, not separately printed."
+    },
+    {
+      "id": "R03",
+      "kind": "external-tax-multi-quantity",
+      "gold": {
+        "amounts": [
+          95,
+          293,
+          95,
+          124,
+          484,
+          144,
+          153,
+          95,
+          125,
+          193,
+          387,
+          202,
+          212,
+          153,
+          210,
+          270,
+          209
+        ],
+        "quantities": [
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          2,
+          1,
+          2
+        ],
+        "total": 3444,
+        "printedCount": 19,
+        "amountEvidence": "allocated-external",
+        "tax": {
+          "netAmounts": [
+            88,
+            271,
+            88,
+            115,
+            448,
+            133,
+            142,
+            88,
+            116,
+            179,
+            358,
+            187,
+            196,
+            142,
+            194,
+            250,
+            194
+          ],
+          "printedTax": 255,
+          "rate": 8
+        }
+      },
+      "ocrSnapshot": {
+        "amounts": [
+          95,
+          293,
+          95,
+          124,
+          484,
+          144,
+          153,
+          95,
+          125,
+          193,
+          387,
+          202,
+          212,
+          153,
+          210,
+          270,
+          209
+        ],
+        "quantities": [
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          2,
+          1,
+          2
+        ],
+        "receiptTotal": 3444
+      },
+      "knownIssue": "One OCR product name collapses to a single character. Two product lines have quantity two."
+    },
+    {
+      "id": "R04",
+      "kind": "included-tax-quantity-missed",
+      "gold": {
+        "amounts": [
+          283,
+          116,
+          327,
+          116,
+          116,
+          116,
+          327,
+          105,
+          408,
+          116,
+          210,
+          354,
+          321,
+          5
+        ],
+        "quantities": [
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          2,
+          1,
+          1,
+          1
+        ],
+        "total": 2920,
+        "printedCount": 15,
+        "amountEvidence": "printed-included"
+      },
+      "ocrSnapshot": {
+        "amounts": [
+          283,
+          116,
+          327,
+          116,
+          116,
+          116,
+          327,
+          105,
+          408,
+          116,
+          210,
+          354,
+          321,
+          5
+        ],
+        "quantities": [
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1
+        ],
+        "receiptTotal": 2920
+      },
+      "knownIssue": "Quantity two on line 11 was OCR'd as one; the line amount 210 covers two units. Correct amount sum alone hides this error."
+    },
+    {
+      "id": "R05",
+      "kind": "background-receipt-and-split-code",
+      "gold": {
+        "amounts": [
+          1290,
+          2990,
+          2990,
+          2990,
+          1290
+        ],
+        "quantities": [
+          1,
+          1,
+          1,
+          1,
+          1
+        ],
+        "total": 11550,
+        "printedCount": 5,
+        "amountEvidence": "printed-included",
+        "shapeTags": [
+          "crew-neck",
+          "merino-crew",
+          "merino-crew",
+          "merino-v",
+          "crew-neck"
+        ]
+      },
+      "ocrSnapshot": {
+        "amounts": [
+          283,
+          116,
+          327,
+          116,
+          1290,
+          2990,
+          2990,
+          2990,
+          1290
+        ],
+        "quantities": [
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1
+        ],
+        "receiptTotal": 11550,
+        "rowRoles": [
+          "background",
+          "background",
+          "background",
+          "background",
+          "product",
+          "code-as-name",
+          "code-as-name",
+          "product",
+          "product"
+        ]
+      },
+      "knownIssue": "Four other-receipt rows and two code-only names are present. Original printed total and OCR line sum differ by 842."
+    },
+    {
+      "id": "R06",
+      "kind": "external-tax-quantity-discount",
+      "gold": {
+        "amounts": [
+          155,
+          31,
+          486
+        ],
+        "quantities": [
+          1,
+          1,
+          5
+        ],
+        "total": 672,
+        "printedCount": 7,
+        "amountEvidence": "allocated-external",
+        "tax": {
+          "grossAmounts": [
+            159,
+            29,
+            495
+          ],
+          "discountAmounts": [
+            15,
+            0,
+            45
+          ],
+          "netAmounts": [
+            144,
+            29,
+            450
+          ],
+          "printedTax": 49,
+          "rate": 8
+        }
+      },
+      "ocrSnapshot": {
+        "amounts": [
+          155,
+          31,
+          486
+        ],
+        "quantities": [
+          1,
+          1,
+          5
+        ],
+        "receiptTotal": 672
+      },
+      "knownIssue": "A five-unit line receives a 45-yen discount; the 49-yen tax is allocated across all three lines."
+    },
+    {
+      "id": "R07",
+      "kind": "included-tax-home-center",
+      "gold": {
+        "amounts": [
+          437,
+          800,
+          748
+        ],
+        "quantities": [
+          1,
+          1,
+          1
+        ],
+        "total": 1985,
+        "printedCount": 3,
+        "amountEvidence": "printed-included"
+      },
+      "ocrSnapshot": {
+        "amounts": [
+          437,
+          800,
+          748
+        ],
+        "quantities": [
+          1,
+          1,
+          1
+        ],
+        "receiptTotal": 1985
+      },
+      "knownIssue": "Small name misread. The third name contains package size, not purchase quantity."
+    }
+  ]
+}
