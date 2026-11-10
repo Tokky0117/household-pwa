@@ -35,6 +35,7 @@ jobs:
           node tests/ui-smoke.mjs
           node tests/no-login-household.mjs
           node tests/receipt-baseline.mjs
+          node tests/receipt-seven-case-acceptance.mjs
           node tests/receipt-layout-p1.mjs
           node tests/receipt-prompt-p3.mjs
 
