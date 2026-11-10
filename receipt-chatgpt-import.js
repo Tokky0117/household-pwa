@@ -342,46 +342,69 @@ function parseChatGptOcrAssistJson(source){
  });
  return {version:ASSIST_VERSION,items};
 }
+// Compact photo-first instruction, with exact OCR row identity for the importer.
 function makeChatGptOcrAssistPrompt(ocrReference){
  if(typeof ocrReference!=='string'||ocrReference.length>18000)
   throw Error('OCR_REFERENCE_REQUIRED');
- let reference;
- try{reference=JSON.parse(ocrReference)}catch(_){throw Error('OCR_REFERENCE_INVALID')}
- if(!isObject(reference)||!Array.isArray(reference.items)||!reference.items.length||
-  reference.items.length>100||reference.items.some(x=>!isObject(x)||
-   typeof x.rowId!=='string'||typeof x.ocrName!=='string'))
-  throw Error('OCR_REFERENCE_INVALID');
- const output={version:ASSIST_VERSION,
-  items:reference.items.map(x=>({rowId:x.rowId,ocrName:x.ocrName,nameCandidate:null,quantity:null,amount:null}))};
+ let r;
+ try{r=JSON.parse(ocrReference)}catch(_){throw Error('OCR_REFERENCE_INVALID')}
+ if(!isObject(r)||!Array.isArray(r.items)||!r.items.length||r.items.length>100||
+  r.items.some(x=>!isObject(x)||typeof x.rowId!=='string'||
+   typeof x.ocrName!=='string'))throw Error('OCR_REFERENCE_INVALID');
+ const show=x=>x===null||x===undefined||x===''?'不明':String(x);
+ const moneyOrigin={allocated:'税額配賦による計算値',
+  'ocr-parsed':'OCR明細額','chatgpt-photo-candidate':'写真解析候補',unknown:'不明'};
+ const lines=r.items.map((x,i)=>{
+  const qty=show(x.quantity)+(x.quantityUncertain?'（仮値・要確認）':'（OCR候補）');
+  const amount='税込='+show(x.taxIncludedAmount)+'円（'+
+   (moneyOrigin[x.amountOrigin]||show(x.amountOrigin))+'）'+
+   (x.taxExcludedAmount!=null?'、税抜='+x.taxExcludedAmount+'円':'')+
+   (x.allocatedTax!=null?'、配賦税='+x.allocatedTax+'円':'');
+  return (i+1)+'. 行ID='+x.rowId+' / OCR名='+JSON.stringify(x.ocrName)+
+   ' / 数量='+qty+' / '+amount;
+ });
+ const diagnostics=(r.nameLinkDiagnostics||[]).map(x=>x.rowId+'：'+
+  show(x.status)+'（近傍文字行'+show(x.nearbyTextRows)+
+  '、名前候補'+show(x.eligibleNameRows)+'）');
+ const assist={version:ASSIST_VERSION,items:[{rowId:'OCR行IDをそのまま',
+  ocrName:'OCR名をそのまま',nameCandidate:null,quantity:null,amount:null}]};
+ const rebuild={version:REBUILD_VERSION,receiptDate:null,storeName:null,
+  receiptTotal:null,printedCount:null,items:[{name:null,quantity:null,amount:null}]};
  return [
-  "このメッセージにレシート画像が実際に添付され、画像を目視で確認できるか最初に検証してください。画像がない／開けない場合は「レシート写真を添付してください。」とのみ回答し、JSONは作成しないでください。OCR文字列だけから補完してはいけません。",
-  "まず写真そのものを目視で確認し、対象レシートを背景・他のレシートから分離して商品行・商品名・商品コード・数量・税込金額・購入日・店舗・印字合計を照合してください。参考OCRは後で比較し、正解として扱わないでください。",
-  "【最優先：写真・検算・確認】写真から商品行・商品コード・数量・価格・値引き・税額・合計・購入点数を独立して読み取り、参考OCRは正解として扱わないでください。鮮明な印字を推測で置き換えないでください。",
-  "【商品行の分類】商品と、商品コードだけの行・値引き・クーポン・ポイント・税額・小計・合計・決済情報を区別してください。値引きやクーポンを商品として数えず、同一商品の別印字行を勝手に統合しないでください。商品行数と購入数量合計を別々に数え、印字購入点数の意味を確認してください。商品名に含まれる内容量を購入数量と取り違えないでください。",
-  "【独立した検算】写真から読める商品金額の合計、値引き・クーポンの合計、税率別対象額・消費税額、最終印字合計、購入数量合計をそれぞれ照合してください。税込と税抜、明細値引きと全体値引き、ポイント支払、端数処理を区別し、税・値引きを二重計上しないでください。検算不一致なら商品重複・欠落、値引き行の誤認、数字・税区分の読み違いを写真で再確認してください。印字されていない金額や端数処理を創作して帳尻を合わせてはいけません。",
-  "【未解決の矛盾があればJSONを停止】商品名・商品行数・購入数量・値引き対応・税込明細合計が不明、写真から検証できる印字合計と検算結果が矛盾、または複数候補が残る場合、JSONコードブロックは出さずユーザーに確認してください。質問は写真の何番目の商品か、不確かな文字・数量・金額、読み取れた候補、確認が必要な理由だけを簡潔に示してください。商品別税込額が印字されず税額配賦や端数処理が一意に定まらない場合も、処理方法を確認してください。任意の店舗名・日付が不明なだけならnullで構いません。OCR行との対応だけが崩れ、写真の明細が確定できる場合は停止せず全面再解析を選んでください。",
-  "【ユーザー確認後】回答で確定した情報を維持し、再検算してください。確認済みの情報を勝手に変更せず、商品を推測で追加せず、矛盾が残ればその箇所だけ再質問してください。すべての必須明細が確定し、検算が成立した後にだけ最終JSONを出力してください。",
-  "次に写真と参考OCRの商品行数が一致するか・購入明細の対応を検証し、以下の【2種類のJSONのどちらか一つだけ】を選んでください。",
-  "【行が1対1で対応】OCRの各商品行と写真の商品行が確実に対応する場合はkurashi-receipt-assist-1を出力します。元のrowId・ocrName・行順と行数は変えず、文字誤読だけnameCandidateに修正候補を入れ、正しい名前ならnullにしてください。quantityとamountには写真から確定できた購入数量と値引き後の税込明細合計を入れ、読めなければnullにしてください。OCR金額が未取得でも行対応が確実ならこの形式を使用できます。金額を推測してはいけません。",
-  "【構造認識の失敗】別レシートの混入、商品コードのみの行、商品行の欠落・余分・結合・分割、明細と金額の対応不明、商品点数の不一致が一つでもあるなら、kurashi-receipt-rebuild-1を選んでください。OCR行IDへ無理に商品を対応させず、写真の対象レシートに実際に印字されている購入明細だけを、印字順に1商品1行として出力してください。同じ商品が複数行印字されていたらまとめず行ごとに出力してください。",
-  "再解析のnameは写真上で読める商品名を記載し、読めない場合はnullにしてください。商品コードや背景のレシートを商品名にしないでください。quantityはその購入行の購入数量で、商品名中の内容量ではありません。amountはその行の税込明細合計です。写真から確定できない数量・金額・日付・店舗・合計・点数はnullにし、推測で埋めないでください。値引きと行ごとの金額対応も原本で確認してください。",
-  "写真上の各商品行の金額の和と印字合計、数量の和と印字点数を照合してください。ただし印字合計が商品明細額と直接比較可能か、値引き・税・ポイント支払・端数処理を確認してください。未解決の不一致は診断だけで済ませずJSONを停止して確認質問してください。写真に明記されたクルーネックとVネックなど形状の異なる商品を混同しないでください。",
-  "両形式ともJSON以外のキーや個人情報（カード・会員・決済番号・電話番号・住所など）を入れないでください。JSONは必ず一つだけ最初のjsonコードブロックに出力し、その外にOCR診断を記載してください。診断には、今回選んだ形式・画像で確定した商品行数・誤読・構造的な失敗・次回のOCR改善課題を簡潔にまとめてください。診断文はアプリに保存されません。",
-  "形式1（商品行が1対1対応。rowIdとocrNameは維持し、名前候補・数量・税込明細合計を写真から確認）:",
-  '```json',
-  JSON.stringify(output,null,2),
-  '```',
-  "形式2（構造的な失敗。元のOCR行とrowIdを引き継がず、写真の購入商品行だけ）:",
-  '```json',
-  JSON.stringify({version:REBUILD_VERSION,receiptDate:null,storeName:null,
-   receiptTotal:null,printedCount:null,
-   items:[{name:'写真に印字された商品名',quantity:null,amount:null}]},null,2),
-  '```',
-  "出力時にはどちらか一方のJSONコードブロックだけを含めてください。上の形式例二つを同時に回答してはいけません。",
-  '参考OCR結果（原本ではなく照合対象）:',ocrReference
+  'くらしストック｜レシート写真の確認',
+  '',
+  '【写真を最優先】',
+  '画像がない／開けない場合は「レシート写真を添付してください。」のみ返し、JSONは作成しない。OCRだけで商品を補完しない。',
+  '写真そのものを目視で読み、対象レシートを背景・別レシートから分離する。商品行、商品名・コード、数量、値引き、税額、購入日、店舗、印字合計を独立して照合し、参考OCRは後で比較する。',
+  '',
+  '【独立した検算】',
+  '購入商品と商品コード行、値引きやクーポン、税額、ポイント、決済情報、小計・合計を区別する。同じ商品が別行なら統合せず、商品名中の内容量を購入数量と誤認しない。',
+  '値引き後の明細金額、数量合計と印字点数、税率別の課税対象額・税額・印字合計を照合する。税や値引きを二重計上せず、ポイント支払は商品値引きにしない。',
+  '商品別税込額が印字されない外税レシートで、値引き後税抜明細額と税率別印字税額が確定していれば、税率ごとに税抜金額比で配賦し、端数は最大剰余法（同点は印字順）で割り当てる。全額を検算した商品別税込額は計算値として使用可。印字額と偽らず、根拠が不足する額はnull。',
+  '',
+  '【2種類のJSONのどちらか1つだけを選ぶ】',
+  'A：写真とOCRの商品行が1対1対応 → kurashi-receipt-assist-1。rowId・ocrName・行順・行数を変えない。OCR名の誤字は写真に基づくnameCandidate（正しければnull）。quantityは購入数量、amountは値引き後の税込明細合計（行の全購入数量分）。不明ならnull。数量だけの誤読は行を再構築せず、この形式で補正する。',
+  'B：別レシートの混入・商品行の欠落や余分・行の分割や結合・コードだけの商品名・金額対応の破綻 → kurashi-receipt-rebuild-1。写真で確認した購入商品だけを印字順に記載し、元OCR行IDを使わない。クルーネックとVネック等の異なる形状や、同じ商品の別印字行を統合しない。分からないname・quantity・amount・日付・店舗・合計・点数はnull。',
+  '不明な文字や税込明細合計はnullで表し、アプリ確認画面に残す。対象レシートが確定できない、または重大な矛盾が未解決のときだけJSONを停止し、何番目の商品のどの値を確認する必要があるか質問する。ユーザー確認後は確定内容を維持して再検算。',
+  '',
+  '【出力】',
+  '最初のjsonコードブロックに1つだけJSON。その後に短い「OCR診断」（商品行数・誤読・構造問題・未確定事項）を書く。両形式同時出力、余分なキー、カード・決済・会員番号・電話番号・住所の出力は禁止。',
+  '形式Aの形：'+JSON.stringify(assist),
+  '形式Bの形：'+JSON.stringify(rebuild),
+  '',
+  '【参考OCR結果（写真より優先しない候補）】',
+  '購入日候補：'+show(r.receiptDate)+' / 店舗候補：'+show(r.store),
+  '印字合計候補：'+show(r.receiptTotal)+'円 / 印字購入点数候補：'+show(r.printedCount)+'点',
+  '税区分：'+({included:'内税',excluded:'外税'}[r.taxBasis]||'不明')+
+   ' / 税額配賦：'+show(r.taxAllocationStatus),
+  '税抜明細合計：'+show(r.taxDiagnostics?.netSum)+'円 / 印字小計：'+
+   show(r.taxDiagnostics?.subtotal)+'円 / 税額：'+show(r.taxDiagnostics?.taxTotal)+'円',
+  '',
+  'OCR明細（行ID・OCR名はJSON出力にも完全一致させる）：',
+  ...lines,
+  ...(diagnostics.length?['','商品コードの行対応診断：',...diagnostics]:[])
  ].join('\n');
 }
-
 root.KurashiReceiptImport={
  IMPORT_VERSION,ASSIST_VERSION,REBUILD_VERSION,
  parseChatGptOcrRebuildJson,parseChatGptOcrResponse,
