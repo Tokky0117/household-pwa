@@ -92,7 +92,8 @@
    if(registerMetadata.test(l)){pending=null;continue;}
    // Barcode -> name -> tax-inclusive price. Fail closed when incomplete.
    if(m=l.match(janHeader)){
-    if(janPending)warn('jan_incomplete_item',janPending.line);
+    if(splitQuantity)warn('ambiguous_quantity_row',splitQuantity.quantityLine);
+  if(janPending)warn('jan_incomplete_item',janPending.line);
     janPending={line:ix,code:m[1],nameLine:null,rawName:null};
     pending=null;last=null;continue;
    }

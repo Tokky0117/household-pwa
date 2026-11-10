@@ -1023,6 +1023,28 @@ catalog.productAliases=[{productId:'p-milk-1',chainId:'c-a',
 catalog.chains.find(x=>x.id==='c-a').aliases=['COSTCO WHOLESALE'];
 assert.equal(ui.scanChainForStore('COSTCO WHOLESALE')?.id,'c-a',
  'print name resolves to the previously confirmed chain alias');
+// OCR header matching uses registered names/aliases only, not speculative brands.
+const sampleClothing={id:'c-synthetic-clothing',name:'架空衣料店',aliases:['SAMPLE APPAREL']};
+catalog.chains.push(sampleClothing);
+assert.equal(ui.scanChainForStore('架 空 衣 料 店\n2026/10/12\n商品A ¥1290')?.id,
+ sampleClothing.id,'spacing noise in the printed brand can be ignored');
+assert.equal(ui.scanChainForStore('架空衣料店 駅南店\nTEL 012-3456')?.id,
+ sampleClothing.id,'brand and branch on one header line identify the registered chain');
+assert.equal(ui.scanChainForStore('SAMPLE APPAREL\n領収証')?.id,
+ sampleClothing.id,'an explicitly registered Latin alias can identify a store');
+assert.equal(ui.scanChainForStore('SAMPLE\nAPPAREL\n領収証')?.id,
+ sampleClothing.id,'adjacent split logo lines match the exact registered alias');
+assert.equal(ui.scanChainForStore('架空衣料店風の商品 ¥500'),null,
+ 'a merchandise description containing a brand-like substring is not evidence');
+assert.equal(ui.scanChainForStore('スーパー青空 商品A ¥123'),null,
+ 'a brand followed by arbitrary product words is not a store header');
+assert.equal(ui.scanChainForStore('架空衣料店\nコノミヤ'),null,
+ 'two matched store headers are ambiguous; never auto-select one');
+const secondMatch={id:'c-synthetic-duplicate',name:'架空衣料店'};
+catalog.chains.push(secondMatch);
+assert.equal(ui.scanChainForStore('架空衣料店'),null,
+ 'same alias on two registered chains is ambiguous');
+catalog.chains.pop();catalog.chains.pop();
 assert.equal(ui.scanAutolinkUnmatched(),1,
  'a chain-specific product alias automatically selects the previously linked master');
 assert.equal(ui.getScanDraft().items[0].productId,'p-milk-1');
@@ -1552,6 +1574,11 @@ const ambiguousSplit=structure.parse('商品A\n2コ×単105\n¥211\n合計 ¥211
 assert.equal(ambiguousSplit.items.length,0,'price mismatch cannot invent a product');
 assert.ok(ambiguousSplit.warnings.some(x=>x.code==='ambiguous_quantity_row'));
 assert.ok(ambiguousSplit.unresolvedRows.some(x=>x.line===2));
+const unfinishedQuantity=structure.parse('商品A\n2コ×単105');
+assert.equal(unfinishedQuantity.items.length,0);
+assert.ok(unfinishedQuantity.warnings.some(x=>x.code==='ambiguous_quantity_row'),
+ 'a trailing quantity annotation without the amount must not disappear');
+assert.ok(unfinishedQuantity.unresolvedRows.some(x=>x.line===2));
 const contentQuantity=structure.parse('商品A 2個入 ¥210\n合計 ¥210');
 assert.equal(contentQuantity.items[0].quantity,1);
 assert.deepEqual(Array.from(quantityCorrection.items[0].sourceLines),[1,2]);

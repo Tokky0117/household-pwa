@@ -480,14 +480,39 @@ function receiptChatGptView(){
  '<button type="button" class="primary" data-act="chatGptImport">解析結果を取り込む</button></main>';
 }
 function scanChainForStore(raw){
- const name=norm(raw);
- if(!name)return null;
- const labels=c=>[c.name,...(c.aliases||[])].filter(Boolean).map(norm);
- const exact=catalogue.chains.filter(c=>labels(c).includes(name));
- if(exact.length)return exact.length===1?exact[0]:null;
- const partial=catalogue.chains.filter(c=>labels(c).some(v=>
-  v.length>=3&&name.length>=3&&(name.includes(v)||v.includes(name))));
- return partial.length===1?partial[0]:null;
+ // Match confirmed store masters/aliases against separate OCR header lines,
+ // not the concatenated receipt body (which may mention other stores).
+ // Spaces/punctuation inside OCR lettering may vary; no guessed new aliases.
+ const source=String(raw||'').slice(0,1200);
+ if(!source.trim())return null;
+ const compact=value=>norm(value).replace(/[\s\p{P}\p{S}]/gu,'');
+ const lines=source.split(/\r?\n/).slice(0,16).map(line=>line
+  .replace(/\s+(?:TEL|FAX|電話(?:番号)?|〒|0\d{1,4}[-‐‑–ー]|20\d{2}[年/-])[\s\S]*$/i,'')
+  .replace(/^(?:ご利用店舗|店舗名|店名)\s*[:：]?\s*/,'').trim()).filter(Boolean);
+ const keys=lines.map(compact).filter(Boolean);
+ // A logo/brand may be split across consecutive OCR text rows. Accept
+ // only an exact master/alias match across two lines, not a fuzzy guess.
+ const paired=lines.slice(0,-1).map((line,i)=>compact(line+lines[i+1]));
+ const matches=new Map();
+ for(const chain of catalogue.chains){
+  if(!chain?.id)continue;
+  const aliases=[chain.name,...(chain.aliases||[])].filter(Boolean);
+  for(const name of aliases){
+   const alias=compact(name);
+   if(!alias)continue;
+   const match=keys.some(key=>{
+    if(key===alias)return true;
+    if(alias.length<3||!key.startsWith(alias))return false;
+    const suffix=key.slice(alias.length);
+    // A branch name follows the registered chain name. Arbitrary
+    // product words or OCR text after the name are not store evidence.
+    return suffix.length<=40&&/^(?:.{1,35}(?:店|支店|営業所)|(?:本店|支店|営業所|店))$/u.test(suffix);
+   })||paired.some(key=>key===alias);
+   if(match){matches.set(chain.id,chain);break;}
+  }
+ }
+ // Two independently matched store names could mean a background receipt.
+ return matches.size===1?[...matches.values()][0]:null;
 }
 function scanAutolinkUnmatched(){
  if(!scanDraft)return 0;
