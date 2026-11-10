@@ -1,4 +1,4 @@
-const APP_VERSION='0.87.8';
+const APP_VERSION='0.87.9';
 const CATS=['飲食','キッチン','洗面・風呂','洗濯・掃除','その他'];
 const liveMode=!!window.KurashiLive; // Data source only; original Preview v46 UI components remain.
 const SEED=[['牛乳',0,true],['麦茶',0,false],['コーヒー',0,true],['卵',0,false],['キッチンペーパー',1,false],['ラップ',1,true],['食器用洗剤',1,true],['シャンプー',2,false],['歯磨き粉',2,true],['ハンドソープ',2,false],['洗濯洗剤',3,false],['柔軟剤',3,true],['トイレットペーパー',3,false],['乾電池',4,true],['ティッシュ',4,true]];
@@ -557,10 +557,20 @@ const scanVariantKey=value=>norm(value)
  .replace(/[\s\p{P}\p{S}]/gu,'');
 const scanVoicingKey=value=>scanVariantKey(value).normalize('NFD')
  .replace(/[\u3099\u309a]/g,'').normalize('NFC');
+// Candidate search only: OCR commonly confuses small kana and similarly
+// shaped kanji/katakana. These lossy substitutions must NEVER auto-link a
+// product, rewrite the printed OCR name, or teach the alias dictionary.
+const scanSmallKana={ 'ァ':'ア','ィ':'イ','ゥ':'ウ','ェ':'エ','ォ':'オ',
+ 'ャ':'ヤ','ュ':'ユ','ョ':'ヨ','ッ':'ツ','ヮ':'ワ' };
+const scanLookalikeKana={ '夕':'タ','力':'カ','口':'ロ','二':'ニ','工':'エ' };
+const scanOcrCandidateKey=value=>scanVoicingKey(value)
+ .replace(/[ァィゥェォャュョッヮ]/g,c=>scanSmallKana[c])
+ .replace(/[夕力口二工]/g,c=>scanLookalikeKana[c]);
+const scanNumericTokens=value=>(value.match(/\d+/g)||[]).join('|');
 function scanNameEvidence(){
  if(scanMatchCache?.products===catalogue.products&&
     scanMatchCache?.aliases===catalogue.productAliases)return scanMatchCache;
- const exact=new Map(),variants=new Map(),voiced=new Map();
+ const exact=new Map(),variants=new Map(),voiced=new Map(),visual=new Map();
  const active=new Set(catalogue.products.map(p=>p.id));
  const add=(raw,productId,chainId='')=>{
   const name=norm(raw);
@@ -569,8 +579,8 @@ function scanNameEvidence(){
   const entries=exact.get(name);
   if(!entries.some(e=>e.productId===productId&&e.chainId===chainId))
    entries.push({productId,chainId});
-  const v=scanVariantKey(raw),w=scanVoicingKey(raw);
-  for(const [map,key] of [[variants,v],[voiced,w]]){
+  const v=scanVariantKey(raw),w=scanVoicingKey(raw),u=scanOcrCandidateKey(raw);
+  for(const [map,key] of [[variants,v],[voiced,w],[visual,u]]){
    if(key){if(!map.has(key))map.set(key,new Set());map.get(key).add(productId)}
   }
  };
@@ -579,7 +589,7 @@ function scanNameEvidence(){
   if(a.productId)add(a.ocrName||a.normalizedAlias,a.productId,a.chainId||'');
  if(!liveMode)for(const p of catalogue.products)
   for(const alias of p.aliases||[])add(alias,p.id);
- return scanMatchCache={exact,variants,voiced,products:catalogue.products,
+ return scanMatchCache={exact,variants,voiced,visual,products:catalogue.products,
   aliases:catalogue.productAliases};
 }
 function scanMatchProduct(raw,chainId=null){
@@ -602,14 +612,25 @@ function scanNearVariant(a,b){
 }
 function scanSimilarProducts(raw,chainId=null){
  const key=scanVariantKey(raw);if(!key)return [];
- const {exact,variants,voiced}=scanNameEvidence(),ids=new Set();
- const matched=scanMatchProduct(raw,chainId);
- for(const e of exact.get(norm(raw))||[])ids.add(e.productId);
- for(const id of variants.get(key)||[])ids.add(id);
- for(const id of voiced.get(scanVoicingKey(raw))||[])ids.add(id);
- if(ids.size<3&&key.length>=5)for(const [v,found] of variants)
-  if(v!==key&&scanNearVariant(key,v))for(const id of found)ids.add(id);
- return catalogue.products.filter(p=>ids.has(p.id)&&p.id!==matched).slice(0,4);
+ const {exact,variants,voiced,visual}=scanNameEvidence(),ranks=new Map();
+ const matched=scanMatchProduct(raw,chainId),visualKey=scanOcrCandidateKey(raw);
+ const put=(id,rank)=>{if(!ranks.has(id)||rank<ranks.get(id))ranks.set(id,rank);};
+ for(const e of exact.get(norm(raw))||[])put(e.productId,0);
+ for(const id of variants.get(key)||[])put(id,1);
+ for(const id of voiced.get(scanVoicingKey(raw))||[])put(id,2);
+ for(const id of visual.get(visualKey)||[])put(id,3);
+ const sameDigits=v=>scanNumericTokens(v)===scanNumericTokens(key);
+ // One further OCR difference is offered only as an explicit user choice.
+ // Different package-size digits are never made fuzzy suggestions.
+ if(ranks.size<4&&key.length>=5)for(const [v,found] of variants)
+  if(v!==key&&sameDigits(v)&&scanNearVariant(key,v))
+   for(const id of found)put(id,4);
+ if(ranks.size<4&&visualKey.length>=7)for(const [v,found] of visual)
+  if(v!==visualKey&&sameDigits(v)&&scanNearVariant(visualKey,v))
+   for(const id of found)put(id,5);
+ return catalogue.products.filter(p=>ranks.has(p.id)&&p.id!==matched)
+  .sort((a,b)=>ranks.get(a.id)-ranks.get(b.id)||
+   a.name.localeCompare(b.name,'ja')).slice(0,4);
 }
 function scanSuggestionButtons(item,row){
  if(item.productId||!item.name?.trim())return '';

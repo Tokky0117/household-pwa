@@ -25,7 +25,7 @@ const doc={
 const ctx={document:doc,localStorage:{getItem:k=>storage.get(k)??null,setItem:(k,v)=>storage.set(k,v),removeItem:k=>storage.delete(k)},
  navigator:{},window:{scrollTo(){},scrollY:0,KurashiReceiptValidation:validator,KurashiReceiptReview:review},crypto:{randomUUID:()=> 'test-id'},setTimeout:()=>0};
 const ui=vm.runInNewContext(source+`
-({listView,priceCompareView,pickerView,pickerResults,masterProductsView,masterProductRows,masterProductEditorView,masterGroupPickerView,masterGroupPickerRows,aliasManageView,aliasManageRows,aliasProductPickerView,aliasProductPickerRows,detailHomeView,detailAllView,receiptScanView,receiptChatGptView,recordDetailView,scanStoreNameIssue,scanValidPurchaseDate,scanReadableError,floatingActionPlacement,applyChatGptOcrAssistance,receiptOcrReference,receiptOcrRows,isUnconfirmedBarcodeLine,makeChatGptReceiptRebuildDraft,scanProductView,scanExistingProductView,scanChainForStore,scanStoreHeaderMatch,scanAutolinkUnmatched,scanMatchProduct,render,initializeCompare,
+({listView,priceCompareView,pickerView,pickerResults,masterProductsView,masterProductRows,masterProductEditorView,masterGroupPickerView,masterGroupPickerRows,aliasManageView,aliasManageRows,aliasProductPickerView,aliasProductPickerRows,detailHomeView,detailAllView,receiptScanView,receiptChatGptView,recordDetailView,scanStoreNameIssue,scanValidPurchaseDate,scanReadableError,floatingActionPlacement,applyChatGptOcrAssistance,receiptOcrReference,receiptOcrRows,isUnconfirmedBarcodeLine,makeChatGptReceiptRebuildDraft,scanProductView,scanExistingProductView,scanChainForStore,scanStoreHeaderMatch,scanAutolinkUnmatched,scanMatchProduct,scanSimilarProducts,render,initializeCompare,
  setProductGroup,reorderProducts,registeredProducts,convertQuantity,setOpenSwipe,storePickerChoices,
  chainMinima,priceCandidates,savePreviewRecord,periodStart,
  demoRecords,demoRecordItems,allPreviewRecords,allPreviewItems,
@@ -1129,8 +1129,47 @@ assert.ok(source.includes('reviewEvidence.quantitySignals.recognizedRows+=qtyRol
  'quantity row evidence must be counted separately from item quantity');
 assert.ok(source.includes('reviewEvidence.quantitySignals.linkedItemNumbers.push(itemOffset+itemIndex+1)'),
  'quantity row diagnosis retains only numeric OCR item order');
-assert.ok(source.includes("const APP_VERSION='0.87.8'"),
- 'app version is advanced for the retained uncertain OCR quantity candidate');
+
+// Recognizer errors are never silently rewritten. Use an optional,
+// confirmation-only product shortlist with conservative OCR-shape folding.
+const beforeOcrCandidates=ui.catalogue().products;
+ui.catalogue().products=[...beforeOcrCandidates,
+ {id:'ocr-candidate-real',name:'金ちゃん鍋焼肉うどん',aliases:[]},
+ {id:'ocr-candidate-similar',name:'金ちゃん鍋焼肉うどむ',aliases:[]},
+ {id:'ocr-candidate-numeric',name:'金ちゃん鍋焼肉10袋',aliases:[]},
+ {id:'ocr-candidate-num10',name:'記号テスト10袋',aliases:[]},
+ {id:'ocr-candidate-shape',name:'チャルメラ バリカタ豚骨',aliases:[]}];
+const doubleOcrError='金ちやん鍋焼肉うとん';
+assert.equal(ui.scanMatchProduct(doubleOcrError,'c-a'),'',
+ 'OCR-shape similarity must never automatically bind to a product');
+const wordCandidates=ui.scanSimilarProducts(doubleOcrError,'c-a').map(p=>p.id);
+assert.ok(wordCandidates.includes('ocr-candidate-real'),
+ 'small-kana confusion plus another glyph misread yields a selectable candidate');
+assert.ok(ui.scanSimilarProducts('チャルメラ バリカ夕豚骨','c-a')
+ .some(p=>p.id==='ocr-candidate-shape'),
+ 'visually confused kanji 夕 is normalized only for candidate lookup');
+assert.equal(ui.scanMatchProduct('チャルメラ バリカ夕豚骨','c-a'),'',
+ 'lookalike kana/kanji never become exact auto-link evidence');
+assert.ok(!ui.scanSimilarProducts('記号テスト11袋','c-a')
+ .some(p=>p.id==='ocr-candidate-num10'),
+ 'a different number of units or package size is not a fuzzy-match suggestion');
+ui.setScanDraft({source:'ocr',chainId:'c-a',total:116,
+ items:[{name:doubleOcrError,ocrRawName:doubleOcrError,
+  quantity:1,amount:116,productId:'',issues:[]}]});
+ui.setScanProductRow(0);
+const ocrCandidatePicker=ui.scanExistingProductView();
+assert.ok(ocrCandidatePicker.includes('表記が近い登録商品（確認して選択）'),
+ 'OCR typo candidates are offered in the existing product picker');
+assert.ok(ocrCandidatePicker.includes('data-product-id="ocr-candidate-real"'),
+ 'confirmed selection is available without modifying the OCR printed name');
+assert.equal(ui.getScanDraft().items[0].ocrRawName,doubleOcrError);
+assert.equal(ui.getScanDraft().items[0].productId,'',
+ 'showing candidates cannot choose one before the user taps it');
+ui.catalogue().products=beforeOcrCandidates;
+ui.setScanDraft(null);
+
+assert.ok(source.includes("const APP_VERSION='0.87.9'"),
+ 'app version advances with the OCR-name candidate matching improvement');
 assert.ok(source.includes('reviewEvidence.storeHeader={status:storeMatch.status'),
  'store matching diagnostic must distinguish OCR from registered name matching');
 const engineEntry=readFileSync(new URL('../ocr-lab/engine-entry.js',import.meta.url),'utf8');
@@ -1707,7 +1746,7 @@ assert.ok(!JSON.stringify(p4Rebuild).includes('ocr-p4'),
 console.log('P4 common review adapter, provenance, row identity and P2 validation OK');
 
 // v0.73: Receipt OCR review information hierarchy; preserve validation/confirmation.
-assert.ok(source.includes("const APP_VERSION='0.87.8'"), 'UI review revision version is current');
+assert.ok(source.includes("const APP_VERSION='0.87.9'"), 'UI review revision version is current');
 assert.ok(source.includes("UI.sectionHeading({title:'読み取り状況'})"), 'OCR and ChatGPT appear under one section');
 assert.ok(source.includes("UI.sectionHeading({title:isShelf?'値札情報':'購入情報'})"), 'Receipt OCR review groups store and purchase date');
 assert.ok(source.includes("UI.sectionHeading({title:isShelf?'価格情報':'購入明細',subtitle:scanDraft.items.length+'件'+"), 'Receipt OCR review identifies item list and unmatched count');
