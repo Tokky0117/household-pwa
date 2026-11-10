@@ -31,6 +31,13 @@ assert.match(prompt,/最大剰余法/);
 assert.match(prompt,/税額配賦による計算値/);
 assert.match(prompt,/仮値・要確認/);
 assert.match(prompt,/数量だけの誤読/);
+const internalRef={...ref,taxBasis:'included',taxAllocationStatus:'unresolved',
+ taxDiagnostics:{netSum:2920,subtotal:null,taxTotal:231}};
+const internalPrompt=imports.makeChatGptOcrAssistPrompt(JSON.stringify(internalRef));
+assert.match(internalPrompt,/税区分：内税 \/ 税額配賦：対象外（内税）/);
+assert.match(internalPrompt,/値引後税込明細合計：2920円/);
+assert.doesNotMatch(internalPrompt,/値引後税抜明細合計：2920円/);
+assert.match(prompt,/値引後税抜明細合計：623円/);
 assert.match(prompt,/1\. 行ID=r-1/);
 assert.match(prompt,/形式Bの形/);
 assert.match(prompt,/写真に印字された商品名/);

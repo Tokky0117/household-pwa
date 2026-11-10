@@ -396,8 +396,9 @@ function makeChatGptOcrAssistPrompt(ocrReference){
   '購入日候補：'+show(r.receiptDate)+' / 店舗候補：'+show(r.store),
   '印字合計候補：'+show(r.receiptTotal)+'円 / 印字購入点数候補：'+show(r.printedCount)+'点',
   '税区分：'+({included:'内税',excluded:'外税'}[r.taxBasis]||'不明')+
-   ' / 税額配賦：'+show(r.taxAllocationStatus),
-  '税抜明細合計：'+show(r.taxDiagnostics?.netSum)+'円 / 印字小計：'+
+   ' / 税額配賦：'+(r.taxBasis==='included'?'対象外（内税）':show(r.taxAllocationStatus)),
+  '値引後'+({included:'税込',excluded:'税抜'}[r.taxBasis]||'税区分不明')+'明細合計：'+
+   show(r.taxDiagnostics?.netSum)+'円 / 印字小計：'+
    show(r.taxDiagnostics?.subtotal)+'円 / 税額：'+show(r.taxDiagnostics?.taxTotal)+'円',
   '',
   'OCR明細（行ID・OCR名はJSON出力にも完全一致させる）：',
