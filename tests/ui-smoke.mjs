@@ -903,7 +903,9 @@ assert.ok(newProductHtml.includes('scan-product-name')&&
  newProductHtml.includes('キットカットコイマッチャ10フクロ')&&
  newProductHtml.includes('scan-product-group'),
  'canonical product name and household-item linking are both on the new-product form');
-assert.match(newProductHtml,/紐付けしない（商品だけ登録）/,'new product permits an unlinked master');
+assert.match(newProductHtml,/紐付けしない/,'new product permits an unlinked master');
+assert.ok(newProductHtml.includes('id="scan-group-search"')&&newProductHtml.includes('name="group"'),
+ 'search and exclusive selection are offered inside the product registration sheet');
 assert.ok(!newProductHtml.includes('name="group" required'),
  'item group selection is optional, not forced');
 const listingHtml=ui.receiptScanView();
@@ -932,16 +934,16 @@ assert.ok(listingHtml.includes('class="formfield scan-product-setting ui-picker-
  'product selection is a single action without an accordion or split actions');
 const existingHtml=ui.scanExistingProductView();
 assert.ok(existingHtml.includes('scan-existing-search')&&
- existingHtml.includes('scan-existing-group')&&
+ !existingHtml.includes('scan-existing-group')&&
  existingHtml.includes('日用品リスト：牛乳'),
  'existing-product picker searches products and shows linked household item');
 assert.ok(existingHtml.includes('class="ui-search"')&&
  existingHtml.includes('data-search-clear="scan-existing-search"')&&
- existingHtml.includes('data-ui-select="scan-existing-group"'),
- 'Receipt product selection reuses the shared searchable input and item dropdown');
-assert.ok(newProductHtml.includes('data-ui-select="scan-product-group"')&&
+ !existingHtml.includes('登録先の日用品を変更（任意）'),
+ 'Receipt product selection searches products without an unrelated item reassignment');
+assert.ok(newProductHtml.includes('scan-product-group-results')&&
  source.includes("control==='date'")&&source.includes("control==='search'"),
- 'Common formField owns date, search and item selection for all receipt forms');
+ 'Receipt product registration uses shared searchable choices inside one sheet');
 // The yen suffix is part of the label, not the number submitted to Sheets.
 assert.ok(listingHtml.includes('<label for="scan-amount-0">小計（円）</label>')&&
  listingHtml.includes('id="scan-amount-0" name="amount-0" type="number"'),
@@ -1838,8 +1840,8 @@ assert.ok(unifiedPicker.includes('data-act="scanUnlinkProduct"'),
 assert.ok(unifiedPicker.indexOf('data-act="scanExistingToNew"')<
  unifiedPicker.indexOf('id="scan-existing-results"'),
  'new product creation is reachable above the potentially long existing-products list');
-assert.ok(unifiedPicker.includes('登録先の日用品を変更（任意）'),
- 'optional reassignment stays available without occupying the main picker');
+assert.ok(!unifiedPicker.includes('登録先の日用品を変更（任意）'),
+ 'existing product selection no longer includes changing product-item ownership');
 ui.setScanDraft({source:'chatgpt-rebuild',date:'2026-11-07',chainId:'c-life',total:298,
  items:[{name:'おいしい牛乳',inputOrigin:'photo',quantity:1,amount:298,
   productId:'',manuallyLinked:false,issues:[]}]});
