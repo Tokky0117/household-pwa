@@ -677,7 +677,8 @@ function scanOptionsProduct(selected='',rawName=''){
 function scanResolvedProductId(item){
  const current=String(item?.productId||'');
  // Never guess a new master from its name: identical names can have different sizes.
- const confirmed=window.KurashiLive?.confirmedProductId?.(current);
+ if(!window.KurashiLive?.confirmedProductId)return current;
+ const confirmed=window.KurashiLive.confirmedProductId(current);
  return confirmed==null?'':String(confirmed);
 }
 function scanSelectedProductLabel(item){
