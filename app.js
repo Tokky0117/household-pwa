@@ -1257,7 +1257,7 @@ function priceCompareView(){
   const priceRows=chains.map(r=>{
    const noQuantity=priceScope==='unit'&&!compareQuantity;
    const incompatible=priceScope==='unit'&&!conversion;
-   const value=noQuantity?'内容量を入力':incompatible?'比較対象外':priceScope==='unit'?yen(r.price*compareQuantity/conversion):yen(r.price);
+   const value=noQuantity?'内容量を入力':incompatible?(!p.packageQuantity?'内容量未設定・比較対象外':'比較不可'):priceScope==='unit'?yen(r.price*compareQuantity/conversion):yen(r.price);
    const display=priceScope==='unit'?
     '<span class="chain-price-pair"><strong class="chain-price-value '+(noQuantity||incompatible?'chain-price-unavailable':'')+'">'+esc(value)+'</strong><small>購入価格 '+esc(yen(r.price))+'</small></span>':
     '<strong class="chain-price-value">'+esc(value)+'</strong>';
