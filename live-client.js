@@ -12,7 +12,7 @@
  const OLD_SNAPSHOT='kurashi-new-confirmed-snapshot-v1';
  const OLD_OPERATION='kurashi-new-write-v1-temporary-household';
  const listeners=new Set();
- const blank=()=>({base:null,queue:[],blocked:null});
+ const blank=()=>({base:null,queue:[],blocked:null,productIdMap:{}});
  let dbPromise=null,bootPromise=null,workspace=blank();
  let refreshPromise=null,flushPromise=null,retryTimer=null,retryMs=3000;
  let error='',lastSync=0,authRequired=false,token=null,subject='temporary-household',expiry=0,gisReady=false;
@@ -20,6 +20,17 @@
  const uid=()=>crypto.randomUUID();
  const operationId=()=> 'op-'+uid();
  const toBoolean=v=>v===true||String(v).toLowerCase()==='true';
+ // A receipt can still contain a temporary product ID after the product
+ // creation was acknowledged. Keep the mapping alongside the durable queue.
+ const confirmedProductId=id=>id&&workspace.productIdMap?.[id]||id;
+ function canonicalReceiptDraft(draft){
+  if(!draft||!Array.isArray(draft.items))return draft;
+  return {...draft,items:draft.items.map(line=>{
+   const id=confirmedProductId(line.productId);
+   return id===line.productId?line:{...line,productId:id};
+  })};
+ }
+
  const positiveVersion=v=>Number.isInteger(Number(v))&&Number(v)>=1;
  const notify=()=>{const snap=project();for(const cb of listeners){
   try{cb(state(),snap)}catch(e){console.error('Kurashi listener error',e)}
@@ -86,7 +97,7 @@
  const normalizeWorkspace=doc=>{
   if(!doc||!Array.isArray(doc.queue))return blank();
   if(doc.base)validateSnapshot(doc.base);
-  return {base:doc.base||null,queue:doc.queue,blocked:doc.blocked||null};
+  return {base:doc.base||null,queue:doc.queue,blocked:doc.blocked||null,productIdMap:doc.productIdMap&&typeof doc.productIdMap==='object'?doc.productIdMap:{}};
  };
  function project(doc=workspace){
   if(!doc.base)return null;
@@ -252,7 +263,7 @@
   return new Promise((resolve,reject)=>{
    const tx=db.transaction(STORE,'readwrite'),st=tx.objectStore(STORE);
    if(draft){
-    const serialized=JSON.stringify(draft);
+    const serialized=JSON.stringify(canonicalReceiptDraft(draft));
     if(serialized.length>150000){reject(Error('下書きが大きすぎます'));return;}
     st.put({household_id:hid,draft:JSON.parse(serialized)},RECEIPT_DRAFT_KEY);
    }else st.delete(RECEIPT_DRAFT_KEY);
@@ -273,7 +284,7 @@
    req.onsuccess=()=>{
     const row=req.result;
     resolve(row&&row.household_id===(workspace.base?.household_id||'')?
-     row.draft||null:null);
+     canonicalReceiptDraft(row.draft||null):null);
    };
    req.onerror=()=>reject(req.error||Error('下書きを読み込めません'));
   });
@@ -598,7 +609,7 @@
   if(!Array.isArray(raw)||!raw.length||raw.length>100)
    throw Error('明細を確認してください');
   const lines=raw.map(line=>{
-   const productId=line.product_id??null,cat=line.category_id??null;
+   const productId=confirmedProductId(line.product_id??null),cat=line.category_id??null;
    const rawName=String(line.raw_name||'').trim();
    const confirmed=line.confirmed_name===undefined?'':String(line.confirmed_name||'').trim();
    if(line.inferred_name!==undefined&&typeof line.inferred_name!=='string')throw Error('ChatGPT推測名を確認してください');
@@ -666,7 +677,7 @@
    const queued=new Set();
    for(const line of items||[]){
     if(!line.raw_name)continue;
-    const productId=line.product_id||null;
+    const productId=confirmedProductId(line.product_id||null);
     if(productId&&!snap.products.some(x=>x.product_id===productId&&!x.deleted_at))continue;
     const alias=String(line.raw_name).trim();
     if(!alias||alias.length>120||/^[=+@\-]/.test(alias)||
@@ -696,6 +707,7 @@
   await modify(doc=>{
    const snap=project(doc),alias=snap?.product_aliases.find(x=>x.alias_id===aliasId);
    if(!alias)throw Error('OCR名が見つかりません');
+   productId=confirmedProductId(productId);
    if(productId&&!snap.products.some(x=>x.product_id===productId))
     throw Error('登録商品が見つかりません');
    if(String(alias.product_id||'')===String(productId||''))return doc;
@@ -1031,6 +1043,7 @@
      if(rest.chainId===op.clientId)rest.chainId=result.entity.chain_id;
    }
    if(op.kind==='product-create'){
+    ws.productIdMap={...(ws.productIdMap||{}),[op.clientId]:result.entity.product_id};
     for(const rest of ws.queue){
      if(rest.kind==='alias-create'&&rest.productId===op.clientId)
       rest.productId=result.entity.product_id;
@@ -1249,7 +1262,7 @@
    else void load();
   }).catch(e=>{error=e.message||'端末内の保存領域を開けません';notify()});
  };
- window.KurashiLive={state,load,save,saveRecord,updateRecord,deleteRecord,blockedReceiptChange,discardBlockedReceipt,learnAliases,linkAlias,learnStoreAlias,
+ window.KurashiLive={state,load,save,saveRecord,updateRecord,deleteRecord,blockedReceiptChange,discardBlockedReceipt,confirmedProductId,learnAliases,linkAlias,learnStoreAlias,
   saveReceiptDraft,loadReceiptDraft,saveOcrCorrections,loadOcrCorrections,toggleStock,reorderItems,reorderProducts,retry,logout,renderLogin,
   subscribe:fn=>{listeners.add(fn);return()=>listeners.delete(fn)},itemsOf,catalogueOf};
  window.addEventListener('kurashi-gis-ready',initialize);
