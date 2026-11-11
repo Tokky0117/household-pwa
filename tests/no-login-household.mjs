@@ -1631,6 +1631,14 @@ assert.ok(unmatchedStatus&&unmatchedStatus.querySelector('.ui-picker-value.is-un
  'an unmatched product uses the neutral shared status rather than product-name typography');
 bulkUI.window.document.querySelector('[data-act="scanPickExisting"]').click();
 bulkUI.window.document.querySelector('[data-act="scanExistingToNew"]').click();
+assert.ok(bulkUI.window.document.querySelector('.scan-product-page #scanProductForm')&&
+ !bulkUI.window.document.querySelector('.sheet-back'),
+ 'receipt new-product route is a full screen, not a second half modal');
+// Back returns to existing product selection without clearing the receipt row.
+bulkUI.window.document.querySelector('.top [data-act="back"]').click();
+assert.ok(bulkUI.window.document.querySelector('.scan-existing-picker'),
+ 'going back from the full screen returns to the existing product chooser');
+bulkUI.window.document.querySelector('[data-act="scanExistingToNew"]').click();
 const individualForm=bulkUI.window.document.querySelector('#scanProductForm');
 assert.ok(individualForm,'unmatched item opens individual master creation');
 const firstGroup=temp.call('bootstrap').data.item_groups[0].item_group_id;
@@ -1686,9 +1694,22 @@ kitForm.querySelector('[name="name"]').value=kitCanonical;
 assert.ok([...kitForm.querySelectorAll('#scan-product-group-results [data-ui-choice]')]
  .some(o=>o.dataset.uiChoice===chocId),
  'newly seeded chocolate item exists among the searchable household sub-item options');
+const groupSearch=kitForm.querySelector('#scan-group-search');
+groupSearch.value='チョコ';
+groupSearch.dispatchEvent(new kitSession.window.Event('input',{bubbles:true}));
+assert.ok(kitForm.querySelector('#scan-product-group-results [data-ui-choice="'+chocId+'"]'),
+ 'searching the item name keeps the expected item selectable');
 kitForm.querySelector('#scan-product-group-results [data-ui-choice="'+chocId+'"]').click();
 assert.equal(kitForm.querySelector('[name="group"]').value,chocId,
  'selected item group is present before creating canonical product');
+assert.equal(kitForm.querySelector('#scan-group-current-name').textContent,'チョコ',
+ 'the group selection is reflected in the visible current choice');
+kitForm.querySelector('#scan-product-group-results [data-ui-choice=""]').click();
+assert.equal(kitForm.querySelector('[name="group"]').value,'',
+ 'unlinked product remains available even while the item search is filtered');
+kitForm.querySelector('#scan-product-group-results [data-ui-choice="'+chocId+'"]').click();
+assert.equal(kitForm.querySelector('[name="group"]').value,chocId,
+ 'selecting the same item again after clearing linkage restores the exact ID');
 kitForm.dispatchEvent(new kitSession.window.Event('submit',{bubbles:true,cancelable:true}));
 await waitFor(()=>!!kitSession.window.document.getElementById('scanConfirmForm'),
  'new product returns directly to the same receipt');
