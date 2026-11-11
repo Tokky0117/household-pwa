@@ -168,7 +168,8 @@ function kurashiSheet_(name,book) {
     // Only known historical trailing headers can be appended; never reorder.
     const first=headers.findIndex((h,i)=>actual[i]!==h);
     const extension=headers.length-first;
-    const allowed=name==='product_aliases'?extension===1:
+    const allowed=name==='item_groups'?extension===1:
+      name==='product_aliases'?extension===1:
       name==='record_items'&&(extension===1||extension===2||extension===3);
     if(first<0||!allowed||actual.slice(first).some(value=>value!==''))
       kurashiFail_('SCHEMA_ERROR','保存先の列構成が不正です');
@@ -217,6 +218,7 @@ function kurashiBootstrap_(user) {
         return state.status==='prepared';
       });
     if (pending) kurashiFail_('RECOVERY_REQUIRED','前回の保存を先に確認してください');
+    kurashiEnsureCategories_(book);
     kurashiMigrateLegacyAliasRows_(book,hid);
     // Rename the exact new workbook once, preserving its ID and all rows.
     if (typeof book.getName==='function' && book.getName()==='くらしストック')
@@ -272,6 +274,36 @@ function kurashiName_(name) {
     kurashiFail_('BAD_REQUEST','日用品名を確認してください');
   return trimmed;
 }
+function kurashiSubName_(value) {
+  if(value===undefined||value===null||value==='')return '';
+  if(typeof value!=='string')kurashiFail_('BAD_REQUEST','サブ情報を確認してください');
+  const name=value.trim();
+  if(name.length>80||/^[=+@\-]/.test(name)||/[\x00-\x1f\x7f<>]/.test(name))
+    kurashiFail_('BAD_REQUEST','サブ情報を確認してください');
+  return name;
+}
+function kurashiSameItemLabel_(item,name,cat,subName) {
+  return Number(item.category_id)===cat &&
+    kurashiNormalize_(item.name)===kurashiNormalize_(name) &&
+    kurashiNormalize_(item.sub_name||'')===kurashiNormalize_(subName||'');
+}
+function kurashiEnsureCategories_(book) {
+  const sheet=kurashiSheet_('categories',book);
+  const rows=kurashiRows_('categories',book).map(x=>x.value);
+  if(rows.length!==5&&rows.length!==6)
+    kurashiFail_('SCHEMA_ERROR','カテゴリ構成を確認してください');
+  const old=['飲食','キッチン','洗面・風呂','洗濯・掃除','その他'];
+  const names=['食品・飲料','キッチン','洗面・風呂','洗濯・掃除','その他','調味料'];
+  const orders=[1,3,4,5,6,2];
+  if(rows.some((x,i)=>Number(x.category_id)!==i||
+     ![old[i],names[i]].includes(String(x.name))||
+     ![i+1,orders[i]].includes(Number(x.fixed_order))))
+    kurashiFail_('SCHEMA_ERROR','既存カテゴリの内容が想定外です');
+  const target=names.map((name,i)=>[i,name,orders[i]]);
+  const actual=rows.map(x=>[Number(x.category_id),x.name,Number(x.fixed_order)]);
+  if(JSON.stringify(actual)!==JSON.stringify(target))
+    sheet.getRange(2,1,target.length,3).setValues(target);
+}
 function kurashiSame_(a,b) {
   const keys=KURASHI_NEW_SCHEMA.item_groups;
   return keys.every(k=>String(a[k]??'')===String(b[k]??''));
@@ -286,10 +318,11 @@ function kurashiSaveItem_(user,action,payload,operationId) {
     kurashiFail_('BAD_REQUEST','保存操作IDが不正です');
   const isCreate=action==='item.create';
   const keys=Object.keys(payload).sort().join(',');
-  if (isCreate && keys!=='category_id,name')
+  if (isCreate && !['category_id,name','category_id,name,sub_name'].includes(keys))
     kurashiFail_('BAD_REQUEST','登録する日用品を確認してください');
   if (!isCreate && !['in_stock,item_group_id,version',
-      'is_hidden,item_group_id,version','category_id,item_group_id,name,version'].includes(keys))
+      'is_hidden,item_group_id,version','category_id,item_group_id,name,version',
+      'category_id,item_group_id,name,sub_name,version'].includes(keys))
     kurashiFail_('BAD_REQUEST','更新する日用品を確認してください');
   const hash=kurashiDigest_(action,payload), hid=user.householdId;
   const lock=LockService.getScriptLock();
@@ -333,16 +366,16 @@ function kurashiSaveItem_(user,action,payload,operationId) {
       if (isCreate) {
         const name=kurashiName_(payload.name);
         const cat=Number(payload.category_id);
-        if (!Number.isInteger(cat) || cat<0 || cat>4)
+        if (!Number.isInteger(cat) || cat<0 || cat>5)
           kurashiFail_('BAD_REQUEST','カテゴリを確認してください');
         if (scoped.some(x=>!x.value.deleted_at &&
-            kurashiNormalize_(x.value.name)===kurashiNormalize_(name)))
+            kurashiSameItemLabel_(x.value,name,cat,kurashiSubName_(payload.sub_name))))
           kurashiFail_('DUPLICATE','同じ日用品が登録済みです');
         const orders=scoped.filter(x=>Number(x.value.category_id)===cat)
           .map(x=>Number(x.value.sort_order)||0);
         entity={
           item_group_id:'item-'+Utilities.getUuid(),household_id:hid,category_id:cat,
-          name:name,normalized_name:kurashiNormalize_(name),in_stock:false,
+          name:name,normalized_name:kurashiNormalize_(name),sub_name:kurashiSubName_(payload.sub_name),in_stock:false,
           sort_order:Math.max(0,...orders)+1,is_hidden:false,
           version:1,created_at:now,updated_at:now,deleted_at:''
         };
@@ -365,8 +398,9 @@ function kurashiSaveItem_(user,action,payload,operationId) {
           entity[field]=payload[field];
         } else {
           entity.name=kurashiName_(payload.name);
+          entity.sub_name=kurashiSubName_(payload.sub_name===undefined?record.sub_name:payload.sub_name);
           const cat=Number(payload.category_id);
-          if (!Number.isInteger(cat)||cat<0||cat>4)
+          if (!Number.isInteger(cat)||cat<0||cat>5)
             kurashiFail_('BAD_REQUEST','カテゴリを確認してください');
           entity.category_id=cat;
           entity.normalized_name=kurashiNormalize_(entity.name);
@@ -377,7 +411,7 @@ function kurashiSaveItem_(user,action,payload,operationId) {
           }
         }
         if (scoped.some(x=>String(x.value.item_group_id)!==itemId &&
-            !x.value.deleted_at && kurashiNormalize_(x.value.name)===entity.normalized_name))
+            !x.value.deleted_at && kurashiSameItemLabel_(x.value,entity.name,Number(entity.category_id),entity.sub_name)))
           kurashiFail_('DUPLICATE','同じ日用品が登録済みです');
         entity.version=Number(record.version)+1;
         entity.updated_at=now;
@@ -450,7 +484,7 @@ function kurashiReorderItems_(user,payload,operationId){
   if(Object.keys(payload).sort().join(',')!=='category_id,item_group_ids,versions')
     kurashiFail_('BAD_REQUEST','並び順の形式が不正です');
   const cat=Number(payload.category_id),ids=payload.item_group_ids,versions=payload.versions;
-  if(!Number.isInteger(cat)||cat<0||cat>4||
+  if(!Number.isInteger(cat)||cat<0||cat>5||
      !Array.isArray(ids)||!Array.isArray(versions)||ids.length<2||
      ids.length>500||versions.length!==ids.length||
      ids.some(id=>typeof id!=='string'||!/^item-[A-Za-z0-9_-]{1,110}$/.test(id))||
@@ -1082,7 +1116,7 @@ function kurashiCreateRecord_(user,payload,id){
         if(!Number.isSafeInteger(qty)||qty<=0||
            !Number.isSafeInteger(amount)||amount<0||
            (payload.record_type==='shelf'?cat!==null:
-            cat!==null&&(!Number.isInteger(cat)||cat<0||cat>4)))
+            cat!==null&&(!Number.isInteger(cat)||cat<0||cat>5)))
           kurashiFail_('BAD_REQUEST','数量・税込金額・カテゴリを確認してください');
         const confirmed=line.confirmed_name===undefined?'':kurashiRawName_(line.confirmed_name);
         const inferred=line.inferred_name===undefined?'':kurashiRawName_(line.inferred_name);
@@ -1189,7 +1223,7 @@ function kurashiMutateRecord_(user,action,payload,id){
      if(!Number.isSafeInteger(line.quantity)||line.quantity<=0||
         !Number.isSafeInteger(line.amount_tax_included)||line.amount_tax_included<0||
         (original.record_type==='shelf'?cat!==null:
-          cat!==null&&(!Number.isInteger(cat)||cat<0||cat>4)))
+          cat!==null&&(!Number.isInteger(cat)||cat<0||cat>5)))
        kurashiFail_('BAD_REQUEST','数量・税込金額を確認してください');
      const confirmed=line.confirmed_name===undefined?'':kurashiRawName_(line.confirmed_name);
         const inferred=line.inferred_name===undefined?'':kurashiRawName_(line.inferred_name);

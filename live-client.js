@@ -46,9 +46,11 @@
   if(data.product_aliases===undefined)data.product_aliases=[];
   if(!Array.isArray(data.product_aliases)||!Array.isArray(data.records)||!Array.isArray(data.record_items))
    throw Error('DATA_INVALID');
-  const cats=['飲食','キッチン','洗面・風呂','洗濯・掃除','その他'];
-  if(data.categories.length!==5||data.categories.some((c,i)=>
-    Number(c.category_id)!==i||c.name!==cats[i]))throw Error('CATEGORY_MISMATCH');
+  const oldCats=['飲食','キッチン','洗面・風呂','洗濯・掃除','その他'];
+  const cats=['食品・飲料','キッチン','洗面・風呂','洗濯・掃除','その他','調味料'];
+  const expected=data.categories.length===5?oldCats:cats;
+  if(![5,6].includes(data.categories.length)||data.categories.some((c,i)=>
+    Number(c.category_id)!==i||c.name!==expected[i]))throw Error('CATEGORY_MISMATCH');
   const seen=new Set();
   const productIds=new Set();
   for(const p of data.products){
@@ -207,7 +209,7 @@
    if(op.kind==='create'){
     snap.item_groups.push({item_group_id:op.clientId,
       household_id:snap.household_id,category_id:op.category_id,
-      name:op.name,in_stock:false,is_hidden:false,
+      name:op.name,sub_name:op.subName||'',in_stock:false,is_hidden:false,
       sort_order:Math.max(0,...snap.item_groups.filter(i=>Number(i.category_id)===op.category_id)
        .map(i=>Number(i.sort_order)||0))+1,version:1,deleted_at:''});
     continue;
@@ -217,13 +219,14 @@
    if(op.kind==='toggle')target.in_stock=op.stock;
    else if(op.kind==='set-stock')target.in_stock=op.stock;
    else if(op.kind==='edit'){
-    target.name=op.name;target.category_id=op.category_id;
+    target.name=op.name;target.sub_name=op.subName??target.sub_name??'';target.category_id=op.category_id;
    }else if(op.kind==='hide')target.is_hidden=op.hidden;
    else if(op.kind==='legacy'){
     const p=op.request?.payload||{};
     if(typeof p.in_stock==='boolean')target.in_stock=p.in_stock;
     if(typeof p.is_hidden==='boolean')target.is_hidden=p.is_hidden;
     if(typeof p.name==='string')target.name=p.name;
+    if(typeof p.sub_name==='string')target.sub_name=p.sub_name;
     if(Number.isInteger(p.category_id))target.category_id=p.category_id;
    }
   }
@@ -525,14 +528,15 @@
  }
  function makeOperation(action,payload,doc){
   if(action==='item.create'){
-   const name=String(payload.name||'').trim(),category_id=Number(payload.category_id);
-   if(!name||name.length>80||!Number.isInteger(category_id)||category_id<0||category_id>4)
+   const name=String(payload.name||'').trim(),subName=String(payload.sub_name||'').trim(),category_id=Number(payload.category_id);
+   if(!name||name.length>80||subName.length>80||!Number.isInteger(category_id)||category_id<0||category_id>5)
     throw Error('日用品名・カテゴリを確認してください');
    const normalized=name.normalize('NFKC').toLocaleLowerCase('ja');
    if(project(doc)?.item_groups.some(i=>!i.deleted_at&&
-      i.name.normalize('NFKC').toLocaleLowerCase('ja')===normalized))
+      i.name.normalize('NFKC').toLocaleLowerCase('ja')===normalized&&
+      Number(i.category_id)===category_id&&String(i.sub_name||'').normalize('NFKC').toLocaleLowerCase('ja')===subName.normalize('NFKC').toLocaleLowerCase('ja')))
     throw Error('同じ日用品が登録済みです');
-   return {id:operationId(),kind:'create',clientId:'local-'+uid(),name,category_id,retries:0};
+   return {id:operationId(),kind:'create',clientId:'local-'+uid(),name,subName,category_id,retries:0};
   }
   if(action!=='item.update')throw Error('UNSUPPORTED');
   const targetId=String(payload.item_group_id||'');
@@ -545,14 +549,15 @@
   if(Object.prototype.hasOwnProperty.call(payload,'is_hidden'))
    return {id:operationId(),kind:'hide',targetId,hidden:!!payload.is_hidden,retries:0};
   if(typeof payload.name==='string'&&payload.category_id!==undefined){
-   const name=payload.name.trim(),cat=Number(payload.category_id);
-   if(!name||name.length>80||!Number.isInteger(cat)||cat<0||cat>4)
+   const name=payload.name.trim(),subName=String(payload.sub_name??target.sub_name??'').trim(),cat=Number(payload.category_id);
+   if(!name||name.length>80||subName.length>80||!Number.isInteger(cat)||cat<0||cat>5)
     throw Error('日用品名・カテゴリを確認してください');
    const normalized=name.normalize('NFKC').toLocaleLowerCase('ja');
    if(project(doc)?.item_groups.some(i=>i.item_group_id!==targetId&&
-     !i.deleted_at&&i.name.normalize('NFKC').toLocaleLowerCase('ja')===normalized))
+     !i.deleted_at&&i.name.normalize('NFKC').toLocaleLowerCase('ja')===normalized&&
+      Number(i.category_id)===category_id&&String(i.sub_name||'').normalize('NFKC').toLocaleLowerCase('ja')===subName.normalize('NFKC').toLocaleLowerCase('ja')))
     throw Error('同じ日用品が登録済みです');
-   return {id:operationId(),kind:'edit',targetId,name,category_id:cat,retries:0};
+   return {id:operationId(),kind:'edit',targetId,name,subName,category_id:cat,retries:0};
   }
   throw Error('UNSUPPORTED');
  }
@@ -610,7 +615,7 @@
    if(!Number.isSafeInteger(line.quantity)||line.quantity<=0||
       !Number.isSafeInteger(line.amount_tax_included)||line.amount_tax_included<0||
       (kind==='shelf'?cat!==null:
-       cat!==null&&(!Number.isInteger(cat)||cat<0||cat>4)))
+       cat!==null&&(!Number.isInteger(cat)||cat<0||cat>5)))
     throw Error('数量・税込金額・家計簿カテゴリを確認してください');
    return {raw_name:rawName,...(confirmed?{confirmed_name:confirmed}:{}),
     ...(inferred?{inferred_name:inferred}:{}),product_id:productId,
@@ -763,7 +768,7 @@
    const active=project(doc)?.item_groups.filter(i=>
     Number(i.category_id)===category&&!i.deleted_at&&!toBoolean(i.is_hidden))||[];
    const available=new Set(active.map(i=>i.item_group_id));
-   if(!Number.isInteger(category)||category<0||category>4||ids.length<2||
+   if(!Number.isInteger(category)||category<0||category>5||ids.length<2||
       ids.length!==active.length||new Set(ids).size!==ids.length||
       ids.some(id=>typeof id!=='string'||!available.has(id)))
     throw Error('並び順を確認できません。画面を更新してください');
@@ -890,7 +895,7 @@
    return {operationId:op.id,action:'product.update',payload};
   }
   if(op.kind==='create')return {operationId:op.id,action:'item.create',
-   payload:{name:op.name,category_id:op.category_id}};
+   payload:{name:op.name,category_id:op.category_id,...(op.subName!==undefined?{sub_name:op.subName}:{})}};
   if(op.kind==='reorder'){
    const active=(base?.item_groups||[]).filter(i=>
     Number(i.category_id)===op.category_id&&!i.deleted_at&&!toBoolean(i.is_hidden));
@@ -913,7 +918,7 @@
   if(op.kind==='toggle')payload.in_stock=op.stock;
   else if(op.kind==='set-stock')payload.in_stock=op.stock;
   else if(op.kind==='hide')payload.is_hidden=op.hidden;
-  else if(op.kind==='edit'){payload.name=op.name;payload.category_id=op.category_id}
+  else if(op.kind==='edit'){payload.name=op.name;payload.category_id=op.category_id;if(op.subName!==undefined)payload.sub_name=op.subName}
   else throw Error('UNSUPPORTED');
   return {operationId:op.id,action:'item.update',payload};
  }
@@ -1211,7 +1216,7 @@
  }
  function itemsOf(data){
   return (data?.item_groups||[]).filter(x=>!x.deleted_at).map(x=>({
-   id:x.item_group_id,name:x.name,category:Number(x.category_id),
+   id:x.item_group_id,name:x.name,subName:x.sub_name||'',category:Number(x.category_id),
    inStock:toBoolean(x.in_stock),hidden:toBoolean(x.is_hidden),
    order:Number(x.sort_order)||0,version:Number(x.version)
   }));

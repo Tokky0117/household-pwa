@@ -10,7 +10,7 @@ const KURASHI_NEW_SCHEMA = {
   users: ['user_id', 'household_id', 'display_name', 'auth_subject'],
   categories: ['category_id', 'name', 'fixed_order'],
   stores: ['chain_id', 'household_id', 'canonical_name', 'normalized_name', 'aliases', 'version', 'updated_at'],
-  item_groups: ['item_group_id', 'household_id', 'category_id', 'name', 'normalized_name', 'in_stock', 'sort_order', 'is_hidden', 'version', 'created_at', 'updated_at', 'deleted_at'],
+  item_groups: ['item_group_id', 'household_id', 'category_id', 'name', 'normalized_name', 'in_stock', 'sort_order', 'is_hidden', 'version', 'created_at', 'updated_at', 'deleted_at', 'sub_name'],
   products: ['product_id', 'household_id', 'item_group_id', 'name', 'normalized_name', 'package_quantity', 'package_unit', 'item_group_order', 'version', 'created_at', 'updated_at', 'deleted_at'],
   product_aliases: ['alias_id', 'product_id', 'chain_id', 'normalized_alias', 'version', 'updated_at', 'ocr_name'],
   records: ['record_id', 'household_id', 'record_type', 'chain_id', 'branch_name', 'raw_store_name', 'record_date', 'created_at', 'updated_at', 'version', 'deleted_at'],
@@ -20,11 +20,12 @@ const KURASHI_NEW_SCHEMA = {
   receipt_rules: ['rule_id', 'chain_id', 'pattern', 'priority', 'enabled', 'version', 'updated_at']
 };
 const KURASHI_FIXED_CATEGORIES = [
-  [0, '飲食', 1],
-  [1, 'キッチン', 2],
-  [2, '洗面・風呂', 3],
-  [3, '洗濯・掃除', 4],
-  [4, 'その他', 5]
+  [0, '食品・飲料', 1],
+  [1, 'キッチン', 3],
+  [2, '洗面・風呂', 4],
+  [3, '洗濯・掃除', 5],
+  [4, 'その他', 6],
+  [5, '調味料', 2]
 ];
 
 function setupNewWorkbook() {
@@ -70,7 +71,8 @@ function setupNewWorkbook() {
         const first=headers.findIndex((h,i)=>existing[i]!==h);
         const extension=headers.length-first;
         const additive=first>=0&&
-          (name==='product_aliases'&&extension===1||
+          (name==='item_groups'&&extension===1||
+           name==='product_aliases'&&extension===1||
            name==='record_items'&&(extension===1||extension===2||extension===3))&&
           existing.slice(first).every(value=>value==='');
         if(!additive)throw new Error(name+': シート列が規定と一致しません。');
@@ -88,7 +90,7 @@ function setupNewWorkbook() {
 
     const categories = book.getSheetByName('categories');
     if (categories.getLastRow() === 1) {
-      categories.getRange(2, 1, 5, 3).setValues(KURASHI_FIXED_CATEGORIES);
+      categories.getRange(2, 1, KURASHI_FIXED_CATEGORIES.length, 3).setValues(KURASHI_FIXED_CATEGORIES);
     } else {
       const found = categories.getRange(2, 1, categories.getLastRow() - 1, 3).getValues();
       if (JSON.stringify(found) !== JSON.stringify(KURASHI_FIXED_CATEGORIES)) {
