@@ -1694,9 +1694,9 @@ kitForm.querySelector('[name="name"]').value=kitCanonical;
 assert.ok([...kitForm.querySelectorAll('#scan-product-group-results [data-ui-choice]')]
  .some(o=>o.dataset.uiChoice===chocId),
  'newly seeded chocolate item exists among the searchable household sub-item options');
-const groupSearch=kitForm.querySelector('#scan-group-search');
-groupSearch.value='チョコ';
-groupSearch.dispatchEvent(new kitSession.window.Event('input',{bubbles:true}));
+const kitGroupSearch=kitForm.querySelector('#scan-group-search');
+kitGroupSearch.value='チョコ';
+kitGroupSearch.dispatchEvent(new kitSession.window.Event('input',{bubbles:true}));
 assert.ok(kitForm.querySelector('#scan-product-group-results [data-ui-choice="'+chocId+'"]'),
  'searching the item name keeps the expected item selectable');
 kitForm.querySelector('#scan-product-group-results [data-ui-choice="'+chocId+'"]').click();
