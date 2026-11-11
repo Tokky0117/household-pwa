@@ -11,14 +11,14 @@ vm.runInNewContext(reviewScript,reviewContext);
 const review=reviewContext.window.KurashiReceiptReview;
 const handlers={};
 const documentHandlers={};
-let mockSwipeRows=[];
+let mockSwipeRows=[],mockTopRows=[];
 const app={innerHTML:'',addEventListener(type,fn){(handlers[type]??=[]).push(fn)},insertAdjacentHTML(){}};
 const storage=new Map();
 const doc={
  addEventListener(type,fn){(documentHandlers[type]??=[]).push(fn)},
  getElementById:k=>k==='app'?app:null,
  querySelector(){return null},
- querySelectorAll(s){return s.includes('.swipe-item:not(.drag-ghost)')?mockSwipeRows:[]},
+ querySelectorAll(s){return s.includes('.category-items[data-category-id=')?mockTopRows:s.includes('.swipe-item:not(.drag-ghost)')?mockSwipeRows:[]},
  createElement:()=>({innerHTML:'',querySelector:()=>null}),
  body:{append(){}}
 };
@@ -27,7 +27,7 @@ const ctx={document:doc,localStorage:{getItem:k=>storage.get(k)??null,setItem:(k
 const ui=vm.runInNewContext(source+`
 ({listView,priceCompareView,pickerView,pickerResults,masterProductsView,masterProductRows,masterProductEditorView,masterGroupPickerView,masterGroupPickerRows,aliasManageView,aliasManageRows,aliasProductPickerView,aliasProductPickerRows,detailHomeView,detailAllView,receiptScanView,receiptChatGptView,recordDetailView,scanStoreNameIssue,scanValidPurchaseDate,scanReadableError,floatingActionPlacement,applyChatGptOcrAssistance,receiptOcrReference,receiptOcrRows,isUnconfirmedBarcodeLine,makeChatGptReceiptRebuildDraft,scanProductView,scanExistingProductView,scanChainForStore,scanStoreHeaderMatch,scanAutolinkUnmatched,scanMatchProduct,scanSimilarProducts,render,initializeCompare,
  setProductGroup,reorderProducts,registeredProducts,convertQuantity,setOpenSwipe,storePickerChoices,
- getItems(){return items},setItems(v){items=v},expandItemGroup(k){expandedItemGroups.add(k)},collapseItemGroup(k){expandedItemGroups.delete(k)},
+ getItems(){return items},setItems(v){items=v},orderedItemIds,expandItemGroup(k){expandedItemGroups.add(k)},collapseItemGroup(k){expandedItemGroups.delete(k)},
  chainMinima,priceCandidates,standardizedMinima,savePreviewRecord,periodStart,
  demoRecords,demoRecordItems,allPreviewRecords,allPreviewItems,
  setSelected(v){selected=v},setMasterProductId(v){masterProductId=v},setAliasPickerId(v){aliasPickerId=v},setAliasQuery(v){aliasQuery=v;aliasVisibleLimit=100},setAliasVisibleLimit(v){aliasVisibleLimit=v},setPage(v){page=v},setMode(v){priceScope=v},setDock(v){shopExpanded=v},
@@ -77,6 +77,20 @@ assert.ok(groupedOpen.includes('data-item-id="bag-vegetable"')&&
  'expanded group renders independently accessible stock and price rows');
 assert.ok(groupedOpen.includes('data-list-top="true"')&&groupedOpen.includes('ラップ'),
  'ordinary items and grouped rows are in the same category order');
+// Group moves as one peer of an ungrouped item; collapsed children still
+// participate in the complete Sheets reorder payload.
+mockTopRows=[{dataset:{itemId:'demo-6'}},
+ {dataset:{groupKey:'1:袋'},querySelectorAll(){return []}}];
+assert.deepEqual(Array.from(ui.orderedItemIds(1)),
+ ['demo-6','bag-vegetable','bag-garbage'],
+ 'normal item may precede a collapsed group; both child IDs remain in the queue');
+mockTopRows=[{dataset:{groupKey:'1:袋'},querySelectorAll(){return [
+  {dataset:{itemId:'bag-garbage'}},{dataset:{itemId:'bag-vegetable'}}]}},
+ {dataset:{itemId:'demo-6'}}];
+assert.deepEqual(Array.from(ui.orderedItemIds(1)),
+ ['bag-garbage','bag-vegetable','demo-6'],
+ 'expanded children can reorder within their group before the ordinary item');
+mockTopRows=[];
 ui.collapseItemGroup('1:袋');
 ui.setItems(preservedItems);
 
@@ -1920,3 +1934,31 @@ ui.setScanDraft(ui.createManualRecord('receipt'));
 assert.ok(ui.receiptScanView().includes('class="ui-date-control"')&&
  ui.receiptScanView().includes('id="scan-date"'),
  'Manual receipt entry shares the native date UI with OCR confirmation');
+
+// KS-008: 120g versus 50g versus unknown quantity under one household item.
+ui.setItems([...ui.getItems(),{id:'demo-wakame',
+ name:'わかめ',subName:'',category:0,inStock:true,hidden:false,order:999,version:1}]);
+ui.catalogue().products.push(
+ {id:'test-wakame120',name:'三陸カットわかめ120g',packageQuantity:120,packageUnit:'g',
+  itemGroupId:'demo-wakame',itemGroupOrder:1,aliases:[]},
+ {id:'test-wakame50',name:'カットわかめ50g',packageQuantity:50,packageUnit:'g',
+  itemGroupId:'demo-wakame',itemGroupOrder:2,aliases:[]},
+ {id:'test-wakame-unknown',name:'わかめ容量不明',packageQuantity:null,packageUnit:null,
+  itemGroupId:'demo-wakame',itemGroupOrder:3,aliases:[]}
+);
+const wakameDate=ui.demoRecords[0].record_date;
+for(const [productId,amount] of [
+ ['test-wakame120',360],['test-wakame50',180],['test-wakame-unknown',80]]){
+ assert.equal(ui.savePreviewRecord({type:'shelf',chainId:'c-life',date:wakameDate,
+  quantity:1,amount,productId,category:''}),true);
+}
+const standardizedWakame=ui.standardizedMinima(ui.registeredProducts('demo-wakame'),'1y');
+assert.equal(standardizedWakame.find(x=>x.label==='100g').price,300,
+ '120g at 360 yen wins normalized 100g comparison over 50g at 180 yen');
+assert.equal(standardizedWakame.find(x=>x.label==='100g').productId,'test-wakame120',
+ 'unknown-capacity 80-yen product cannot be the normalized-price winner');
+ui.setSelected('demo-wakame');ui.setPage('compare');ui.setMode('product');ui.setDock(false);
+const wakameView=ui.priceCompareView();
+assert.ok(wakameView.includes('内容量未設定の1商品')&&wakameView.includes('内容量を登録')&&
+ wakameView.includes('80円')&&wakameView.includes('300円'),
+ 'unknown capacity keeps purchase price and edit action but is excluded from converted minima');

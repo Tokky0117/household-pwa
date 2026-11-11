@@ -137,6 +137,18 @@ assert.equal(groupFixture.call('bootstrap').data.products.find(p=>
  'editing sub-name does not rewrite product ownership');
 assert.equal(groupFixture.call('item.create',{name:'醤油',category_id:5,sub_name:''},
  'op-sub-seasoning-abcdefghijkl').ok,true,'seasoning category accepts items');
+const ordinary=groupFixture.call('item.create',{name:'ラップ',category_id:1,sub_name:''},
+ 'op-sub-ordinary-abcdefghijkl').data.entity;
+const groupRows=groupFixture.call('bootstrap').data.item_groups;
+const mixedOrder=[ordinary.item_group_id,vegetable.item_group_id,garbage.item_group_id];
+const mixedReorder=groupFixture.call('item.reorder',{
+ category_id:1,item_group_ids:mixedOrder,
+ versions:mixedOrder.map(itemId=>Number(groupRows.find(row=>row.item_group_id===itemId).version))
+},'op-sub-mixed-reorder-abcdefghijkl');
+assert.equal(mixedReorder.ok,true,'collapsed group members can be reordered alongside an ordinary item');
+const reordered=groupFixture.call('bootstrap').data.item_groups;
+assert.deepEqual(mixedOrder.map(itemId=>Number(reordered.find(x=>x.item_group_id===itemId).sort_order)),
+ [1,2,3],'reorder preserves complete child sequence including an ordinary item');
 
 const googleCode=api.replace(
   "const KURASHI_AUTH_MODE = 'temporary-household';",
