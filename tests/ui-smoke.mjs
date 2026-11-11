@@ -27,6 +27,7 @@ const ctx={document:doc,localStorage:{getItem:k=>storage.get(k)??null,setItem:(k
 const ui=vm.runInNewContext(source+`
 ({listView,priceCompareView,pickerView,pickerResults,masterProductsView,masterProductRows,masterProductEditorView,masterGroupPickerView,masterGroupPickerRows,aliasManageView,aliasManageRows,aliasProductPickerView,aliasProductPickerRows,detailHomeView,detailAllView,receiptScanView,receiptChatGptView,recordDetailView,scanStoreNameIssue,scanValidPurchaseDate,scanReadableError,floatingActionPlacement,applyChatGptOcrAssistance,receiptOcrReference,receiptOcrRows,isUnconfirmedBarcodeLine,makeChatGptReceiptRebuildDraft,scanProductView,scanExistingProductView,scanChainForStore,scanStoreHeaderMatch,scanAutolinkUnmatched,scanMatchProduct,scanSimilarProducts,render,initializeCompare,
  setProductGroup,reorderProducts,registeredProducts,convertQuantity,setOpenSwipe,storePickerChoices,
+ getItems(){return items},setItems(v){items=v},expandItemGroup(k){expandedItemGroups.add(k)},collapseItemGroup(k){expandedItemGroups.delete(k)},
  chainMinima,priceCandidates,savePreviewRecord,periodStart,
  demoRecords,demoRecordItems,allPreviewRecords,allPreviewItems,
  setSelected(v){selected=v},setMasterProductId(v){masterProductId=v},setAliasPickerId(v){aliasPickerId=v},setAliasQuery(v){aliasQuery=v;aliasVisibleLimit=100},setAliasVisibleLimit(v){aliasVisibleLimit=v},setPage(v){page=v},setMode(v){priceScope=v},setDock(v){shopExpanded=v},
@@ -57,6 +58,28 @@ assert.ok(css.includes('.tertiary{')&&css.includes('color:var(--accent)'),'Share
 assert.ok(!source.includes('priceCells(){'),'Obsolete normal/discount UI component removed');
 assert.ok(!css.includes('grid-template-areas:"name value" "name date"'),'Obsolete two-row price CSS removed');
 assert.ok(ui.listView().includes('data-stock=')&&ui.listView().includes('data-list-edit='),'Stock and swipe list preserved');
+
+const preservedItems=ui.getItems();
+ui.setItems([...preservedItems,
+ {id:'bag-vegetable',name:'袋',subName:'野菜用',category:1,inStock:true,hidden:false,order:100,version:1},
+ {id:'bag-garbage',name:'袋',subName:'生ごみ用',category:1,inStock:false,hidden:false,order:101,version:1}]);
+const groupedClosed=ui.listView();
+assert.ok(groupedClosed.includes('data-group-toggle="1:袋"')&&
+ groupedClosed.includes('2種類')&&groupedClosed.includes('item-group-stock-off'),
+ 'two items with same category/name show one collapsed group with aggregate out-of-stock');
+assert.ok(!groupedClosed.includes('data-item-id="bag-vegetable"'),
+ 'collapsed group hides child rows rather than deleting them');
+ui.expandItemGroup('1:袋');
+const groupedOpen=ui.listView();
+assert.ok(groupedOpen.includes('data-item-id="bag-vegetable"')&&
+ groupedOpen.includes('data-item-id="bag-garbage"')&&
+ groupedOpen.includes('野菜用')&&groupedOpen.includes('生ごみ用'),
+ 'expanded group renders independently accessible stock and price rows');
+assert.ok(groupedOpen.includes('data-list-top="true"')&&groupedOpen.includes('ラップ'),
+ 'ordinary items and grouped rows are in the same category order');
+ui.collapseItemGroup('1:袋');
+ui.setItems(preservedItems);
+
 assert.ok(ui.listView().includes('class="ui-search"')&&ui.listView().includes('id="search"'),'Daily list uses shared search component');
 assert.ok(source.includes('iconButton({label,action,iconHtml,title=')&&
  source.includes("const add=UI.iconButton(")&&

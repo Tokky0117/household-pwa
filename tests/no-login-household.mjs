@@ -105,6 +105,39 @@ assert.equal(temp.call('item.update',{item_group_id:id,version:1,in_stock:false}
 assert.equal(temp.db.item_groups.length,2,'one item, not two');
 assert.equal(temp.db.processed_operations.length,3,'two successful operations');
 
+
+const groupFixture=fixture(api);
+const migrated=groupFixture.call('bootstrap');
+assert.equal(migrated.ok,true,'legacy five-category workbook migrates without resetting user data');
+assert.equal(migrated.data.categories.length,6,'new seasoning category available');
+assert.equal(migrated.data.categories[0].name,'食品・飲料','existing category ID is renamed in place');
+const vegetable=groupFixture.call('item.create',{name:'袋',sub_name:'野菜用',category_id:1},
+ 'op-sub-vegetable-abcdefghijkl').data.entity;
+const garbage=groupFixture.call('item.create',{name:'袋',sub_name:'生ごみ用',category_id:1},
+ 'op-sub-garbage-abcdefghijkl').data.entity;
+assert.notEqual(vegetable.item_group_id,garbage.item_group_id,'different sub-names remain separate items');
+assert.equal(groupFixture.call('item.create',{name:'袋',sub_name:'野菜用',category_id:1},
+ 'op-sub-duplicate-abcdefghijkl').error.code,'DUPLICATE','same category, name and sub-name cannot repeat');
+assert.equal(groupFixture.call('item.update',{item_group_id:vegetable.item_group_id,
+ version:1,in_stock:true},'op-sub-stock-abcdefghijkl').ok,true,
+ 'one child stock updates separately');
+assert.equal(groupFixture.call('bootstrap').data.item_groups.find(i=>
+ i.item_group_id===garbage.item_group_id).in_stock,false,'sibling remains out of stock');
+const tiedProduct=groupFixture.call('product.create',{name:'野菜用保存袋50枚',
+ package_quantity:50,package_unit:'枚',item_group_id:vegetable.item_group_id},
+ 'op-sub-product-abcdefghijkl');
+assert.equal(tiedProduct.ok,true,'product links to individual sub-name item');
+assert.equal(tiedProduct.data.entity.item_group_id,vegetable.item_group_id,
+ 'product must not link to a synthesized group');
+assert.equal(groupFixture.call('item.update',{item_group_id:vegetable.item_group_id,
+ version:2,name:'袋',sub_name:'食品保存用',category_id:1},
+ 'op-sub-edit-abcdefghijkl').ok,true,'sub-name change preserves item ID');
+assert.equal(groupFixture.call('bootstrap').data.products.find(p=>
+ p.product_id===tiedProduct.data.entity.product_id).item_group_id,vegetable.item_group_id,
+ 'editing sub-name does not rewrite product ownership');
+assert.equal(groupFixture.call('item.create',{name:'醤油',category_id:5,sub_name:''},
+ 'op-sub-seasoning-abcdefghijkl').ok,true,'seasoning category accepts items');
+
 const googleCode=api.replace(
   "const KURASHI_AUTH_MODE = 'temporary-household';",
   "const KURASHI_AUTH_MODE = 'google';");
