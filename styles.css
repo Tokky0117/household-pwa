@@ -2752,3 +2752,16 @@ html,body{touch-action:pan-x pan-y}
 .ui-floating-action .ui-floating-action-button svg{
  flex:none;width:19px;height:19px;color:var(--accent)
 }
+
+/* KS-006: group same-name household items while retaining individual IDs. */
+.item-group-row{margin-bottom:3px;border:1px solid var(--line);border-radius:11px;overflow:hidden;background:var(--card)}
+.item-group-header{display:flex;align-items:center;gap:9px;width:100%;min-height:52px;padding:6px 12px;border:0;background:inherit;color:inherit;text-align:left;cursor:pointer}
+.item-group-header .ui-chevron{flex:0 0 18px}
+.item-group-title{flex:1 1 auto;min-width:0;font-size:var(--ui-list-name-font-size,15px);font-weight:650;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.item-group-count{flex:0 0 auto;font-size:11px;color:var(--muted)}
+.item-group-stock{flex:0 0 auto;min-width:40px;text-align:center;font-size:12px;font-weight:600;padding:4px 7px;border:1px solid var(--line);border-radius:100px}
+.item-group-stock-off{background:var(--ui-stock-off-background)!important;color:var(--ui-stock-off-text)!important;border-color:var(--ui-stock-off-border)!important}
+.item-group-children{padding-left:12px;border-top:1px solid var(--line)}
+.item-group-child-row{margin-left:0!important}
+.item-group-row.drag-ghost{position:fixed!important;z-index:150;pointer-events:none;box-shadow:0 8px 20px #0002}
+.item-group-row.drag-placeholder{opacity:.3}

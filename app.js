@@ -1,8 +1,9 @@
-const APP_VERSION='0.88.10';
-const CATS=['飲食','キッチン','洗面・風呂','洗濯・掃除','その他'];
+const APP_VERSION='0.89.0';
+const CATS=['食品・飲料','キッチン','洗面・風呂','洗濯・掃除','その他','調味料'];
+const CAT_ORDER=[0,5,1,2,3,4];
 const liveMode=!!window.KurashiLive; // Data source only; original Preview v46 UI components remain.
 const SEED=[['牛乳',0,true],['麦茶',0,false],['コーヒー',0,true],['卵',0,false],['キッチンペーパー',1,false],['ラップ',1,true],['食器用洗剤',1,true],['シャンプー',2,false],['歯磨き粉',2,true],['ハンドソープ',2,false],['洗濯洗剤',3,false],['柔軟剤',3,true],['トイレットペーパー',3,false],['乾電池',4,true],['ティッシュ',4,true]];
-const makeSeed=()=>SEED.map(([name,category,inStock],i)=>({id:`demo-${i+1}`,name,category,inStock,hidden:false,order:i,version:1}));
+const makeSeed=()=>SEED.map(([name,category,inStock],i)=>({id:`demo-${i+1}`,name,subName:'',category,inStock,hidden:false,order:i,version:1}));
 const key='household_pwa_ui_v3';
 // 商品・チェーンは仮データ。今後はproducts / storesへの照会に置き換える。
 
@@ -25,8 +26,8 @@ function loadCatalogue(){if(liveMode)return {products:[],chains:[],branches:[]};
 let catalogue=loadCatalogue(),pickQuery='',pickKind='product',pickerAll=false,editingProductId=null;
 const persistCatalogue=()=>{if(!liveMode)localStorage.setItem(catalogueKey,JSON.stringify(catalogue))};
 const productTitle=p=>p.name+(p.packageQuantity&&p.packageUnit?' '+p.packageQuantity+p.packageUnit:'');
-const linkedItemName=p=>items.find(i=>i.id===p.itemGroupId)?.name||'日用品未紐付け';
-const linkedItemLabel=p=>items.find(i=>i.id===p.itemGroupId)?.name||'';
+const linkedItemName=p=>itemLabel(items.find(i=>i.id===p.itemGroupId))||'日用品未紐付け';
+const linkedItemLabel=p=>itemLabel(items.find(i=>i.id===p.itemGroupId));
 const registeredProducts=itemId=>catalogue.products.filter(p=>p.itemGroupId===itemId).sort((a,b)=>(a.itemGroupOrder??9999)-(b.itemGroupOrder??9999));
 function reorderProducts(itemId,ids){
  const currentProducts=registeredProducts(itemId);
@@ -170,7 +171,7 @@ function convertQuantity(amount,from,to){
  return family(from)===family(to)&&scale[from]&&scale[to]?amount*scale[from]/scale[to]:null;
 }
 function load(){if(liveMode)return [];try{const d=JSON.parse(localStorage.getItem(key));return Array.isArray(d)?d:makeSeed()}catch{return makeSeed()}}
-let items=load(),tab='items',page='list',selected=null,query='',onlyOut=false,collapsed=new Set(),menu=false,dialog=null,toast='',period='1y',priceScope='product',periodMenu=false;
+let items=load(),expandedItemGroups=new Set(),tab='items',page='list',selected=null,query='',onlyOut=false,collapsed=new Set(),menu=false,dialog=null,toast='',period='1y',priceScope='product',periodMenu=false;
 const app=document.getElementById('app');
 // Native iPhone chooser: Photo Library, Take Photo, or Files. Photos stay in memory.
 let scanPhotos=[],scanIndex=0,scanBusy=false,scanDraft=null,scanStatus='',scanAssistMessage='',scanToken=0,scanError='',scanReadFailed=false,scanNewStoreMode=false,scanReturnScrollY=null;
@@ -334,7 +335,7 @@ if(typeof document.addEventListener==='function'){
 
 function scanGroupChoices({noneLabel='紐付けしない（商品だけ登録）'}={}){
  return [{value:'',label:noneLabel},...items.filter(x=>!x.hidden).map(x=>({
-  value:x.id,label:x.name+'（'+(CATS[x.category]||'その他')+'）'
+  value:x.id,label:itemLabel(x)+'（'+(CATS[x.category]||'その他')+'）'
  }))];
 }
 function scanModalPhotoLinks(){
@@ -1090,7 +1091,7 @@ const UI={
   recordRow({id,title,subtitle,amount=null,draft=false}){return `<button type="button" class="panel ui-record-row" data-act="${draft?'resumeScanDraft':'recordDetail'}" ${draft?'':`data-record-id="${esc(id)}"`}>
    <span class="ui-record-row-copy"><strong>${esc(title)}</strong><span>${esc(subtitle)}</span>${amount===null?'':`<strong class="ui-record-amount">${yen(amount)}</strong>`}</span>
    ${chevron('right')}</button>`;},
-  stock(item){return `<button class="stock ${item.inStock?'':'off'}" data-stock="${esc(item.id)}" aria-label="${esc(item.name)}の在庫を切り替える" aria-pressed="${item.inStock}"><span class="stock-pill" aria-hidden="true">${item.inStock?'あり':'なし'}</span></button>`},
+  stock(item){return `<button class="stock ${item.inStock?'':'off'}" data-stock="${esc(item.id)}" aria-label="${esc(itemLabel(item))}の在庫を切り替える" aria-pressed="${item.inStock}"><span class="stock-pill" aria-hidden="true">${item.inStock?'あり':'なし'}</span></button>`},
   dropdown({id,name=null,inputId='',value,options,label='',compact=false,open=false}){
     const active=options.find(x=>String(x.value)===String(value))||options[0];
     const choices=options.map(o=>({choice:String(o.value),label:o.label,selected:String(o.value)===String(active?.value)}));
@@ -1129,27 +1130,53 @@ const UI={
 const svg=k=>`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${icons[k]}</svg>`;
 function head(title,sub='',back=false,right='',left=''){return `<header class="top"><div class="headrow"><div class="head-left">${back?`${UI.iconButton({label:'戻る',action:'back',iconHtml:chevron('left')})}`:left}</div><div class="head-title">${sub?`<p class="eyebrow">${esc(sub)}</p>`:''}<h1>${esc(title)}</h1></div><div class="head-right">${right}</div></div></header>`}
 function nav(){return `<nav class="bottom" aria-label="メインメニュー"><div class="tabs">${[['items','日用品'],['receipt','明細'],['settings','設定']].map(([k,v])=>`<button class="tab ${tab===k?'active':''}" data-tab="${k}" ${tab===k?'aria-current="page"':''}>${svg(k)}<span>${v}</span></button>`).join('')}</div></nav>`}
+function groupKeyOfItem(i){return i.category+':'+norm(i.name);}
+function itemLabel(i){return i?i.name+(i.subName?' ／ '+i.subName:''):'';}
+function itemCardHtml(i,cat,child=false){
+ const label=itemLabel(i),groupKey=groupKeyOfItem(i);
+ return `<div class="item swipe-item ${child?'item-group-child-row':'item-top-row'} ${openSwipeId===i.id?'swipe-open':''}" data-item-id="${esc(i.id)}" data-category-id="${cat}" data-group-key="${esc(groupKey)}" ${child?'':'data-list-top="true"'}>
+   <div class="swipe-actions">
+    <button type="button" class="swipe-edit" data-list-edit="${esc(i.id)}" tabindex="${openSwipeId===i.id?0:-1}" aria-label="${esc(label)}を編集">${miniIcon('pencil')}<span>編集</span></button>
+    <button type="button" class="swipe-delete" data-list-hide="${esc(i.id)}" tabindex="${openSwipeId===i.id?0:-1}" aria-label="${esc(label)}を削除">${miniIcon('trash')}<span>削除</span></button>
+   </div>
+   <div class="swipe-front">
+    <button type="button" class="itemname" data-open="${esc(i.id)}" aria-label="${esc(label)}の価格情報を開く">
+     <span class="item-title">${esc(child?(i.subName||'サブ情報なし'):label)}</span>
+     <span class="list-prices">${esc(listPriceText(i))}</span>
+    </button>
+    <div class="item-stock-area">${UI.stock(i)}</div>
+    <span class="swipe-peek" aria-hidden="true"></span>
+   </div>
+ </div>`;
+}
 function listResults(){
- const q=norm(query),matches=i=>(!q||norm(i.name).includes(q))&&(!onlyOut||!i.inStock);
- return CATS.map((cat,idx)=>{
-  const all=visible().filter(i=>i.category===idx).sort((a,b)=>a.order-b.order),filtered=all.filter(matches);
-  if((q||onlyOut)&&!filtered.length)return '';
+ const q=norm(query),matches=i=>(!q||norm(itemLabel(i)).includes(q)||norm(CATS[i.category]||'').includes(q))&&(!onlyOut||!i.inStock);
+ return CAT_ORDER.map(idx=>{
+  const cat=CATS[idx],all=visible().filter(i=>i.category===idx).sort((a,b)=>a.order-b.order);
+  const matching=all.filter(matches);
+  if((q||onlyOut)&&!matching.length)return '';
   const closed=!q&&!onlyOut&&collapsed.has(idx);
-  return `<section class="category"><button class="cathead" data-cat="${idx}" aria-expanded="${!closed}" ${onlyOut?'disabled aria-disabled="true"':''}><strong>${cat}</strong><span class="count">${filtered.length}点</span><span class="cat-arrow-slot" aria-hidden="true">${onlyOut?'':chevron(closed?'down':'up')}</span></button>${closed?'':filtered.length?filtered.map(i=>`
-    <div class="item swipe-item ${openSwipeId===i.id?'swipe-open':''}" data-item-id="${esc(i.id)}" data-category-id="${idx}">
-      <div class="swipe-actions">
-       <button type="button" class="swipe-edit" data-list-edit="${esc(i.id)}" tabindex="${openSwipeId===i.id?0:-1}" aria-label="${esc(i.name)}を編集">${miniIcon('pencil')}<span>編集</span></button>
-       <button type="button" class="swipe-delete" data-list-hide="${esc(i.id)}" tabindex="${openSwipeId===i.id?0:-1}" aria-label="${esc(i.name)}を削除">${miniIcon('trash')}<span>削除</span></button>
-      </div>
-      <div class="swipe-front">
-       <button type="button" class="itemname" data-open="${esc(i.id)}" aria-label="${esc(i.name)}の価格情報を開く">
-        <span class="item-title">${esc(i.name)}</span>
-        <span class="list-prices">${esc(listPriceText(i))}</span>
-       </button>
-       <div class="item-stock-area">${UI.stock(i)}</div>
-       <span class="swipe-peek" aria-hidden="true"></span>
-      </div>
-    </div>`).join(''):'<div class="empty">該当する日用品はありません</div>'}</section>`
+  const groups=new Map();
+  for(const i of all){const key=groupKeyOfItem(i);if(!groups.has(key))groups.set(key,[]);groups.get(key).push(i)}
+  const seen=new Set(),parts=[];
+  for(const i of all){
+   const key=groupKeyOfItem(i);
+   if(seen.has(key))continue;seen.add(key);
+   const members=groups.get(key),found=members.filter(matches);
+   if(!found.length)continue;
+   if(members.length===1){parts.push(itemCardHtml(i,idx));continue;}
+   const open=!!q||onlyOut||expandedItemGroups.has(key);
+   const inStock=members.every(x=>x.inStock);
+   const body=open?`<div class="item-group-children">${found.map(x=>itemCardHtml(x,idx,true)).join('')}</div>`:'';
+   parts.push(`<div class="item-group-row" data-list-top="true" data-category-id="${idx}" data-group-key="${esc(key)}">
+     <button class="item-group-header" type="button" data-group-toggle="${esc(key)}" aria-expanded="${open}">
+      ${chevron(open?'down':'right')}
+      <span class="item-group-title">${esc(i.name)}</span>
+      <span class="item-group-count">${members.length}種類</span>
+      <span class="stock-pill item-group-stock ${inStock?'':'item-group-stock-off'}">${inStock?'あり':'なし'}</span>
+     </button>${body}</div>`);
+  }
+  return `<section class="category"><button class="cathead" data-cat="${idx}" aria-expanded="${!closed}" ${onlyOut?'disabled aria-disabled="true"':''}><strong>${cat}</strong><span class="count">${matching.length}点</span><span class="cat-arrow-slot" aria-hidden="true">${onlyOut?'':chevron(closed?'down':'up')}</span></button>${closed?'':parts.length?`<div class="category-items" data-category-id="${idx}">${parts.join('')}</div>`:'<div class="empty">該当する日用品はありません</div>'}</section>`;
  }).join('')||'<div class="empty">一致する日用品はありません</div>';
 }
 const helpOpenKey='household_pwa_list_help_open_v1';
@@ -1207,14 +1234,15 @@ function priceCompareView(){
 <button type="button" class="shop-compare-toggle" data-act="shopToggle" aria-expanded="${shopExpanded}" aria-controls="shop-compare-fields">
 <span class="shop-compare-heading"><strong>店頭の商品と比較</strong><small>目の前の商品と同じ内容量で価格を比較</small></span>${chevron(shopExpanded?'down':'up')}</button>
 <div id="shop-compare-fields" ${shopExpanded?'':'hidden'}><p class="shop-compare-instruction">店頭商品の内容量を入力</p>${UI.quantityUnitFields({quantityId:"compare-quantity",unitId:"compare-unit",quantity:compareQuantity??"",unit:compareUnit||UNIT_OPTIONS[0],placeholder:"例：1100",extra:'inputmode="decimal"'})}</div></section>`;
- return `${head('価格情報',i.name,true)}<main class="detail-main comparison-main"><p class="price-purpose">登録した商品の、お店ごとの最安値を確認</p>${UI.sectionHeading({title:"登録商品",subtitle:priceScope==='unit'&&unitLabel?unitLabel+"の換算価格":"税込・安い順",className:"detail-section-heading price-heading",trailing:UI.dropdown({id:"price-period",value:period,label:"期間",compact:true,open:periodMenu,options:[{value:"3m",label:"直近3か月"},{value:"1y",label:"直近1年"}]})})}<div class="comparison-list">${productRows}</div><button type="button" class="tertiary manage-add product-register-action" data-act="productPick">${miniIcon('plus')}<span>商品を登録</span></button></main>${unitControls}`;
+ return `${head('価格情報',itemLabel(i),true)}<main class="detail-main comparison-main"><p class="price-purpose">登録した商品の、お店ごとの最安値を確認</p>${UI.sectionHeading({title:"登録商品",subtitle:priceScope==='unit'&&unitLabel?unitLabel+"の換算価格":"税込・安い順",className:"detail-section-heading price-heading",trailing:UI.dropdown({id:"price-period",value:period,label:"期間",compact:true,open:periodMenu,options:[{value:"3m",label:"直近3か月"},{value:"1y",label:"直近1年"}]})})}<div class="comparison-list">${productRows}</div><button type="button" class="tertiary manage-add product-register-action" data-act="productPick">${miniIcon('plus')}<span>商品を登録</span></button></main>${unitControls}`;
 }
 function formView(){
  const editing=page==='edit',i=editing?current():null;
  const title=editing?'日用品を編集':'日用品を追加';
  const fields=[
-  UI.formField({id:'name',label:'日用品名',value:i?.name||'',maxlength:80,required:true,placeholder:'例：食器用スポンジ'}),
-  UI.formField({id:'category',label:'カテゴリ',control:'select',value:i?.category??0,options:CATS.map((label,value)=>({label,value}))})
+  UI.formField({id:'name',label:'日用品名',value:i?.name||'',maxlength:80,required:true,placeholder:'例：袋'}),
+  UI.formField({id:'sub-name',name:'sub_name',label:'サブ情報（任意）',value:i?.subName||'',maxlength:80,placeholder:'例：野菜用'}),
+  UI.formField({id:'category',label:'カテゴリ',control:'select',value:i?.category??0,options:CAT_ORDER.map(value=>({label:CATS[value],value}))})
  ].join('');
  return UI.sheet({title,variant:'item-editor-sheet',body:`<form id="itemForm">${fields}<div id="item-duplicate-notice"></div><div class="formactions">${UI.button({label:editing?'変更を保存':'登録する',variant:'primary',type:'submit'})}</div></form>`});
 }
@@ -1243,7 +1271,7 @@ function pickerResults(){
 }
 function pickerView(){
  const search=`<div class="formfield"><label for="catalogue-search">商品を検索</label>${UI.searchField({id:'catalogue-search',label:'商品を検索',placeholder:'名称で検索',value:pickQuery,extra:'autocomplete="off"'})}</div>`;
- return UI.sheet({title:'商品を登録',variant:'product-picker-modal',body:`<div class="product-picker-sheet"><div class="product-picker-search">${search}</div><div id="catalogue-results" class="product-picker-results">${pickerResults()}</div><button type="button" class="tertiary product-picker-create" data-act="productCreate">＋ 新しい商品を作成</button><p class="hint product-picker-create-help">まだ買っていない商品も登録できます。</p><div class="product-picker-footer">${esc(current()?.name||'日用品')}に登録</div></div>`});
+ return UI.sheet({title:'商品を登録',variant:'product-picker-modal',body:`<div class="product-picker-sheet"><div class="product-picker-search">${search}</div><div id="catalogue-results" class="product-picker-results">${pickerResults()}</div><button type="button" class="tertiary product-picker-create" data-act="productCreate">＋ 新しい商品を作成</button><p class="hint product-picker-create-help">まだ買っていない商品も登録できます。</p><div class="product-picker-footer">${esc(itemLabel(current())||'日用品')}に登録</div></div>`});
 }
 function productCreateView(){
  const i=current();if(!i)return '';
@@ -1268,18 +1296,18 @@ function masterProductRows(){
   '</span></button>').join('')||'<div class="panel empty">該当する商品はありません</div>';
 }
 function masterGroupLabel(groupId){
- return items.find(item=>item.id===groupId)?.name||
+ return itemLabel(items.find(item=>item.id===groupId))||
   (groupId?'日用品が見つかりません':'紐付けしない');
 }
 function masterGroupPickerRows(){
  const selected=String(document.getElementById('masterProductForm')?.elements.namedItem('group')?.value||'');
  const q=norm(masterGroupQuery);
  const choices=items.filter(item=>!item.hidden&&(!q||
-  norm(item.name).includes(q)||norm(CATS[item.category]||'').includes(q)));
+  norm(itemLabel(item)).includes(q)||norm(CATS[item.category]||'').includes(q)));
  const noLink=!q||norm('紐付けしない').includes(q)?
   UI.choiceRow({title:'紐付けしない',choice:'',selected:selected===''}):'';
  return noLink+choices.map(item=>UI.choiceRow({
-  title:item.name,subtitle:CATS[item.category]||'その他',
+  title:itemLabel(item),subtitle:CATS[item.category]||'その他',
   choice:item.id,selected:selected===item.id
  })).join('')||'<p class="hint">該当する日用品はありません</p>';
 }
@@ -1844,31 +1872,34 @@ function duplicateItemNotice(item,hidden){
  if(target)target.innerHTML=UI.inlineNotice({message:hidden?'以前登録した日用品があります':'すでに登録されています',action:hidden?'restoreItem':'showExistingItem',label:hidden?'リストに戻す':'リストで表示'});
 }
 function revealItem(item){
- duplicateItemId=null;selected=item.id;query='';onlyOut=false;collapsed.delete(item.category);page='list';openSwipeId=null;
+ duplicateItemId=null;selected=item.id;query='';onlyOut=false;collapsed.delete(item.category);expandedItemGroups.add(groupKeyOfItem(item));page='list';openSwipeId=null;
  persist();render();
  const row=document.querySelector('.swipe-item[data-item-id="'+item.id+'"]');
  row?.scrollIntoView({behavior:'smooth',block:'center'});
  row?.classList.add('just-added');
 }
-function saveItem(name,category){
- const normalized=norm(name);
- const existing=items.find(i=>norm(i.name)===normalized&&i.id!==selected&&!i.hidden);
+function saveItem(name,category,subName=''){
+ if(!name||name.length>80||subName.length>80){fieldNotice(document.getElementById('itemForm'),'日用品名・サブ情報を確認してください','name');return}
+ const normalized=norm(name),sub=norm(subName);
+ const same=i=>i.category===category&&norm(i.name)===normalized&&norm(i.subName||'')===sub;
+ const existing=items.find(i=>same(i)&&i.id!==selected&&!i.hidden);
  if(existing){duplicateItemNotice(existing,false);return}
- const hidden=items.find(i=>norm(i.name)===normalized&&i.hidden);
+ const hidden=items.find(i=>same(i)&&i.hidden);
  if(page==='add'&&hidden){duplicateItemNotice(hidden,true);return}
  duplicateItemId=null;
- commitItem(name,category);
+ commitItem(name,category,subName);
 }
 let scrollToId=null;
-function commitItem(name,category){
+function commitItem(name,category,subName=''){
  if(liveMode){
   const editing=page==='edit',original=editing?current():null;
   const payload=editing?
-   {item_group_id:original?.id,version:original?.version,name,category_id:category}:
-   {name,category_id:category};
+   {item_group_id:original?.id,version:original?.version,name,sub_name:subName,category_id:category}:
+   {name,sub_name:subName,category_id:category};
   window.KurashiLive.save(editing?'item.update':'item.create',payload).then(entity=>{
-   if(!editing){collapsed.delete(category);query='';onlyOut=false;scrollToId=entity.item_group_id}
+   if(!editing){collapsed.delete(category);query='';onlyOut=false;scrollToId=entity.item_group_id;expandedItemGroups.add(category+':'+norm(name))}
    page=editing?editReturnPage:'list';openSwipeId=null;render();
+   if(scrollToId){const row=document.querySelector('[data-item-id="'+scrollToId+'"]');if(row){const r=row.getBoundingClientRect(),top=document.querySelector('.top')?.getBoundingClientRect().bottom||0;if(r.top<top||r.bottom>window.innerHeight)row.scrollIntoView({behavior:'smooth',block:'center'});}scrollToId=null;}
   }).catch(err=>fieldNotice(document.getElementById('itemForm'),err.message||'保存できませんでした','name'));
   return;
  }
@@ -1878,13 +1909,13 @@ function commitItem(name,category){
   setTimeout(()=>commitItem(name,category),190);return;
  }
  if(page==='edit'){
-  const i=current();Object.assign(i,{name,category,version:i.version+1});
+  const i=current();Object.assign(i,{name,subName,category,version:i.version+1});
  }else{
-  const newId=id();scrollToId=newId;collapsed.delete(category);query='';onlyOut=false;
-  items.push({id:newId,name,category,inStock:false,hidden:false,order:Math.max(0,...items.filter(i=>i.category===category).map(i=>i.order))+1,version:1});
+  const newId=id();scrollToId=newId;collapsed.delete(category);query='';onlyOut=false;expandedItemGroups.add(category+':'+norm(name));
+  items.push({id:newId,name,subName,category,inStock:false,hidden:false,order:Math.max(0,...items.filter(i=>i.category===category).map(i=>i.order))+1,version:1});
  }
  persist();page=page==='edit'?editReturnPage:'list';openSwipeId=null;render();
- if(scrollToId){const el=[...document.querySelectorAll('[data-item-id]')].find(e=>e.dataset.itemId===scrollToId);el?.scrollIntoView({behavior:'smooth',block:'center'});el?.classList.add('just-added');scrollToId=null}
+ if(scrollToId){const el=document.querySelector('[data-item-id="'+scrollToId+'"]');if(el){const r=el.getBoundingClientRect(),top=document.querySelector('.top')?.getBoundingClientRect().bottom||0;if(r.top<top||r.bottom>window.innerHeight)el.scrollIntoView({behavior:'smooth',block:'center'});}scrollToId=null}
  
 }
 // 入力欄自体は再作成しない。日本語IMEの変換中もフォーカスと入力状態を維持する。
@@ -2134,7 +2165,7 @@ app.addEventListener('submit',e=>{e.preventDefault();const form=e.target;const d
  if(issue){form.querySelector('#store-picker-new-name')?.focus();return}
  chooseStoreFromPicker('__new__',storeName);return;
 }
-if(form.id==='itemForm'){const i=page==='edit'?current():null;saveItem(String(d.get('name')??i?.name??'').trim(),Number(d.get('category')??i?.category??0))}
+if(form.id==='itemForm'){const i=page==='edit'?current():null;saveItem(String(d.get('name')??i?.name??'').trim(),Number(d.get('category')??i?.category??0),String(d.get('sub_name')??i?.subName??'').trim())}
 if(form.id==='masterProductForm'){
  if(masterGroupChanging){fieldNotice(form,'日用品との紐付けを保存中です','master-product-group');return;}
  const name=String(d.get('name')||'').trim(),qt=String(d.get('quantity')||'').trim();
@@ -2195,7 +2226,7 @@ if(exposedItem&&!e.target.closest('.swipe-actions')){
  // The revealed front can be inert, so its row can receive the click instead.
  e.preventDefault();setOpenSwipe(null);return;
 }
-const clear=e.target.closest('[data-search-clear]');if(clear){const input=document.getElementById(clear.dataset.searchClear);if(input){input.value='';syncSearch(input);input.focus()}return}const el=e.target.closest('[data-tab],[data-cat],[data-stock],[data-open],[data-act],[data-ui-toggle],[data-ui-choice],[data-dialog],[data-premove],[data-pedit],[data-pick],[data-product-menu],[data-list-edit],[data-list-hide]');if(!el)return;if(el.hasAttribute('data-ui-toggle')){
+const clear=e.target.closest('[data-search-clear]');if(clear){const input=document.getElementById(clear.dataset.searchClear);if(input){input.value='';syncSearch(input);input.focus()}return}const el=e.target.closest('[data-tab],[data-cat],[data-group-toggle],[data-stock],[data-open],[data-act],[data-ui-toggle],[data-ui-choice],[data-dialog],[data-premove],[data-pedit],[data-pick],[data-product-menu],[data-list-edit],[data-list-hide]');if(!el)return;if(el.hasAttribute('data-ui-toggle')){
  const wrapper=el.closest('.ui-select'),open=el.getAttribute('aria-expanded')==='true';
  closeAllDropdowns();
  if(!open&&wrapper){const popup=wrapper.querySelector('.ui-menu');if(popup)popup.hidden=false;el.setAttribute('aria-expanded','true');if(wrapper.dataset.uiSelect==='price-period')periodMenu=true}
@@ -2222,6 +2253,7 @@ if(el.dataset.uiChoice!==undefined){
  wrapper.querySelector('.ui-select-trigger')?.focus();return;
 }
 
+if(el.dataset.groupToggle!==undefined){const k=el.dataset.groupToggle;expandedItemGroups.has(k)?expandedItemGroups.delete(k):expandedItemGroups.add(k);render();return}
 if(el.dataset.listEdit){duplicateItemId=null;selected=el.dataset.listEdit;editReturnPage='list';openSwipeId=null;page='edit';render();return}if(el.dataset.listHide){selected=el.dataset.listHide;setOpenSwipe(null);dialog={title:'日用品を削除',message:'日用品リストから削除します。',buttons:[{id:'cancel',label:'キャンセル'},{id:'confirmHide',label:'削除',critical:true}]};render();return}
 if(el.dataset.tab){tab=el.dataset.tab;page='list';openSwipeId=null;menu=false;render();return}if(el.dataset.cat!==undefined){if(onlyOut)return;const c=Number(el.dataset.cat);collapsed.has(c)?collapsed.delete(c):collapsed.add(c);render();return}if(el.dataset.stock){const i=items.find(x=>x.id===el.dataset.stock);if(!i)return;
  if(liveMode){
@@ -2734,7 +2766,21 @@ function startPending(row,e,inputType){
  kind:page==='compare'||page==='products'?'product':'item',inputType};
  p.timer=setTimeout(()=>startDrag(p),420);pendingDrag=p;
 }
-function dragRowSelector(kind){return kind==='product'?'.comparison-product[data-product-id],.catalogue-row[data-product-id]':'[data-item-id]'}
+function dragRowSelector(kind){return kind==='product'?'.comparison-product[data-product-id],.catalogue-row[data-product-id]':'[data-list-top],.item-group-child-row[data-item-id]'}
+function orderedItemIds(category){
+ const roots=[...document.querySelectorAll('.category-items[data-category-id="'+category+'"] > [data-list-top]')];
+ const ids=[],seen=new Set();
+ for(const root of roots){
+  if(root.dataset.itemId){ids.push(root.dataset.itemId);continue;}
+  const key=root.dataset.groupKey;
+  const members=items.filter(i=>i.category===Number(category)&&!i.hidden&&groupKeyOfItem(i)===key)
+   .sort((a,b)=>a.order-b.order);
+  const rendered=[...root.querySelectorAll('.item-group-child-row[data-item-id]')].map(x=>x.dataset.itemId);
+  const complete=rendered.length===members.length?rendered:members.map(i=>i.id);
+  for(const id of complete)if(!seen.has(id)){ids.push(id);seen.add(id)}
+ }
+ return ids;
+}
 app.addEventListener('pointerdown',e=>{
  if(e.pointerType==='touch'||e.button!==0||dialog||!['list','products','compare'].includes(page))return;
  if(page==='list'&&(query||onlyOut))return;
@@ -2747,8 +2793,9 @@ function moveDrag(e){
  const d=activeDrag;if(!d||e.pointerId!==d.pointerId)return;
  e.preventDefault();
  d.ghost.style.top=(e.clientY-d.offsetY)+'px';d.ghost.style.left=(e.clientX-d.offsetX)+'px';
- const target=document.elementFromPoint(e.clientX,e.clientY)?.closest(dragRowSelector(d.kind));
- if(!target||target===d.row||(d.kind==='item'&&target.dataset.categoryId!==d.category))return;
+ const selector=d.kind==='item'?(d.row.classList.contains('item-group-child-row')?'.item-group-child-row[data-item-id]':'[data-list-top]'):dragRowSelector(d.kind);
+ const target=document.elementFromPoint(e.clientX,e.clientY)?.closest(selector);
+ if(!target||target===d.row||(d.kind==='item'&&(target.dataset.categoryId!==d.category||(d.row.classList.contains('item-group-child-row')&&target.dataset.groupKey!==d.row.dataset.groupKey))))return;
  const rect=target.getBoundingClientRect();
  target.parentNode.insertBefore(d.row,e.clientY<rect.top+rect.height/2?target:target.nextSibling);
  d.moved=true;
@@ -2763,9 +2810,7 @@ function endDrag(e,cancel=false){
  if(!d.moved){render();return}
  if(liveMode){
   if(d.kind==='item'){
-   const rows=[...document.querySelectorAll('.swipe-item[data-item-id]:not(.drag-ghost)')]
-    .filter(row=>row.dataset.categoryId===d.category);
-   const ids=rows.map(row=>row.dataset.itemId);
+   const ids=orderedItemIds(d.category);
    window.KurashiLive.reorderItems(Number(d.category),ids).catch(err=>
     inlineActionNotice(document.querySelector('.category'),
      err.message||'並び順を保存できませんでした'));
@@ -2783,8 +2828,8 @@ function endDrag(e,cancel=false){
   return;
  }
  if(d.kind==='item'){
-  const rows=[...document.querySelectorAll('.swipe-item[data-item-id]:not(.drag-ghost)')].filter(row=>row.dataset.categoryId===d.category);
-  rows.forEach((row,index)=>{const i=items.find(x=>x.id===row.dataset.itemId);if(i){i.order=index+1;i.version=(i.version||0)+1}});
+  const ids=orderedItemIds(d.category);
+  ids.forEach((id,index)=>{const i=items.find(x=>x.id===id);if(i){i.order=index+1;i.version=(i.version||0)+1}});
   persist();
  }else{
   const ids=[...document.querySelectorAll('.comparison-product[data-product-id]:not(.drag-ghost),.catalogue-row[data-product-id]:not(.drag-ghost)')].map(row=>row.dataset.productId);
