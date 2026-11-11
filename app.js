@@ -675,13 +675,9 @@ function scanOptionsProduct(selected='',rawName=''){
   '<option value="'+esc(p.id)+'"'+(selected===p.id?' selected':'')+'>'+esc(productTitle(p))+'</option>').join('');
 }
 function scanResolvedProductId(item){
- const current=String(item.productId||'');
- if(!current.startsWith('local-')||catalogue.products.some(p=>p.id===current))return current;
- if(!item.canonicalName)return current;
- const matches=catalogue.products.filter(p=>
-  norm(p.name)===norm(item.canonicalName)&&
-  (!item.canonicalGroupId||p.itemGroupId===item.canonicalGroupId));
- return matches.length===1?matches[0].id:current;
+ const current=String(item?.productId||'');
+ // Never guess a new master from its name: identical names can have different sizes.
+ return String(window.KurashiLive?.confirmedProductId?.(current)||current);
 }
 function scanSelectedProductLabel(item){
  const product=catalogue.products.find(p=>p.id===scanResolvedProductId(item));
@@ -1584,7 +1580,7 @@ function settingsView(){
      ${lastSync?`<div class="settings-data-row"><dt>最終同期</dt><dd>${esc(lastSync)}</dd></div>`:''}
     </dl>
     ${sync.note?`<p class="settings-sync-note hint" ${s.error?'role="alert"':''}>${esc(sync.note)}</p>`:''}
-    ${s.temporary?'<p class="settings-sync-note hint">Googleログイン一時停止中</p>':''}
+
     ${conflict?`<div class="settings-conflict-recovery">
      <p class="settings-sync-note hint">他の端末の記録を守るため、この操作を保留しています。必要なら内容をコピーしてから取り消してください。</p>
      <div class="formactions">
