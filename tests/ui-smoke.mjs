@@ -25,7 +25,7 @@ const doc={
 const ctx={document:doc,localStorage:{getItem:k=>storage.get(k)??null,setItem:(k,v)=>storage.set(k,v),removeItem:k=>storage.delete(k)},
  navigator:{},window:{scrollTo(){},scrollY:0,KurashiReceiptValidation:validator,KurashiReceiptReview:review},crypto:{randomUUID:()=> 'test-id'},setTimeout:()=>0};
 const ui=vm.runInNewContext(source+`
-({listView,priceCompareView,pickerView,pickerResults,masterProductsView,masterProductRows,masterProductEditorView,masterGroupPickerView,masterGroupPickerRows,aliasManageView,aliasManageRows,aliasProductPickerView,aliasProductPickerRows,detailHomeView,detailAllView,receiptScanView,receiptChatGptView,recordDetailView,scanStoreNameIssue,scanValidPurchaseDate,scanReadableError,floatingActionPlacement,applyChatGptOcrAssistance,receiptOcrReference,receiptOcrRows,isUnconfirmedBarcodeLine,makeChatGptReceiptRebuildDraft,scanProductView,scanExistingProductView,scanChainForStore,scanStoreHeaderMatch,scanAutolinkUnmatched,scanMatchProduct,scanSimilarProducts,render,initializeCompare,
+({listView,priceCompareView,pickerView,pickerResults,masterProductsView,masterProductRows,masterProductEditorView,masterGroupPickerView,masterGroupPickerRows,aliasManageView,aliasManageRows,aliasProductPickerView,aliasProductPickerRows,detailHomeView,detailAllView,receiptScanView,receiptChatGptView,recordDetailView,scanStoreNameIssue,scanValidPurchaseDate,scanReadableError,floatingActionPlacement,applyChatGptOcrAssistance,receiptOcrReference,receiptOcrRows,isUnconfirmedBarcodeLine,makeChatGptReceiptRebuildDraft,scanProductView,scanProductGroupChoices,scanExistingProductView,scanExistingProductResults,scanChainForStore,scanStoreHeaderMatch,scanAutolinkUnmatched,scanMatchProduct,scanSimilarProducts,render,initializeCompare,
  setProductGroup,reorderProducts,registeredProducts,convertQuantity,setOpenSwipe,storePickerChoices,scrollNewItemIfOffscreen,
  getItems(){return items},setItems(v){items=v},orderedItemIds,expandItemGroup(k){expandedItemGroups.add(k)},collapseItemGroup(k){expandedItemGroups.delete(k)},
  chainMinima,priceCandidates,standardizedMinima,savePreviewRecord,periodStart,
@@ -34,7 +34,7 @@ const ui=vm.runInNewContext(source+`
  setPeriod(v){period=v},setQty(v){compareQuantity=v},setUnit(v){compareUnit=v},
  createManualRecord,scanDate,
   detailLineName,settingsView,settingsSyncSummary,settingsLastSyncText,setRecordDetailId(v){recordDetailId=v},
- setScanDraft(v){scanDraft=v},setScanPhotos(v){scanPhotos=v},setScanState({busy=false,status='',error='',failed=false}){scanBusy=busy;scanStatus=status;scanError=error;scanReadFailed=failed},setScanProductRow(v){scanProductRow=v},setScanExistingQuery(v){scanExistingQuery=v},setOcrLearning(v){ocrLearning=v},getScanDraft(){return scanDraft},
+ setScanDraft(v){scanDraft=v},setScanPhotos(v){scanPhotos=v},setScanState({busy=false,status='',error='',failed=false}){scanBusy=busy;scanStatus=status;scanError=error;scanReadFailed=failed},setScanProductRow(v){scanProductRow=v},setScanExistingQuery(v){scanExistingQuery=v},setScanGroupQuery(v){scanGroupQuery=v},setScanProductGroupId(v){scanProductGroupId=v},setOcrLearning(v){ocrLearning=v},getScanDraft(){return scanDraft},
  getCompare(){return [compareQuantity,compareUnit]},getSwipe(){return openSwipeId},
  getPeriod(){return period},getListHelpOpen(){return listHelpOpen},listHelpView,readListHelpOpen,catalogue:()=>catalogue})
 `,ctx,{filename:'app.js'});
@@ -956,6 +956,26 @@ assert.ok(newProductHtml.includes('紐付ける日用品（任意）')&&
  'optional item selection remains explicit on the full screen');
 assert.ok(!newProductHtml.includes('name="group" required'),
  'item group selection is optional, not forced');
+const preChoiceItems=ui.getItems();
+ui.setItems([...preChoiceItems,
+ {id:'bag-for-veg',name:'袋',subName:'野菜用',category:1,inStock:true,hidden:false,order:81,version:1},
+ {id:'bag-for-trash',name:'袋',subName:'生ごみ用',category:1,inStock:true,hidden:false,order:82,version:1}]);
+ui.setScanGroupQuery('袋');
+ui.setScanProductGroupId('bag-for-veg');
+const bagGroupChoices=ui.scanProductGroupChoices();
+assert.ok(bagGroupChoices.includes('袋 ／ 野菜用')&&bagGroupChoices.includes('袋 ／ 生ごみ用'),
+ 'same-name items with different sub-information remain separately selectable');
+assert.ok(bagGroupChoices.includes('data-ui-choice="bag-for-veg" aria-pressed="true"')&&
+ !bagGroupChoices.includes('data-ui-choice="bag-for-trash" aria-pressed="true"'),
+ 'a single exact child item ID is selected rather than the parent group');
+ui.setScanGroupQuery('生ごみ用');
+const filteredBags=ui.scanProductGroupChoices();
+assert.ok(filteredBags.includes('data-ui-choice="bag-for-trash"')&&
+ filteredBags.includes('data-ui-choice=""'),
+ 'the no-link choice remains reachable during filtered item selection');
+ui.setItems(preChoiceItems);
+ui.setScanGroupQuery('');
+ui.setScanProductGroupId('');
 const listingHtml=ui.receiptScanView();
 assert.ok(listingHtml.includes('class="ui-picker-value is-unmatched"')&&
  !listingHtml.includes('class="ui-picker-value is-unmatched">商品未照合'),
@@ -1896,6 +1916,17 @@ assert.ok(unifiedPicker.includes('登録商品を検索')&&
  'product search is named correctly and nonprimary navigation uses a shared text action');
 assert.ok(!unifiedPicker.includes('登録先の日用品を変更（任意）'),
  'existing product selection no longer includes changing product-item ownership');
+const originalCatalogue=ui.catalogue().products.slice();
+ui.catalogue().products.push({id:'receipt-search-test',name:'専用実験商品',
+ packageQuantity:null,packageUnit:null,itemGroupId:'demo-1',itemGroupOrder:9,aliases:[]});
+ui.setScanExistingQuery('牛乳');
+assert.ok(!ui.scanExistingProductResults().includes('専用実験商品'),
+ 'a product is not found just because its linked household item matches the query');
+ui.setScanExistingQuery('専用実験商品');
+assert.ok(ui.scanExistingProductResults().includes('専用実験商品'),
+ 'searching the actual registered product name finds that product');
+ui.catalogue().products.splice(0,ui.catalogue().products.length,...originalCatalogue);
+ui.setScanExistingQuery('');
 ui.setScanDraft({source:'chatgpt-rebuild',date:'2026-11-07',chainId:'c-life',total:298,
  items:[{name:'おいしい牛乳',inputOrigin:'photo',quantity:1,amount:298,
   productId:'',manuallyLinked:false,issues:[]}]});
