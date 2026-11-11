@@ -360,7 +360,7 @@ assert.equal(ui.convertQuantity(1,'L','mL'),1000);
 assert.equal(ui.convertQuantity(2,'個','本'),null);
 assert.ok(view.includes('placeholder="例：1100"')&&view.includes('inputmode="decimal"'),'Comparison uses numeric keyboard');
 ui.setUnit('g');view=ui.priceCompareView();
-assert.ok(view.includes('比較対象外'),'Nonconvertible units are reported');
+assert.ok(view.includes('比較不可'),'Incompatible measurement families cannot be compared');
 assert.ok(view.includes('購入価格 '),'Original purchase price remains visible during normalized comparison');
 ui.setUnit('mL');view=ui.priceCompareView();
 assert.ok(css.includes('.shop-compare-dock{')&&css.includes('position:fixed'),'Dock remains fixed');
