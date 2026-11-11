@@ -2048,6 +2048,11 @@ html,body {
 .dialog .dialog-description{width:100%;max-width:32ch;margin:0 auto 18px;text-align:left;line-height:1.65}
 .dialog .dialog-line{display:block}
 .dialog .dialog-line+.dialog-line{margin-top:5px}
+/* Pending operations may include many receipt lines; keep actions visible on iPhone. */
+.dialog-pending-ops .dialog-description{max-width:100%;max-height:min(48dvh,400px);overflow-y:auto;overscroll-behavior:contain;white-space:normal}
+.dialog-pending-ops{max-height:90dvh;display:flex;flex-direction:column}
+.dialog-pending-ops .dialog-actions{flex-shrink:0}
+
 
 /* Unified price comparison prototype (v22): style only new, previously undefined elements. */
 .itemname .item-title{display:block;font-weight:var(--ui-list-name-font-weight);line-height:1.45}
