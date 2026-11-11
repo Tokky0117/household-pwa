@@ -22,7 +22,7 @@
  const toBoolean=v=>v===true||String(v).toLowerCase()==='true';
  // A receipt can still contain a temporary product ID after the product
  // creation was acknowledged. Keep the mapping alongside the durable queue.
- const confirmedProductId=id=>id&&workspace.productIdMap?.[id]||id;
+ const confirmedProductId=id=>id&&Object.prototype.hasOwnProperty.call(workspace.productIdMap||{},id)?workspace.productIdMap[id]:id;
  function canonicalReceiptDraft(draft){
   if(!draft||!Array.isArray(draft.items))return draft;
   return {...draft,items:draft.items.map(line=>{
@@ -1135,29 +1135,43 @@
      throw Error('レシートが別の端末で変更されています。内容を確認してください');
    }
    ws.base=latest;
-   if(front.kind==='product-create'){
-    // User explicitly selected an existing product instead of the failed new
-    // product. Rewrite all dependent operations without discarding receipts.
-    ws.queue.shift();
-    ws.productIdMap={...(ws.productIdMap||{}),[front.clientId]:chosen};
-    for(const remaining of ws.queue){
-     if(remaining.productId===front.clientId)remaining.productId=chosen;
-     if(remaining.targetId===front.clientId)remaining.targetId=chosen;
-     if(remaining.kind==='record-create'||remaining.kind==='record-update')
-      remaining.items=remaining.items.map(i=>i.product_id===front.clientId?
+   const unresolvedId=held.productId;
+   const replaceAcrossQueue=()=>{
+    for(const [index,remaining] of ws.queue.entries()){
+     let changed=false;
+     if(remaining.productId===unresolvedId){
+      remaining.productId=chosen;changed=true;
+     }
+     if(remaining.targetId===unresolvedId&&chosen){
+      remaining.targetId=chosen;changed=true;
+     }
+     if(['record-create','record-update'].includes(remaining.kind)&&
+      remaining.items?.some(i=>i.product_id===unresolvedId)){
+      remaining.items=remaining.items.map(i=>i.product_id===unresolvedId?
        {...i,product_id:chosen}:i);
-     if(remaining.kind==='product-reorder')
-      remaining.product_ids=remaining.product_ids.map(id=>
-       id===front.clientId?chosen:id);
+      changed=true;
+     }
+     if(chosen&&remaining.kind==='product-reorder'&&
+       remaining.product_ids?.includes(unresolvedId)){
+      remaining.product_ids=remaining.product_ids.map(id=>id===unresolvedId?chosen:id);
+      changed=true;
+     }
+     if(changed&&remaining.request){
+      // Only the rejected head is known to be safely retryable with a new
+      // operation ID. An already-serialized later request is unexpected.
+      if(index!==0)throw Error('送信済みの後続操作があるため修復を保留しました');
+      remaining.id=operationId();remaining.request=null;remaining.retries=0;
+     }
     }
-   }else{
-    if(front.kind==='record-create'||front.kind==='record-update')
-     front.items=front.items.map(i=>i.product_id===held.productId?
-      {...i,product_id:chosen}:i);
-    else front.productId=chosen;
-    // Original request may have been sent and definitely rejected. Any
-    // changed payload must use a NEW operation ID, never reuse a journal ID.
-    front.id=operationId();front.request=null;front.retries=0;
+    if(String(unresolvedId).startsWith('local-'))
+     ws.productIdMap={...(ws.productIdMap||{}),[unresolvedId]:chosen};
+   };
+   if(front.kind==='product-create')ws.queue.shift();
+   replaceAcrossQueue();
+   if(front.kind!=='product-create'){
+    // Rebuild even an unsent request with a new operation ID, so a previously
+    // rejected server request can never be replayed with modified contents.
+    if(front.id===oldId){front.id=operationId();front.request=null;front.retries=0;}
    }
    ws.blocked=null;return ws;
   });
