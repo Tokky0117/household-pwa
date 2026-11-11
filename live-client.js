@@ -17,6 +17,8 @@
  let refreshPromise=null,flushPromise=null,retryTimer=null,retryMs=3000;
  let error='',lastSync=0,authRequired=false,token=null,subject='temporary-household',expiry=0,gisReady=false;
  let loginSerial=0;
+ // Pause new sends while the user reviews the pending queue.
+ let pendingDiscardReviewActive=false;
  const uid=()=>crypto.randomUUID();
  const operationId=()=> 'op-'+uid();
  const toBoolean=v=>v===true||String(v).toLowerCase()==='true';
@@ -1201,11 +1203,13 @@
   lastSync=Date.now();
  }
  function flush(){
+  if(pendingDiscardReviewActive)return Promise.resolve(false);
   if(flushPromise)return flushPromise;
   const task=(async()=>{
    await boot();
    if(workspace.blocked||!workspace.queue.length)return;
    while(workspace.queue.length){
+    if(pendingDiscardReviewActive)return;
     if(authRequired&&(!token||Date.now()>=expiry))return;
     const op=workspace.queue[0];
     let plan;
@@ -1213,6 +1217,8 @@
      if(!workspace.base&&!op.request)await remoteBootstrap();
      plan=resolveOperation(op,workspace.base);
      await persistRequest(op,plan);
+     // Pause even if the review began while the request was being serialized.
+     if(pendingDiscardReviewActive)return;
      const result=await request(plan.action,plan.payload,plan.operationId);
      await acknowledge(op,plan,result);
      error='';failureCount=0;retryMs=3000;
@@ -1348,6 +1354,95 @@
   return true;
  }
 
+ // Review the ENTIRE queue as one unit: OCR aliases and receipts may
+ // depend on a temporarily registered product, so a partial purge is unsafe.
+ // A request persisted locally may already have been applied by Sheets.
+ function pendingOperationReview(){
+  if(!workspace.queue.length)return null;
+  const snap=project();
+  const itemLabel=id=>{
+   const item=snap?.item_groups.find(x=>x.item_group_id===id);
+   return item?(item.name+(item.sub_name?'／'+item.sub_name:'')):id||'未設定';
+  };
+  const productLabel=id=>snap?.products.find(x=>x.product_id===id)?.name||id||'紐付けなし';
+  const storeLabel=id=>snap?.stores.find(x=>x.chain_id===id)?.canonical_name||id||'不明';
+  const lines=[];
+  workspace.queue.forEach((op,i)=>{
+   let title='',detail=[];
+   const target=itemLabel(op.targetId);
+   switch(op.kind){
+    case 'create':title='日用品の追加：'+itemLabel(op.clientId);break;
+    case 'edit':title='日用品の編集：'+target+' → '+op.name+(op.subName?'／'+op.subName:'');break;
+    case 'toggle':case 'set-stock':title='在庫変更：'+target+' → '+(op.stock?'あり':'なし');break;
+    case 'hide':title='日用品の'+(op.hidden?'非表示':'再表示')+'：'+target;break;
+    case 'reorder':title='日用品の並び替え';detail=(op.item_group_ids||[]).map(itemLabel);break;
+    case 'product-create':title='商品の追加：'+op.name;detail=[
+     '紐付け先：'+itemLabel(op.groupId),
+     '内容量：'+(op.quantity==null?'未設定':op.quantity+(op.unit||''))];break;
+    case 'product-edit':title='商品の編集：'+productLabel(op.targetId)+' → '+op.name;break;
+    case 'product-link':title='商品の紐付け変更：'+productLabel(op.targetId)+' → '+itemLabel(op.groupId);break;
+    case 'product-reorder':title='登録商品の並び替え：'+itemLabel(op.groupId);
+     detail=(op.product_ids||[]).map(productLabel);break;
+    case 'store-create':title='店舗の追加：'+op.name;break;
+    case 'store-alias':title='店舗名の追加：'+storeLabel(op.chainId)+'／'+op.alias;break;
+    case 'alias-create':title='読み取り名の追加：'+op.alias;
+     detail=['店舗：'+storeLabel(op.chainId),'商品：'+productLabel(op.productId)];break;
+    case 'alias-link':title='読み取り名の紐付け変更：'+(snap?.product_aliases.find(x=>x.alias_id===op.aliasId)?.ocr_name||op.aliasId);
+     detail=['商品：'+productLabel(op.productId)];break;
+    case 'record-create':case 'record-update':case 'record-delete':{
+     const r=snap?.records.find(x=>x.record_id===(op.targetId||op.clientId));
+     title=(op.kind==='record-create'?'レシート・値札の登録':
+      op.kind==='record-update'?'レシート・値札の編集':'レシート・値札の削除')+
+      '：'+(op.date||r?.record_date||'日付不明')+'／'+storeLabel(op.chainId||r?.chain_id);
+     const rows=op.items||((op.kind==='record-delete')?
+      (snap?.record_items||[]).filter(x=>x.record_id===op.targetId):[]);
+     detail=rows.map(line=>(line.confirmed_name||line.raw_name||line.inferred_name||'商品名なし')+
+      '／'+(line.quantity??'?')+'点／'+(line.amount_tax_included??'?')+'円');
+     if(!detail.length)detail=['明細なし'];break;
+    }
+    case 'legacy':title='以前の保存操作：'+(op.request?.action||'種類不明');break;
+    default:title='操作：'+op.kind;
+   }
+   lines.push((i+1)+'. '+title);
+   detail.forEach(d=>lines.push('　'+d));
+  });
+  const mayHaveReachedServer=workspace.queue.some(op=>!!op.request);
+  return {count:workspace.queue.length,
+   signature:JSON.stringify({queue:workspace.queue,blocked:workspace.blocked}),
+   text:lines.join('\n'),
+   warning:mayHaveReachedServer?
+    '送信済みの可能性がある操作を含みます。Google Sheetsに反映済みの変更は、この操作では取り消せません。':
+    'Google Sheetsへの送信前の操作です。',
+   mayHaveReachedServer};
+ }
+ function beginPendingOperationReview(){
+  pendingDiscardReviewActive=true;
+  return pendingOperationReview();
+ }
+ function endPendingOperationReview(){
+  pendingDiscardReviewActive=false;
+  if(workspace.queue.length&&!workspace.blocked)void flush();
+ }
+ async function discardPendingOperations(signature){
+  await boot();
+  if(!pendingDiscardReviewActive)throw Error('破棄内容を確認し直してください');
+  // An active local request cannot be cancelled safely.
+  if(flushPromise)throw Error('同期処理中です。完了後にもう一度確認してください');
+  await modify(ws=>{
+   if(!ws.queue.length||!signature||
+      JSON.stringify({queue:ws.queue,blocked:ws.blocked})!==signature)
+    throw Error('未反映の操作が変わりました。内容を確認し直してください');
+   ws.queue=[];ws.blocked=null;
+   return ws;
+  });
+  clearTimeout(retryTimer);retryTimer=null;retryMs=3000;
+  error='';failureCount=0;
+  pendingDiscardReviewActive=false;
+  // Refresh independently; failure/offline state cannot revive the local queue.
+  void load();
+  return true;
+ }
+
  async function retry(){
   await boot();
   if(workspace.blocked)return false;
@@ -1390,7 +1485,7 @@
    else void load();
   }).catch(e=>{error=e.message||'端末内の保存領域を開けません';notify()});
  };
- window.KurashiLive={state,load,save,saveRecord,updateRecord,deleteRecord,blockedReceiptChange,discardBlockedReceipt,blockedProductChange,resolveBlockedProduct,refreshBlockedProducts,confirmedProductId,learnAliases,linkAlias,learnStoreAlias,
+ window.KurashiLive={state,load,save,saveRecord,updateRecord,deleteRecord,blockedReceiptChange,discardBlockedReceipt,blockedProductChange,resolveBlockedProduct,refreshBlockedProducts,pendingOperationReview,beginPendingOperationReview,endPendingOperationReview,discardPendingOperations,confirmedProductId,learnAliases,linkAlias,learnStoreAlias,
   saveReceiptDraft,loadReceiptDraft,saveOcrCorrections,loadOcrCorrections,toggleStock,reorderItems,reorderProducts,retry,logout,renderLogin,
   subscribe:fn=>{listeners.add(fn);return()=>listeners.delete(fn)},itemsOf,catalogueOf};
  window.addEventListener('kurashi-gis-ready',initialize);
