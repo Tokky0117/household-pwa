@@ -26,7 +26,7 @@ const ctx={document:doc,localStorage:{getItem:k=>storage.get(k)??null,setItem:(k
  navigator:{},window:{scrollTo(){},scrollY:0,KurashiReceiptValidation:validator,KurashiReceiptReview:review},crypto:{randomUUID:()=> 'test-id'},setTimeout:()=>0};
 const ui=vm.runInNewContext(source+`
 ({listView,priceCompareView,pickerView,pickerResults,masterProductsView,masterProductRows,masterProductEditorView,masterGroupPickerView,masterGroupPickerRows,aliasManageView,aliasManageRows,aliasProductPickerView,aliasProductPickerRows,detailHomeView,detailAllView,receiptScanView,receiptChatGptView,recordDetailView,scanStoreNameIssue,scanValidPurchaseDate,scanReadableError,floatingActionPlacement,applyChatGptOcrAssistance,receiptOcrReference,receiptOcrRows,isUnconfirmedBarcodeLine,makeChatGptReceiptRebuildDraft,scanProductView,scanExistingProductView,scanChainForStore,scanStoreHeaderMatch,scanAutolinkUnmatched,scanMatchProduct,scanSimilarProducts,render,initializeCompare,
- setProductGroup,reorderProducts,registeredProducts,convertQuantity,setOpenSwipe,storePickerChoices,
+ setProductGroup,reorderProducts,registeredProducts,convertQuantity,setOpenSwipe,storePickerChoices,scrollNewItemIfOffscreen,
  getItems(){return items},setItems(v){items=v},orderedItemIds,expandItemGroup(k){expandedItemGroups.add(k)},collapseItemGroup(k){expandedItemGroups.delete(k)},
  chainMinima,priceCandidates,standardizedMinima,savePreviewRecord,periodStart,
  demoRecords,demoRecordItems,allPreviewRecords,allPreviewItems,
@@ -58,6 +58,25 @@ assert.ok(css.includes('.tertiary{')&&css.includes('color:var(--accent)'),'Share
 assert.ok(!source.includes('priceCells(){'),'Obsolete normal/discount UI component removed');
 assert.ok(!css.includes('grid-template-areas:"name value" "name date"'),'Obsolete two-row price CSS removed');
 assert.ok(ui.listView().includes('data-stock=')&&ui.listView().includes('data-list-edit='),'Stock and swipe list preserved');
+
+// KS-004: only scroll when the added item is outside the usable viewport.
+const oldQuerySelector=doc.querySelector,oldViewport=ctx.window.innerHeight;
+let scrolled=0,bounds={top:160,bottom:205};
+const dummyRow={getBoundingClientRect:()=>bounds,scrollIntoView:()=>{scrolled++}};
+const dummyHeader={getBoundingClientRect:()=>({bottom:64})};
+const dummyTabbar={getBoundingClientRect:()=>({top:560})};
+doc.querySelector=s=>s.includes('[data-item-id="scroll-test"]')?dummyRow:
+ s==='.top'?dummyHeader:s==='.bottom'?dummyTabbar:null;
+ctx.window.innerHeight=600;
+assert.equal(ui.scrollNewItemIfOffscreen('scroll-test'),false);
+assert.equal(scrolled,0,'visible item does not auto-scroll');
+bounds={top:520,bottom:580};
+assert.equal(ui.scrollNewItemIfOffscreen('scroll-test'),true);
+assert.equal(scrolled,1,'item behind the bottom navigation scrolls into view');
+bounds={top:30,bottom:80};
+assert.equal(ui.scrollNewItemIfOffscreen('scroll-test'),true);
+assert.equal(scrolled,2,'item above the header scrolls into view');
+doc.querySelector=oldQuerySelector;ctx.window.innerHeight=oldViewport;
 
 const preservedItems=ui.getItems();
 ui.setItems([...preservedItems,

@@ -1930,6 +1930,19 @@ function saveItem(name,category,subName=''){
  commitItem(name,category,subName);
 }
 let scrollToId=null;
+function scrollNewItemIfOffscreen(itemId){
+ const row=document.querySelector('[data-item-id="'+itemId+'"]');
+ if(!row)return false;
+ const rect=row.getBoundingClientRect();
+ const top=document.querySelector('.top')?.getBoundingClientRect().bottom||0;
+ const navTop=document.querySelector('.bottom')?.getBoundingClientRect().top||0;
+ const bottom=navTop>top?Math.min(window.innerHeight,navTop):window.innerHeight;
+ if(rect.top<top||rect.bottom>bottom){
+  row.scrollIntoView({behavior:'smooth',block:'center'});
+  return true;
+ }
+ return false;
+}
 function commitItem(name,category,subName=''){
  if(liveMode){
   const editing=page==='edit',original=editing?current():null;
@@ -1939,14 +1952,14 @@ function commitItem(name,category,subName=''){
   window.KurashiLive.save(editing?'item.update':'item.create',payload).then(entity=>{
    if(!editing){collapsed.delete(category);query='';onlyOut=false;scrollToId=entity.item_group_id;expandedItemGroups.add(category+':'+norm(name))}
    page=editing?editReturnPage:'list';openSwipeId=null;render();
-   if(scrollToId){const row=document.querySelector('[data-item-id="'+scrollToId+'"]');if(row){const r=row.getBoundingClientRect(),top=document.querySelector('.top')?.getBoundingClientRect().bottom||0;if(r.top<top||r.bottom>window.innerHeight)row.scrollIntoView({behavior:'smooth',block:'center'});}scrollToId=null;}
+   if(scrollToId){scrollNewItemIfOffscreen(scrollToId);scrollToId=null;}
   }).catch(err=>fieldNotice(document.getElementById('itemForm'),err.message||'保存できませんでした','name'));
   return;
  }
  const sheet=document.querySelector('.sheet-back');
  if(sheet&&!sheet.classList.contains('closing')){
   sheet.classList.add('closing');sheet.style.pointerEvents='none';
-  setTimeout(()=>commitItem(name,category),190);return;
+  setTimeout(()=>commitItem(name,category,subName),190);return;
  }
  if(page==='edit'){
   const i=current();Object.assign(i,{name,subName,category,version:i.version+1});
@@ -1955,7 +1968,7 @@ function commitItem(name,category,subName=''){
   items.push({id:newId,name,subName,category,inStock:false,hidden:false,order:Math.max(0,...items.filter(i=>i.category===category).map(i=>i.order))+1,version:1});
  }
  persist();page=page==='edit'?editReturnPage:'list';openSwipeId=null;render();
- if(scrollToId){const el=document.querySelector('[data-item-id="'+scrollToId+'"]');if(el){const r=el.getBoundingClientRect(),top=document.querySelector('.top')?.getBoundingClientRect().bottom||0;if(r.top<top||r.bottom>window.innerHeight)el.scrollIntoView({behavior:'smooth',block:'center'});}scrollToId=null}
+ if(scrollToId){scrollNewItemIfOffscreen(scrollToId);scrollToId=null}
  
 }
 // 入力欄自体は再作成しない。日本語IMEの変換中もフォーカスと入力状態を維持する。
