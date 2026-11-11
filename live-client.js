@@ -77,7 +77,7 @@
    if(typeof i.item_group_id!=='string'||!i.item_group_id||
       i.household_id!==data.household_id||seen.has(i.item_group_id)||
       !Number.isInteger(Number(i.category_id))||
-      Number(i.category_id)<0||Number(i.category_id)>4||
+      Number(i.category_id)<0||Number(i.category_id)>5||
       typeof i.name!=='string'||!positiveVersion(i.version))throw Error('DATA_INVALID');
    seen.add(i.item_group_id);
   }
