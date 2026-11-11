@@ -2771,3 +2771,16 @@ html,body{touch-action:pan-x pan-y}
 .scan-product-group-results .ui-choice-row{width:100%;border-bottom:1px solid var(--line)}
 .scan-product-group-results .ui-choice-row:last-child{border-bottom:0}
 .scan-group-current{font-size:12px;color:var(--muted);padding:5px 1px}
+
+/* KS-008: compact standardized minima above the existing product prices. */
+.normalized-price-summary{margin:6px 0 12px;padding:12px 13px;border:1px solid var(--line);border-radius:11px;background:var(--card)}
+.normalized-price-summary h3{font-size:13px;margin:0 0 8px;font-weight:700;color:var(--ink)}
+.normalized-price-row{display:grid;grid-template-columns:minmax(74px,1fr) auto;column-gap:8px;row-gap:2px;padding:5px 0;border-top:1px solid var(--line);font-size:13px}
+.normalized-price-row strong{font-size:16px;justify-self:end;font-variant-numeric:tabular-nums}
+.normalized-price-row small{grid-column:1/-1;color:var(--muted);font-size:11px}
+.normalized-price-exclusion{font-size:11px;color:var(--muted);margin:8px 0 0}
+.chain-price-pair{grid-area:value;display:flex;flex-direction:column;align-items:flex-end;gap:2px;min-width:0}
+.chain-price-pair .chain-price-value{grid-area:auto}
+.chain-price-pair small{font-size:10px;color:var(--muted);white-space:nowrap}
+.missing-capacity-action{display:flex;justify-content:flex-end;padding:0 10px 5px}
+.missing-capacity-action .tertiary{font-size:12px;min-height:36px;padding:3px 8px}
