@@ -2091,7 +2091,7 @@ html,body {
 .swipe-actions{position:absolute;inset:0 0 0 auto;width:132px;display:flex;z-index:0}
 .swipe-actions button{width:66px;border:0;border-left:1px solid var(--line);color:var(--accent);background:var(--bg);display:flex;flex-direction:column;gap:4px;align-items:center;justify-content:center;font-size:12px;font-weight:700;visibility:hidden}
 .swipe-item.swipe-open .swipe-actions button{visibility:visible}
-.swipe-actions .swipe-delete{background:var(--bg)}
+.swipe-actions .swipe-delete,.swipe-actions .swipe-unlink{background:var(--bg)}
 .swipe-actions button svg{width:18px;height:18px}
 @media(prefers-reduced-motion:reduce){.swipe-front{transition:none}}
 /* v24: unified, less card-heavy price information view */
@@ -2634,9 +2634,7 @@ html,body{touch-action:pan-x pan-y}
 /* v0.76.1: keep all product-selection decisions reachable above long result lists. */
 .scan-picker-actions{display:flex;flex-wrap:wrap;align-items:center;gap:7px;
  min-width:0;margin:0 0 3px}
-.scan-picker-actions .secondary{display:inline-flex;align-items:center;gap:6px;
- min-height:44px;padding:9px 12px;font-size:13px;white-space:normal}
-.scan-picker-actions .secondary svg{flex:none;width:17px;height:17px}
+.scan-picker-actions .ui-text-action{justify-content:flex-start;padding:4px 0;white-space:normal;text-align:left}
 .scan-picker-actions .scan-unlink-action{display:inline-flex;align-items:center;
  min-height:44px;padding:8px 4px;border:0;background:transparent;
  color:var(--accent);font-weight:650;font-size:13px;white-space:normal}
@@ -2647,7 +2645,6 @@ html,body{touch-action:pan-x pan-y}
 .scan-existing-group-advanced .formfield{margin:5px 0}
 .scan-existing-group-advanced .hint{font-size:12px;margin:5px 0 10px}
 @media(max-width:360px){
- .scan-picker-actions .secondary{padding:8px 9px}
  .scan-picker-actions{gap:5px}
 }
 
@@ -2771,7 +2768,11 @@ html,body{touch-action:pan-x pan-y}
 .item-group-row.drag-ghost{position:fixed!important;z-index:150;pointer-events:none;box-shadow:0 8px 20px #0002}
 .item-group-row.drag-placeholder{opacity:.3}
 
-/* Searchable household sub-item choice in the existing receipt product sheet. */
+/* Searchable household sub-item selection on the full-page receipt product form. */
+.scan-product-page{padding-bottom:calc(24px + env(safe-area-inset-bottom))}
+.scan-product-page .scan-product-group-field{min-width:0}
+.scan-product-page .scan-product-group-results{max-height:min(35dvh,240px)}
+.scan-product-page #scanProductForm>.formactions{margin:18px 0 0}
 .scan-product-group-results{max-height:170px;overflow:auto;overscroll-behavior:contain;border:1px solid var(--line);border-radius:10px}
 .scan-product-group-results .ui-choice-row{width:100%;border-bottom:1px solid var(--line)}
 .scan-product-group-results .ui-choice-row:last-child{border-bottom:0}
@@ -2787,5 +2788,4 @@ html,body{touch-action:pan-x pan-y}
 .chain-price-pair{grid-area:value;display:flex;flex-direction:column;align-items:flex-end;gap:2px;min-width:0}
 .chain-price-pair .chain-price-value{grid-area:auto}
 .chain-price-pair small{font-size:10px;color:var(--muted);white-space:nowrap}
-.missing-capacity-action{display:flex;justify-content:flex-end;padding:0 10px 5px}
-.missing-capacity-action .tertiary{font-size:12px;min-height:36px;padding:3px 8px}
+/* Capacity remains editable through the product card swipe action. */
