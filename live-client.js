@@ -1390,12 +1390,13 @@
     case 'alias-link':title='読み取り名の紐付け変更：'+(snap?.product_aliases.find(x=>x.alias_id===op.aliasId)?.ocr_name||op.aliasId);
      detail=['商品：'+productLabel(op.productId)];break;
     case 'record-create':case 'record-update':case 'record-delete':{
-     const r=snap?.records.find(x=>x.record_id===(op.targetId||op.clientId));
+     const r=workspace.base?.records.find(x=>x.record_id===(op.targetId||op.clientId))||
+      snap?.records.find(x=>x.record_id===(op.targetId||op.clientId));
      title=(op.kind==='record-create'?'レシート・値札の登録':
       op.kind==='record-update'?'レシート・値札の編集':'レシート・値札の削除')+
       '：'+(op.date||r?.record_date||'日付不明')+'／'+storeLabel(op.chainId||r?.chain_id);
      const rows=op.items||((op.kind==='record-delete')?
-      (snap?.record_items||[]).filter(x=>x.record_id===op.targetId):[]);
+      (workspace.base?.record_items||[]).filter(x=>x.record_id===op.targetId):[]);
      detail=rows.map(line=>(line.confirmed_name||line.raw_name||line.inferred_name||'商品名なし')+
       '／'+(line.quantity??'?')+'点／'+(line.amount_tax_included??'?')+'円');
      if(!detail.length)detail=['明細なし'];break;
