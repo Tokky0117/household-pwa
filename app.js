@@ -1607,6 +1607,7 @@ function settingsView(){
       ${UI.button({label:'保留した操作を取り消す',variant:'tertiary',action:'blockedReceiptDiscard'})}
      </div>
     </div>`:''}
+    ${s.queued?`<div class="formactions">${UI.button({label:'未反映の操作を確認・破棄',variant:'secondary',action:'pendingOperationsReview'})}</div>`:''}
     ${s.error&&s.queued&&!s.blocked?'<p class="settings-sync-note hint">通信が回復すると自動で再送します。未反映の操作は端末に残っています。</p>':''}
     ${s.loginRequired?(s.signedIn?UI.button({label:'ログアウト',variant:'secondary',action:'liveLogout'}):'<div id="google-login-button"></div>'):''}
    </section>
@@ -1627,7 +1628,7 @@ function settingsView(){
 function dialogView(){
  if(!dialog)return '';
  const lines=String(dialog.message||'').replace(/。(?!$)/g,'。\n').split(/\n+/).filter(Boolean);
- return `<div class="dialog-back"><div role="dialog" aria-modal="true" aria-labelledby="dialogTitle" class="dialog"><h2 id="dialogTitle">${esc(dialog.title)}</h2>${lines.length?`<p class="dialog-description">${lines.map(line=>`<span class="dialog-line">${esc(line)}</span>`).join('')}</p>`:''}<div class="dialog-actions">${dialog.buttons.map(b=>`<button type="button" class="dialog-action" data-dialog="${esc(b.id)}">${esc(b.label)}</button>`).join('')}</div></div></div>`;
+ return `<div class="dialog-back"><div role="dialog" aria-modal="true" aria-labelledby="dialogTitle" class="dialog${dialog.pending?.pendingOpsSignature?' dialog-pending-ops':''}"><h2 id="dialogTitle">${esc(dialog.title)}</h2>${lines.length?`<p class="dialog-description">${lines.map(line=>`<span class="dialog-line">${esc(line)}</span>`).join('')}</p>`:''}<div class="dialog-actions">${dialog.buttons.map(b=>`<button type="button" class="dialog-action" data-dialog="${esc(b.id)}">${esc(b.label)}</button>`).join('')}</div></div></div>`;
 }
 // One DOM routing table: screens define content, shell owns navigation and overlays.
 function mainTabView(){
@@ -2375,7 +2376,9 @@ if(el.dataset.pick){
  }else{setProductGroup(p,selected);page='compare';initializeCompare();render()}
  return;
 }
-if(el.dataset.dialog){if(el.dataset.dialog==='cancel'&&(dialog?.title==='変更を破棄しますか？'||dialog?.title==='比較単位について'||dialog?.title==='日用品との紐付けを変更しますか？'||dialog?.title==='日用品との紐付けを解除しますか？'||dialog?.title==='読み取り名の紐付けを変更しますか？'||dialog?.title==='読み取り名の紐付けを解除しますか？'||dialog?.title==='下書きに保存しますか？'||dialog?.title==='下書きがあります'||dialog?.title==='読み取り途中の内容を破棄しますか？'||dialog?.title==='読み取り結果を写真解析の結果に置き換えますか？')){dialog=null;document.querySelector('.dialog-back')?.remove();return}const action=el.dataset.dialog,p=dialog?.pending;dialog=null;
+if(el.dataset.dialog){if(el.dataset.dialog==='cancel'&&dialog?.pending?.pendingOpsSignature){
+  window.KurashiLive.endPendingOperationReview();dialog=null;renderDialogOnly();return;
+ }if(el.dataset.dialog==='cancel'&&(dialog?.title==='変更を破棄しますか？'||dialog?.title==='比較単位について'||dialog?.title==='日用品との紐付けを変更しますか？'||dialog?.title==='日用品との紐付けを解除しますか？'||dialog?.title==='読み取り名の紐付けを変更しますか？'||dialog?.title==='読み取り名の紐付けを解除しますか？'||dialog?.title==='下書きに保存しますか？'||dialog?.title==='下書きがあります'||dialog?.title==='読み取り途中の内容を破棄しますか？'||dialog?.title==='読み取り結果を写真解析の結果に置き換えますか？')){dialog=null;document.querySelector('.dialog-back')?.remove();return}const action=el.dataset.dialog,p=dialog?.pending;dialog=null;
 
 if(action==='confirmAliasLink'&&p&&Object.prototype.hasOwnProperty.call(p,'productId')){
  const alias=(catalogue.productAliases||[]).find(x=>x.aliasId===p.aliasId);
@@ -2462,7 +2465,19 @@ if(action==='confirmBlockedProductResolve'&&liveMode&&p&&
    document.querySelector('#settings-sync-status'),err.message||'修復できませんでした'));
  return;
 }
-if(action==='confirmDiscardBlockedReceipt'&&liveMode){
+if(action==='confirmDiscardPendingOperations'&&liveMode&&p?.pendingOpsSignature){
+  renderDialogOnly();
+  window.KurashiLive.discardPendingOperations(p.pendingOpsSignature).then(()=>{
+   if(tab==='settings'&&page==='list')render();
+   say('この端末の未反映操作を破棄しました');
+  }).catch(err=>{
+   window.KurashiLive.endPendingOperationReview();
+   inlineActionNotice(document.querySelector('.settings-overview-section')||
+    document.querySelector('#settings-sync-status'),err.message||'未反映操作を破棄できませんでした');
+  });
+  return;
+ }
+ if(action==='confirmDiscardBlockedReceipt'&&liveMode){
  renderDialogOnly();
  window.KurashiLive.discardBlockedReceipt().then(()=>{
   if(tab==='settings'&&page==='list')render();
@@ -2488,7 +2503,20 @@ if(action==='discardChanges'){goBack();return}if(action==='confirmHide'){if(live
    .then(()=>{page='list';openSwipeId=null;render()})
    .catch(err=>inlineActionNotice(document.querySelector('[data-list-hide="'+i.id+'"]'),err.message||'削除できませんでした'));
    render();return}
- current().hidden=true;current().version++;persist();page='list';openSwipeId=null}if(action==='resetYes'){items=makeSeed();catalogue=sampleCatalogue();previewRecords={records:[],record_items:[]};localStorage.removeItem(previewRecordsKey);persist();persistCatalogue();page='list';tab='items'}render();return}const action=el.dataset.act;if(!action)return;if(action==='blockedProductCopy'&&liveMode){
+ current().hidden=true;current().version++;persist();page='list';openSwipeId=null}if(action==='resetYes'){items=makeSeed();catalogue=sampleCatalogue();previewRecords={records:[],record_items:[]};localStorage.removeItem(previewRecordsKey);persist();persistCatalogue();page='list';tab='items'}render();return}const action=el.dataset.act;if(!action)return;if(action==='pendingOperationsReview'&&liveMode){
+  const review=window.KurashiLive.beginPendingOperationReview();
+  if(!review){window.KurashiLive.endPendingOperationReview();inlineActionNotice(el,'未反映の操作はありません');return;}
+  const inProgress=window.KurashiLive.state().syncing;
+  dialog={title:'未反映の操作を破棄しますか？',
+   message:'この端末の未反映操作'+review.count+'件をすべて破棄します。\n'+
+    '【破棄する内容】\n'+review.text+'\n'+review.warning+'\n'+
+    '破棄した内容は元に戻せません。',
+   buttons:inProgress?[{id:'cancel',label:'同期中のため戻る'}]:
+    [{id:'cancel',label:'キャンセル'},{id:'confirmDiscardPendingOperations',label:'すべて破棄',critical:true}],
+   pending:{pendingOpsSignature:review.signature}};
+  renderDialogOnly();return;
+ }
+ if(action==='blockedProductCopy'&&liveMode){
  const problem=window.KurashiLive.blockedProductChange?.();
  if(!problem){inlineActionNotice(el,'保留した操作が見つかりません');return}
  navigator.clipboard.writeText(problem.text)
