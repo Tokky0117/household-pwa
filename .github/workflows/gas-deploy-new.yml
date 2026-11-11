@@ -168,7 +168,7 @@ jobs:
           catch(_){throw Error('NEW_GAS_BOOTSTRAP_INVALID_JSON')}
           if(response?.ok!==true||!response?.data?.household_id||
              response.data.categories?.length!==6||
-   response.data.categories.find(c=>Number(c.category_id)===5)?.name!=='調味料'||
+             response.data.categories.find(c=>Number(c.category_id)===5)?.name!=='調味料'||
              !Array.isArray(response.data.item_groups))
             throw Error('NEW_GAS_BOOTSTRAP_INVALID_SCHEMA');
           console.log('New GAS /exec anonymous household bootstrap: OK (contents not logged)');
