@@ -555,7 +555,7 @@
    const normalized=name.normalize('NFKC').toLocaleLowerCase('ja');
    if(project(doc)?.item_groups.some(i=>i.item_group_id!==targetId&&
      !i.deleted_at&&i.name.normalize('NFKC').toLocaleLowerCase('ja')===normalized&&
-      Number(i.category_id)===category_id&&String(i.sub_name||'').normalize('NFKC').toLocaleLowerCase('ja')===subName.normalize('NFKC').toLocaleLowerCase('ja')))
+      Number(i.category_id)===cat&&String(i.sub_name||'').normalize('NFKC').toLocaleLowerCase('ja')===subName.normalize('NFKC').toLocaleLowerCase('ja')))
     throw Error('同じ日用品が登録済みです');
    return {id:operationId(),kind:'edit',targetId,name,subName,category_id:cat,retries:0};
   }
