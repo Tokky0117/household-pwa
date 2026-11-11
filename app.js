@@ -1572,6 +1572,7 @@ function settingsView(){
   const s=window.KurashiLive.state();
   const sync=settingsSyncSummary(s),lastSync=settingsLastSyncText(s.lastSync);
   const conflict=window.KurashiLive.blockedReceiptChange?.();
+  const missingProduct=window.KurashiLive.blockedProductChange?.();
   return `${head('設定','くらしストック')}<main class="settings-main settings-overview">
    <section class="settings-overview-section" aria-label="データと同期">
     ${UI.sectionHeading({title:'データと同期'})}
@@ -1581,6 +1582,22 @@ function settingsView(){
     </dl>
     ${sync.note?`<p class="settings-sync-note hint" ${s.error?'role="alert"':''}>${esc(sync.note)}</p>`:''}
 
+    ${missingProduct?`<div class="settings-product-recovery">
+      <p class="settings-sync-note hint">商品登録または商品との紐付けに問題があり、未反映の操作を保留しています。内容を確認するまで削除しません。</p>
+      <div class="formactions">
+        ${UI.button({label:'保留した操作内容をコピー',variant:'secondary',action:'blockedProductCopy'})}
+        ${UI.button({label:'登録商品を最新に更新',variant:'tertiary',action:'blockedProductRefresh'})}
+      </div>
+      ${missingProduct.canReassign?UI.formField({id:'blocked-product-choice',name:'blockedProductId',
+        label:'使用する登録商品',
+        control:'select',value:'',options:[
+         {value:'',label:missingProduct.canUnlink?'商品に紐付けない':'登録済み商品を選択'},
+         ...catalogue.products.filter(p=>!String(p.id).startsWith('local-')).map(p=>({
+          value:p.id,label:productTitle(p)+'（'+(linkedItemLabel(p)||'日用品未紐付け')+'）'
+         }))
+        ]}):''}
+      ${missingProduct.canReassign?UI.button({label:'選択した商品で同期を再開',variant:'secondary',action:'blockedProductResolve'}):''}
+     </div>`:''}
     ${conflict?`<div class="settings-conflict-recovery">
      <p class="settings-sync-note hint">他の端末の記録を守るため、この操作を保留しています。必要なら内容をコピーしてから取り消してください。</p>
      <div class="formactions">
@@ -2434,6 +2451,15 @@ if(action==='confirmChatGptRebuild'&&p?.rebuild){
  }catch(err){say(err.message||'再解析結果を適用できませんでした');}
  return;
 }
+if(action==='confirmBlockedProductResolve'&&liveMode&&p&&
+ Object.prototype.hasOwnProperty.call(p,'productId')){
+ renderDialogOnly();
+ window.KurashiLive.resolveBlockedProduct(p.productId)
+  .then(()=>{if(tab==='settings'&&page==='list')render();})
+  .catch(err=>inlineActionNotice(document.querySelector('.settings-product-recovery')||
+   document.querySelector('#settings-sync-status'),err.message||'修復できませんでした'));
+ return;
+}
 if(action==='confirmDiscardBlockedReceipt'&&liveMode){
  renderDialogOnly();
  window.KurashiLive.discardBlockedReceipt().then(()=>{
@@ -2460,7 +2486,35 @@ if(action==='discardChanges'){goBack();return}if(action==='confirmHide'){if(live
    .then(()=>{page='list';openSwipeId=null;render()})
    .catch(err=>inlineActionNotice(document.querySelector('[data-list-hide="'+i.id+'"]'),err.message||'削除できませんでした'));
    render();return}
- current().hidden=true;current().version++;persist();page='list';openSwipeId=null}if(action==='resetYes'){items=makeSeed();catalogue=sampleCatalogue();previewRecords={records:[],record_items:[]};localStorage.removeItem(previewRecordsKey);persist();persistCatalogue();page='list';tab='items'}render();return}const action=el.dataset.act;if(!action)return;if(action==='blockedReceiptCopy'&&liveMode){
+ current().hidden=true;current().version++;persist();page='list';openSwipeId=null}if(action==='resetYes'){items=makeSeed();catalogue=sampleCatalogue();previewRecords={records:[],record_items:[]};localStorage.removeItem(previewRecordsKey);persist();persistCatalogue();page='list';tab='items'}render();return}const action=el.dataset.act;if(!action)return;if(action==='blockedProductCopy'&&liveMode){
+ const problem=window.KurashiLive.blockedProductChange?.();
+ if(!problem){inlineActionNotice(el,'保留した操作が見つかりません');return}
+ navigator.clipboard.writeText(problem.text)
+  .then(()=>say('保留した操作内容をコピーしました'))
+  .catch(()=>inlineActionNotice(el,'コピーできませんでした'));
+ return;
+}
+if(action==='blockedProductRefresh'&&liveMode){
+ window.KurashiLive.refreshBlockedProducts().then(()=>render())
+  .catch(err=>inlineActionNotice(document.querySelector('.settings-product-recovery'),
+    err.message||'最新の商品一覧を取得できませんでした'));
+ return;
+}
+if(action==='blockedProductResolve'&&liveMode){
+ const problem=window.KurashiLive.blockedProductChange?.();
+ if(!problem){inlineActionNotice(el,'保留した操作が見つかりません');return}
+ const productId=String(document.querySelector('[name="blockedProductId"]')?.value||'');
+ if(!productId&&!problem.canUnlink){
+  inlineActionNotice(document.querySelector('.settings-product-recovery'),'登録済み商品を選択してください');return;
+ }
+ dialog={title:'保留した操作を修復しますか？',
+  message:productId?'選択した登録商品へ紐付け直して、未反映の操作を順番に送信します。':
+   '商品との紐付けだけを解除し、レシートの明細や金額は残して同期を再開します。',
+  buttons:[{id:'cancel',label:'キャンセル'},{id:'confirmBlockedProductResolve',label:'修復して再開',primary:true}],
+  pending:{productId}};
+ renderDialogOnly();return;
+}
+if(action==='blockedReceiptCopy'&&liveMode){
  const change=window.KurashiLive.blockedReceiptChange?.();
  if(!change||change.kind!=='edit'){inlineActionNotice(el,'保留した編集が見つかりません');return}
  navigator.clipboard.writeText(change.text)
