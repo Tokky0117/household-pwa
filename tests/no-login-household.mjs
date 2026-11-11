@@ -3250,6 +3250,8 @@ assert.ok(purgeDialog&&purgeDialog.textContent.includes('破棄確認テスト�
 purgeDialog.querySelector('[data-dialog="cancel"]').click();
 assert.equal(purgePhone.window.KurashiLive.state().queued,3,
  'cancel leaves the complete durable queue untouched');
+await waitFor(()=>!purgePhone.window.KurashiLive.state().syncing,
+ 'retry started by cancellation settles before a new review');
 purgePhone.window.document.querySelector('[data-act="pendingOperationsReview"]').click();
 const staleReview=purgePhone.window.KurashiLive.pendingOperationReview();
 await purgePhone.window.KurashiLive.save('item.create',{
