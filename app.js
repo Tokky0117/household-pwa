@@ -1,4 +1,4 @@
-const APP_VERSION='0.89.1';
+const APP_VERSION='0.89.2';
 const CATS=['食品・飲料','キッチン','洗面・風呂','洗濯・掃除','その他','調味料'];
 const CAT_ORDER=[0,5,1,2,3,4];
 const liveMode=!!window.KurashiLive; // Data source only; original Preview v46 UI components remain.
