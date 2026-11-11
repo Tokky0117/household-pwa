@@ -1671,10 +1671,10 @@ assert.equal(kitForm.querySelector('[name="group"]').value,'',
 assert.equal(kitForm.querySelector('[name="name"]').value,kitRaw,
  'printed raw name only pre-fills editable canonical name');
 kitForm.querySelector('[name="name"]').value=kitCanonical;
-assert.ok([...kitForm.querySelectorAll('[data-ui-select="scan-product-group"] [data-ui-choice]')]
+assert.ok([...kitForm.querySelectorAll('#scan-product-group-results [data-ui-choice]')]
  .some(o=>o.dataset.uiChoice===chocId),
- 'newly seeded chocolate item exists in the shared product-group selector');
-kitForm.querySelector('[name="group"]').value=chocId;
+ 'newly seeded chocolate item exists among the searchable household sub-item options');
+kitForm.querySelector('#scan-product-group-results [data-ui-choice="'+chocId+'"]').click();
 assert.equal(kitForm.querySelector('[name="group"]').value,chocId,
  'selected item group is present before creating canonical product');
 kitForm.dispatchEvent(new kitSession.window.Event('submit',{bubbles:true,cancelable:true}));
