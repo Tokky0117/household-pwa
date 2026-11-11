@@ -3144,3 +3144,73 @@ assert.equal(repairedDraft.items[0].productId,duplicateSaved.data.entity.product
  'an older receipt draft is mapped to a confirmed ID');
 repairedPhone.window.close();
 console.log('v0.89.0: rejected new product retains and safely repairs receipt/OCR dependencies OK');
+
+
+// Regression for a pre-hotfix iPhone workspace: the failed temporary product
+// has already been dropped, leaving only alias/receipt dependencies in IDB.
+const orphanFactory=new IDBFactory();
+const oldPhone=appSession(orphanFactory);
+await waitFor(()=>oldPhone.window.KurashiLive.state().loaded,
+ 'pre-hotfix orphan client initialized');
+online=false;
+const orphanProduct=await oldPhone.window.KurashiLive.save('product.create',{
+ name:'試作復旧_孤立商品',package_quantity:null,package_unit:null,item_group_id:null
+});
+await oldPhone.window.KurashiLive.learnAliases({chain_id:repairChain,items:[
+ {raw_name:'復旧_孤立OCR名',product_id:orphanProduct.product_id}
+]});
+await oldPhone.window.KurashiLive.saveRecord({
+ record_type:'receipt',record_date:'2026-11-11',chain_id:repairChain,
+ items:[{raw_name:'復旧_孤立OCR名',product_id:orphanProduct.product_id,
+  quantity:1,amount_tax_included:89,category_id:null}]
+});
+assert.equal(oldPhone.window.KurashiLive.state().queued,3);
+oldPhone.window.close();
+// Simulate the old-version rejection cleanup without clearing IndexedDB.
+const orphanDb=await new Promise((resolve,reject)=>{
+ const request=orphanFactory.open('kurashi-stock-operations-v1',1);
+ request.onsuccess=()=>resolve(request.result);
+ request.onerror=()=>reject(request.error);
+});
+await new Promise((resolve,reject)=>{
+ const tx=orphanDb.transaction('workspace','readwrite'),store=tx.objectStore('workspace');
+ const request=store.get('primary');
+ request.onsuccess=()=>{
+  const ws=request.result;
+  assert.equal(ws.queue[0].kind,'product-create');
+  ws.queue.shift();
+  store.put(ws,'primary');
+ };
+ tx.oncomplete=resolve;tx.onerror=()=>reject(tx.error);tx.onabort=()=>reject(tx.error);
+});
+orphanDb.close();
+const orphanExisting=temp.call('product.create',{
+ name:'試作復旧_孤立商品',package_quantity:null,package_unit:null,item_group_id:null
+},'op-orphan-recovery-existing-abcdefghijkl');
+assert.equal(orphanExisting.ok,true);
+online=true;
+const orphanRestart=appSession(orphanFactory);
+await waitFor(()=>!!orphanRestart.window.KurashiLive.blockedProductChange(),
+ 'old orphaned queue is detected and held, not retried forever');
+assert.equal(orphanRestart.window.KurashiLive.state().queued,2,
+ 'existing orphaned alias and receipt both remain in IDB');
+assert.equal(orphanRestart.window.KurashiLive.blockedProductChange().kind,'alias-create');
+await orphanRestart.window.KurashiLive.resolveBlockedProduct(
+ orphanExisting.data.entity.product_id);
+await waitFor(()=>orphanRestart.window.KurashiLive.state().queued===0,
+ 'one selection fixes every orphaned reference to the same old product ID');
+const orphanActual=temp.call('bootstrap').data;
+assert.ok(orphanActual.record_items.some(line=>
+ line.product_id===orphanExisting.data.entity.product_id&&
+ line.amount_tax_included===89),'orphaned receipt is saved without losing amounts');
+assert.ok(orphanActual.product_aliases.some(a=>
+ a.ocr_name==='復旧_孤立OCR名'&&
+ a.product_id===orphanExisting.data.entity.product_id),
+ 'orphaned OCR link is also recovered');
+const newPhone=appSession(orphanFactory);
+await waitFor(()=>newPhone.window.KurashiLive.state().loaded,
+ 'recovery ID mapping survives PWA restart');
+assert.equal(newPhone.window.KurashiLive.confirmedProductId(orphanProduct.product_id),
+ orphanExisting.data.entity.product_id,'orphan ID repair survives full PWA restart');
+newPhone.window.close();orphanRestart.window.close();
+console.log('v0.89.0: orphaned pre-hotfix product references repair all dependent operations OK');
