@@ -3214,3 +3214,122 @@ assert.equal(newPhone.window.KurashiLive.confirmedProductId(orphanProduct.produc
  orphanExisting.data.entity.product_id,'orphan ID repair survives full PWA restart');
 newPhone.window.close();orphanRestart.window.close();
 console.log('v0.89.0: orphaned pre-hotfix product references repair all dependent operations OK');
+
+// Pending queue cancellation: review every dependent change, keep it on
+// cancel, reject stale confirmations, then clear only after explicit consent.
+const purgeFactory=new IDBFactory();
+const purgePhone=appSession(purgeFactory);
+await waitFor(()=>purgePhone.window.KurashiLive.state().loaded,
+ 'pending-discard phone initializes');
+online=false;
+const purgeProduct=await purgePhone.window.KurashiLive.save('product.create',{
+ name:'破棄確認テスト商品',package_quantity:null,package_unit:null,item_group_id:null
+});
+await purgePhone.window.KurashiLive.learnAliases({chain_id:repairChain,items:[
+ {raw_name:'破棄確認OCR名',product_id:purgeProduct.product_id}
+]});
+await purgePhone.window.KurashiLive.saveRecord({
+ record_type:'receipt',record_date:'2026-11-11',chain_id:repairChain,
+ items:[{raw_name:'破棄確認OCR名',product_id:purgeProduct.product_id,
+  quantity:2,amount_tax_included:638,category_id:null}]
+});
+assert.equal(purgePhone.window.KurashiLive.state().queued,3,
+ 'product, alias and receipt all remain queued');
+await waitFor(()=>!purgePhone.window.KurashiLive.state().syncing,
+ 'offline outgoing request settles before discard review');
+purgePhone.window.document.querySelector('[data-tab="settings"]').click();
+assert.ok(purgePhone.window.document.querySelector('[data-act="pendingOperationsReview"]'),
+ 'pending-operation review is reachable from live settings');
+purgePhone.window.document.querySelector('[data-act="pendingOperationsReview"]').click();
+const purgeDialog=purgePhone.window.document.querySelector('.dialog-pending-ops');
+assert.ok(purgeDialog&&purgeDialog.textContent.includes('破棄確認テスト商品')&&
+ purgeDialog.textContent.includes('破棄確認OCR名')&&
+ purgeDialog.textContent.includes('638円')&&
+ purgeDialog.textContent.includes('Google Sheets'),
+ 'confirmation shows all dependent operations, amounts and remote-commit warning');
+purgeDialog.querySelector('[data-dialog="cancel"]').click();
+assert.equal(purgePhone.window.KurashiLive.state().queued,3,
+ 'cancel leaves the complete durable queue untouched');
+purgePhone.window.document.querySelector('[data-act="pendingOperationsReview"]').click();
+const staleReview=purgePhone.window.KurashiLive.pendingOperationReview();
+await purgePhone.window.KurashiLive.save('item.create',{
+ name:'破棄前に追加された日用品',category_id:4
+});
+assert.equal(purgePhone.window.KurashiLive.state().queued,4);
+await assert.rejects(
+ purgePhone.window.KurashiLive.discardPendingOperations(staleReview.signature),
+ /未反映の操作が変わりました/,
+ 'a preview cannot authorize deleting operations added after it was shown'
+);
+assert.equal(purgePhone.window.KurashiLive.state().queued,4,
+ 'stale preview failure preserves pending changes');
+purgePhone.window.document.querySelector('[data-dialog="cancel"]').click();
+await waitFor(()=>!purgePhone.window.KurashiLive.state().syncing,
+ 'queue retry settles after cancelling stale preview');
+purgePhone.window.document.querySelector('[data-act="pendingOperationsReview"]').click();
+assert.ok(purgePhone.window.document.querySelector('[data-dialog="confirmDiscardPendingOperations"]'),
+ 'the confirmation has an explicit all-discard action');
+purgePhone.window.document.querySelector('[data-dialog="confirmDiscardPendingOperations"]').click();
+await waitFor(()=>purgePhone.window.KurashiLive.state().queued===0,
+ 'explicitly confirmed discard clears all four queued operations');
+assert.equal(purgePhone.window.KurashiLive.pendingOperationReview(),null);
+purgePhone.window.close();
+online=true;
+const purgeRestart=appSession(purgeFactory);
+await waitFor(()=>purgeRestart.window.KurashiLive.state().loaded&&
+ purgeRestart.window.KurashiLive.state().queued===0,
+ 'discard persists across a PWA restart');
+assert.ok(!temp.call('bootstrap').data.product_aliases.some(x=>x.ocr_name==='破棄確認OCR名'),
+ 'discarded OCR alias was never sent');
+assert.ok(!temp.call('bootstrap').data.record_items.some(x=>
+ x.raw_name==='破棄確認OCR名'&&Number(x.amount_tax_included)===638),
+ 'discarded receipt was never sent');
+purgeRestart.window.close();
+console.log('v0.89.2: pending operations preview, cancel, stale review, discard and restart OK');
+
+// A definitively rejected product creation blocks three dependent local
+// changes. Users can choose to discard the entire group instead of relinking.
+const heldPurgeFactory=new IDBFactory();
+const heldPurgePhone=appSession(heldPurgeFactory);
+await waitFor(()=>heldPurgePhone.window.KurashiLive.state().loaded,
+ 'blocked-product discard client initialized');
+const heldPurgeName='破棄確認_重複商品';
+online=false;
+const heldPurgeProduct=await heldPurgePhone.window.KurashiLive.save('product.create',{
+ name:heldPurgeName,package_quantity:null,package_unit:null,item_group_id:null
+});
+await heldPurgePhone.window.KurashiLive.learnAliases({chain_id:repairChain,items:[
+ {raw_name:'破棄対象のOCR名',product_id:heldPurgeProduct.product_id}
+]});
+await heldPurgePhone.window.KurashiLive.saveRecord({
+ record_type:'receipt',record_date:'2026-11-11',chain_id:repairChain,
+ items:[{raw_name:'破棄対象のOCR名',product_id:heldPurgeProduct.product_id,
+  quantity:1,amount_tax_included:239,category_id:null}]
+});
+assert.equal(temp.call('product.create',{
+ name:heldPurgeName,package_quantity:null,package_unit:null,item_group_id:null
+},'op-other-client-held-discard-abcdefghijkl').ok,true);
+online=true;
+await heldPurgePhone.window.KurashiLive.retry();
+await waitFor(()=>!!heldPurgePhone.window.KurashiLive.blockedProductChange()&&
+ !heldPurgePhone.window.KurashiLive.state().syncing,
+ 'duplicate new product rejects and holds all dependent changes');
+const heldPurgeReview=heldPurgePhone.window.KurashiLive.beginPendingOperationReview();
+assert.equal(heldPurgeReview.count,3);
+assert.match(heldPurgeReview.text,/破棄対象のOCR名/);
+assert.match(heldPurgeReview.warning,/Google Sheets/);
+await heldPurgePhone.window.KurashiLive.discardPendingOperations(heldPurgeReview.signature);
+assert.equal(heldPurgePhone.window.KurashiLive.state().queued,0);
+assert.equal(heldPurgePhone.window.KurashiLive.state().blocked,false);
+assert.ok(!temp.call('bootstrap').data.product_aliases.some(x=>x.ocr_name==='破棄対象のOCR名'),
+ 'discard does not apply an unsent dependent alias');
+assert.ok(!temp.call('bootstrap').data.record_items.some(x=>x.raw_name==='破棄対象のOCR名'),
+ 'discard does not apply an unsent dependent receipt');
+heldPurgePhone.window.close();
+const heldPurgeRestart=appSession(heldPurgeFactory);
+await waitFor(()=>heldPurgeRestart.window.KurashiLive.state().loaded,
+ 'rejected-queue discard persists through restart');
+assert.equal(heldPurgeRestart.window.KurashiLive.state().queued,0);
+heldPurgeRestart.window.close();
+console.log('v0.89.2: blocked product, OCR alias and receipt can be discarded together OK');
+
