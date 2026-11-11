@@ -1913,9 +1913,14 @@ assert.ok(existingSession.window.document.getElementById('scan-existing-search')
 const existingSearch=existingSession.window.document.getElementById('scan-existing-search');
 existingSearch.value='チョコ';
 existingSearch.dispatchEvent(new existingSession.window.Event('input',{bubbles:true}));
+assert.equal(existingSession.window.document.querySelector(
+ '[data-act="scanChooseExisting"][data-product-id="'+kitSavedProduct.product_id+'"]'),null,
+ 'searching by a linked household item no longer returns unrelated product names');
+existingSearch.value='キットカット濃い';
+existingSearch.dispatchEvent(new existingSession.window.Event('input',{bubbles:true}));
 const existingChoice=existingSession.window.document.querySelector(
  '[data-act="scanChooseExisting"][data-product-id="'+kitSavedProduct.product_id+'"]');
-assert.ok(existingChoice,'registered KitKat found using household-item name');
+assert.ok(existingChoice,'registered KitKat is found by its canonical product name');
 assert.match(existingChoice.textContent,/日用品リスト：チョコ/);
 existingChoice.click();
 const selectedReview=existingSession.window.document.getElementById('scanConfirmForm');
