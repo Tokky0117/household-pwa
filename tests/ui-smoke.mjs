@@ -945,7 +945,15 @@ assert.ok(newProductHtml.includes('scan-product-name')&&
  'canonical product name and household-item linking are both on the new-product form');
 assert.match(newProductHtml,/紐付けしない/,'new product permits an unlinked master');
 assert.ok(newProductHtml.includes('id="scan-group-search"')&&newProductHtml.includes('name="group"'),
- 'search and exclusive selection are offered inside the product registration sheet');
+ 'search and exclusive selection are offered on the full product registration screen');
+assert.ok(newProductHtml.includes('class="manage-main scan-product-page"')&&
+ newProductHtml.includes('class="top"')&&
+ !newProductHtml.includes('class="sheet-back"')&&
+ !newProductHtml.includes('receipt-product-modal'),
+ 'new product registration is a full screen instead of a second half modal');
+assert.ok(newProductHtml.includes('紐付ける日用品（任意）')&&
+ newProductHtml.includes('紐付けしない'),
+ 'optional item selection remains explicit on the full screen');
 assert.ok(!newProductHtml.includes('name="group" required'),
  'item group selection is optional, not forced');
 const listingHtml=ui.receiptScanView();
@@ -1880,6 +1888,12 @@ assert.ok(unifiedPicker.includes('data-act="scanUnlinkProduct"'),
 assert.ok(unifiedPicker.indexOf('data-act="scanExistingToNew"')<
  unifiedPicker.indexOf('id="scan-existing-results"'),
  'new product creation is reachable above the potentially long existing-products list');
+assert.ok(unifiedPicker.includes('登録商品を検索')&&
+ !unifiedPicker.includes('登録商品・日用品名で探す')&&
+ unifiedPicker.includes('data-act="scanExistingToNew"')&&
+ unifiedPicker.includes('class="ui-text-action"')&&
+ !unifiedPicker.includes('class="secondary" type="button" data-act="scanExistingToNew"'),
+ 'product search is named correctly and nonprimary navigation uses a shared text action');
 assert.ok(!unifiedPicker.includes('登録先の日用品を変更（任意）'),
  'existing product selection no longer includes changing product-item ownership');
 ui.setScanDraft({source:'chatgpt-rebuild',date:'2026-11-07',chainId:'c-life',total:298,
@@ -1978,6 +1992,10 @@ assert.equal(standardizedWakame.find(x=>x.label==='100g').productId,'test-wakame
  'unknown-capacity 80-yen product cannot be the normalized-price winner');
 ui.setSelected('demo-wakame');ui.setPage('compare');ui.setMode('product');ui.setDock(false);
 const wakameView=ui.priceCompareView();
-assert.ok(wakameView.includes('内容量未設定の1商品')&&wakameView.includes('内容量を登録')&&
- wakameView.includes('80円')&&wakameView.includes('300円'),
- 'unknown capacity keeps purchase price and edit action but is excluded from converted minima');
+assert.ok(wakameView.includes('内容量未設定の1商品')&&
+ !wakameView.includes('内容量を登録')&&
+ wakameView.includes('80円')&&wakameView.includes('300円')&&
+ wakameView.includes('data-pedit="test-wakame-unknown"')&&
+ wakameView.includes('class="swipe-unlink"')&&
+ !wakameView.includes('class="swipe-delete" data-premove="test-wakame-unknown"'),
+ 'unknown capacity remains in price comparison, without redundant button or a delete-style unlink icon');
