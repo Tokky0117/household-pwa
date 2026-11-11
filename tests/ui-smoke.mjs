@@ -28,7 +28,7 @@ const ui=vm.runInNewContext(source+`
 ({listView,priceCompareView,pickerView,pickerResults,masterProductsView,masterProductRows,masterProductEditorView,masterGroupPickerView,masterGroupPickerRows,aliasManageView,aliasManageRows,aliasProductPickerView,aliasProductPickerRows,detailHomeView,detailAllView,receiptScanView,receiptChatGptView,recordDetailView,scanStoreNameIssue,scanValidPurchaseDate,scanReadableError,floatingActionPlacement,applyChatGptOcrAssistance,receiptOcrReference,receiptOcrRows,isUnconfirmedBarcodeLine,makeChatGptReceiptRebuildDraft,scanProductView,scanExistingProductView,scanChainForStore,scanStoreHeaderMatch,scanAutolinkUnmatched,scanMatchProduct,scanSimilarProducts,render,initializeCompare,
  setProductGroup,reorderProducts,registeredProducts,convertQuantity,setOpenSwipe,storePickerChoices,
  getItems(){return items},setItems(v){items=v},expandItemGroup(k){expandedItemGroups.add(k)},collapseItemGroup(k){expandedItemGroups.delete(k)},
- chainMinima,priceCandidates,savePreviewRecord,periodStart,
+ chainMinima,priceCandidates,standardizedMinima,savePreviewRecord,periodStart,
  demoRecords,demoRecordItems,allPreviewRecords,allPreviewItems,
  setSelected(v){selected=v},setMasterProductId(v){masterProductId=v},setAliasPickerId(v){aliasPickerId=v},setAliasQuery(v){aliasQuery=v;aliasVisibleLimit=100},setAliasVisibleLimit(v){aliasVisibleLimit=v},setPage(v){page=v},setMode(v){priceScope=v},setDock(v){shopExpanded=v},
  setPeriod(v){period=v},setQty(v){compareQuantity=v},setUnit(v){compareUnit=v},
@@ -324,6 +324,12 @@ assert.equal(ui.getCompare()[0],null,'Empty initial compare quantity');
 assert.equal(ui.getCompare()[1],'mL','First product unit preselected');
 let view=ui.priceCompareView();
 assert.ok(view.includes('登録商品')&&view.includes('税込・安い順'));
+assert.ok(view.includes('内容量換算の最安値')&&view.includes('100mLあたり'),
+ 'Per-item view compares all registered products by compatible standardized capacity');
+const winners=ui.standardizedMinima(ui.catalogue().products.filter(p=>p.itemGroupId==='demo-1'),'1y');
+assert.ok(winners.some(w=>w.label==='100mL'&&w.price>0&&w.productName),
+ 'Normalized minima identify the winning product while retaining its original chain');
+
 assert.ok(view.includes('直近3か月')&&view.includes('直近1年')&&!view.includes('全期間'));
 assert.ok(view.includes('ライフ')&&view.includes('コノミヤ'));
 assert.ok(view.includes('298円')&&view.includes('320円'));
@@ -354,7 +360,8 @@ assert.equal(ui.convertQuantity(1,'L','mL'),1000);
 assert.equal(ui.convertQuantity(2,'個','本'),null);
 assert.ok(view.includes('placeholder="例：1100"')&&view.includes('inputmode="decimal"'),'Comparison uses numeric keyboard');
 ui.setUnit('g');view=ui.priceCompareView();
-assert.ok(view.includes('比較不可'),'Nonconvertible units are reported');
+assert.ok(view.includes('比較対象外'),'Nonconvertible units are reported');
+assert.ok(view.includes('購入価格 '),'Original purchase price remains visible during normalized comparison');
 ui.setUnit('mL');view=ui.priceCompareView();
 assert.ok(css.includes('.shop-compare-dock{')&&css.includes('position:fixed'),'Dock remains fixed');
 const picker=ui.pickerView();
