@@ -3075,3 +3075,72 @@ assert.ok(temp.call('bootstrap').data.records.some(x=>
 deleteOne.window.close();
 deleteTwo.window.close();
 console.log('v0.88.10: two-device receipt conflicts preserve drafts, offer explicit export and safe cancellation OK');
+
+ 
+// Regression: a locally registered product may be rejected as a duplicate by
+// the server while a receipt and OCR alias already depend on its temporary ID.
+// No dependent receipt line may be silently discarded or retried forever.
+const repairedPhone=appSession(new IDBFactory());
+await waitFor(()=>repairedPhone.window.KurashiLive.state().loaded,
+ 'new-product repair client loaded');
+const repairChain=temp.call('bootstrap').data.stores[0]?.chain_id;
+assert.ok(repairChain,'recovery test has a registered store');
+const duplicateName='同期復旧検証_新規商品';
+const duplicatePayload={name:duplicateName,package_quantity:null,
+ package_unit:null,item_group_id:null};
+online=false;
+const pendingProduct=await repairedPhone.window.KurashiLive.save(
+ 'product.create',duplicatePayload);
+assert.ok(pendingProduct.product_id.startsWith('local-'),
+ 'offline product creation returns a temporary ID');
+await repairedPhone.window.KurashiLive.saveReceiptDraft({
+ recordType:'receipt',source:'manual',date:'2026-11-11',
+ items:[{name:'復旧テスト品',productId:pendingProduct.product_id,quantity:1,amount:127}]
+});
+await repairedPhone.window.KurashiLive.learnAliases({chain_id:repairChain,items:[
+ {raw_name:'同期復旧検証OCR',product_id:pendingProduct.product_id}
+]});
+await repairedPhone.window.KurashiLive.saveRecord({
+ record_type:'receipt',chain_id:repairChain,record_date:'2026-11-11',
+ items:[{raw_name:'同期復旧検証OCR',product_id:pendingProduct.product_id,
+  quantity:1,amount_tax_included:127,category_id:null}]
+});
+assert.equal(repairedPhone.window.KurashiLive.state().queued,3,
+ 'product create, OCR alias and receipt are durably queued');
+const duplicateSaved=temp.call('product.create',duplicatePayload,
+ 'op-recovery-existing-product-abcdefghijkl');
+assert.equal(duplicateSaved.ok,true,'another client saved same product first');
+online=true;
+await repairedPhone.window.KurashiLive.retry();
+await waitFor(()=>!!repairedPhone.window.KurashiLive.blockedProductChange(),
+ 'duplicate product is held for review rather than dropping dependent receipt');
+assert.equal(repairedPhone.window.KurashiLive.state().queued,3,
+ 'all three intents remain stored on a duplicate rejection');
+assert.equal(repairedPhone.window.KurashiLive.state().blocked,true,
+ 'non-network product rejection suspends retries');
+assert.equal(await repairedPhone.window.KurashiLive.retry(),false,
+ 'retry never bypasses held product conflict');
+repairedPhone.window.document.querySelector('[data-tab="settings"]').click();
+assert.ok(repairedPhone.window.document.querySelector('[data-act="blockedProductCopy"]')&&
+ repairedPhone.window.document.querySelector('[data-act="blockedProductResolve"]'),
+ 'settings offers copy and explicit product relinking');
+await repairedPhone.window.KurashiLive.refreshBlockedProducts();
+await repairedPhone.window.KurashiLive.resolveBlockedProduct(duplicateSaved.data.entity.product_id);
+await waitFor(()=>repairedPhone.window.KurashiLive.state().queued===0,
+ 'explicit replacement resumes alias and receipt operations');
+const fixedSnapshot=temp.call('bootstrap').data;
+assert.ok(fixedSnapshot.record_items.some(line=>
+ line.product_id===duplicateSaved.data.entity.product_id&&
+ line.amount_tax_included===127),'recovered receipt retains its amount and chosen product');
+assert.ok(fixedSnapshot.product_aliases.some(a=>
+ a.ocr_name==='同期復旧検証OCR'&&
+ a.product_id===duplicateSaved.data.entity.product_id),
+ 'recovered OCR alias points at the confirmed product');
+assert.equal(repairedPhone.window.KurashiLive.confirmedProductId(
+ pendingProduct.product_id),duplicateSaved.data.entity.product_id,
+ 'temporary ID map was persisted during product repair');
+const repairedDraft=await repairedPhone.window.KurashiLive.loadReceiptDraft();
+assert.equal(repairedDraft.items[0].productId,duplicateSaved.data.entity.product_id,
+ 'an older receipt draft is mapped to a confirmed ID');
+repairedPhone.window.close();
+console.log('v0.89.0: rejected new product retains and safely repairs receipt/OCR dependencies OK');
