@@ -1058,6 +1058,112 @@
    ws.blocked=null;return ws;
   });
  }
+
+ // An old optimistic operation may refer to a product whose creation was
+ // rejected, or to a formerly confirmed product deleted on another device.
+ // Do not spin retry timers for these; keep the complete queue in IndexedDB.
+ function missingProductIssue(op,base,e){
+  const message=String(e?.message||'');
+  if(op.kind==='product-create'){
+   if(['DUPLICATE','NOT_FOUND'].includes(e?.code))
+    return {reason:'PRODUCT_CREATE_CONFLICT',productId:op.clientId,
+     message:'登録できなかった商品を確認してください。未反映の操作は保留しています。'};
+   return null;
+  }
+  const productIds=(op.kind==='record-create'||op.kind==='record-update')?
+   (op.items||[]).map(line=>line.product_id).filter(Boolean):
+   ['alias-create','alias-link'].includes(op.kind)?[op.productId].filter(Boolean):
+   ['product-edit','product-link'].includes(op.kind)?[op.targetId].filter(Boolean):[];
+  if(!productIds.length)return null;
+  const missing=productIds.find(id=>!base?.products.some(p=>p.product_id===id&&!p.deleted_at));
+  const fromServer=e?.code==='NOT_FOUND'&&/商品/.test(message);
+  if(!missing&&!fromServer)return null;
+  if(!missing&&!/商品/.test(message))return null;
+  return {reason:'PRODUCT_REFERENCE',productId:missing||productIds[0],
+   message:'未反映の操作に見つからない商品が含まれています。商品を確認してください。'};
+ }
+ function blockedProductChange(){
+  const front=workspace.queue[0],blocked=workspace.blocked;
+  if(!front||blocked?.id!==front.id||
+    !['PRODUCT_CREATE_CONFLICT','PRODUCT_REFERENCE'].includes(blocked.reason))return null;
+  const ids=(front.items||[]).map(line=>line.product_id||'');
+  const lines=['くらしストック｜未反映の操作','操作：'+front.kind,
+   '対象商品：'+(front.name||blocked.productId||''),
+   '操作ID：'+front.id];
+  (front.items||[]).forEach((line,i)=>lines.push(
+   (i+1)+'. '+(line.confirmed_name||line.raw_name||'名称未設定')+
+   '／数量 '+line.quantity+'／税込金額 '+line.amount_tax_included+
+   '円／商品ID '+(ids[i]||'なし')));
+  if(front.alias)lines.push('読み取り名：'+front.alias);
+  lines.push('未反映の操作：'+workspace.queue.length+'件');
+  return {kind:front.kind,reason:blocked.reason,productId:blocked.productId,
+   title:front.name||'商品との紐付け',text:lines.join('\n'),
+   canReassign:['record-create','record-update','alias-create','alias-link'].includes(front.kind)||
+    front.kind==='product-create',canUnlink:front.kind!=='product-create'&&
+    !['product-edit','product-link'].includes(front.kind)};
+ }
+ async function refreshBlockedProducts(){
+  await boot();
+  if(!blockedProductChange())throw Error('要確認の操作がありません');
+  const latest=validateSnapshot(await request('bootstrap'));
+  await modify(ws=>{
+   if(ws.base&&ws.base.household_id!==latest.household_id)throw Error('HOUSEHOLD_CHANGED');
+   ws.base=latest;return ws;
+  });
+  lastSync=Date.now();notify();return true;
+ }
+ async function resolveBlockedProduct(productId){
+  await boot();
+  const held=blockedProductChange();
+  if(!held||!held.canReassign)throw Error('商品を変更できる操作ではありません');
+  const chosen=productId?String(productId):null;
+  if(!chosen&&!held.canUnlink)throw Error('登録済みの商品を選んでください');
+  // Always verify the authoritative product list before changing a queued ID.
+  const latest=validateSnapshot(await request('bootstrap'));
+  if(chosen&&!latest.products.some(p=>p.product_id===chosen&&!p.deleted_at))
+   throw Error('選択した商品が見つかりません');
+  const oldId=workspace.queue[0].id;
+  await modify(ws=>{
+   const front=ws.queue[0];
+   if(front?.id!==oldId||ws.blocked?.id!==oldId||
+     ws.blocked.productId!==held.productId)throw Error('QUEUE_CHANGED');
+   if(ws.base&&ws.base.household_id!==latest.household_id)throw Error('HOUSEHOLD_CHANGED');
+   if(front.kind==='record-update'){
+    const oldRecord=ws.base?.records.find(r=>r.record_id===front.targetId);
+    const newRecord=latest.records.find(r=>r.record_id===front.targetId);
+    if(!oldRecord||!newRecord||Number(oldRecord.version)!==Number(newRecord.version))
+     throw Error('レシートが別の端末で変更されています。内容を確認してください');
+   }
+   ws.base=latest;
+   if(front.kind==='product-create'){
+    // User explicitly selected an existing product instead of the failed new
+    // product. Rewrite all dependent operations without discarding receipts.
+    ws.queue.shift();
+    ws.productIdMap={...(ws.productIdMap||{}),[front.clientId]:chosen};
+    for(const remaining of ws.queue){
+     if(remaining.productId===front.clientId)remaining.productId=chosen;
+     if(remaining.targetId===front.clientId)remaining.targetId=chosen;
+     if(remaining.kind==='record-create'||remaining.kind==='record-update')
+      remaining.items=remaining.items.map(i=>i.product_id===front.clientId?
+       {...i,product_id:chosen}:i);
+     if(remaining.kind==='product-reorder')
+      remaining.product_ids=remaining.product_ids.map(id=>
+       id===front.clientId?chosen:id);
+    }
+   }else{
+    if(front.kind==='record-create'||front.kind==='record-update')
+     front.items=front.items.map(i=>i.product_id===held.productId?
+      {...i,product_id:chosen}:i);
+    else front.productId=chosen;
+    // Original request may have been sent and definitely rejected. Any
+    // changed payload must use a NEW operation ID, never reuse a journal ID.
+    front.id=operationId();front.request=null;front.retries=0;
+   }
+   ws.blocked=null;return ws;
+  });
+  error='';lastSync=Date.now();notify();void flush();return true;
+ }
+
  let failureCount=0;
  function scheduleRetry(){
   if(retryTimer||authRequired&&!token)return;
@@ -1119,6 +1225,14 @@
      if(e.code==='VERSION_CONFLICT'&&!op.migrated){
       try{await rebaseRejected(op);continue}
       catch(rebaseError){e=rebaseError}
+     }
+     const issue=missingProductIssue(op,workspace.base,e);
+     if(issue){
+      await modify(ws=>{
+       if(ws.queue[0]?.id===op.id)ws.blocked={id:op.id,...issue};
+       return ws;
+      });
+      error=issue.message;notify();return;
      }
      if(e.code==='UNAUTHORIZED'){
       authRequired=true;subject=null;token=null;expiry=0;initialize();
@@ -1222,7 +1336,7 @@
 
  async function retry(){
   await boot();
-  if(workspace.blocked?.reason==='RECORD_CONFLICT')return false;
+  if(workspace.blocked)return false;
   if(workspace.blocked)await modify(ws=>({...ws,blocked:null}));
   clearTimeout(retryTimer);retryTimer=null;retryMs=3000;
   return flush();
@@ -1262,7 +1376,7 @@
    else void load();
   }).catch(e=>{error=e.message||'端末内の保存領域を開けません';notify()});
  };
- window.KurashiLive={state,load,save,saveRecord,updateRecord,deleteRecord,blockedReceiptChange,discardBlockedReceipt,confirmedProductId,learnAliases,linkAlias,learnStoreAlias,
+ window.KurashiLive={state,load,save,saveRecord,updateRecord,deleteRecord,blockedReceiptChange,discardBlockedReceipt,blockedProductChange,resolveBlockedProduct,refreshBlockedProducts,confirmedProductId,learnAliases,linkAlias,learnStoreAlias,
   saveReceiptDraft,loadReceiptDraft,saveOcrCorrections,loadOcrCorrections,toggleStock,reorderItems,reorderProducts,retry,logout,renderLogin,
   subscribe:fn=>{listeners.add(fn);return()=>listeners.delete(fn)},itemsOf,catalogueOf};
  window.addEventListener('kurashi-gis-ready',initialize);
