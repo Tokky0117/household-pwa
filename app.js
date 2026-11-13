@@ -294,13 +294,111 @@ function detailLineName(line){
  return catalogue.products.find(p=>p.id===line.product_id)?.name||
   aliasNameFor(line)||'明細名なし';
 }
-function recordDetailView(){
- const record=allPreviewRecords().find(r=>r.record_id===recordDetailId);
- if(!record)return `${head('保存済み明細','見つかりません',true)}<main></main>${nav()}`;
- const isShelf=record.record_type==='shelf';
- const detail=allPreviewItems().filter(x=>x.record_id===recordDetailId&&!x.deleted_at)
+function savedReceiptRecord(){
+ const mapped=window.KurashiLive?.confirmedRecordId?.(recordDetailId)||recordDetailId;
+ const record=allPreviewRecords().find(r=>r.record_id===mapped);
+ if(record&&recordDetailId!==mapped)recordDetailId=mapped;
+ return record;
+}
+
+function savedReceiptLines(id){
+ return allPreviewItems().filter(x=>x.record_id===id&&!x.deleted_at)
   .sort((a,b)=>Number(a.line_order)-Number(b.line_order));
+}
+
+function receiptProductChoices(){
+ const q=norm(receiptProductQuery);
+ const found=catalogue.products.filter(p=>!q||productMatches(p,q))
+  .sort((a,b)=>a.name.localeCompare(b.name,'ja')).slice(0,60);
+ return found.length?found.map(p=>UI.choiceRow({
+  title:productTitle(p),subtitle:linkedItemLabel(p)?'日用品：'+linkedItemLabel(p):'日用品に未紐付け',
+  action:'receiptProductChoose',productId:p.id,className:'receipt-product-choice'
+ })).join(''):'<p class="hint">一致する登録商品はありません。</p>';
+}
+
+function receiptItemChoices(){
+ const q=norm(receiptItemQuery);
+ const found=items.filter(i=>!i.hidden&&(!q||norm(itemLabel(i)).includes(q)||
+  norm(CATS[i.category]||'').includes(q)));
+ return UI.choiceRow({title:'紐付けしない',choice:'',selected:!receiptItemId,
+  className:'receipt-item-choice'})+
+  (found.length?found.slice(0,80).map(i=>UI.choiceRow({
+   title:itemLabel(i),subtitle:CATS[i.category]||'その他',choice:i.id,
+   selected:receiptItemId===i.id,className:'receipt-item-choice'
+  })).join(''):'<p class="hint">該当する日用品はありません。</p>');
+}
+
+function receiptProductEditor(record,detail){
+ const line=detail[receiptProductRow];if(!line)return '';
+ const heading=aliasNameFor(line)||detailLineName(line);
+ const title='<div class="receipt-product-editor-title"><strong>'+esc(heading)+
+  '</strong><button type="button" class="tertiary" data-act="receiptProductClose">閉じる</button></div>';
+ const search='<div class="formfield"><label for="receipt-product-search">登録商品を検索</label>'+
+  UI.searchField({id:'receipt-product-search',label:'登録商品を検索',
+   placeholder:'商品名で検索',value:receiptProductQuery})+'</div>'+
+  '<div class="receipt-product-results" id="receipt-product-results">'+receiptProductChoices()+'</div>'+
+  UI.textAction({label:'新しい商品を登録',action:'receiptProductNew'});
+ const fields=UI.formField({id:'receipt-product-name',name:'name',label:'登録商品名',
+    value:line.inferred_name||aliasNameFor(line)||'',required:true,maxlength:80})+
+  UI.quantityUnitFields({quantityId:'receipt-product-quantity',unitId:'receipt-product-unit',
+    quantity:'',unit:'個',extra:'inputmode="decimal"'})+
+  '<div class="formfield receipt-item-field"><label>日用品リストへの紐付け（任意）</label>'+
+  '<button type="button" class="receipt-item-trigger tertiary" data-act="receiptItemToggle" aria-expanded="'+receiptItemExpanded+'">'+
+  esc(itemLabel(items.find(i=>i.id===receiptItemId))||'紐付けしない')+' '+chevron(receiptItemExpanded?'up':'down')+'</button>'+
+  '<input type="hidden" name="group" id="receipt-item-id" value="'+esc(receiptItemId)+'">'+
+  (receiptItemExpanded?'<div class="receipt-item-picker">'+
+   UI.searchField({id:'receipt-item-search',label:'日用品を検索',
+    placeholder:'日用品名・サブ情報で検索',value:receiptItemQuery})+
+   '<div id="receipt-item-results" class="receipt-item-results">'+receiptItemChoices()+'</div></div>':'')+'</div>'+
+  '<p class="hint">商品を作成すると今後の価格比較に利用できます。日用品への紐付けは任意です。</p>'+
+  UI.button({label:'商品を登録して設定',variant:'primary',type:'submit',
+   disabled:receiptProductSaving});
+ const create='<form id="receiptProductCreateForm">'+fields+
+  '<div class="formactions">'+UI.textAction({label:'登録商品から選ぶ',action:'receiptProductExisting',arrow:false})+'</div></form>';
+ return '<div class="receipt-product-editor">'+title+
+  (String(record.record_id).startsWith('local-')?
+   '<p class="hint" role="status">レシートを同期しています。同期完了後に商品を設定できます。</p>':
+   '<p class="hint">価格比較に使用する商品を選択してください。購入履歴はすでに保存済みです。</p>'+
+   (receiptProductNotice?'<p class="ui-field-notice" role="alert">'+esc(receiptProductNotice)+'</p>':'')+
+   (receiptProductMode==='existing'?search:create))+'</div>';
+}
+
+function recordDetailView(){
+ const record=savedReceiptRecord();
+ if(!record)return `${head('保存済み明細','見つかりません',true)}<main></main>${nav()}`;
+ const isShelf=record.record_type==='shelf',detail=savedReceiptLines(record.record_id);
  const total=detail.reduce((sum,x)=>sum+Number(x.amount_tax_included||0),0);
+ const unmatched=detail.filter(line=>!catalogue.products.some(p=>p.id===line.product_id)).length;
+ const rows=detail.map((line,i)=>{
+  const product=catalogue.products.find(p=>p.id===line.product_id);
+  const raw=aliasNameFor(line),similar=!product&&raw?scanSimilarProducts(raw,record.chain_id):[];
+  const status=product?'商品照合済み':similar.length?'候補あり・要確認':'商品未照合';
+  const original=raw&&product&&norm(raw)!==norm(product.name)?
+   '<div class="detail-record-original">読み取り名：'+esc(raw)+'</div>':'';
+  return `<div class="panel detail-record-line">
+    <div class="detail-record-line-main">
+     <strong class="detail-record-line-name">${esc(detailLineName(line))}</strong>
+     <strong class="detail-record-line-amount">${yen(Number(line.amount_tax_included||0))}</strong>
+    </div>
+    <div class="detail-record-line-meta"><span>${isShelf?'販売個数':'数量'} ${esc(line.quantity)}</span>
+     <span class="receipt-match-state ${product?'is-matched':''}">${esc(status)}</span></div>
+    ${original}
+    ${!isShelf&&product?'<div class="receipt-linked-item">日用品：'+esc(linkedItemLabel(product)||'紐付けなし')+'</div>':''}
+    ${!isShelf&&receiptProductsExpanded?'<div class="receipt-line-setting">'+
+     UI.textAction({label:product?'商品を変更':'商品を設定',action:'receiptProductOpen',row:i,arrow:false})+'</div>':''}
+   </div>`;
+ }).join('');
+ const pending=String(record.record_id).startsWith('local-');
+ const actions=!isShelf?'<section class="receipt-product-section">'+
+  '<div class="receipt-product-summary"><strong>価格比較の設定</strong>'+
+  '<p class="hint">商品照合済み '+(detail.length-unmatched)+'件・未照合 '+unmatched+'件</p>'+
+  '<p class="hint">同じ商品の価格比較や、日用品リストからの価格確認に使います。必要な商品だけ設定してください。</p></div>'+
+  UI.button({label:receiptProductsExpanded?'設定欄を閉じる':'商品を設定する',
+   action:'receiptProductsToggle',variant:'tertiary'})+
+  (receiptProductsExpanded?'<div class="receipt-product-settings">'+
+   (pending?'<p class="hint">レシート同期後に商品設定できます。未同期の間も購入履歴は端末に保存されています。</p>':'')+
+   (receiptProductRow!==null?receiptProductEditor(record,detail):'')+
+   '</div>':'')+'</section>':'';
  return `${head(isShelf?'値札詳細':'レシート詳細','くらしストック',true)}
  <main class="preview-record-page detail-record-page">
   <section class="detail-record-info" aria-label="${isShelf?'値札情報':'購入情報'}">
@@ -312,19 +410,13 @@ function recordDetailView(){
   </section>
   <section class="detail-record-lines" aria-label="${isShelf?'価格情報':'購入明細'}">
    ${UI.sectionHeading({title:isShelf?'価格情報':'購入明細',subtitle:detail.length+'件'})}
-   ${detail.map(line=>`<div class="panel detail-record-line">
-    <div class="detail-record-line-main">
-     <strong class="detail-record-line-name">${esc(detailLineName(line))}</strong>
-     <strong class="detail-record-line-amount">${yen(Number(line.amount_tax_included||0))}</strong>
-    </div>
-    <div class="detail-record-line-meta"><span>${isShelf?'販売個数':'数量'} ${esc(line.quantity)}</span>
-     ${!line.product_id?'<span>商品未照合</span>':''}</div>
-   </div>`).join('')}
+   ${rows}
   </section>
   <section class="detail-record-total" aria-label="${isShelf?'価格合計':'合計'}">
    <strong class="detail-record-total-label">${isShelf?'販売価格合計':'税込合計'}</strong>
    <strong class="detail-record-total-amount">${yen(total)}</strong>
   </section>
+  ${actions}
   ${liveMode?'<div class="record-detail-actions">'+UI.button({label:'編集',variant:'tertiary',icon:'pencil',action:'recordEdit'})+UI.button({label:'削除',variant:'tertiary',icon:'trash',action:'recordDelete'})+'</div>':''}
  </main>${nav()}`;
 }
