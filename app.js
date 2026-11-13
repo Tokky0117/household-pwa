@@ -2847,7 +2847,7 @@ if(action==='scanAddPhotos'){
  if(!scanBusy&&!scanDraft)openReceiptPhotoPicker(document.getElementById('scan-add-picker'));return;
 }
 if(action==='recordDetail'){
- recordDetailOrigin=page==='detailAll'?'detailAll':'list';recordDetailId=el.dataset.recordId;page='recordDetail';render();return;
+ recordDetailOrigin=page==='detailAll'?'detailAll':'list';recordDetailId=el.dataset.recordId;receiptProductsExpanded=false;resetReceiptProductEditor();page='recordDetail';render();return;
 }
 if(action==='recordEdit'){
  const r=allPreviewRecords().find(x=>x.record_id===recordDetailId);
