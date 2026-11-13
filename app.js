@@ -2241,7 +2241,10 @@ function applySavedReceiptProduct(productId){
  const product=catalogue.products.find(p=>p.id===productId);
  if(productId&&!product)return Promise.reject(Error('登録商品が見つかりません'));
  const entries=all.map((line,i)=>{
-  const raw=String(line.raw_name||'').trim();
+  // Sheets can store printed OCR spelling in product_aliases and leave raw_name empty.
+  // Rebuild the original printed name before record.update, never promote an AI guess.
+  const alias=catalogue.productAliases?.find(a=>a.aliasId===line.alias_id);
+  const raw=String(line.raw_name||alias?.ocrName||'').trim();
   const confirmed=String(line.confirmed_name||'').trim();
   const inferred=String(line.inferred_name||'').trim();
   return {raw_name:raw,...(!raw&&confirmed?{confirmed_name:confirmed}:{}),
@@ -2250,7 +2253,8 @@ function applySavedReceiptProduct(productId){
    quantity:Number(line.quantity),amount_tax_included:Number(line.amount_tax_included),
    category_id:line.category_id??null};
  });
- const selectedName=String(target.raw_name||'').trim(),chainId=record.chain_id;
+ const selectedAlias=catalogue.productAliases?.find(a=>a.aliasId===target.alias_id);
+ const selectedName=String(target.raw_name||selectedAlias?.ocrName||'').trim(),chainId=record.chain_id;
  receiptProductSaving=true;
  return window.KurashiLive.updateRecord({record_id:record.record_id,chain_id:chainId,
   record_date:record.record_date,branch_name:record.branch_name||'',items:entries})
