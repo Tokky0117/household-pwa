@@ -2789,3 +2789,30 @@ html,body{touch-action:pan-x pan-y}
 .chain-price-pair .chain-price-value{grid-area:auto}
 .chain-price-pair small{font-size:10px;color:var(--muted);white-space:nowrap}
 /* Capacity remains editable through the product card swipe action. */
+
+/* Saved receipt: show matching provenance without mixing purchase capture and master maintenance. */
+.scan-auto-match-note{font-size:12px;color:var(--muted);margin:4px 0 6px}
+.receipt-match-state{font-size:12px;color:var(--muted);white-space:normal}
+.receipt-match-state.is-matched{color:var(--text,#222);font-weight:600}
+.detail-record-original,.receipt-linked-item{font-size:12px;color:var(--muted);margin-top:5px;overflow-wrap:anywhere}
+.receipt-product-section{margin:18px 0 12px;padding:16px;border:1px solid var(--line);border-radius:12px}
+.receipt-product-summary{display:flex;flex-direction:column;gap:5px}
+.receipt-product-summary strong{font-size:15px}
+.receipt-product-summary .hint{margin:0;line-height:1.55}
+.receipt-product-section>[data-act="receiptProductsToggle"]{margin-top:10px;min-height:44px}
+.receipt-product-settings{display:flex;flex-direction:column;gap:8px;margin-top:10px}
+.receipt-line-setting{margin-top:7px}
+.receipt-product-editor{display:flex;flex-direction:column;gap:13px;padding:12px;margin-top:6px;background:var(--surface,#fff);border:1px solid var(--line);border-radius:10px;min-width:0}
+.receipt-product-editor-title{display:flex;justify-content:space-between;align-items:center;gap:12px;overflow-wrap:anywhere}
+.receipt-product-editor-title strong{min-width:0;font-size:14px}
+.receipt-product-editor .formfield{min-width:0}
+.receipt-product-editor .formfield>label{display:block}
+.receipt-product-editor .hint{margin:0}
+.receipt-product-editor #receiptProductCreateForm{display:flex;flex-direction:column;gap:12px}
+.receipt-product-results,.receipt-item-results{max-height:min(34dvh,280px);overflow:auto;overscroll-behavior:contain;border:1px solid var(--line);border-radius:10px}
+.receipt-product-results .ui-choice-row,.receipt-item-results .ui-choice-row{width:100%;border-bottom:1px solid var(--line)}
+.receipt-product-results .ui-choice-row:last-child,.receipt-item-results .ui-choice-row:last-child{border-bottom:0}
+.receipt-item-trigger{display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;min-height:44px}
+.receipt-item-trigger svg{width:16px;height:16px}
+.receipt-item-picker{margin-top:8px;display:flex;flex-direction:column;gap:8px;min-width:0}
+.receipt-product-editor .formactions{margin:0}
