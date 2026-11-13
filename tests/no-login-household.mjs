@@ -3425,7 +3425,21 @@ const groupChoice=savedSetupUI.window.document.querySelector(
 assert.ok(groupChoice,'a specific household item can be chosen directly');
 groupChoice.click();
 assert.equal(setupCreateForm.querySelector('[name="group"]').value,savedSetupGroup);
-setupCreateForm.dispatchEvent(new savedSetupUI.window.Event('submit',{
+// Switching between existing and new products must not silently discard
+// a typed product name, package size or household item choice.
+setupCreateForm.querySelector('[data-act="receiptProductExisting"]').click();
+savedSetupUI.window.document.querySelector('[data-act="receiptProductNew"]').click();
+const restoredCreateForm=savedSetupUI.window.document.querySelector('#receiptProductCreateForm');
+assert.equal(restoredCreateForm.querySelector('[name="name"]').value,'v90 初回商品セットアップ専用');
+assert.equal(restoredCreateForm.querySelector('[name="quantity"]').value,'120');
+assert.equal(restoredCreateForm.querySelector('[name="group"]').value,savedSetupGroup);
+savedSetupUI.window.document.querySelector('[data-act="receiptProductClose"]').click();
+assert.ok(savedSetupUI.window.document.querySelector('[data-dialog="confirmReceiptSetupDiscard"]'),
+ 'closing a modified product editor asks before discarding entered data');
+savedSetupUI.window.document.querySelector('[data-dialog="cancel"]').click();
+assert.equal(savedSetupUI.window.document.querySelector('#receiptProductCreateForm [name="name"]').value,
+ 'v90 初回商品セットアップ専用','cancel preserves the typed product form');
+restoredCreateForm.dispatchEvent(new savedSetupUI.window.Event('submit',{
  bubbles:true,cancelable:true
 }));
 await waitFor(()=>temp.call('bootstrap').data.products.some(x=>
