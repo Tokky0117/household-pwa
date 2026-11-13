@@ -2934,6 +2934,8 @@ await waitFor(()=>!!optionalUI.window.document.querySelector('.detail-record-pag
  'the saved unnamed receipt opens its detail directly');
 assert.match(optionalUI.window.document.body.textContent,/明細名なし/,
  'receipt detail displays a neutral name fallback');
+await waitFor(()=>optionalUI.window.KurashiLive.state().queued===0,
+ 'the new receipt has finished its original queued save before editing');
 optionalForm=await openSavedEdit(optionalUI,'optional-name receipt edit');
 assert.equal(optionalForm.querySelector('[name="name-1"]')?.value,'',
  'the blank manual field is editable with no generated name on receipt reopen');
