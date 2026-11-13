@@ -3404,7 +3404,7 @@ assert.ok(initialMaster,'registered products are searchable within the saved rec
 initialMaster.click();
 try{
  await waitFor(()=>temp.call('bootstrap').data.record_items.some(x=>
-  x.record_id===setupRecordId&&x.raw_name==='初回購入の商品001'&&
+  x.record_id===setupRecordId&&aliasText(temp,x)==='初回購入の商品001'&&
   x.product_id===savedSetupBaseProduct),
   'existing product is linked to a saved receipt by a queued record update');
 }catch(err){throw Error(err.message+'; state='+JSON.stringify(savedSetupUI.window.KurashiLive.state())+
@@ -3434,11 +3434,11 @@ await waitFor(()=>temp.call('bootstrap').data.products.some(x=>
 const setupSavedProduct=temp.call('bootstrap').data.products.find(x=>
  x.name==='v90 初回商品セットアップ専用');
 await waitFor(()=>temp.call('bootstrap').data.record_items.some(x=>
- x.record_id===setupRecordId&&x.raw_name==='初回購入の商品002'&&
+ x.record_id===setupRecordId&&aliasText(temp,x)==='初回購入の商品002'&&
  x.product_id===setupSavedProduct.product_id),
  'saved receipt is subsequently linked to the new product without changing amount');
 assert.ok(temp.call('bootstrap').data.record_items.some(x=>
- x.record_id===setupRecordId&&x.raw_name==='初回購入の商品002'&&
+ x.record_id===setupRecordId&&aliasText(temp,x)==='初回購入の商品002'&&
  Number(x.amount_tax_included)===398&&Number(x.quantity)===1),
  'matching leaves the original purchase amount and quantity untouched');
 savedSetupUI.window.close();
