@@ -3400,10 +3400,15 @@ const initialMaster=savedSetupUI.window.document.querySelector(
  '[data-act="receiptProductChoose"][data-product-id="'+savedSetupBaseProduct+'"]');
 assert.ok(initialMaster,'registered products are searchable within the saved receipt');
 initialMaster.click();
-await waitFor(()=>temp.call('bootstrap').data.record_items.some(x=>
- x.record_id===setupRecordId&&x.raw_name==='初回購入の商品001'&&
- x.product_id===savedSetupBaseProduct),
- 'existing product is linked to a saved receipt by a queued record update');
+try{
+ await waitFor(()=>temp.call('bootstrap').data.record_items.some(x=>
+  x.record_id===setupRecordId&&x.raw_name==='初回購入の商品001'&&
+  x.product_id===savedSetupBaseProduct),
+  'existing product is linked to a saved receipt by a queued record update');
+}catch(err){throw Error(err.message+'; state='+JSON.stringify(savedSetupUI.window.KurashiLive.state())+
+ '; html='+savedSetupUI.window.document.body.textContent.slice(-900)+
+ '; server='+JSON.stringify(temp.call('bootstrap').data.record_items.filter(x=>x.record_id===setupRecordId)));}
+
 await waitFor(()=>savedSetupUI.window.document.querySelectorAll('.receipt-setting-row').length===2,
  'saved detail stays visible after the existing-product selection');
 savedSetupUI.window.document.querySelectorAll('[data-act="receiptProductOpen"]')[1].click();
