@@ -337,7 +337,8 @@ function receiptProductEditor(record,detail){
   UI.searchField({id:'receipt-product-search',label:'登録商品を検索',
    placeholder:'商品名で検索',value:receiptProductQuery})+'</div>'+
   '<div class="receipt-product-results" id="receipt-product-results">'+receiptProductChoices()+'</div>'+
-  UI.textAction({label:'新しい商品を登録',action:'receiptProductNew'});
+  UI.textAction({label:'新しい商品を登録',action:'receiptProductNew'})+
+  (line.product_id?UI.textAction({label:'この明細を未照合にする',action:'receiptProductUnlink',arrow:false}):'');
  const fields=UI.formField({id:'receipt-product-name',name:'name',label:'登録商品名',
     value:line.inferred_name||aliasNameFor(line)||'',required:true,maxlength:80})+
   UI.quantityUnitFields({quantityId:'receipt-product-quantity',unitId:'receipt-product-unit',
@@ -384,11 +385,18 @@ function recordDetailView(){
      <span class="receipt-match-state ${product?'is-matched':''}">${esc(status)}</span></div>
     ${original}
     ${!isShelf&&product?'<div class="receipt-linked-item">日用品：'+esc(linkedItemLabel(product)||'紐付けなし')+'</div>':''}
-    ${!isShelf&&receiptProductsExpanded?'<div class="receipt-line-setting">'+
-     UI.textAction({label:product?'商品を変更':'商品を設定',action:'receiptProductOpen',row:i,arrow:false})+'</div>':''}
+
    </div>`;
  }).join('');
  const pending=String(record.record_id).startsWith('local-');
+ const settingRows=detail.map((line,i)=>{
+  const product=catalogue.products.find(p=>p.id===line.product_id);
+  return '<div class="receipt-setting-row"><div class="receipt-setting-heading">'+
+   '<span>'+esc(aliasNameFor(line)||detailLineName(line))+'</span>'+
+   UI.textAction({label:product?'変更':'設定',action:'receiptProductOpen',row:i,arrow:false})+
+   '</div><p class="hint">'+(product?'商品照合済み：'+esc(productTitle(product)):'商品未照合')+'</p>'+
+   (receiptProductRow===i?receiptProductEditor(record,detail):'')+'</div>';
+ }).join('');
  const actions=!isShelf?'<section class="receipt-product-section">'+
   '<div class="receipt-product-summary"><strong>価格比較の設定</strong>'+
   '<p class="hint">商品照合済み '+(detail.length-unmatched)+'件・未照合 '+unmatched+'件</p>'+
@@ -397,8 +405,7 @@ function recordDetailView(){
    action:'receiptProductsToggle',variant:'tertiary'})+
   (receiptProductsExpanded?'<div class="receipt-product-settings">'+
    (pending?'<p class="hint">レシート同期後に商品設定できます。未同期の間も購入履歴は端末に保存されています。</p>':'')+
-   (receiptProductRow!==null?receiptProductEditor(record,detail):'')+
-   '</div>':'')+'</section>':'';
+   settingRows+'</div>':'')+'</section>':'';
  return `${head(isShelf?'値札詳細':'レシート詳細','くらしストック',true)}
  <main class="preview-record-page detail-record-page">
   <section class="detail-record-info" aria-label="${isShelf?'値札情報':'購入情報'}">
@@ -2232,7 +2239,7 @@ function applySavedReceiptProduct(productId){
  const all=savedReceiptLines(record.record_id),target=all[receiptProductRow];
  if(!target)return Promise.reject(Error('対象の明細が見つかりません'));
  const product=catalogue.products.find(p=>p.id===productId);
- if(!product)return Promise.reject(Error('登録商品が見つかりません'));
+ if(productId&&!product)return Promise.reject(Error('登録商品が見つかりません'));
  const entries=all.map((line,i)=>{
   const raw=String(line.raw_name||'').trim();
   const confirmed=String(line.confirmed_name||'').trim();
@@ -2248,7 +2255,7 @@ function applySavedReceiptProduct(productId){
  return window.KurashiLive.updateRecord({record_id:record.record_id,chain_id:chainId,
   record_date:record.record_date,branch_name:record.branch_name||'',items:entries})
  .then(()=>{
-  if(selectedName&&window.KurashiLive.learnAliases)
+  if(productId&&selectedName&&window.KurashiLive.learnAliases)
    void window.KurashiLive.learnAliases({chain_id:chainId,
     items:[{raw_name:selectedName,product_id:productId}]}).catch(err=>
      console.warn('確認済みの読み取り名を保存できません',err));
@@ -2889,6 +2896,13 @@ if(action==='receiptItemToggle'){
   el.setAttribute('aria-expanded',String(receiptItemExpanded));
  }
  return;
+}
+if(action==='receiptProductUnlink'){
+ if(page!=='recordDetail'||receiptProductSaving||receiptProductRow===null)return;
+ void applySavedReceiptProduct('').catch(err=>{
+  receiptProductNotice=err.message||'商品未照合にできませんでした';
+  inlineActionNotice(document.querySelector('.receipt-product-editor'),receiptProductNotice);
+ });return;
 }
 if(action==='receiptProductChoose'){
  if(page!=='recordDetail'||receiptProductSaving||receiptProductRow===null)return;
