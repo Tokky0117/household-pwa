@@ -183,10 +183,10 @@ let scanRuntime=null,scanDraftAvailable=false,scanDraftKind='receipt',scanDraftW
 let scanExistingQuery='',scanGroupQuery='',scanProductGroupId='',recordDetailOrigin='list';
 let receiptProductsExpanded=false,receiptProductRow=null,receiptProductMode='existing',
  receiptProductQuery='',receiptItemQuery='',receiptItemId='',receiptItemExpanded=false,
- receiptProductSaving=false,receiptProductNotice='';
+ receiptProductSaving=false,receiptProductNotice='',receiptProductDraft=null;
 function resetReceiptProductEditor(){
  receiptProductRow=null;receiptProductMode='existing';receiptProductQuery='';
- receiptItemQuery='';receiptItemId='';receiptItemExpanded=false;receiptProductNotice='';
+ receiptItemQuery='';receiptItemId='';receiptItemExpanded=false;receiptProductNotice='';receiptProductDraft=null;
 }
 let storePickerTarget=null,storePickerQuery='',storePickerNewMode=false;
 function saveScanDraft(){
@@ -294,6 +294,43 @@ function detailLineName(line){
  return catalogue.products.find(p=>p.id===line.product_id)?.name||
   aliasNameFor(line)||'明細名なし';
 }
+function keepReceiptProductDraft(){
+ const form=document.getElementById('receiptProductCreateForm');
+ if(!form)return;
+ const data=new FormData(form);
+ receiptProductDraft={name:String(data.get('name')||''),
+  quantity:String(data.get('quantity')||''),unit:String(data.get('unit')||'個')};
+}
+function receiptProductHasChanges(){
+ const form=document.getElementById('receiptProductCreateForm');
+ if(!form)return false;
+ const record=savedReceiptRecord(),line=record?savedReceiptLines(record.record_id)[receiptProductRow]:null;
+ const data=new FormData(form);
+ const original=line?.inferred_name||aliasNameFor(line)||'';
+ return String(data.get('name')||'')!==original||
+  !!String(data.get('quantity')||'').trim()||
+  String(data.get('unit')||'個')!=='個'||!!String(data.get('group')||'');
+}
+function receiptProductLeave(kind,row=null){
+ if(receiptProductSaving)return;
+ if(receiptProductHasChanges()){
+  dialog={title:'変更を破棄しますか？',
+   message:'入力中の商品情報はまだ保存されていません。',
+   buttons:[{id:'cancel',label:'編集を続ける'},
+    {id:'confirmReceiptSetupDiscard',label:'変更を破棄',critical:true}],
+   pending:{receiptSetupAction:kind,row}};
+  renderDialogOnly();return;
+ }
+ if(kind==='back'){
+  resetReceiptProductEditor();receiptProductsExpanded=false;
+  page=recordDetailOrigin;tab='receipt';
+ }else if(kind==='toggle'){
+  receiptProductsExpanded=!receiptProductsExpanded;resetReceiptProductEditor();
+ }else if(kind==='switch'){
+  resetReceiptProductEditor();receiptProductRow=row;
+ }else resetReceiptProductEditor();
+ render();
+}
 function savedReceiptRecord(){
  const mapped=window.KurashiLive?.confirmedRecordId?.(recordDetailId)||recordDetailId;
  const record=allPreviewRecords().find(r=>r.record_id===mapped);
@@ -340,9 +377,9 @@ function receiptProductEditor(record,detail){
   UI.textAction({label:'新しい商品を登録',action:'receiptProductNew'})+
   (line.product_id?UI.textAction({label:'この明細を未照合にする',action:'receiptProductUnlink',arrow:false}):'');
  const fields=UI.formField({id:'receipt-product-name',name:'name',label:'登録商品名',
-    value:line.inferred_name||aliasNameFor(line)||'',required:true,maxlength:80})+
+    value:receiptProductDraft?.name??(line.inferred_name||aliasNameFor(line)||''),required:true,maxlength:80})+
   UI.quantityUnitFields({quantityId:'receipt-product-quantity',unitId:'receipt-product-unit',
-    quantity:'',unit:'個',extra:'inputmode="decimal"'})+
+    quantity:receiptProductDraft?.quantity??'',unit:receiptProductDraft?.unit||'個',extra:'inputmode="decimal"'})+
   '<div class="formfield receipt-item-field"><label>日用品リストへの紐付け（任意）</label>'+
   '<button type="button" class="receipt-item-trigger tertiary" data-act="receiptItemToggle" aria-expanded="'+receiptItemExpanded+'">'+
   esc(itemLabel(items.find(i=>i.id===receiptItemId))||'紐付けしない')+' '+chevron(receiptItemExpanded?'up':'down')+'</button>'+
@@ -1996,7 +2033,7 @@ function back(){
   if(page==='aliasManage'){page='list';tab='settings';render();return;}
   if(page==='scanExistingProduct'){page='recordScan';scanExistingQuery='';scanProductRow=null;render();return;}
   if(page==='scanProduct'){page='scanExistingProduct';scanGroupQuery='';scanProductGroupId='';render();return;}
-  if(page==='recordDetail'){resetReceiptProductEditor();receiptProductsExpanded=false;page=recordDetailOrigin;tab='receipt';render();return;}
+  if(page==='recordDetail'){receiptProductLeave('back');return;}
   if(page==='detailAll'){page='list';tab='receipt';render();return;}
   if(page==='recordChatGpt'){
    page=scanDraft?.source==='ocr'?'recordScan':'list';tab='receipt';render();return;
@@ -2557,6 +2594,15 @@ if(el.dataset.pick){
 if(el.dataset.dialog){if(el.dataset.dialog==='cancel'&&dialog?.pending?.pendingOpsSignature){
   window.KurashiLive.endPendingOperationReview();dialog=null;renderDialogOnly();return;
  }if(el.dataset.dialog==='cancel'&&(dialog?.title==='変更を破棄しますか？'||dialog?.title==='比較単位について'||dialog?.title==='日用品との紐付けを変更しますか？'||dialog?.title==='日用品との紐付けを解除しますか？'||dialog?.title==='読み取り名の紐付けを変更しますか？'||dialog?.title==='読み取り名の紐付けを解除しますか？'||dialog?.title==='下書きに保存しますか？'||dialog?.title==='下書きがあります'||dialog?.title==='読み取り途中の内容を破棄しますか？'||dialog?.title==='読み取り結果を写真解析の結果に置き換えますか？')){dialog=null;document.querySelector('.dialog-back')?.remove();return}const action=el.dataset.dialog,p=dialog?.pending;dialog=null;
+if(action==='confirmReceiptSetupDiscard'&&p?.receiptSetupAction){
+ const kind=p.receiptSetupAction,row=p.row;
+ resetReceiptProductEditor();
+ if(kind==='back'){receiptProductsExpanded=false;page=recordDetailOrigin;tab='receipt'}
+ else if(kind==='toggle')receiptProductsExpanded=false;
+ else if(kind==='switch')receiptProductRow=row;
+ render();return;
+}
+
 
 if(action==='confirmAliasLink'&&p&&Object.prototype.hasOwnProperty.call(p,'productId')){
  const alias=(catalogue.productAliases||[]).find(x=>x.aliasId===p.aliasId);
@@ -2867,16 +2913,15 @@ if(action==='recordDelete'){
  renderDialogOnly();return;
 }
 if(action==='receiptProductsToggle'){
- receiptProductsExpanded=!receiptProductsExpanded;resetReceiptProductEditor();render();return;
+ if(receiptProductsExpanded)receiptProductLeave('toggle');
+ else{receiptProductsExpanded=true;resetReceiptProductEditor();render()}return;
 }
 if(action==='receiptProductOpen'){
  if(page!=='recordDetail'||receiptProductSaving)return;
- receiptProductsExpanded=true;resetReceiptProductEditor();
- receiptProductRow=Number(el.dataset.scanRow);render();return;
+ receiptProductsExpanded=true;receiptProductLeave('switch',Number(el.dataset.scanRow));return;
 }
 if(action==='receiptProductClose'){
- if(receiptProductSaving)return;
- resetReceiptProductEditor();render();return;
+ receiptProductLeave('close');return;
 }
 if(action==='receiptProductNew'){
  if(receiptProductSaving)return;
@@ -2884,7 +2929,7 @@ if(action==='receiptProductNew'){
 }
 if(action==='receiptProductExisting'){
  if(receiptProductSaving)return;
- receiptProductMode='existing';receiptProductNotice='';render();return;
+ keepReceiptProductDraft();receiptProductMode='existing';receiptProductNotice='';render();return;
 }
 if(action==='receiptItemToggle'){
  receiptItemExpanded=!receiptItemExpanded;
