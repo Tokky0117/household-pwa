@@ -2816,3 +2816,10 @@ html,body{touch-action:pan-x pan-y}
 .receipt-item-trigger svg{width:16px;height:16px}
 .receipt-item-picker{margin-top:8px;display:flex;flex-direction:column;gap:8px;min-width:0}
 .receipt-product-editor .formactions{margin:0}
+
+.receipt-setting-row{border:1px solid var(--line);border-radius:10px;padding:11px;display:flex;flex-direction:column;gap:6px}
+.receipt-setting-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;min-width:0}
+.receipt-setting-heading>span{font-size:14px;min-width:0;overflow-wrap:anywhere}
+.receipt-setting-heading .ui-text-action{flex:none}
+.receipt-setting-row>.hint{margin:0}
+.receipt-product-section{min-width:0}
