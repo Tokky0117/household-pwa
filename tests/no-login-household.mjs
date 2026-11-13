@@ -2929,11 +2929,9 @@ assert.equal(optionalDetails.length,2);
 assert.ok(optionalDetails.some(x=>x.raw_name===''&&x.confirmed_name===''&&
  x.product_id===''&&Number(x.amount_tax_included)===200&&x.price_eligible===false),
  'the nameless line is retained as a purchase amount, not a price-comparable registered product');
-await waitFor(()=>!!optionalUI.window.document.querySelector(
- '[data-act="recordDetail"][data-record-id="'+optionalRecord.record_id+'"]'),
- 'the saved unnamed receipt is shown in the app history');
-optionalUI.window.document.querySelector(
- '[data-act="recordDetail"][data-record-id="'+optionalRecord.record_id+'"]').click();
+await waitFor(()=>!!optionalUI.window.document.querySelector('.detail-record-page')&&
+ optionalUI.window.document.body.textContent.includes('明細名なし'),
+ 'the saved unnamed receipt opens its detail directly');
 assert.match(optionalUI.window.document.body.textContent,/明細名なし/,
  'receipt detail displays a neutral name fallback');
 optionalForm=await openSavedEdit(optionalUI,'optional-name receipt edit');
