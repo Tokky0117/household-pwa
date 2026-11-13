@@ -2861,7 +2861,7 @@ if(action==='receiptProductsToggle'){
 if(action==='receiptProductOpen'){
  if(page!=='recordDetail'||receiptProductSaving)return;
  receiptProductsExpanded=true;resetReceiptProductEditor();
- receiptProductRow=Number(el.dataset.row);render();return;
+ receiptProductRow=Number(el.dataset.scanRow);render();return;
 }
 if(action==='receiptProductClose'){
  if(receiptProductSaving)return;
