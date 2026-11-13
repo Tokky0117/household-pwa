@@ -1104,8 +1104,11 @@ online=false;
 recordForm.dispatchEvent(new recordUI.window.Event('submit',{bubbles:true,cancelable:true}));
 await waitFor(()=>recordUI.window.KurashiLive.state().queued===2,
  'store and multi-line receipt queued atomically while offline');
-await waitFor(()=>!!recordUI.window.document.querySelector('.ui-record-row'),
- 'New manual receipt appears immediately in the original UI');
+await waitFor(()=>!!recordUI.window.document.querySelector('.detail-record-page'),
+ 'A saved offline receipt opens its detail directly without requiring product registration');
+assert.ok(recordUI.window.document.querySelector('.receipt-product-section')&&
+ recordUI.window.document.querySelectorAll('.detail-record-line').length===2,
+ 'Saved receipt immediately displays both lines and optional price-comparison setup');
 await pause(70);
 recordUI.window.close();online=true;
 let recordReopened=appSession();
