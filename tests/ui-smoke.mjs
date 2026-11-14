@@ -25,7 +25,7 @@ const doc={
 const ctx={document:doc,localStorage:{getItem:k=>storage.get(k)??null,setItem:(k,v)=>storage.set(k,v),removeItem:k=>storage.delete(k)},
  navigator:{},window:{scrollTo(){},scrollY:0,KurashiReceiptValidation:validator,KurashiReceiptReview:review},crypto:{randomUUID:()=> 'test-id'},setTimeout:()=>0};
 const ui=vm.runInNewContext(source+`
-({listView,priceCompareView,pickerView,pickerResults,masterProductsView,masterProductRows,masterProductEditorView,masterGroupPickerView,masterGroupPickerRows,aliasManageView,aliasManageRows,aliasProductPickerView,aliasProductPickerRows,detailHomeView,detailAllView,receiptScanView,receiptChatGptView,recordDetailView,scanStoreNameIssue,scanValidPurchaseDate,scanReadableError,floatingActionPlacement,applyChatGptOcrAssistance,receiptOcrReference,receiptOcrRows,isUnconfirmedBarcodeLine,makeChatGptReceiptRebuildDraft,scanProductView,scanProductGroupChoices,scanExistingProductView,scanExistingProductResults,scanChainForStore,scanStoreHeaderMatch,scanAutolinkUnmatched,scanMatchProduct,scanSimilarProducts,normalizeOcrProductName,render,initializeCompare,
+({listView,priceCompareView,pickerView,pickerResults,masterProductsView,masterProductRows,masterProductEditorView,masterGroupPickerView,masterGroupPickerRows,aliasManageView,aliasManageRows,aliasProductPickerView,aliasProductPickerRows,detailHomeView,detailAllView,receiptScanView,receiptChatGptView,recordDetailView,scanStoreNameIssue,scanValidPurchaseDate,scanReadableError,floatingActionPlacement,applyChatGptOcrAssistance,receiptOcrReference,receiptOcrRows,isUnconfirmedBarcodeLine,makeChatGptReceiptRebuildDraft,scanProductView,scanProductGroupChoices,scanExistingProductView,scanExistingProductResults,scanChainForStore,scanStoreHeaderMatch,scanAutolinkUnmatched,scanMatchProduct,scanSimilarProducts,normalizeOcrProductName,normalizedOcrItemName,render,initializeCompare,
  setProductGroup,reorderProducts,registeredProducts,convertQuantity,setOpenSwipe,storePickerChoices,scrollNewItemIfOffscreen,
  getItems(){return items},setItems(v){items=v},orderedItemIds,expandItemGroup(k){expandedItemGroups.add(k)},collapseItemGroup(k){expandedItemGroups.delete(k)},
  chainMinima,priceCandidates,standardizedMinima,savePreviewRecord,periodStart,
@@ -94,8 +94,14 @@ const nameExamples=[
 for(const [input,expected] of nameExamples)
  assert.equal(ui.normalizeOcrProductName(input),expected,
   'OCR merchandise-name normalization: '+input);
-assert.ok(source.includes('name:normalizeOcrProductName(item.name)'),
- 'normalization is applied after merchandise extraction, before review and matching');
+assert.ok(source.includes('name:normalizedOcrItemName(item)'),
+ 'only merchandise item names are normalized after parsing, before review and matching');
+assert.equal(ui.normalizedOcrItemName({name:'123456O890123',issues:['商品コードのみ（商品名を確認）']}),
+ '123456O890123','barcode-only rows preserve the original OCR code');
+assert.equal(ui.normalizedOcrItemName({name:'123456O890123',issues:[]}),
+ '123456O890123','13-position barcode-like OCR codes are not changed');
+assert.equal(ui.normalizedOcrItemName({name:'UMI0Sッナフレ-ク80GX18',issues:[]}),
+ 'UMIOSツナフレーク80GX18','ordinary OCR product items are corrected');
 const sampleKanaReceipt={name:'UMI0Sッナフレ-ク80GX18',quantity:2,quantitySource:'printed',
  taxIncludedAmount:540,netAmount:540,issues:[]};
 const normalizedKanaReceipt=review.fromOcrItem(
