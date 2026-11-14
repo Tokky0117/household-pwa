@@ -121,7 +121,7 @@ function priceCandidates(records,details,periodValue,today=new Date()){
  return recordJoin(records,details).filter(r=>
   !r.deleted_at&&!r.record.deleted_at &&
   ['receipt','shelf'].includes(r.record.record_type) &&
-  !!r.product_id && !!r.record.chain_id && r.price_eligible===true &&
+  !!r.product_id && !!r.record.chain_id &&
   typeof r.amount_tax_included==='number'&&Number.isFinite(r.amount_tax_included)&&r.amount_tax_included>=0 &&
   typeof r.quantity==='number'&&Number.isFinite(r.quantity)&&r.quantity>0 &&
   /^\d{4}-\d{2}-\d{2}$/.test(r.record.record_date)&&
