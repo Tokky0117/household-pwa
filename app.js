@@ -175,7 +175,7 @@ function load(){if(liveMode)return [];try{const d=JSON.parse(localStorage.getIte
 let items=load(),expandedItemGroups=new Set(),tab='items',page='list',selected=null,query='',onlyOut=false,collapsed=new Set(),menu=false,dialog=null,toast='',period='1y',priceScope='product',periodMenu=false;
 const app=document.getElementById('app');
 // Native iPhone chooser: Photo Library, Take Photo, or Files. Photos stay in memory.
-let scanPhotos=[],scanIndex=0,scanBusy=false,scanDraft=null,scanStatus='',scanAssistMessage='',scanToken=0,scanError='',scanReadFailed=false,scanNewStoreMode=false,scanReturnScrollY=null;
+let scanPhotos=[],scanIndex=0,scanBusy=false,scanDraft=null,scanStatus='',scanAiChanges=[],scanAssistMessage='',scanToken=0,scanError='',scanReadFailed=false,scanNewStoreMode=false,scanReturnScrollY=null;
 const scanPhotoUrls=new Map(); // Memory-only thumbnails; never persisted.
 function scanThumbnail(file){if(scanPhotoUrls.has(file))return scanPhotoUrls.get(file);const create=window.URL?.createObjectURL;if(typeof create!=='function')return '';const url=create.call(window.URL,file);scanPhotoUrls.set(file,url);return url;}
 function releaseScanThumbnail(file){const url=scanPhotoUrls.get(file);if(!url)return;scanPhotoUrls.delete(file);window.URL?.revokeObjectURL?.(url);}
@@ -233,7 +233,7 @@ function normalizedOcrItemName(item){
  return normalizeOcrProductName(name);
 }
 function resetScan({keepDraft=false}={}){
- scanToken++;closeScanViewer();clearScanThumbnails();scanPhotos=[];scanIndex=0;scanBusy=false;scanStatus='';scanAssistMessage='';scanError='';scanReadFailed=false;
+ scanToken++;closeScanViewer();clearScanThumbnails();scanPhotos=[];scanIndex=0;scanBusy=false;scanStatus='';scanAiChanges=[];scanAssistMessage='';scanError='';scanReadFailed=false;
  if(!keepDraft){scanDraft=null;scanNewStoreMode=false;scanReturnScrollY=null;return saveScanDraft();}
  return Promise.resolve();
 }
@@ -535,7 +535,7 @@ function storePickerChoices(){
  const form=document.getElementById('scanConfirmForm');
  const selected=String(form?new FormData(form).get('chain')||'':'');
  const q=norm(storePickerQuery);
- const matches=catalogue.chains.filter(c=>!q||norm(c.name).includes(q));
+ const matches=catalogue.chains.filter(c=>!q||norm(c.name).includes(q)).sort((a,b)=>a.name.localeCompare(b.name,'ja'));
  if(!matches.length)return '<p class="hint">該当する店舗はありません。</p>';
  return matches.map(c=>UI.choiceRow({
   title:c.name,choice:c.id,selected:c.id===selected
@@ -604,12 +604,12 @@ function chooseStoreFromPicker(chainId,chainName=''){
  else field?.classList.remove('ui-field-error');
 }
 function receiptChatGptView(){
- return head('ChatGPTの補助解析','読み取り名の確認・写真からの再解析',true)+
+ return head('生成AIによる確認','読み取り名の確認・写真からの再解析',true)+
  '<main class="preview-record-page receipt-chatgpt-page">'+
  '<p class="hint">指示文をコピーし、ChatGPTに必ず元のレシート写真も添付してください。商品行・数量・金額の対応が正しい場合は文字の修正、行の対応が崩れている場合は写真から明細を再解析する指示です。</p>'+
- '<p class="hint">最初のJSONを取り込みます。明細を置き換える場合は確認画面を表示します。ChatGPTによる分析の説明文は保存しません。</p>'+
+ '<p class="hint">最初のJSONを取り込みます。明細を置き換える場合は確認画面を表示します。生成AIによる分析の説明文は保存しません。</p>'+
  '<button type="button" class="secondary" data-act="chatGptCopyPrompt">読み取り結果と指示文をコピー</button>'+
- UI.formField({id:'chatgpt-input',name:'chatgpt-json',label:'ChatGPTの解析結果（JSON）',
+ UI.formField({id:'chatgpt-input',name:'chatgpt-json',label:'生成AIの解析結果（JSON）',
   control:'textarea',placeholder:'最初のJSONコードブロックを貼り付け',
   extra:'rows="9" maxlength="30000"'})+
  '<p id="chatgpt-error" class="scan-warning" role="status">'+esc(chatGptError)+'</p>'+
@@ -790,10 +790,10 @@ function scanAiCandidateView(item,row){
   '<button type="button" class="secondary" data-act="scanAiLinkProduct" data-scan-row="'+row+
   '" data-product-id="'+esc(p.id)+'">'+esc(productTitle(p))+' に紐付ける</button>').join('');
  const isNew=!candidate.existing&&!candidate.exact.length;
- return '<div class="scan-ai-candidate" aria-label="ChatGPTの商品候補">'+
+ return '<div class="scan-ai-candidate" aria-label="生成AIの商品候補">'+
   '<p class="scan-ai-candidate-title">'+(candidate.existing||candidate.exact.length?'登録済みの商品候補':'新規商品候補')+'</p>'+
   '<p class="scan-ai-candidate-name">'+esc(candidate.name)+'</p>'+
-  '<p class="scan-ai-candidate-note">ChatGPTの推測です。登録商品との一致を確認してください。</p>'+
+  '<p class="scan-ai-candidate-note">生成AIによる推定です。登録商品との一致を確認してください。</p>'+
   (candidate.exact.length?
     '<div class="scan-ai-candidate-actions">'+buttons(candidate.exact)+'</div>':
    candidate.existing?'<p class="scan-ai-candidate-note">既存商品名が見つかりません。商品を設定から選択してください。</p>':
@@ -928,12 +928,40 @@ function refreshReceiptDateDisplay(input){
  target.classList.toggle('is-empty',!date);
 }
 const scanTaxFailureDescription=reason=>window.KurashiReceiptValidation.describeTaxFailure(reason);
+function scanAiDiff(before,after){
+ const changes=[];
+ const show=(v)=>v===null||v===undefined||v===''?'未設定':String(v);
+ const add=(row,label,oldValue,newValue)=>{
+  if(show(oldValue)!==show(newValue))changes.push({row,label,before:show(oldValue),after:show(newValue)});
+ };
+ const oldItems=before?.items||[],newItems=after?.items||[];
+ if(oldItems.length!==newItems.length)add(0,'明細数',oldItems.length+'件',newItems.length+'件');
+ for(let i=0;i<Math.min(oldItems.length,newItems.length);i++){
+  const a=oldItems[i],b=newItems[i];
+  add(i+1,'読み取り名',a.name,b.name);
+  add(i+1,'数量',a.quantity,b.quantity);
+  add(i+1,'金額',a.amount,b.amount);
+  add(i+1,'推定商品名',a.inferredName||a.nameCandidate,b.inferredName||b.nameCandidate);
+  const candidate=x=>x.productSuggestion?.existingName||x.productSuggestion?.newName||'';
+  add(i+1,'登録商品名候補',candidate(a),candidate(b));
+ }
+ return changes;
+}
+function scanAiChangesView(){
+ if(!scanAiChanges.length)return '';
+ return '<section class="scan-ai-changes" aria-label="生成AIの解析による変更内容">'+
+  UI.sectionHeading({title:'生成AIの解析結果'})+
+  '<p class="hint">変更された項目を確認してください。商品名候補は商品マスタに自動登録されません。</p>'+
+  '<ul class="scan-ai-change-list">'+scanAiChanges.map(x=>
+   '<li><strong>'+(x.row?'明細 '+x.row+'：':'')+esc(x.label)+'</strong>　'+
+   esc(x.before)+' → '+esc(x.after)+'</li>').join('')+'</ul></section>';
+}
 function scanAssistView(){
  if(!scanDraft)return '';
  const canAssist=scanDraft.source==='ocr'&&receiptOcrRows(scanDraft).length>0;
  if(!canAssist&&!scanAssistMessage)return '';
  return `<div class="scan-assist-area">
-  ${canAssist?UI.textAction({label:'ChatGPTで確認',action:'chatGptAssist'}):''}
+  ${canAssist?'<p class="hint">商品名や金額が正しく読めていない場合は、生成AIで写真を再確認できます。利用は任意です。</p>'+UI.textAction({label:'生成AIで再確認',action:'chatGptAssist'}):''}
   ${scanAssistMessage?UI.statusMessage({text:scanAssistMessage,kind:'success'}):''}
  </div>`;
 }
@@ -945,7 +973,7 @@ function scanReadingStatusView(){
   ${UI.sectionHeading({title:'読み取り状況'})}
   <p id="scan-status" role="status" class="hint" ${summary?'':'hidden'}>${esc(summary)}</p>
   ${scanAssistView()}
-
+ ${scanAiChangesView()}
  </section>`;
 }
 function scanFormView(){
@@ -953,7 +981,7 @@ function scanFormView(){
  const isShelf=scanDraft.recordType==='shelf';
  const reviewModel=window.KurashiReceiptReview.buildReviewModel(scanDraft);
  const unmatchedCount=isShelf?scanDraft.items.filter(x=>!scanResolvedProductId(x)).length:0;
- return `<form id="scanConfirmForm" class="scan-review" novalidate>
+ return `<section class="scan-review-intro" aria-label="確認方法"><h2>読み取り結果の確認</h2><p class="hint">店舗・購入日・明細を確認し、間違いがあれば修正して保存してください。</p></section><form id="scanConfirmForm" class="scan-review" novalidate>
   <section class="scan-receipt-meta" aria-label="${isShelf?'値札情報':'購入情報'}">
   ${UI.sectionHeading({title:isShelf?'値札情報':'購入情報'})}
   <div class="scan-store-picker">
@@ -1022,7 +1050,7 @@ ${['manual','edit'].includes(scanDraft.source)?'':`
 }
 function scanPhotoSection(){
  if(!scanPhotos.length){
-  return '<section class="scan-photo-section scan-photo-empty">'+
+  return '<section class="scan-photo-section scan-photo-empty"><p class="hint">レシートの写真から、購入した商品と金額を読み取ります。</p>'+
    UI.button({label:'写真を選択',variant:'primary',action:'scanAddPhotos',icon:'plus',className:'scan-photo-add'})+
    '</section>';
  }
@@ -2240,7 +2268,7 @@ function acceptReceiptPhotos(picker){
  }
  scanPhotos.push(...files);scanIndex=scanPhotos.length-1;
  page='recordScan';
- scanDraft=null;scanAssistMessage='';scanToken++;
+ scanDraft=null;scanAiChanges=[];scanAssistMessage='';scanToken++;
  scanStatus='';scanError='';scanReadFailed=false;
  picker.value=''; // Same photo can be selected again.
  render();
@@ -2715,7 +2743,9 @@ if(action==='confirmProductMove'&&p){
 }
 if(action==='confirmChatGptRebuild'&&p?.rebuild){
  try{
+  const previous=scanDraft;
   scanDraft=makeChatGptReceiptRebuildDraft(scanDraft,p.rebuild);
+  scanAiChanges=scanAiDiff(previous,scanDraft);
   scanNewStoreMode=!scanDraft.chainId&&!!scanDraft.chainName;
   scanAutolinkUnmatched();
   saveScanDraft();
@@ -2898,7 +2928,7 @@ if(action==='chatGptImport'){
     values.reduce((a,b)=>a+b,0):null;
    const mismatch=draft.total!==null&&sum!==null&&draft.total!==sum;
    dialog={title:'読み取り結果を写真解析の結果に置き換えますか？',
-    message:'現在の読み取り'+scanDraft.items.length+'行を採用せず、ChatGPTが写真から抽出した'+
+    message:'現在の読み取り'+scanDraft.items.length+'行を採用せず、生成AIが写真から抽出した'+
      draft.items.length+'行に置き換えます。商品マスタや読み取り名の管理には自動登録しません。'+
      (mismatch?'解析した明細金額と印字合計が一致していません。':'')+
      '保存前に写真の全明細と数量・金額を確認してください。',
@@ -2907,11 +2937,11 @@ if(action==='chatGptImport'){
     pending:{rebuild:response}};
    renderDialogOnly();return;
   }
+  const previous=scanDraft;
   scanDraft=applyChatGptOcrAssistance(scanDraft,response);
+  scanAiChanges=scanAiDiff(previous,scanDraft);
   saveScanDraft();
-  const changed=response.items.filter(i=>i.nameCandidate).length;
-  const priced=response.items.filter(i=>Number.isSafeInteger(i.amount)).length;
-  scanAssistMessage=changed||priced?'解析結果を反映しました。':'反映できる修正候補はありませんでした。';
+  scanAssistMessage=scanAiChanges.length?'生成AIの解析結果を取り込みました。':'解析結果に変更はありませんでした。';
   scanStatus='';
   page='recordScan';render();
  }catch(e){
@@ -3073,7 +3103,7 @@ if(action==='scanRemovePhoto'){
   resetScan();page='recordScan';render();return;
  }
  scanIndex=Math.max(0,Math.min(scanIndex,scanPhotos.length-1));
- scanDraft=null;scanToken++;scanAssistMessage='';scanStatus='';scanError='';scanReadFailed=false;
+ scanDraft=null;scanToken++;scanAiChanges=[];scanAssistMessage='';scanStatus='';scanError='';scanReadFailed=false;
  render();return;
 }
 if(action==='scanRemoveItem'&&scanDraft){
