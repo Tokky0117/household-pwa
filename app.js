@@ -439,7 +439,7 @@ function recordDetailView(){
     ${UI.formField({id:'detail-record-date',control:'static',label:isShelf?'値札確認日':'購入日',value:String(record.record_date||'').replaceAll('-','/')})}
    </div>
   </section>
-  ${bulkCandidates.length?'<div class="record-detail-bulk">'+UI.button({label:'ChatGPT候補をまとめて登録（'+bulkCandidates.length+'件）',variant:'secondary',action:'recordBulkPreview',disabled:recordBulkSaving})+'</div>':''}
+  ${bulkCandidates.length?'<div class="record-detail-bulk">'+UI.button({label:'生成AI候補をまとめて登録（'+bulkCandidates.length+'件）',variant:'secondary',action:'recordBulkPreview',disabled:recordBulkSaving})+'</div>':''}
   <section class="detail-record-lines" aria-label="${isShelf?'価格情報':'購入明細'}">
    ${UI.sectionHeading({title:isShelf?'価格情報':'購入明細',subtitle:detail.length+'件'})}
    ${detail.map(line=>`<div class="panel detail-record-line">
@@ -452,7 +452,7 @@ function recordDetailView(){
      ${line.product_id?`<span>登録商品：${esc(catalogue.products.find(p=>p.id===line.product_id)?.name||'商品を確認')}</span>`:
       '<span>商品未紐付け</span>'}</div>
     ${!isShelf&&!line.product_id&&line.suggested_product_name&&
-      norm(line.suggested_product_name)!==norm(aliasNameFor(line))?`<div class="detail-record-line-meta"><span>ChatGPT商品候補（参考）：${esc(line.suggested_product_name)}</span></div>`:''}
+      norm(line.suggested_product_name)!==norm(aliasNameFor(line))?`<div class="detail-record-line-meta"><span>生成AI商品候補（参考）：${esc(line.suggested_product_name)}</span></div>`:''}
     ${!isShelf&&liveMode?`<div class="scan-picker-actions">${UI.button({label:line.product_id?'商品を変更':'登録商品を選択',variant:'tertiary',action:'recordProductOpen',recordItemId:line.record_item_id})}${line.product_id?'':UI.button({label:'新しい商品を登録',variant:'tertiary',action:'recordProductNew',recordItemId:line.record_item_id})}</div>`:''}
    </div>`).join('')}
   </section>
@@ -603,7 +603,7 @@ function chooseStoreFromPicker(chainId,chainName=''){
 function receiptChatGptView(){
  return head('生成AIによる確認','読み取り名の確認・写真からの再解析',true)+
  '<main class="preview-record-page receipt-chatgpt-page">'+
- '<p class="hint">指示文をコピーし、ChatGPTに必ず元のレシート写真も添付してください。商品行・数量・金額の対応が正しい場合は文字の修正、行の対応が崩れている場合は写真から明細を再解析する指示です。</p>'+
+ '<p class="hint">指示文をコピーし、生成AIに必ず元のレシート写真も添付してください。商品行・数量・金額の対応が正しい場合は文字の修正、行の対応が崩れている場合は写真から明細を再解析する指示です。</p>'+
  '<p class="hint">最初のJSONを取り込みます。明細を置き換える場合は確認画面を表示します。生成AIによる分析の説明文は保存しません。</p>'+
  '<button type="button" class="secondary" data-act="chatGptCopyPrompt">読み取り結果と指示文をコピー</button>'+
  UI.formField({id:'chatgpt-input',name:'chatgpt-json',label:'生成AIの解析結果（JSON）',
@@ -2973,7 +2973,7 @@ if(action==='recordBulkPreview'&&page==='recordDetail'&&!recordBulkSaving){
  if(!candidates.length)return;
  const names=candidates.map((row,i)=>(i+1)+'．'+row.proposed_name+' ／ '+
   (row.action==='new'?'新しく商品登録':row.action==='reuse'?'同じ新商品に紐付け':'登録済みの商品に紐付け'));
- dialog={title:'ChatGPTの商品候補を登録しますか？',
+ dialog={title:'生成AIの商品候補を登録しますか？',
   message:'以下の明細に商品を登録・紐付けます。\n'+names.join('\n')+
    '\n既に紐付けた明細と曖昧な候補は対象に含めません。',
   buttons:[{id:'cancel',label:'キャンセル'},{id:'confirmRecordBulk',label:'まとめて登録'}],
