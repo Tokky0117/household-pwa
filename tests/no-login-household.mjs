@@ -1773,8 +1773,8 @@ await completeOcrImport(otherPhone);
 const duplicateKitReview=otherPhone.window.document.getElementById('scanConfirmForm');
 assert.equal(duplicateKitReview.querySelector('[name="chain"]').value,kitStore.chain_id,
  'registered retailer is recognized on another iPhone');
-assert.equal(duplicateKitReview.querySelector('[name="product-0"]').value,
- kitSavedProduct.product_id,'the exact same receipt OCR alias auto-links across devices');
+assert.equal(duplicateKitReview.querySelector('[name="product-0"]'),null,
+ 'second iPhone also defers product linking until after receipt save');
 assert.equal(duplicateKitReview.querySelector('.scan-ocr-name').textContent,kitRaw,
  'reimport does not replace original printed name');
 assert.equal(duplicateKitReview.querySelector('#scan-duplicate-warning'),null,
@@ -1784,8 +1784,11 @@ duplicateKitReview.dispatchEvent(new otherPhone.window.Event('submit',{
 }));
 await waitFor(()=>temp.call('bootstrap').data.records.length===kitRecordCount+1,
  'An intentionally reimported same-content receipt can save without extra confirmation');
-await waitFor(()=>otherPhone.window.KurashiLive.state().queued===0,
- 'The intentional second receipt uses the durable operation queue');
+await waitFor(()=>otherPhone.window.KurashiLive.state().queued===0&&
+ temp.call('bootstrap').data.record_items.some(x=>
+  x.record_id===temp.call('bootstrap').data.records.at(-1).record_id&&
+  x.product_id===kitSavedProduct.product_id),
+ 'The intentional second receipt auto-links its known OCR alias only after save');
 assert.equal(temp.call('bootstrap').data.product_aliases.length,kitAliasCount,
  'Rereading the same name does not duplicate OCR alias data');
 otherPhone.window.close();
@@ -1805,8 +1808,8 @@ newPurchasePhone.window.document.getElementById('chatgpt-input').value=
  JSON.stringify(newKitPurchase);
 await completeOcrImport(newPurchasePhone);
 const repeatedKitReview=newPurchasePhone.window.document.getElementById('scanConfirmForm');
-assert.equal(repeatedKitReview.querySelector('[name="product-0"]').value,
- kitSavedProduct.product_id,'new purchase same printed name automatically links without new master');
+assert.equal(repeatedKitReview.querySelector('[name="product-0"]'),null,
+ 'new purchase keeps product matching out of the input form');
 assert.equal(repeatedKitReview.querySelector('[name="qty-0"]').value,'2');
 assert.equal(repeatedKitReview.querySelector('[name="amount-0"]').value,'340');
 assert.equal(repeatedKitReview.querySelector('#scan-duplicate-warning'),null,
