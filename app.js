@@ -340,8 +340,8 @@ function recordProductLine(){
 function recordProductChoices(){
  const line=recordProductLine(),q=norm(recordProductQuery);
  if(!line)return '';
- const products=catalogue.products.filter(p=>!q||productMatches(p,q)||
-  norm(linkedItemName(p)).includes(q)).sort((a,b)=>a.name.localeCompare(b.name,'ja'));
+ const products=catalogue.products.filter(p=>!q||productMatches(p,q))
+  .sort((a,b)=>a.name.localeCompare(b.name,'ja'));
  return products.map(p=>UI.choiceRow({title:productTitle(p),
   subtitle:p.itemGroupId?'日用品：'+linkedItemName(p):'',
   action:'recordProductChoose',productId:p.id,selected:line.product_id===p.id
