@@ -25,7 +25,7 @@ const doc={
 const ctx={document:doc,localStorage:{getItem:k=>storage.get(k)??null,setItem:(k,v)=>storage.set(k,v),removeItem:k=>storage.delete(k)},
  navigator:{},window:{scrollTo(){},scrollY:0,KurashiReceiptValidation:validator,KurashiReceiptReview:review},crypto:{randomUUID:()=> 'test-id'},setTimeout:()=>0};
 const ui=vm.runInNewContext(source+`
-({listView,priceCompareView,pickerView,pickerResults,masterProductsView,masterProductRows,masterProductEditorView,masterGroupPickerView,masterGroupPickerRows,aliasManageView,aliasManageRows,aliasProductPickerView,aliasProductPickerRows,detailHomeView,detailAllView,receiptScanView,receiptChatGptView,recordDetailView,scanStoreNameIssue,scanValidPurchaseDate,scanReadableError,floatingActionPlacement,applyChatGptOcrAssistance,receiptOcrReference,receiptOcrRows,isUnconfirmedBarcodeLine,makeChatGptReceiptRebuildDraft,scanProductView,scanProductGroupChoices,scanExistingProductView,scanExistingProductResults,scanChainForStore,scanStoreHeaderMatch,scanAutolinkUnmatched,scanMatchProduct,scanSimilarProducts,normalizeOcrProductKana,render,initializeCompare,
+({listView,priceCompareView,pickerView,pickerResults,masterProductsView,masterProductRows,masterProductEditorView,masterGroupPickerView,masterGroupPickerRows,aliasManageView,aliasManageRows,aliasProductPickerView,aliasProductPickerRows,detailHomeView,detailAllView,receiptScanView,receiptChatGptView,recordDetailView,scanStoreNameIssue,scanValidPurchaseDate,scanReadableError,floatingActionPlacement,applyChatGptOcrAssistance,receiptOcrReference,receiptOcrRows,isUnconfirmedBarcodeLine,makeChatGptReceiptRebuildDraft,scanProductView,scanProductGroupChoices,scanExistingProductView,scanExistingProductResults,scanChainForStore,scanStoreHeaderMatch,scanAutolinkUnmatched,scanMatchProduct,scanSimilarProducts,normalizeOcrProductName,render,initializeCompare,
  setProductGroup,reorderProducts,registeredProducts,convertQuantity,setOpenSwipe,storePickerChoices,scrollNewItemIfOffscreen,
  getItems(){return items},setItems(v){items=v},orderedItemIds,expandItemGroup(k){expandedItemGroups.add(k)},collapseItemGroup(k){expandedItemGroups.delete(k)},
  chainMinima,priceCandidates,standardizedMinima,savePreviewRecord,periodStart,
@@ -58,37 +58,60 @@ assert.ok(css.includes('.tertiary{')&&css.includes('color:var(--accent)'),'Share
 assert.ok(!source.includes('priceCells(){'),'Obsolete normal/discount UI component removed');
 assert.ok(!css.includes('grid-template-areas:"name value" "name date"'),'Obsolete two-row price CSS removed');
 assert.ok(ui.listView().includes('data-stock=')&&ui.listView().includes('data-list-edit='),'Stock and swipe list preserved');
-// v0.89.5: Kana punctuation OCR fix affects merchandise reading names only.
-// Synthetic names only; no real receipt name, image or private OCR data.
-const kanaExamples=[
+// v0.89.7: OCR-only rule-based normalization. No word/product dictionary,
+// no edits to quantity/price or non-OCR merchandise names.
+const nameExamples=[
  ['キ・ト・ハ°','ギドパ'],
  ['き・と・は°','ぎどぱ'],
  ['ヒ・ンク','ビンク'],
- ['か・ぱ°','がぱ°'], // ぱ is already semi-voiced; do not invent new glyphs
- ['サコ・テスト','サゴテスト'], // コ is voiceable
- ['タグ・','タグ・'], // グ is already voiced; do not revoice
+ ['か・ぱ°','がぱ'], // duplicated handakuten is now removed
+ ['サコ・テスト','サゴテスト'],
+ ['タグ・','タグ・'], // unvoiceable dot stays unchanged
  ['ハ°ト・ か・て・','パド がで'],
- ['100° 10・ ア・','100° 10・ ア・']
+ ['100° 10・ ア・','100° 10・ ア・'], // numeric degree remains intact
+ ['プルーチップ°カンソウヤサイ','プルーチップカンソウヤサイ'],
+ ['グ° プ° ぷ°','グ プ ぷ'],
+ ['ハﾟキﾞ は゜き゛','パギ ぱぎ'], // other OCR voicing variants
+ ['フレ-ク','フレーク'],
+ ['コ-ヒ-','コーヒー'],
+ ['ら-めん','らーめん'],
+ ['コーヒー-無糖','コーヒー無糖'],
+ ['あ－','あー'], // fullwidth hyphen
+ ['R-1 A-100 10-20個','R-1 A-100 10-20個'],
+ ['UMI0Sッナフレ-ク80GX18','UMIOSツナフレーク80GX18'],
+ ['ッナフレーク','ツナフレーク'],
+ ['ABCッナ ABCっな','ABCツナ ABCつな'],
+ ['白っぽい','白っぽい'], // kanji + hiragana, legitimate small tsu
+ ['キットカット かっぷ','キットカット かっぷ'],
+ ['コーヒーッカ','コーヒーッカ'], // the long-vowel mark continues the kana run
+ ['M1LK C0FFEE','MILK COFFEE'],
+ ['1O0 2I4 3o5 6i8','100 214 305 618'],
+ ['P1S A0B','PIS AOB'], // agreed cost of context-only normalization
+ ['ABC01D 80GX18 R-1','ABC01D 80GX18 R-1'],
+ ['30°','30°'], // ordinary numerical degree signs stay
+ ['', '']
 ];
-for(const [input,expected] of kanaExamples)
- assert.equal(ui.normalizeOcrProductKana(input),expected,'kana OCR transformation: '+input);
-assert.ok(source.includes('name:normalizeOcrProductKana(item.name)'),
- 'kana normalization applies after merchandise extraction, before review and matching');
-const sampleKanaReceipt={name:'キ・ト・ハ°',quantity:2,quantitySource:'printed',
+for(const [input,expected] of nameExamples)
+ assert.equal(ui.normalizeOcrProductName(input),expected,
+  'OCR merchandise-name normalization: '+input);
+assert.ok(source.includes('name:normalizeOcrProductName(item.name)'),
+ 'normalization is applied after merchandise extraction, before review and matching');
+const sampleKanaReceipt={name:'UMI0Sッナフレ-ク80GX18',quantity:2,quantitySource:'printed',
  taxIncludedAmount:540,netAmount:540,issues:[]};
 const normalizedKanaReceipt=review.fromOcrItem(
- {...sampleKanaReceipt,name:ui.normalizeOcrProductKana(sampleKanaReceipt.name)},
+ {...sampleKanaReceipt,name:ui.normalizeOcrProductName(sampleKanaReceipt.name)},
  {rowId:'kana-test',taxBasis:'included'});
-assert.equal(normalizedKanaReceipt.ocrRawName,'ギドパ');
+assert.equal(normalizedKanaReceipt.ocrRawName,'UMIOSツナフレーク80GX18');
+assert.equal(sampleKanaReceipt.name,'UMI0Sッナフレ-ク80GX18',
+ 'the OCR parser item remains intact');
 assert.equal(normalizedKanaReceipt.quantity,2);
 assert.equal(normalizedKanaReceipt.amount,540);
 const beforeKanaProducts=ui.catalogue().products;
 ui.catalogue().products=[...beforeKanaProducts,{
- id:'kana-product-test',name:'ギドパ',aliases:[]}];
-assert.equal(ui.scanMatchProduct(ui.normalizeOcrProductKana(sampleKanaReceipt.name)),
+ id:'kana-product-test',name:'UMIOSツナフレーク80GX18',aliases:[]}];
+assert.equal(ui.scanMatchProduct(ui.normalizeOcrProductName(sampleKanaReceipt.name)),
  'kana-product-test','the corrected OCR name matches the product master');
 ui.catalogue().products=beforeKanaProducts;
-
 
 // KS-004: only scroll when the added item is outside the usable viewport.
 const oldQuerySelector=doc.querySelector,oldViewport=ctx.window.innerHeight;
