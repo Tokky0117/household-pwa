@@ -696,7 +696,7 @@ assert.equal(parsedCandidate.items[0].name,'キットカットコイマッチャ
  'printed name remains separate from canonical candidate');
 assert.equal(parsedCandidate.items[0].nameCandidate,'キットカット濃い抹茶10袋',
  'new ChatGPT JSON retains a noncommittal master-name candidate');
-assert.ok(source.includes('item.canonicalName||item.inferredName||item.nameCandidate||item.name'),
+assert.ok(source.includes('item.canonicalName||item.productSuggestion?.newName||item.inferredName||item.nameCandidate||item.name'),
  'canonical candidate only initializes editable master registration field');
 assert.equal(parsed.items[0].taxIncludedAmount,2638);
 assert.match(imports.makeChatGptReceiptPrompt('{"row":1,"name":"リンド一ル"}'),
@@ -1000,9 +1000,10 @@ assert.ok(existingHtml.includes('class="ui-search"')&&
  existingHtml.includes('data-search-clear="scan-existing-search"')&&
  !existingHtml.includes('登録先の日用品を変更（任意）'),
  'Receipt product selection searches products without an unrelated item reassignment');
-assert.ok(newProductHtml.includes('scan-product-group-results')&&
+assert.ok(!newProductHtml.includes('scan-product-group-results')&&
  source.includes("control==='date'")&&source.includes("control==='search'"),
- 'Receipt product registration uses shared searchable choices inside one sheet');
+ 'Receipt product registration defers item linking and uses the common form');
+// Keep the receipt amount label and quantity form unchanged.
 // The yen suffix is part of the label, not the number submitted to Sheets.
 assert.ok(listingHtml.includes('<label for="scan-amount-0">小計（円）</label>')&&
  listingHtml.includes('id="scan-amount-0" name="amount-0" type="number"'),
