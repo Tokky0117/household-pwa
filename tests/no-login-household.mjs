@@ -1720,10 +1720,20 @@ assert.ok(kitSavedProduct&&!kitSavedProduct.item_group_id);
 const kitSavedLine=temp.call('bootstrap').data.record_items.find(x=>
  aliasText(temp,x)===kitRaw&&x.product_id===kitSavedProduct.product_id);
 assert.ok(kitSavedLine,'the receipt item keeps its own confirmed product ID');
-await waitFor(()=>temp.call('bootstrap').data.product_aliases.some(x=>
- x.product_id===kitSavedProduct.product_id&&x.chain_id===kitStore.chain_id&&
- x.normalized_alias===kitRaw.toLocaleLowerCase('ja')),
- 'an explicit saved item link trains its printed OCR alias');
+try{
+ await waitFor(()=>temp.call('bootstrap').data.product_aliases.some(x=>
+  x.product_id===kitSavedProduct.product_id&&x.chain_id===kitStore.chain_id&&
+  x.normalized_alias===kitRaw.toLocaleLowerCase('ja')),
+  'an explicit saved item link trains its printed OCR alias');
+}catch(err){
+ console.log('SAVED_ALIAS_DIAGNOSTIC',JSON.stringify({
+  state:kitSession.window.KurashiLive.state(),
+  aliases:temp.call('bootstrap').data.product_aliases.filter(x=>x.chain_id===kitStore.chain_id),
+  line:temp.call('bootstrap').data.record_items.find(x=>x.record_item_id===kitSavedLine.record_item_id),
+  canonical:kitCanonical
+ }));
+ throw err;
+}
 kitSession.window.close();
 
 // Product registration from a receipt is intentionally unlinked. Explicit
