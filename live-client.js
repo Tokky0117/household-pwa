@@ -110,17 +110,6 @@
    records:(doc.base.records||[]).map(r=>({...r})),
    record_items:(doc.base.record_items||[]).map(i=>({...i}))};
   for(const op of doc.queue){
-   if(op.kind==='record-create'||op.kind==='record-update'){
-    if(op.kind==='record-create')
-     ws.recordIdMap={...(ws.recordIdMap||{}),[op.clientId]:result.record.record_id};
-    for(const rest of ws.queue){
-     if(op.kind==='record-create'&&rest.targetId===op.clientId)
-      rest.targetId=result.record.record_id;
-     for(let i=0;i<op.itemIds.length;i++)
-      if(rest.kind==='record-item-link'&&rest.targetId===op.itemIds[i])
-       rest.targetId=result.items[i].record_item_id;
-    }
-   }
    if(op.kind==='store-create'){
     snap.stores.push({chain_id:op.clientId,household_id:snap.household_id,
      canonical_name:op.name,normalized_name:op.name.normalize('NFKC').toLocaleLowerCase('ja'),
@@ -1087,6 +1076,17 @@
       ...ws.base.item_groups.filter(i=>!ids.has(i.item_group_id)),...entities]}),
     sequence_no:Math.max(Number(ws.base.sequence_no),Number(result.sequence_no))};
    ws.queue.shift();
+   if(op.kind==='record-create'||op.kind==='record-update'){
+    if(op.kind==='record-create')
+     ws.recordIdMap={...(ws.recordIdMap||{}),[op.clientId]:result.record.record_id};
+    for(const rest of ws.queue){
+     if(op.kind==='record-create'&&rest.targetId===op.clientId)
+      rest.targetId=result.record.record_id;
+     for(let i=0;i<op.itemIds.length;i++)
+      if(rest.kind==='record-item-link'&&rest.targetId===op.itemIds[i])
+       rest.targetId=result.items[i].record_item_id;
+    }
+   }
    if(op.kind==='create'){
     for(const rest of ws.queue){
      if(rest.targetId===op.clientId)rest.targetId=result.entity.item_group_id;
