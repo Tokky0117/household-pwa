@@ -1660,6 +1660,73 @@ await waitFor(()=>bulkUI.window.KurashiLive.state().queued===0&&
 bulkUI.window.close();
 console.log('stage3: save-first receipt registration, unlink and re-selection OK');
 
+/* v0.91: ChatGPT bulk candidates are references, not instructions to auto-create.
+ * The explicit confirmation journals repeated names once and preserves linked rows. */
+const bulkOriginal=temp.call('product.create',{
+ item_group_id:null,name:'一括既存商品テスト',package_quantity:null,package_unit:null
+},'op-bulk-exist-prod-abcdefghijklmn');
+assert.equal(bulkOriginal.ok,true);
+const bulkExistingId=bulkOriginal.data.entity.product_id;
+const bulkSaved=temp.call('record.create',{
+ record_type:'receipt',chain_id:kitStore.chain_id,record_date:'2026-11-10',
+ items:[
+  {confirmed_name:'一括候補明細 A',quantity:1,amount_tax_included:101,
+   suggested_product_name:'一括新規商品テスト',suggestion_kind:'new'},
+  {confirmed_name:'一括候補明細 B',quantity:1,amount_tax_included:102,
+   suggested_product_name:'一括新規商品テスト',suggestion_kind:'new'},
+  {confirmed_name:'一括候補明細 C',quantity:1,amount_tax_included:103,
+   suggested_product_name:'一括既存商品テスト',suggestion_kind:'existing'},
+  {confirmed_name:'一括除外明細 D',quantity:1,amount_tax_included:104,
+   suggested_product_name:'一括対応先不明',suggestion_kind:'existing'},
+  {confirmed_name:'一括紐付済 E',quantity:1,amount_tax_included:105,
+   product_id:bulkExistingId,
+   suggested_product_name:'一括別新規商品テスト',suggestion_kind:'new'}
+ ]
+},'op-bulk-new-receipt-abcdefghijklmn');
+assert.equal(bulkSaved.ok,true);
+const bulkRecordId=bulkSaved.data.record.record_id;
+let bulkBatchSession=appSession(new IDBFactory());
+await waitFor(()=>bulkBatchSession.window.KurashiLive.state().loaded&&
+ !bulkBatchSession.window.KurashiLive.state().cached,
+ 'ChatGPT bulk saved candidates loaded on new device');
+bulkBatchSession.window.document.querySelector('[data-tab="receipt"]').click();
+const originalPlan=bulkBatchSession.window.KurashiLive.previewBulkReceiptProducts(bulkRecordId);
+assert.equal(originalPlan.length,3,'only unlinked and unambiguous candidates are eligible');
+assert.deepEqual(originalPlan.map(x=>x.action),['new','reuse','existing'],
+ 'repeated new product candidate is reused and exact master is selected');
+const receiptButton=bulkBatchSession.window.document.querySelector(
+ '[data-act="recordDetail"][data-record-id="'+bulkRecordId+'"]');
+assert.ok(receiptButton,'saved bulk receipt is listed on another device');
+receiptButton.click();
+assert.ok(bulkBatchSession.window.document.querySelector('[data-act="recordBulkPreview"]'));
+bulkBatchSession.window.document.querySelector('[data-act="recordBulkPreview"]').click();
+const bulkDialog=bulkBatchSession.window.document.querySelector('.dialog-receipt-bulk');
+assert.ok(bulkDialog&&bulkDialog.textContent.includes('一括新規商品テスト')&&
+ bulkDialog.textContent.includes('一括既存商品テスト'));
+assert.ok(!bulkDialog.textContent.includes('一括対応先不明'),
+ 'ambiguous existing-name guess is not offered for batch registration');
+bulkBatchSession.window.document.querySelector('[data-dialog="confirmRecordBulk"]').click();
+await waitFor(()=>bulkBatchSession.window.KurashiLive.state().queued===0&&
+ temp.call('bootstrap').data.record_items.filter(x=>
+  x.record_id===bulkRecordId&&x.product_id).length===4,
+ 'three matching items all link through one persisted queue with linked original');
+const afterBulk=temp.call('bootstrap').data;
+assert.equal(afterBulk.products.filter(x=>x.name==='一括新規商品テスト').length,1,
+ 'two identical new ChatGPT suggestions create one product master');
+const createdBulkProduct=afterBulk.products.find(x=>x.name==='一括新規商品テスト');
+const bulkLines=afterBulk.record_items.filter(x=>x.record_id===bulkRecordId)
+ .sort((a,b)=>a.line_order-b.line_order);
+assert.equal(bulkLines[0].product_id,createdBulkProduct.product_id);
+assert.equal(bulkLines[1].product_id,createdBulkProduct.product_id);
+assert.equal(bulkLines[2].product_id,bulkExistingId);
+assert.ok(!bulkLines[3].product_id,'ambiguous candidate remains unlinked');
+assert.equal(bulkLines[4].product_id,bulkExistingId,'manual association is never overwritten');
+assert.equal(bulkBatchSession.window.KurashiLive.previewBulkReceiptProducts(bulkRecordId).length,0,
+ 'once processed, bulk registration never offers duplicate operations');
+bulkBatchSession.window.close();
+console.log('stage4: explicit bulk confirmation, dedupe, ambiguous skip and multi-item linking OK');
+
+
 /* COSTCO KitKat: receipt's printed spelling remains historical raw_name,
  * while the canonical master belongs to the household's "チョコ" item. */
 const chocCreated=temp.call('item.create',{name:'チョコ',category_id:0},
