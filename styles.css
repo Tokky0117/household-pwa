@@ -2613,6 +2613,17 @@ html,body{touch-action:pan-x pan-y}
 .scan-review-item .scan-product-setting{
  margin:0 0 var(--ui-field-group-gap);min-width:0
 }
+/* Optional ChatGPT master-match proposal: keep all actions in the review row. */
+.scan-ai-candidate{
+ margin:0 0 var(--ui-field-group-gap);padding:9px 0;
+ border-top:1px solid var(--line);min-width:0;overflow-wrap:anywhere
+}
+.scan-ai-candidate-title{font-size:12px;font-weight:650;color:var(--muted);margin:0 0 3px}
+.scan-ai-candidate-name{font-size:14px;font-weight:600;line-height:1.5;margin:0}
+.scan-ai-candidate-note{font-size:12px;color:var(--muted);line-height:1.5;margin:4px 0}
+.scan-ai-candidate-actions{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0 0}
+.scan-ai-candidate-actions button{min-height:44px;min-width:0;max-width:100%;white-space:normal;text-align:center}
+
 .scan-setting-source{display:flex;flex-direction:column;gap:3px;margin:0 0 10px;overflow-wrap:anywhere}
 .scan-setting-source span{font-size:12px;color:var(--muted)}
 .scan-setting-source strong{font-size:14px}
