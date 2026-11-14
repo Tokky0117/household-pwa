@@ -3450,3 +3450,47 @@ await waitFor(()=>recoveredClient.window.KurashiLive.state().queued===0&&
 assert.equal(recoveredClient.window.KurashiLive.state().blocked,false);
 recoveredClient.window.close();
 console.log('v0.89.6: live alias-link mapping and durable legacy blocked queue repair OK');
+
+/* Stage 1: ChatGPT product suggestions survive a receipt save without
+ * linking products, and a single line link is replay-safe and versioned. */
+const suggestionFixture=fixture(api);
+const suggestionChain=suggestionFixture.call('store.create',{name:'候補テスト店舗'},
+ 'op-suggestion-store-abcdef12345').data.entity.chain_id;
+const suggestionProduct=suggestionFixture.call('product.create',{
+ item_group_id:null,name:'登録候補の正式商品名',package_quantity:null,package_unit:null
+},'op-suggestion-product-abcdef12345').data.entity.product_id;
+const suggestionReceipt=suggestionFixture.call('record.create',{
+ record_type:'receipt',chain_id:suggestionChain,record_date:'2026-11-14',
+ items:[{raw_name:'レシート印字名',product_id:null,quantity:2,amount_tax_included:340,
+  suggested_product_name:'登録候補の正式商品名',suggestion_kind:'new'}]
+},'op-suggestion-record-abcdef12345');
+assert.equal(suggestionReceipt.ok,true,'receipt with ChatGPT product suggestion is saved');
+const suggestionLine=suggestionReceipt.data.items[0];
+assert.equal(suggestionLine.product_id,'','suggestion never auto-links the purchase');
+assert.equal(suggestionLine.suggested_product_name,'登録候補の正式商品名');
+assert.equal(suggestionLine.suggestion_kind,'new');
+const suggestionLink={record_item_id:suggestionLine.record_item_id,
+ product_id:suggestionProduct,version:1};
+const linked=suggestionFixture.call('record.item.link',suggestionLink,
+ 'op-suggestion-link-abcdef12345');
+assert.equal(linked.ok,true,'single saved receipt line can link to a master product');
+assert.equal(linked.data.entity.version,2,'line version increases');
+assert.equal(linked.data.entity.amount_tax_included,340,'link does not change amount');
+assert.equal(linked.data.entity.suggested_product_name,'登録候補の正式商品名');
+assert.equal(suggestionFixture.call('record.item.link',suggestionLink,
+ 'op-suggestion-link-abcdef12345').data.entity.version,2,
+ 'same operation ID does not link twice');
+assert.equal(suggestionFixture.call('record.item.link',{
+ ...suggestionLink,product_id:null
+},'op-suggestion-stale-abcdef12345').error.code,'VERSION_CONFLICT',
+ 'concurrent stale line link is rejected');
+const unlink=suggestionFixture.call('record.item.link',{
+ record_item_id:suggestionLine.record_item_id,product_id:null,version:2
+},'op-suggestion-unlink-abcdef12345');
+assert.equal(unlink.ok,true,'saved line can be unlinked');
+assert.equal(unlink.data.entity.product_id,'');
+assert.equal(unlink.data.entity.price_eligible,false);
+assert.equal(suggestionFixture.call('bootstrap').data.record_items.find(x=>
+ x.record_item_id===suggestionLine.record_item_id).suggestion_kind,'new',
+ 'suggestion metadata survives link and unlink');
+console.log('stage1: persisted ChatGPT suggestions, versioned item link, replay and unlink OK');
