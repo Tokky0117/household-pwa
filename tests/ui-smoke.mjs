@@ -533,7 +533,8 @@ assert.ok(source.includes('function detailHomeView(')&&
  !source.includes('function receiptAllView('),
  'Page-only view functions describe the shared receipt and shelf detail role');
 // Saved OCR names are dereferenced via product_aliases, never record_items.raw_name.
-ui.catalogue().productAliases.push({aliasId:'test-ocr-name',ocrName:'OCR原文'});
+const originalPreviewAliases=ui.catalogue().productAliases;
+ui.catalogue().productAliases=[...(originalPreviewAliases||[]),{aliasId:'test-ocr-name',ocrName:'OCR原文'}];
 assert.equal(ui.detailLineName({product_id:'p-milk-1',confirmed_name:'確定した別名',alias_id:'test-ocr-name'}),
  'おいしい牛乳','Linked product title takes precedence');
 assert.equal(ui.detailLineName({product_id:null,confirmed_name:'確認した商品名',alias_id:'test-ocr-name'}),
@@ -544,7 +545,7 @@ assert.equal(ui.detailLineName({product_id:null,suggested_product_name:'未確�
  '明細名なし','An undecided candidate is never silently promoted to a saved title');
 assert.equal(ui.detailLineName({product_id:'p-milk-2',alias_id:''}),
  '北海道牛乳','A linked item without a printed name still shows its master name');
-ui.catalogue().productAliases.pop();
+ui.catalogue().productAliases=originalPreviewAliases;
 ui.setRecordDetailId(ui.demoRecords.find(r=>r.record_type==='receipt').record_id);
 const savedReceiptDetail=ui.recordDetailView();
 assert.ok(savedReceiptDetail.includes('class="detail-record-info"')&&
