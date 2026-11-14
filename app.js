@@ -393,6 +393,8 @@ function changeRecordProductMode(mode){
  app.insertAdjacentHTML('beforeend',recordProductView());syncSheetScrollLock();
 }
 function learnSavedReceiptAlias(line,productId){
+ const resolvedItemId=window.KurashiLive?.resolveRecordItemId?.(line?.record_item_id)||line?.record_item_id;
+ line=allPreviewItems().find(x=>x.record_item_id===resolvedItemId&&!x.deleted_at)||line;
  // Saved OCR names live in product_aliases; record_items.raw_name is
  // deliberately blank for new records. Never learn manual/photo guesses.
  const ocrName=String(line?.raw_name||
