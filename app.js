@@ -392,12 +392,20 @@ function changeRecordProductMode(mode){
  app.querySelector('.record-product-overlay')?.remove();
  app.insertAdjacentHTML('beforeend',recordProductView());syncSheetScrollLock();
 }
+function learnSavedReceiptAlias(line,productId){
+ if(!line?.raw_name||!productId)return;
+ const record=allPreviewRecords().find(r=>r.record_id===line.record_id&&!r.deleted_at);
+ if(!record?.chain_id)return;
+ void window.KurashiLive.learnAliases({
+  chain_id:record.chain_id,items:[{raw_name:line.raw_name,product_id:productId}]
+ }).catch(err=>console.warn('確認した商品のOCR名を記録できませんでした',err));
+}
 function linkSavedRecordProduct(productId){
  const line=recordProductLine();
  if(!line||recordProductSaving)return;
  recordProductSaving=true;
  window.KurashiLive.linkRecordItem(line.record_item_id,productId||null).then(()=>{
-  closeRecordProductPicker();render();
+  learnSavedReceiptAlias(line,productId);closeRecordProductPicker();render();
  }).catch(err=>{
   recordProductSaving=false;
   inlineActionNotice(document.querySelector('.record-product-overlay .sheet-body'),
@@ -2352,12 +2360,14 @@ app.addEventListener('submit',e=>{e.preventDefault();const form=e.target;const d
   recordProductSaving=true;
   const button=form.querySelector('[type="submit"]');
   if(button)button.disabled=true;
+  let createdProductId=null;
   window.KurashiLive.save('product.create',{
    item_group_id:null,name,package_quantity:null,package_unit:null
   }).then(product=>{
    if(!product?.product_id)throw Error('商品を登録できませんでした');
-   return window.KurashiLive.linkRecordItem(line.record_item_id,product.product_id);
-  }).then(()=>{closeRecordProductPicker();render()}).catch(err=>{
+   createdProductId=product.product_id;
+   return window.KurashiLive.linkRecordItem(line.record_item_id,createdProductId);
+  }).then(()=>{learnSavedReceiptAlias(line,createdProductId);closeRecordProductPicker();render()}).catch(err=>{
    recordProductSaving=false;
    if(button?.isConnected)button.disabled=false;
    if(form.isConnected)fieldNotice(form,err.message||'登録できませんでした','record-product-name');
