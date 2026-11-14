@@ -1641,8 +1641,10 @@ assert.ok(bulkUI.window.document.querySelector('.scan-existing-picker'),
 bulkUI.window.document.querySelector('[data-act="scanExistingToNew"]').click();
 const individualForm=bulkUI.window.document.querySelector('#scanProductForm');
 assert.ok(individualForm,'unmatched item opens individual master creation');
-const firstGroup=temp.call('bootstrap').data.item_groups[0].item_group_id;
-individualForm.querySelector('[name="group"]').value=firstGroup;
+assert.equal(individualForm.querySelector('[name="group"]'),null,
+ 'receipt product registration no longer asks for a household item');
+assert.equal(individualForm.querySelector('[name="quantity"]'),null,
+ 'receipt product registration defers package capacity');
 individualForm.dispatchEvent(new bulkUI.window.Event('submit',{bubbles:true,cancelable:true}));
 await waitFor(()=>!!bulkUI.window.document.querySelector('#scanConfirmForm'),
  'individual registration returns to receipt review');
@@ -1686,37 +1688,22 @@ kitSession.window.document.querySelector('[data-act="scanPickExisting"]').click(
 kitSession.window.document.querySelector('[data-act="scanExistingToNew"]').click();
 const kitForm=kitSession.window.document.getElementById('scanProductForm');
 assert.ok(kitForm,'receipt shows explicit new master registration form');
-assert.equal(kitForm.querySelector('[name="group"]').value,'',
- 'no arbitrary item-group auto-selection');
+assert.equal(kitForm.querySelector('[name="group"]'),null,
+ 'receipt product registration does not select an item group');
 assert.equal(kitForm.querySelector('[name="name"]').value,kitRaw,
- 'printed raw name only pre-fills editable canonical name');
+ 'printed OCR name pre-fills editable canonical name');
 kitForm.querySelector('[name="name"]').value=kitCanonical;
-assert.ok([...kitForm.querySelectorAll('#scan-product-group-results [data-ui-choice]')]
- .some(o=>o.dataset.uiChoice===chocId),
- 'newly seeded chocolate item exists among the searchable household sub-item options');
-const kitGroupSearch=kitForm.querySelector('#scan-group-search');
-kitGroupSearch.value='チョコ';
-kitGroupSearch.dispatchEvent(new kitSession.window.Event('input',{bubbles:true}));
-assert.ok(kitForm.querySelector('#scan-product-group-results [data-ui-choice="'+chocId+'"]'),
- 'searching the item name keeps the expected item selectable');
-kitForm.querySelector('#scan-product-group-results [data-ui-choice="'+chocId+'"]').click();
-assert.equal(kitForm.querySelector('[name="group"]').value,chocId,
- 'selected item group is present before creating canonical product');
-assert.equal(kitForm.querySelector('#scan-group-current-name').textContent,'チョコ',
- 'the group selection is reflected in the visible current choice');
-kitForm.querySelector('#scan-product-group-results [data-ui-choice=""]').click();
-assert.equal(kitForm.querySelector('[name="group"]').value,'',
- 'unlinked product remains available even while the item search is filtered');
-kitForm.querySelector('#scan-product-group-results [data-ui-choice="'+chocId+'"]').click();
-assert.equal(kitForm.querySelector('[name="group"]').value,chocId,
- 'selecting the same item again after clearing linkage restores the exact ID');
+assert.equal(kitForm.querySelector('#scan-product-group-results'),null,
+ 'item-group selection is deferred to product-master management');
+assert.equal(kitForm.querySelector('[name="quantity"]'),null,
+ 'package quantity is deferred to product-master management');
 kitForm.dispatchEvent(new kitSession.window.Event('submit',{bubbles:true,cancelable:true}));
 await waitFor(()=>!!kitSession.window.document.getElementById('scanConfirmForm'),
  'new product returns directly to the same receipt');
 try{
  await waitFor(()=>temp.call('bootstrap').data.products.some(x=>
- x.name===kitCanonical&&x.item_group_id===chocId),
- 'canonical KitKat master saved under existing chocolate item');
+ x.name===kitCanonical&&!x.item_group_id),
+ 'canonical master is unlinked when created during receipt review');
 }catch(err){
  console.log('DEBUG KitKat state',JSON.stringify(kitSession.window.KurashiLive.state()));
  console.log('DEBUG KitKat sheet',JSON.stringify(temp.call('bootstrap').data.products.slice(-5)));
@@ -1967,8 +1954,8 @@ standaloneSession.window.document.querySelector('[data-act="scanPickExisting"]')
 standaloneSession.window.document.querySelector('[data-act="scanExistingToNew"]').click();
 const standaloneProductForm=standaloneSession.window.document.getElementById('scanProductForm');
 assert.ok(standaloneProductForm,'new product form is open');
-assert.equal(standaloneProductForm.querySelector('[name="group"]').value,'',
- 'unlinked product is the default');
+assert.equal(standaloneProductForm.querySelector('[name="group"]'),null,
+ 'receipt product registration has no item-group selector');
 standaloneProductForm.querySelector('[name="name"]').value=standaloneName;
 // No selection of an item group. This used to be rejected in both client and GAS.
 standaloneProductForm.dispatchEvent(new standaloneSession.window.Event(
