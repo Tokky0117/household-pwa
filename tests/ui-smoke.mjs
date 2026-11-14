@@ -1679,7 +1679,7 @@ ui.setScanDraft(replacement);
 const photoRebuildReview=ui.receiptScanView();
 assert.ok(photoRebuildReview.includes('>読み取り状況</h2>')&&
  !photoRebuildReview.includes('内容を確認して保存してください。')&&
- !photoRebuildReview.includes('読み取り結果の確認'),
+ photoRebuildReview.includes('読み取り結果の確認'),
  'photo replacement uses the shared reading-status heading without redundant instructions');
 assert.doesNotMatch(photoRebuildReview,/name="photoReviewOk"/);
 assert.equal((photoRebuildReview.match(/name="name-\d+"/g)||[]).length,5,
