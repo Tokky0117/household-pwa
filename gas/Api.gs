@@ -1080,8 +1080,7 @@ function kurashiMigrateLegacyAliasRows_(book,hid){
 /* Keep legacy category_id optional for queued clients; reject unknown fields.
  * Suggestions are metadata only, never a confirmed product relationship. */
 function kurashiRecordLineFields_(line) {
- if(!line||typeof line!=='object'||Array.isArray(line)||
-    typeof line!=='object)kurashiFail_('BAD_REQUEST','明細の形式が不正です');
+ if(!line||typeof line!=='object'||Array.isArray(line))kurashiFail_('BAD_REQUEST','明細の形式が不正です');
  const allowed=new Set(['raw_name','confirmed_name','inferred_name','product_id','quantity',
   'amount_tax_included','category_id','suggested_product_name','suggestion_kind']);
  if(Object.keys(line).some(k=>!allowed.has(k))||
