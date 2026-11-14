@@ -1,3 +1,61 @@
+# くらしストック｜現行データモデル（2026-11-14 試作ブランチ）
+
+> **この冒頭が現行のコード契約です。以下の旧バージョン別設計記録は履歴であり、現在の列・テーブル定義を示すものではありません。** 正式な列順は [gas/Setup.gs](./gas/Setup.gs) の `KURASHI_NEW_SCHEMA` を基準とします。本番版 `main` は変更しません。
+
+## テーブル構成：11テーブル
+
+| テーブル | 主な役割 |
+| --- | --- |
+| `households`, `users` | 家庭識別、認証（現在は一時ログイン停止中）。現在のIDを削除しない |
+| `categories` | 日用品の固定カテゴリ |
+| `stores` | 店舗チェーンと別表記 |
+| `item_groups` | 日用品リスト・サブ情報・在庫・順序 |
+| `products` | 登録商品と日用品への任意紐付け・内容量 |
+| `product_aliases` | OCR原文 `ocr_name`、検索正規化 `normalized_alias`、店舗、商品参照 |
+| `records` | レシート・値札の共通ヘッダー |
+| `record_items` | レシート・値札の購入／販売明細 |
+| `change_log` | 端末間同期の変更番号 |
+| `processed_operations` | 操作IDの冪等性、途中停止からの復旧 |
+
+`receipt_rules` は廃止。以下の削除列は `record_items` には存在しません：`raw_name`, `inferred_name`, `category_id`, `price_eligible`。 `records.raw_store_name` も廃止。
+
+**records の保存列（順序固定）：**
+
+```text
+record_id, household_id, record_type, chain_id, branch_name, record_date, created_at, updated_at, version, deleted_at
+```
+
+**record_items の保存列（順序固定）：**
+
+```text
+record_item_id, record_id, line_order, product_id, quantity, amount_tax_included, created_at, updated_at, version, deleted_at, alias_id, confirmed_name, suggested_product_name, suggestion_kind
+```
+
+## 明細の名前と商品リンク
+
+- `product_aliases.ocr_name`：印字／OCRの原文。読み取り名を推測で置き換えない。明細側は `record_items.alias_id` で参照する。
+- `record_items.confirmed_name`：OCR原文を持たない写真再解析・手入力の明細名。手入力では空欄も許可する。
+- `record_items.suggested_product_name`：生成AIの提案を保存する**唯一の商品名候補列**。既存の `inferred_name` と併存しない。
+- `record_items.suggestion_kind`：`existing` / `new` / `''`（未判定）。未判定は一括商品登録の対象にしない。
+- `record_items.product_id`：その購入明細に紐付けられた登録商品。別名辞書の `product_aliases.product_id` を変更しても履歴の確定商品IDは書き換えない。
+- 商品名候補だけで商品マスタを自動作成・自動紐付けしない。OCRの読み取り補助 `nameCandidate` は解析・下書き段階の情報であり、GASに `inferred_name` を送信しない。
+
+## API入力と保存列の区別
+
+`record.create` / `record.update` の明細入力には、**OCR辞書を作るため** `raw_name` を残す。入力キーは `raw_name`, `product_id`, `quantity`, `amount_tax_included`、任意の `confirmed_name`, `suggested_product_name`, `suggestion_kind`。同時にOCR原文と写真確認名を混ぜず、OCR原文から別名行 `product_aliases` を作る。保存済み明細に `raw_name` 列は作らない。
+
+税込金額 `amount_tax_included` は明細全数量の合計。比較価格は `amount_tax_included / quantity` とし、`product_id` のある有効な明細に限って比較する。別表の価格対象フラグは保存しない。
+
+IndexedDBの操作キューは未送信API入力の `raw_name` を保持する。一方、端末内のレシート明細投影は `alias_id` でOCR原文を参照する。操作ID、`version`、`deleted_at` とその他マスタ列は同期・競合管理上維持する。
+
+## 反映状態と注意
+
+**上記は試作GitHubコード上の契約です。Google Sheetsの実列変更と試作GASの公開更新は別途必要です。** 接続先確認と安全な切替手順は [RECEIPT_SCHEMA_MIGRATION.md](./RECEIPT_SCHEMA_MIGRATION.md) を参照してください。作業中は試作GASの自動デプロイを停止し、手動実行のみにしています。本番・既存の非レシート登録データを破棄しません。
+
+---
+
+## 以前の設計・実装経緯（以下は旧仕様を含むアーカイブ）
+
 # くらしストック｜データモデル v1.8（正本契約・旧接続前資料）
 
 ## 現行データモデル：v0.70.0（2026-11-04／推測名・税込明細金額の補完）
