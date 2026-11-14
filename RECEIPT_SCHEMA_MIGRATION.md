@@ -18,6 +18,22 @@
 4. 念のため対象試作シートをコピーし、日用品・商品・店舗・別名・同期履歴を含む全行を退避してから、列削除を実行する。退避先を本番接続に設定しない。
 5. 切替中の書込を止める。試作GASデプロイとSheets列変更の間に保存・同期のリクエストを流さない。
 
+## 推奨：確認付きスクリプトによる列削除（1回のみ）
+
+[試作Sheets切替スクリプト](./scripts/trial-sheet-schema-cutover.gs) を利用する。スクリプトは **試作Google Sheetsの「拡張機能 → Apps Script」から開いた、対象シートに紐づくスクリプト** に貼り付けて実行する（公開GAS `Api.gs` / `Setup.gs` へ追加しない）。本番シートのApps Scriptでは実行しない。
+
+1. 試作GAS側のスクリプトプロパティ `SPREADSHEET_ID` と、開いた試作SheetsのURL内のIDが一致することを所有者が確認する。これらのIDをチャットやGitHubへ公開しない。
+2. すべての試作端末で未送信キュー **0件** を確認し、試作アプリの使用を停止する。切替中に旧GASへ保存・同期しない。
+3. スクリプトをコピーし、`KURASHI_CUTOVER_TRIAL_SPREADSHEET_ID` に**検証済み試作Sheets ID**を設定する。`KURASHI_CUTOVER_APPROVAL` は `CHECK_ONLY` のまま保存する。
+4. `kurashiTrialSchemaPreflight` を実行し、ログが `READY_AFTER_USER_CHECK`（未変更）または `ALREADY_COMPLETE`（変更済み）となるか確認する。対象不一致・未完了GAS操作・不明なヘッダー・データのある`receipt_rules`はエラーで停止する。
+5. `READY_AFTER_USER_CHECK` の場合のみ `KURASHI_CUTOVER_APPROVAL` を `APPLY_TRIAL_SCHEMA` に変更し、`kurashiApplyTrialReceiptSchemaCutover` を実行する。**まず同じ試作ブックの全シートをDriveにバックアップ**し、対象の5列と空の `receipt_rules` シートだけを削除する。正常結果は `SCHEMA_UPDATED_11_TABLES`。
+6. 再度 `kurashiTrialSchemaPreflight` を実行して `ALREADY_COMPLETE` を確認する。保存対象の9テーブルの列見出しと行数が維持されていることも確認する。
+7. **その後はじめて**試作GASの手動Actionsデプロイを実行する。途中で失敗したら旧GASのまま試作アプリを再開せず、バックアップを確認する。
+
+このスクリプトは保存済みレシートの**データ移行をしない**。既存のデータ行は列位置の変換でそのまま保持する。これは将来のAPIや移行互換機能として常設しない、試作シート用の一度限りの補助コードである。モックによる安全確認は [trial-sheet-schema-cutover.mjs](./tests/trial-sheet-schema-cutover.mjs) で自動テストする。
+
+## 手作業で削除する場合の参考（推奨は上記スクリプト）
+
 ## 試作Sheets変更内容
 
 以下の列は、実際にSheets側で**列ごと削除**する（セルの値だけ消さない）。すべてレシート関連の列である。
