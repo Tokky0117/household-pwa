@@ -333,7 +333,8 @@ function detailLineName(line){
 }
 // The same product picker serves every saved receipt line, regardless of ChatGPT.
 function recordProductLine(){
- return allPreviewItems().find(x=>x.record_item_id===recordProductItemId&&!x.deleted_at &&
+ const resolved=window.KurashiLive?.resolveRecordItemId?.(recordProductItemId)||recordProductItemId;
+ return allPreviewItems().find(x=>x.record_item_id===resolved&&!x.deleted_at &&
   allPreviewRecords().some(r=>r.record_id===x.record_id&&r.record_type==='receipt'&&!r.deleted_at))||null;
 }
 function recordProductChoices(){
