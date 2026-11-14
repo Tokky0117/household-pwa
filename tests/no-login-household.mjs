@@ -1681,7 +1681,7 @@ const bulkSaved=temp.call('record.create',{
   {confirmed_name:'一括紐付済 E',quantity:1,amount_tax_included:105,
    product_id:bulkExistingId,
    suggested_product_name:'一括別新規商品テスト',suggestion_kind:'new'}
- ]
+ ].map(line=>({raw_name:'',product_id:null,...line}))
 },'op-bulk-new-receipt-abcdefghijklmn');
 assert.equal(bulkSaved.ok,true);
 const bulkRecordId=bulkSaved.data.record.record_id;
