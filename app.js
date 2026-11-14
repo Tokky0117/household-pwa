@@ -1,4 +1,4 @@
-const APP_VERSION='0.90.0';
+const APP_VERSION='0.91.0';
 const CATS=['食品・飲料','キッチン','洗面・風呂','洗濯・掃除','その他','調味料'];
 const CAT_ORDER=[0,5,1,2,3,4];
 const liveMode=!!window.KurashiLive; // Data source only; original Preview v46 UI components remain.
@@ -183,7 +183,7 @@ let scanRuntime=null,scanDraftAvailable=false,scanDraftKind='receipt',scanDraftW
 let scanExistingQuery='',scanGroupQuery='',scanProductGroupId='',recordDetailOrigin='list';
 const scanAiProductSavingRows=new Set();
 let storePickerTarget=null,storePickerQuery='',storePickerNewMode=false;
-let recordProductItemId=null,recordProductMode='select',recordProductQuery='',recordProductSaving=false;
+let recordProductItemId=null,recordProductMode='select',recordProductQuery='',recordProductSaving=false,recordBulkSaving=false;
 function saveScanDraft(){
  if(!liveMode||!window.KurashiLive?.saveReceiptDraft)return;
  const snapshot=scanDraft?JSON.parse(JSON.stringify(scanDraft)):null;
@@ -425,6 +425,8 @@ function recordDetailView(){
  const detail=allPreviewItems().filter(x=>x.record_id===recordDetailId&&!x.deleted_at)
   .sort((a,b)=>Number(a.line_order)-Number(b.line_order));
  const total=detail.reduce((sum,x)=>sum+Number(x.amount_tax_included||0),0);
+ const bulkCandidates=!isShelf&&liveMode?
+  window.KurashiLive.previewBulkReceiptProducts?.(record.record_id)||[]:[];
  return `${head(isShelf?'値札詳細':'レシート詳細','くらしストック',true)}
  <main class="preview-record-page detail-record-page">
   <section class="detail-record-info" aria-label="${isShelf?'値札情報':'購入情報'}">
@@ -434,6 +436,7 @@ function recordDetailView(){
     ${UI.formField({id:'detail-record-date',control:'static',label:isShelf?'値札確認日':'購入日',value:String(record.record_date||'').replaceAll('-','/')})}
    </div>
   </section>
+  ${bulkCandidates.length?'<div class="record-detail-bulk">'+UI.button({label:'ChatGPT候補をまとめて登録（'+bulkCandidates.length+'件）',variant:'secondary',action:'recordBulkPreview',disabled:recordBulkSaving})+'</div>':''}
   <section class="detail-record-lines" aria-label="${isShelf?'価格情報':'購入明細'}">
    ${UI.sectionHeading({title:isShelf?'価格情報':'購入明細',subtitle:detail.length+'件'})}
    ${detail.map(line=>`<div class="panel detail-record-line">
@@ -1820,7 +1823,7 @@ function settingsView(){
 function dialogView(){
  if(!dialog)return '';
  const lines=String(dialog.message||'').replace(/。(?!$)/g,'。\n').split(/\n+/).filter(Boolean);
- return `<div class="dialog-back"><div role="dialog" aria-modal="true" aria-labelledby="dialogTitle" class="dialog${dialog.pending?.pendingOpsSignature?' dialog-pending-ops':''}"><h2 id="dialogTitle">${esc(dialog.title)}</h2>${lines.length?`<p class="dialog-description">${lines.map(line=>`<span class="dialog-line">${esc(line)}</span>`).join('')}</p>`:''}<div class="dialog-actions">${dialog.buttons.map(b=>`<button type="button" class="dialog-action" data-dialog="${esc(b.id)}">${esc(b.label)}</button>`).join('')}</div></div></div>`;
+ return `<div class="dialog-back"><div role="dialog" aria-modal="true" aria-labelledby="dialogTitle" class="dialog${dialog.pending?.pendingOpsSignature?' dialog-pending-ops':''}${dialog.pending?.bulkReceiptId?' dialog-receipt-bulk':''}"><h2 id="dialogTitle">${esc(dialog.title)}</h2>${lines.length?`<p class="dialog-description">${lines.map(line=>`<span class="dialog-line">${esc(line)}</span>`).join('')}</p>`:''}<div class="dialog-actions">${dialog.buttons.map(b=>`<button type="button" class="dialog-action" data-dialog="${esc(b.id)}">${esc(b.label)}</button>`).join('')}</div></div></div>`;
 }
 // One DOM routing table: screens define content, shell owns navigation and overlays.
 function mainTabView(){
@@ -2624,7 +2627,19 @@ if(action==='confirmScanAiProduct'&&p&&Number.isInteger(p.row)){
   createScanAiProduct(row,p.name);
  renderDialogOnly();return;
 }
-if(action==='confirmAliasLink'&&p&&Object.prototype.hasOwnProperty.call(p,'productId')){
+if(action==='confirmRecordBulk'&&p?.bulkReceiptId&&Array.isArray(p.itemIds)){
+  renderDialogOnly();
+  if(recordBulkSaving)return;
+  recordBulkSaving=true;
+  window.KurashiLive.bulkRegisterReceiptProducts(p.bulkReceiptId,p.itemIds)
+   .then(()=>{recordBulkSaving=false;if(page==='recordDetail')render();})
+   .catch(err=>{recordBulkSaving=false;
+    inlineActionNotice(document.querySelector('.detail-record-info'),
+     err.message||'商品候補を登録できませんでした');
+   });
+  return;
+ }
+ if(action==='confirmAliasLink'&&p&&Object.prototype.hasOwnProperty.call(p,'productId')){
  const alias=(catalogue.productAliases||[]).find(x=>x.aliasId===p.aliasId);
  if(!alias||String(alias.aliasId).startsWith('local-')||page!=='aliasManage'||aliasLinkSaving)return;
  if(p.productId&&!catalogue.products.some(x=>x.id===p.productId&&!String(x.id).startsWith('local-')))return;
@@ -2916,6 +2931,19 @@ if(action==='resumeScanDraft'){
 }
 if(action==='scanAddPhotos'){
  if(!scanBusy&&!scanDraft)openReceiptPhotoPicker(document.getElementById('scan-add-picker'));return;
+}
+if(action==='recordBulkPreview'&&page==='recordDetail'&&!recordBulkSaving){
+ const receiptId=window.KurashiLive.resolveRecordId(recordDetailId);
+ const candidates=window.KurashiLive.previewBulkReceiptProducts(receiptId);
+ if(!candidates.length)return;
+ const names=candidates.map((row,i)=>(i+1)+'．'+row.proposed_name+' ／ '+
+  (row.action==='new'?'新しく商品登録':row.action==='reuse'?'同じ新商品に紐付け':'登録済みの商品に紐付け'));
+ dialog={title:'ChatGPTの商品候補を登録しますか？',
+  message:'以下の明細に商品を登録・紐付けます。\n'+names.join('\n')+
+   '\n既に紐付けた明細と曖昧な候補は対象に含めません。',
+  buttons:[{id:'cancel',label:'キャンセル'},{id:'confirmRecordBulk',label:'まとめて登録'}],
+  pending:{bulkReceiptId:receiptId,itemIds:candidates.map(x=>x.record_item_id)}};
+ renderDialogOnly();return;
 }
 if(action==='recordProductOpen'||action==='recordProductNew'){
  openRecordProductPicker(el.dataset.recordItemId,action==='recordProductNew'?'new':'select');return;
