@@ -940,42 +940,33 @@ ui.setScanDraft({source:'ocr',date:'2026-10-14',chainId:'c-a',total:268,
 ui.setScanProductRow(0);
 const newProductHtml=ui.scanProductView();
 assert.ok(newProductHtml.includes('scan-product-name')&&
- newProductHtml.includes('キットカットコイマッチャ10フクロ')&&
- newProductHtml.includes('scan-product-group'),
- 'canonical product name and household-item linking are both on the new-product form');
-assert.match(newProductHtml,/紐付けしない/,'new product permits an unlinked master');
-assert.ok(newProductHtml.includes('id="scan-group-search"')&&newProductHtml.includes('name="group"'),
- 'search and exclusive selection are offered on the full product registration screen');
+ newProductHtml.includes('キットカットコイマッチャ10フクロ'),
+ 'manual receipt product registration retains the captured name');
+assert.ok(!newProductHtml.includes('id="scan-group-search"')&&
+ !newProductHtml.includes('name="group"')&&
+ !newProductHtml.includes('name="package_quantity"')&&
+ !newProductHtml.includes('name="package_unit"'),
+ 'receipt product registration defers household linking and package size');
 assert.ok(newProductHtml.includes('class="manage-main scan-product-page"')&&
- newProductHtml.includes('class="top"')&&
- !newProductHtml.includes('class="sheet-back"')&&
  !newProductHtml.includes('receipt-product-modal'),
- 'new product registration is a full screen instead of a second half modal');
-assert.ok(newProductHtml.includes('紐付ける日用品（任意）')&&
- newProductHtml.includes('紐付けしない'),
- 'optional item selection remains explicit on the full screen');
-assert.ok(!newProductHtml.includes('name="group" required'),
- 'item group selection is optional, not forced');
-const preChoiceItems=ui.getItems();
-ui.setItems([...preChoiceItems,
- {id:'bag-for-veg',name:'袋',subName:'野菜用',category:1,inStock:true,hidden:false,order:81,version:1},
- {id:'bag-for-trash',name:'袋',subName:'生ごみ用',category:1,inStock:true,hidden:false,order:82,version:1}]);
-ui.setScanGroupQuery('袋');
-ui.setScanProductGroupId('bag-for-veg');
-const bagGroupChoices=ui.scanProductGroupChoices();
-assert.ok(bagGroupChoices.includes('袋 ／ 野菜用')&&bagGroupChoices.includes('袋 ／ 生ごみ用'),
- 'same-name items with different sub-information remain separately selectable');
-assert.ok(bagGroupChoices.includes('data-ui-choice="bag-for-veg" aria-pressed="true"')&&
- !bagGroupChoices.includes('data-ui-choice="bag-for-trash" aria-pressed="true"'),
- 'a single exact child item ID is selected rather than the parent group');
-ui.setScanGroupQuery('生ごみ用');
-const filteredBags=ui.scanProductGroupChoices();
-assert.ok(filteredBags.includes('data-ui-choice="bag-for-trash"')&&
- filteredBags.includes('data-ui-choice=""'),
- 'the no-link choice remains reachable during filtered item selection');
-ui.setItems(preChoiceItems);
-ui.setScanGroupQuery('');
-ui.setScanProductGroupId('');
+ 'legacy manual fallback remains available without nested sheets');
+
+// ChatGPT product suggestions do not alter the OCR name or product association.
+// The user can accept them directly within the existing review screen.
+const beforeAiDraft=ui.getScanDraft();
+ui.setScanDraft({source:'ocr',recordType:'receipt',date:'2026-11-14',
+ chainId:null,chainName:'',total:100,printedCount:1,
+ items:[{name:'例カタカナ',ocrRawName:'例カタカナ',ocrRowId:'ai-row-1',
+  quantity:1,amount:100,issues:[],productId:'',manuallyLinked:false,
+  productSuggestion:{existingName:null,newName:'例示商品'}}]});
+const aiReviewHtml=ui.receiptScanView();
+assert.ok(aiReviewHtml.includes('新規商品候補')&&
+ aiReviewHtml.includes('例示商品')&&
+ aiReviewHtml.includes('data-act="scanAiCreateProduct"'),
+ 'AI creates a visible one-tap option on the same receipt screen');
+assert.ok(!ui.getScanDraft().items[0].productId,
+ 'rendering a ChatGPT candidate never auto-links a product');
+ui.setScanDraft(beforeAiDraft);
 const listingHtml=ui.receiptScanView();
 assert.ok(listingHtml.includes('class="ui-picker-value is-unmatched"')&&
  !listingHtml.includes('class="ui-picker-value is-unmatched">商品未照合'),
