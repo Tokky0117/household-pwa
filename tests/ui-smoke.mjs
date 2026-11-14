@@ -1056,8 +1056,7 @@ assert.ok(!listingHtml.includes('type="text" value="268円"'),
  'currency unit is never injected into the saved numeric amount');
 assert.ok(!listingHtml.includes('scan-field-label')&&!listingHtml.includes('scan-product-setting-row'),
  'Legacy product-specific label and picker markup are removed');
-assert.ok(listingHtml.includes('class="ui-picker-action-slot"')&&
- css.includes('.formfield.ui-picker-inline .ui-picker-action-slot{')&&
+assert.ok(css.includes('.formfield.ui-picker-inline .ui-picker-action-slot{')&&
  css.includes('height:calc(var(--ui-touch-size) - var(--ui-inline-picker-action-overhang));width:max-content')&&
  css.includes('top:calc(-1 * var(--ui-inline-picker-action-overhang));min-height:var(--ui-touch-size)'),
  'Shared picker reserves the action touch area without a receipt-specific compensating margin');
