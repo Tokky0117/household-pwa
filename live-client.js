@@ -777,6 +777,9 @@
  // confirmation. This pure preflight is reused by the confirmation UI and queue.
  const receiptProductKey=name=>String(name||'').normalize('NFKC').trim()
   .replace(/\s+/g,' ').toLocaleLowerCase('ja');
+ const validReceiptProductName=name=>typeof name==='string'&&name.trim().length>0&&
+  name.trim().length<=80&&!/^[=+@\-]/.test(name.trim())&&
+  !/[\x00-\x1f\x7f<>]/.test(name);
  const receiptLooseKey=name=>receiptProductKey(name).replace(/[\s\p{P}\p{S}]/gu,'');
  function planBulkReceipt(doc,receiptId){
   const snap=project(doc);
@@ -789,7 +792,7 @@
      .sort((a,b)=>Number(a.line_order)-Number(b.line_order))){
    if(line.product_id||!['existing','new'].includes(line.suggestion_kind))continue;
    const name=String(line.suggested_product_name||'').trim(),key=receiptProductKey(name);
-   if(!name||name.length>80||/^[=+@\-]/.test(name)||/[\x00-\x1f\x7f<>]/.test(name))continue;
+   if(!validReceiptProductName(name))continue;
    const exact=products.filter(p=>receiptProductKey(p.name)===key);
    if(exact.length>1||line.suggestion_kind==='existing'&&exact.length!==1)continue;
    // Similar but non-identical punctuation must be manually resolved, not created.
@@ -818,6 +821,12 @@
    if(!line||!snap.records.some(r=>r.record_id===line.record_id&&
       r.record_type==='receipt'&&!r.deleted_at))
     throw Error('保存済みレシートの明細が見つかりません');
+   if(!validReceiptProductName(name))throw Error('商品名を確認してください');
+   const key=receiptProductKey(name);
+   const existing=snap.products.filter(p=>!p.deleted_at);
+   if(existing.some(p=>receiptProductKey(p.name)===key||
+      receiptLooseKey(p.name)===receiptLooseKey(name)))
+    throw Error('同じ名前または類似した商品があります。登録済みの商品から選択してください');
    const create=makeProductOperation('product.create',{
     item_group_id:null,name,package_quantity:null,package_unit:null
    },doc);
@@ -1681,7 +1690,7 @@
   }).catch(e=>{error=e.message||'端末内の保存領域を開けません';notify()});
  };
  window.KurashiLive={state,load,save,saveRecord,updateRecord,deleteRecord,linkRecordItem,registerReceiptItemProduct,
-  previewBulkReceiptProducts,bulkRegisterReceiptProducts,
+  previewBulkReceiptProducts,bulkRegisterReceiptProducts,receiptProductKey,
   resolveRecordId:id=>workspace.recordIdMap?.[id]||id,
   resolveRecordItemId:id=>workspace.recordItemIdMap?.[id]||id,blockedReceiptChange,discardBlockedReceipt,blockedProductChange,resolveBlockedProduct,refreshBlockedProducts,pendingOperationReview,beginPendingOperationReview,endPendingOperationReview,discardPendingOperations,confirmedProductId,learnAliases,linkAlias,learnStoreAlias,
   saveReceiptDraft,loadReceiptDraft,saveOcrCorrections,loadOcrCorrections,toggleStock,reorderItems,reorderProducts,retry,logout,renderLogin,
