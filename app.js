@@ -2339,6 +2339,32 @@ app.addEventListener('submit',e=>{e.preventDefault();const form=e.target;const d
   });
   return;
  }
+ if(form.id==='recordProductCreateForm'){
+  const line=recordProductLine(),name=String(d.get('name')||'').trim();
+  if(!line||recordProductMode!=='new'||recordProductSaving)return;
+  if(!name||name.length>80||/^[=+@\-]/.test(name)||/[\x00-\x1f\x7f<>]/.test(name)){
+   fieldNotice(form,'商品名を確認してください','record-product-name');return;
+  }
+  // A same-named master must be selected rather than duplicated in a receipt.
+  if(catalogue.products.some(p=>norm(p.name)===norm(name))){
+   fieldNotice(form,'同じ商品名があります。登録済みの商品から選択してください','record-product-name');return;
+  }
+  recordProductSaving=true;
+  const button=form.querySelector('[type="submit"]');
+  if(button)button.disabled=true;
+  window.KurashiLive.save('product.create',{
+   item_group_id:null,name,package_quantity:null,package_unit:null
+  }).then(product=>{
+   if(!product?.product_id)throw Error('商品を登録できませんでした');
+   return window.KurashiLive.linkRecordItem(line.record_item_id,product.product_id);
+  }).then(()=>{closeRecordProductPicker();render()}).catch(err=>{
+   recordProductSaving=false;
+   if(button?.isConnected)button.disabled=false;
+   if(form.isConnected)fieldNotice(form,err.message||'登録できませんでした','record-product-name');
+   else say(err.message||'登録できませんでした');
+  });
+  return;
+ }
  if(form.id==='scanConfirmForm'){
   clearFormSaveFeedback(form);
   if(!liveMode){formSaveFeedback(form,'保存機能を利用できません。接続状態を確認してください。');return;}
