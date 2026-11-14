@@ -39,6 +39,7 @@ jobs:
           node tests/receipt-layout-p1.mjs
           node tests/receipt-prompt-p3.mjs
           node tests/production-build.mjs
+          node tests/trial-sheet-schema-cutover.mjs
 
       - name: Build verified prior PaddleOCR for the main receipt screen
         shell: bash
