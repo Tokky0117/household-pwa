@@ -3360,3 +3360,93 @@ assert.equal(heldPurgeRestart.window.KurashiLive.state().queued,0);
 heldPurgeRestart.window.close();
 console.log('v0.89.2: blocked product, OCR alias and receipt can be discarded together OK');
 
+// v0.89.6 regression: a preexisting alias must be linked to a newly queued
+// product AFTER product.create resolves its optimistic local ID.
+const aliasRecoveryChain=temp.call('bootstrap').data.stores[0].chain_id;
+const pendingLinkAlias=temp.call('alias.upsert',{
+ chain_id:aliasRecoveryChain,raw_alias:'一時商品ID_別名紐付けテスト',
+ product_id:null
+},'op-alias-link-regression-create-aaaaaaaaaa');
+assert.equal(pendingLinkAlias.ok,true);
+const pendingAliasId=pendingLinkAlias.data.entity.alias_id;
+const aliasRecoveryDb=new IDBFactory();
+const aliasRecoverySession=appSession(aliasRecoveryDb);
+await waitFor(()=>aliasRecoverySession.window.KurashiLive.state().loaded,
+ 'alias-link product-create regression bootstraps');
+online=false;
+const optimisticProduct=await aliasRecoverySession.window.KurashiLive.save('product.create',{
+ name:'一時ID別名リンク商品',item_group_id:null,package_quantity:null,package_unit:null
+});
+assert.ok(optimisticProduct.product_id.startsWith('local-'));
+await aliasRecoverySession.window.KurashiLive.linkAlias(pendingAliasId,optimisticProduct.product_id);
+assert.equal(aliasRecoverySession.window.KurashiLive.state().queued,2,
+ 'offline product.create and alias-link both persist');
+aliasRecoverySession.window.close();
+online=true;
+const aliasRecoveryReopen=appSession(aliasRecoveryDb);
+await waitFor(()=>aliasRecoveryReopen.window.KurashiLive.state().queued===0&&
+ temp.call('bootstrap').data.product_aliases.some(x=>
+  x.alias_id===pendingAliasId&&x.product_id&&x.product_id.startsWith('product-')),
+ 'new product ID propagates through alias-link and queue drains');
+const resolvedAliasProduct=temp.call('bootstrap').data.product_aliases.find(x=>
+ x.alias_id===pendingAliasId).product_id;
+assert.equal(temp.call('bootstrap').data.products.find(x=>
+ x.name==='一時ID別名リンク商品').product_id,resolvedAliasProduct,
+ 'alias-link references the exact registered product');
+aliasRecoveryReopen.window.close();
+
+// A pre-fix installation may already have a blocked alias-link and many
+// later unsent operations. Seed the exact durable v1 IndexedDB state and
+// prove a normal restart repairs only the known local ID, preserving order.
+const blockedFixAlias=temp.call('alias.upsert',{
+ chain_id:aliasRecoveryChain,raw_alias:'以前の保留別名リンクテスト',
+ product_id:null
+},'op-alias-link-previous-create-aaaaaaaaaa');
+assert.equal(blockedFixAlias.ok,true);
+const serverProduct=temp.call('product.create',{
+ name:'以前に登録された商品_復旧テスト',
+ item_group_id:null,package_quantity:null,package_unit:null
+},'op-alias-link-previous-product-aaaaaaaaa');
+assert.equal(serverProduct.ok,true);
+const staleId='local-stale-alias-link-previous-123';
+const blockedOperationId='op-alias-link-previous-blocked-12345';
+const followingOperationId='op-alias-link-previous-follow-123456';
+const blockedFixQueue=[
+ {id:blockedOperationId,kind:'alias-link',
+  aliasId:blockedFixAlias.data.entity.alias_id,productId:staleId,
+  version:Number(blockedFixAlias.data.entity.version),retries:0},
+ {id:followingOperationId,kind:'store-alias',
+  chainId:aliasRecoveryChain,alias:'店舗名_保留操作復旧後の追加',
+  retries:0}
+];
+const blockedFixFactory=new IDBFactory();
+const blockedFixDb=await new Promise((resolve,reject)=>{
+ const open=blockedFixFactory.open('kurashi-stock-operations-v1',1);
+ open.onupgradeneeded=()=>open.result.createObjectStore('workspace');
+ open.onsuccess=()=>resolve(open.result);
+ open.onerror=()=>reject(open.error);
+});
+const blockedWorkspace={
+ base:temp.call('bootstrap').data,queue:blockedFixQueue,
+ productIdMap:{[staleId]:serverProduct.data.entity.product_id},
+ blocked:{id:blockedOperationId,reason:'PRODUCT_REFERENCE',
+  productId:staleId,message:'未反映の操作に見つからない商品が含まれています。商品を確認してください。'}
+};
+await new Promise((resolve,reject)=>{
+ const tx=blockedFixDb.transaction('workspace','readwrite');
+ tx.objectStore('workspace').put(blockedWorkspace,'primary');
+ tx.oncomplete=resolve;tx.onerror=()=>reject(tx.error);
+ tx.onabort=()=>reject(tx.error);
+});
+blockedFixDb.close();
+const recoveredClient=appSession(blockedFixFactory);
+await waitFor(()=>recoveredClient.window.KurashiLive.state().queued===0&&
+ temp.call('bootstrap').data.product_aliases.some(x=>
+  x.alias_id===blockedFixAlias.data.entity.alias_id&&
+  x.product_id===serverProduct.data.entity.product_id)&&
+ temp.call('bootstrap').data.stores.some(x=>
+  x.chain_id===aliasRecoveryChain&&String(x.aliases).includes('店舗名_保留操作復旧後の追加')),
+ 'legacy blocked alias-link auto-recovers, then the following operation drains');
+assert.equal(recoveredClient.window.KurashiLive.state().blocked,false);
+recoveredClient.window.close();
+console.log('v0.89.6: live alias-link mapping and durable legacy blocked queue repair OK');
