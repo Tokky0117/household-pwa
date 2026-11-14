@@ -1,4 +1,4 @@
-const APP_VERSION='0.89.6';
+const APP_VERSION='0.89.7';
 const CATS=['食品・飲料','キッチン','洗面・風呂','洗濯・掃除','その他','調味料'];
 const CAT_ORDER=[0,5,1,2,3,4];
 const liveMode=!!window.KurashiLive; // Data source only; original Preview v46 UI components remain.
@@ -192,17 +192,35 @@ function saveScanDraft(){
  scanDraftWrites.catch(err=>console.warn('レシート下書き保存失敗',err));
  return scanDraftWrites;
 }
-// For NEW OCR merchandise only, interpret an isolated dot/degree after
-// voiceable kana as dakuten/handakuten. The converted name is used for review,
-// matching and newly learned aliases. Existing aliases are not migrated.
-function normalizeOcrProductKana(value){
+// New OCR merchandise names only. Normalize malformed glyphs with positional
+// rules (not a product dictionary); never alter the underlying OCR evidence,
+// quantity, price, line geometry, historical aliases or manually entered names.
+function normalizeOcrProductName(value){
  const voiced='かきくけこさしすせそたちつてとはひふへほうカキクケコサシスセソタチツテトハヒフヘホウ';
  const semiVoiced='はひふへほハヒフヘホ';
- return String(value??'').replace(/([^\s])([・°])/gu,(match,kana,mark)=>{
-  if(mark==='・'&&voiced.includes(kana))return (kana+'\u3099').normalize('NFC');
-  if(mark==='°'&&semiVoiced.includes(kana))return (kana+'\u309A').normalize('NFC');
-  return match;
+ let text=String(value??'').replace(/([^\s])([・°゛ﾞ゙゜ﾟ゚])/gu,(original,kana,mark)=>{
+  if(['・','゛','ﾞ','゙'].includes(mark))
+   return voiced.includes(kana)?(kana+'\u3099').normalize('NFC'):original;
+  if(semiVoiced.includes(kana))return (kana+'\u309A').normalize('NFC');
+  // A residual semi-voicing sign after any other kana cannot form a syllable.
+  // Do not strip legitimate degree signs after numbers (e.g. "30°").
+  if(/[\p{Script=Hiragana}\p{Script=Katakana}]/u.test(kana))return kana;
+  return original;
  });
+ // The long-vowel mark is permitted after kana even at the end of a name.
+ // If a long-vowel mark already precedes a hyphen, remove the extra hyphen.
+ text=text.replace(/ー[-－]/gu,'ー')
+  .replace(/([\p{Script=Hiragana}\p{Script=Katakana}])[-－]/gu,'$1ー');
+ // No dictionary/phonological guesses: only the FIRST kana of a kana run.
+ // Kanji and preceding kana (including "ー") never create a new run.
+ text=text.replace(/(^|[^\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}ー])ッ(?=\p{Script=Katakana})/gu,'$1ツ')
+  .replace(/(^|[^\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}ー])っ(?=\p{Script=Hiragana})/gu,'$1つ');
+ // Correct ONLY single ambiguous glyphs flanked by letters or digits.
+ // Mixed alphanumeric boundaries, product codes and prices are not parsed here.
+ return text.replace(/(?<=[A-Za-z])0(?=[A-Za-z])/gu,'O')
+  .replace(/(?<=[A-Za-z])1(?=[A-Za-z])/gu,'I')
+  .replace(/(?<=[0-9])[Oo](?=[0-9])/gu,'0')
+  .replace(/(?<=[0-9])[Ii](?=[0-9])/gu,'1');
 }
 function resetScan({keepDraft=false}={}){
  scanToken++;closeScanViewer();clearScanThumbnails();scanPhotos=[];scanIndex=0;scanBusy=false;scanStatus='';scanAssistMessage='';scanError='';scanReadFailed=false;
@@ -1058,7 +1076,7 @@ async function runReceiptScan(){
    for(const item of out.parsed.items){
     const rowId='ocr-'+id();
     allItems.push(window.KurashiReceiptReview.fromOcrItem({
-     ...item,name:normalizeOcrProductKana(item.name)
+     ...item,name:normalizeOcrProductName(item.name)
     },{
      rowId,taxBasis:out.parsed.taxBasis
     }));
