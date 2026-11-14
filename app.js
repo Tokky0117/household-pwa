@@ -398,7 +398,8 @@ function learnSavedReceiptAlias(line,productId){
  const ocrName=String(line?.raw_name||
   (!line?.confirmed_name&&line?.alias_id?aliasNameFor(line):'')).trim();
  if(!ocrName||!productId)return;
- const record=allPreviewRecords().find(r=>r.record_id===line.record_id&&!r.deleted_at);
+ const resolvedRecordId=window.KurashiLive?.resolveRecordId?.(line.record_id)||line.record_id;
+ const record=allPreviewRecords().find(r=>r.record_id===resolvedRecordId&&!r.deleted_at);
  if(!record?.chain_id)return;
  void window.KurashiLive.learnAliases({
   chain_id:record.chain_id,items:[{raw_name:ocrName,product_id:productId}]
