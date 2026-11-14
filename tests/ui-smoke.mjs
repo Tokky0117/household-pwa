@@ -65,8 +65,8 @@ const kanaExamples=[
  ['き・と・は°','ぎどぱ'],
  ['ヒ・ンク','ビンク'],
  ['か・ぱ°','がぱ°'], // ぱ is already semi-voiced; do not invent new glyphs
- ['サコ・テスト','サコ・テスト'], // コ cannot take dakuten
- ['タグ・','タグ・'], // グ cannot be voiced again
+ ['サコ・テスト','サゴテスト'], // コ is voiceable
+ ['タグ・','タグ・'], // グ is already voiced; do not revoice
  ['ハ°ト・ か・て・','パド がで'],
  ['100° 10・ ア・','100° 10・ ア・']
 ];
