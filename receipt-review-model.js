@@ -119,6 +119,7 @@ function fromOcrItem(item,{rowId,taxBasis}={}){
    const productId=item.productId||findProduct(item.ocrRawName||'',next.chainId);
    const proposedLine=proposed.get(rowId);
    item.nameCandidate=proposedLine.nameCandidate||'';
+   item.productSuggestion=proposedLine.productSuggestion||null;
    if(productId){
     item.productId=productId;item.autoLinked=!item.manuallyLinked;next.matchedCount++;
    }else{
@@ -155,6 +156,7 @@ function fromOcrItem(item,{rowId,taxBasis}={}){
    // OCR-specific unresolved observations into a fresh photo reconstruction.
    items:result.items.map(line=>({
     name:line.name||'',inferredName:line.name||'',inputOrigin:'photo',
+    productSuggestion:line.productSuggestion||null,
     quantity:line.quantity??1,quantityUncertain:line.quantity===null,
     amount:line.amount===null?'':line.amount,
     productId:'',manuallyLinked:false,autoLinked:false,
