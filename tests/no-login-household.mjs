@@ -2550,9 +2550,7 @@ const legacyOriginalItems=legacyRecord.data.items.map((row,i)=>({
 // Restore pre-v64 sheet headers and rows to simulate an existing workbook.
 legacy.db.product_aliases.length=1;
 legacy.db.product_aliases[0].pop();
-legacy.db.record_items[0].pop();
-legacy.db.record_items[0].pop();
-legacy.db.record_items[0].pop(); // pre-v0.64 lacked alias_id; v0.68/v0.70 added confirmed_name and inferred_name
+for(let n=0;n<5;n++)legacy.db.record_items[0].pop(); // pre-v0.64 lacked alias_id and later appended name/candidate columns
 for(let i=1;i<legacy.db.record_items.length;i++){
  const line=legacyOriginalItems[i-1];
  legacy.db.record_items[i][schema.record_items.indexOf('raw_name')]=line.raw_name;
@@ -2569,8 +2567,8 @@ assert.equal(legacy.db.product_aliases[0].at(-1),'ocr_name',
  'existing OCR dictionary gains only the new trailing header');
 const resumedLegacy=legacy.call('bootstrap');
 assert.equal(resumedLegacy.ok,true,'second boot resumes and completes migration');
-assert.equal(legacy.db.record_items[0].at(-1),'inferred_name',
- 'retry appends final inferred name without rebuilding Sheets');
+assert.equal(legacy.db.record_items[0].at(-1),'suggestion_kind',
+ 'retry appends final product suggestion field without rebuilding Sheets');
 const savedLegacy=resumedLegacy.data.record_items.sort((a,b)=>a.line_order-b.line_order);
 assert.equal(savedLegacy.length,2,'all old receipt lines remain');
 savedLegacy.forEach((line,i)=>{
