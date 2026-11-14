@@ -355,17 +355,9 @@ function scanProductView(){
  if(!item)return `${head('新しい商品を登録','レシートの明細',true)}<main class="manage-main scan-product-page"><p>対象の明細が見つかりません。</p></main>`;
  const fields=[
   '<p class="scan-setting-source"><span>読み取り名</span><strong>'+esc(item.inputOrigin==='photo'?item.name:item.ocrRawName||item.name||'読み取り不可')+'</strong></p>',
-  UI.formField({id:'scan-product-name',name:'name',label:'登録商品名',value:item.canonicalName||item.inferredName||item.nameCandidate||item.name,maxlength:80,required:true}),
-  '<div class="formfield scan-product-group-field"><label for="scan-group-search">紐付ける日用品（任意）</label>'+
-    UI.searchField({id:'scan-group-search',label:'日用品を検索',placeholder:'日用品名・サブ情報で検索',value:scanGroupQuery})+
-    '<input type="hidden" name="group" id="scan-product-group" value="'+esc(scanProductGroupId)+'">'+
-    '<div class="scan-group-current">選択中：<strong id="scan-group-current-name">'+
-    esc(itemLabel(items.find(i=>i.id===scanProductGroupId))||'紐付けしない')+'</strong></div>'+
-    '<div id="scan-product-group-results" class="scan-product-group-results">'+scanProductGroupChoices()+'</div></div>',
-  UI.formField({id:'scan-product-quantity',name:'package_quantity',label:'内容量（任意）',type:'number',value:'',extra:'min="0.001" step="any"'}),
-  UI.formField({id:'scan-product-unit',name:'package_unit',label:'単位',control:'select',value:'個',options:UNIT_OPTIONS.map(v=>({label:v,value:v}))})
+  UI.formField({id:'scan-product-name',name:'name',label:'登録商品名',value:item.canonicalName||item.productSuggestion?.newName||item.inferredName||item.nameCandidate||item.name,maxlength:80,required:true})
  ].join('');
- return `${head('新しい商品を登録','レシートの明細',true)}<main class="manage-main scan-product-page">${scanModalPhotoLinks()}<form id="scanProductForm">${fields}<p class="hint">日用品への紐付けは任意です。後から商品マスタで変更できます。</p><div class="formactions">${UI.button({label:'商品を登録',variant:'primary',type:'submit'})}</div></form></main>`;
+ return `${head('新しい商品を登録','レシートの明細',true)}<main class="manage-main scan-product-page">${scanModalPhotoLinks()}<form id="scanProductForm">${fields}<p class="hint">内容量と日用品への紐付けは、後から商品マスタで設定できます。</p><div class="formactions">${UI.button({label:'商品を登録',variant:'primary',type:'submit'})}</div></form></main>`;
 }
 function scanExistingProductResults(){
  const q=norm(scanExistingQuery);
@@ -2191,32 +2183,25 @@ app.addEventListener('change',e=>{if(e.target.id==='onlyOut'){const wasOut=onlyO
 app.addEventListener('submit',e=>{e.preventDefault();const form=e.target;const d=new FormData(form);
 
  if(form.id==='scanProductForm'){
-  const name=String(d.get('name')||'').trim(),group=String(d.get('group')||'');
+  const name=String(d.get('name')||'').trim();
   if(!name||name.length>80){
    fieldNotice(form,'登録商品名を80文字以内で入力してください','scan-product-name');return;
   }
-  const qtyText=String(d.get('package_quantity')||'').trim();
-  const quantity=qtyText===''?null:Number(qtyText);
-  const unit=qtyText===''?null:String(d.get('package_unit')||'');
-  if((quantity!==null&&(!Number.isFinite(quantity)||quantity<=0))||
-     (unit!==null&&!UNIT_OPTIONS.includes(unit))){fieldNotice(form,'内容量・単位を確認してください','scan-product-quantity');return}
   if(catalogue.products.some(p=>norm(p.name)===norm(name)&&
-     (p.packageQuantity??null)===quantity&&(p.packageUnit??null)===unit)){
+     (p.packageQuantity??null)===null&&(p.packageUnit??null)===null)){
    fieldNotice(form,'同じ商品名・内容量の商品が登録済みです','scan-product-name');return;
-  }
-  if(group&&!items.some(i=>i.id===group&&!i.hidden)){
-   fieldNotice(form,'紐付ける日用品を選択してください','scan-group-search');return;
   }
   const btn=form.querySelector('[type="submit"]');if(btn?.disabled)return;
   if(btn)btn.disabled=true;
   window.KurashiLive.save('product.create',{
-   item_group_id:group||null,name,package_quantity:quantity,package_unit:unit
+   item_group_id:null,name,package_quantity:null,package_unit:null
   }).then(product=>{
    if(!product)throw Error('商品を登録できませんでした');
    if(scanDraft?.items[scanProductRow]){
     scanDraft.items[scanProductRow].productId=product.product_id;
     scanDraft.items[scanProductRow].canonicalName=name;
-    scanDraft.items[scanProductRow].canonicalGroupId=group||null;
+    scanDraft.items[scanProductRow].canonicalGroupId=null;
+    scanDraft.items[scanProductRow].productSuggestion=null;
     scanDraft.items[scanProductRow].manuallyLinked=true;scanDraft.items[scanProductRow].autoLinked=false;
     learnConfirmedReceiptLine(scanDraft.items[scanProductRow],scanDraft.chainId);
    }
