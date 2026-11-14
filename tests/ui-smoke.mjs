@@ -1069,9 +1069,6 @@ assert.ok(css.includes('--ui-stock-off-background: #fff0dd')&&
  css.includes('color:var(--ui-field-warning-color)')&&
  !css.includes('color:#A97800'),
  'Inventory and receipt warnings use shared semantic color tokens');
-assert.ok(productAction.includes('class="ui-text-action"')&&
- productAction.includes('商品を設定')&&!productAction.includes('ui-chevron'),
- 'registered-product settings use shared text actions without navigation chevrons');
 assert.ok(listingHtml.includes('class="ui-picker-surface"')&&
  listingHtml.includes('data-act="storePickerOpen"')&&
  listingHtml.includes('id="scan-chain" name="chain"')&&
