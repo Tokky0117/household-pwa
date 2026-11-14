@@ -1,33 +1,61 @@
-# record_items 旧列削除｜安全な移行手順（未実行）
+# くらしストック｜試作環境のレシートDB簡素化反映手順
 
-対象：`record_items.category_id` / `record_items.price_eligible`
-状態：試作ブランチで計画・前提のみ整理。**本番GAS・本番Sheets・mainへの変更を禁止**。ユーザー承認前に手動・自動で移行を実行しない。
+更新日：2026-11-14
 
-## なぜ現段階で列を削除しないか
-`gas/Setup.gs` の `KURASHI_NEW_SCHEMA` と `gas/Api.gs` の `kurashiSheet_` はシート列を順番込みで検証する。
-運用中のシートから先に2列を削除すると全APIが `SCHEMA_ERROR` になる。さらに、端末のIndexedDBに未送信操作が残っている場合、旧スキーマ向け操作と競合する可能性がある。
-本作業から本番データへアクセス・変更していないので、実データの整合性を確認できていない。
+## 状態と対象
 
-## 移行前に必須の確認
-1. 全端末（2台）の試作／本番の接続先・バージョン・同期状態を確認し、未送信キューと保留・競合操作がいずれも0件であることを実機確認する。
-2. 本番 `record_items` の非削除レコード全件について `record_item_id` の一意性、`record_id` の存在、`product_id` の参照整合性を確認する。
-3. `price_eligible` と `product_id` の対応を全件集計する。値札／レシートで意味が異なる箇所や、例外・NULL・文字列・数値の揺れを検出したら移行を保留する。
-4. `category_id` の実値・NULL・非空件数を集計する。実値がある場合は列を削除してよい根拠を確定する。
-5. バックアップはシート単体でなく、`records` / `record_items` / `products` / `product_aliases` / `processed_operations` / `change_log` を含む **スプレッドシート全体** の複製を作り、行数・ヘッダー・ID集合・検証用ハッシュを記録する。
+- 対象：`preview-v46-clean-base` が接続する **試作Google Sheets / 試作GASのみ**。
+- GitHubの試作コードは簡素化スキーマに対応。**試作Sheetsの実列変更・GASの公開版更新は未実施**。完了したと扱わない。
+- `main`、本番GAS、本番Google Sheetsは変更禁止。
+- 試作GASデプロイは `.github/workflows/gas-deploy-new.yml` の **手動実行（workflow_dispatch）のみ**。変更前には稼働先とスキーマを確認する。
+- レシート関連の過去の明細移行は不要。一方、日用品 `item_groups`、`products`、`stores`、`product_aliases`、`categories`、`households`、`users`、`change_log`、`processed_operations` のデータは破棄しない。
 
-## 安全な実施順
-1. バックアップの複製に対してのみ、GASが旧列構造と新列構造を正しく区別して処理できる互換版を作成し、双方のスキーマで回帰テストする。
-2. 独立した試作Sheetsの複製に対し、排他ロック下でヘッダー・非空行数・処理済み操作の状態を再検査したうえで旧2列を削除する。変更後、全明細のID、商品ID、数量、税込金額、OCR原文、候補、バージョンをバックアップと突合する。
-3. 試作GAS＋試作PWAで既存履歴表示、値札保存、レシート作成・編集・削除、1件紐付け、一括登録、競合・オフライン復旧を検証する。
-4. 実機2台で同期キュー0件・再起動後の復旧・価格比較の一致を確認する。既存端末に旧版が残る場合は移行しない。
-5. 本番への適用は第1〜4段階の全テスト完了と**利用者の明示的な許可**を得た後、別作業として計画する。互換版を先にデプロイし、その後にデータ移行する。
-6. 不整合を検出したら新規書き込みを停止し、保存済みバックアップから全シート・スキーマを一括して復元する。部分復旧や無検証の再実行は禁止する。
+## 作業前の安全確認（必須）
 
-## 実施記録（未完了）
-- 本番の旧列整合性調査：未実施
-- 本番データのバックアップ：未実施
-- 新旧スキーマ互換API：未実装
-- 試作Sheetsの物理列削除：未実施
-- 本番Sheetsの物理列削除：未実施
+1. GitHub試作ブランチの最新プレビューCIが成功していることを確認する。
+2. 試作アプリを利用する端末の **未送信操作キューが0件** であることを確認する。未送信の旧レシート操作をこのタイミングで再送しない。
+3. **対象のスプレッドシートが試作環境のものであること**、既存の試作GASの接続先と一致することを確認する。名称のみで判別せず、GASの `SPREADSHEET_ID` と一致させる。**本番のシートに触れない。**
+4. 念のため対象試作シートをコピーし、日用品・商品・店舗・別名・同期履歴を含む全行を退避してから、列削除を実行する。退避先を本番接続に設定しない。
+5. 切替中の書込を止める。試作GASデプロイとSheets列変更の間に保存・同期のリクエストを流さない。
 
-`record_items.category_id` と `record_items.price_eligible` の削除は **まだ完了していない**。試作ブランチのUI・データフローの改善と区別して扱う。
+## 試作Sheets変更内容
+
+以下の列は、実際にSheets側で**列ごと削除**する（セルの値だけ消さない）。すべてレシート関連の列である。
+
+| シート | 削除列 | 旧位置 |
+| --- | --- | --- |
+| `record_items` | `inferred_name` | P（16列目） |
+| `record_items` | `price_eligible` | I（9列目） |
+| `record_items` | `category_id` | H（8列目） |
+| `record_items` | `raw_name` | D（4列目） |
+| `records` | `raw_store_name` | F（6列目） |
+
+`record_items` の削除は **P → I → H → D** の順序で行う。列ずれを防ぐため、毎回ヘッダー名を目視で確認する。最後に **`receipt_rules` シートのみ削除**し、残りは11シートとなる。旧レシート行は移行不要なので、必要なら試作の `records` と `record_items` のデータ行だけを先に削除してよい。**日用品・商品・店舗・OCR別名のシートは消さない。**
+
+期待するヘッダー（順番も一致させる）：
+
+`records`:
+```text
+record_id, household_id, record_type, chain_id, branch_name, record_date, created_at, updated_at, version, deleted_at
+```
+
+`record_items`:
+```text
+record_item_id, record_id, line_order, product_id, quantity, amount_tax_included, created_at, updated_at, version, deleted_at, alias_id, confirmed_name, suggested_product_name, suggestion_kind
+```
+
+`product_aliases` は変更しない。OCR原文は `ocr_name`、正規化文字列は `normalized_alias` に置く。OCR名の入力API `raw_name` は残るが、`record_items` の保存列としては存在しない。
+
+## 試作GASデプロイと動作確認
+
+1. Sheetsの11シートとヘッダーを照合する。残すテーブルの既存行数を確認し、マスタの消失がないことを確認する。
+2. GitHub Actions の **Deploy only the NEW Kurashi GAS** を `preview-v46-clean-base` から手動実行する。接続先が試作GASであることを再確認する。これはユーザーの承認・操作を要する工程。
+3. ActionsでGASデプロイが完了したことを確認する。失敗時はデプロイ完了と扱わない。手動実行を行わずに `setupNewWorkbook()` を試作既存環境で再実行してはいけない。
+4. 試作アプリを再読込し、`bootstrap` の11シート取得、日用品・商品・店舗の既存データ、レシート作成・編集・削除、OCR原文→別名辞書、未判定候補の一括登録除外、商品紐付け、オフライン再送、価格比較を確認する。
+5. 正常確認後、プレビューCIと実機でそれぞれ結果を記録する。本番移行は別途ユーザーの明示的承認が必要。
+
+## 破損・不一致時の扱い
+
+GASの旧版が新列定義のSheetsにアクセスすると、誤読・保存エラーの恐れがある。**デプロイが失敗したら操作を続けない**。旧版に戻す場合は対応した旧スキーマの試作シートとコードの組合せへ戻す。旧版GASと新スキーマのまま運用再開しない。
+
+既存レシートデータ移行の必要がないことは、日用品・商品・店舗等の登録データを初期化してよいという意味ではない。
