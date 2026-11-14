@@ -1968,34 +1968,29 @@ standaloneForm.querySelector('[name="chain"]').dispatchEvent(
 await waitFor(()=>temp.call('bootstrap').data.stores.some(x=>
  x.chain_id===standaloneChainId&&String(x.aliases).includes('COSTCO WHOLESALE')),
  'confirmed retailer spelling is remembered via existing stores.aliases and queue');
-standaloneSession.window.document.querySelector('[data-act="scanPickExisting"]').click();
-standaloneSession.window.document.querySelector('[data-act="scanExistingToNew"]').click();
-const standaloneProductForm=standaloneSession.window.document.getElementById('scanProductForm');
-assert.ok(standaloneProductForm,'new product form is open');
-assert.equal(standaloneProductForm.querySelector('[name="group"]'),null,
- 'receipt product registration has no item-group selector');
+assert.equal(standaloneForm.querySelector('[data-act="scanPickExisting"]'),null);
+assert.ok(!standaloneForm.querySelector('[name="difference"]')&&
+ !standaloneForm.querySelector('[name="confirmed"]'));
+standaloneForm.dispatchEvent(new standaloneSession.window.Event(
+ 'submit',{bubbles:true,cancelable:true}));
+await waitFor(()=>!!standaloneSession.window.document.querySelector('[data-act="recordProductNew"]'),
+ 'saved standalone receipt detail permits product registration');
+standaloneSession.window.document.querySelector('[data-act="recordProductNew"]').click();
+const standaloneProductForm=standaloneSession.window.document.getElementById('recordProductCreateForm');
+assert.ok(standaloneProductForm&&!standaloneProductForm.querySelector('[name="group"]'),
+ 'new product in shared half sheet defers optional household group');
 standaloneProductForm.querySelector('[name="name"]').value=standaloneName;
-// No selection of an item group. This used to be rejected in both client and GAS.
 standaloneProductForm.dispatchEvent(new standaloneSession.window.Event(
  'submit',{bubbles:true,cancelable:true}));
-await waitFor(()=>temp.call('bootstrap').data.products.some(x=>
- x.name===standaloneName&&x.item_group_id===''),
- 'product.create accepts null item_group_id through durable queue and GAS');
+await waitFor(()=>standaloneSession.window.KurashiLive.state().queued===0&&
+ temp.call('bootstrap').data.products.some(x=>x.name===standaloneName&&!x.item_group_id),
+ 'product.create with null household group syncs from saved receipt');
 const standaloneProduct=temp.call('bootstrap').data.products.find(x=>x.name===standaloneName);
 assert.ok(standaloneProduct);
 await waitFor(()=>temp.call('bootstrap').data.product_aliases.some(x=>
  x.chain_id===standaloneChainId&&x.product_id===standaloneProduct.product_id&&
  x.normalized_alias===standaloneRaw.toLocaleLowerCase('ja')),
- 'user confirmed abbreviation is persisted immediately after product registration');
-const standaloneReview=standaloneSession.window.document.getElementById('scanConfirmForm');
-assert.ok(standaloneReview,'standalone creation returns to receipt review');
-assert.equal(standaloneReview.querySelector('.scan-product-setting .ui-picker-value')?.textContent,standaloneName,
- 'unlinked master is shown by registered product name without confusing item-group text');
-assert.ok(!standaloneReview.querySelector('.scan-product-setting')?.textContent.includes('日用品未紐付け'));
-assert.ok(!standaloneReview.querySelector('[name="difference"]')&&
- !standaloneReview.querySelector('[name="confirmed"]'),
- 'there is no redundant receipt-total or generic confirmation checkbox');
-// Exit without saving the receipt: the product and confirmed alias must persist.
+ 'explicit selection learns OCR name for registered chain');
 standaloneSession.window.close();
 let readAgain=appSession();
 await waitFor(()=>readAgain.window.KurashiLive.state().loaded,
@@ -2008,19 +2003,17 @@ await completeOcrImport(readAgain);
 const matchedReview=readAgain.window.document.getElementById('scanConfirmForm');
 assert.equal(matchedReview.querySelector('[name="chain"]').value,standaloneChainId,
  're-read recognizes COSTCO WHOLESALE as registered コストコ');
-assert.equal(matchedReview.querySelector('[name="product-0"]').value,
- standaloneProduct.product_id,
- 're-read automatically selects canonical product via chain-scoped abbreviation');
-assert.equal(matchedReview.querySelector('.scan-product-setting .ui-picker-value')?.textContent,standaloneName,
- 'later receipt also shows the selected master without its unrelated item-group status');
+assert.equal(matchedReview.querySelector('[name="product-0"]'),null,
+ 'automatic matching is deferred until after saving');
 const totalText=matchedReview.querySelector('#scan-sum-text').textContent;
-assert.match(totalText,/合計金額：/,'one calculated total is visible without a checkbox');
+assert.match(totalText,/合計金額：/);
 matchedReview.dispatchEvent(new readAgain.window.Event('submit',{
  bubbles:true,cancelable:true
 }));
-await waitFor(()=>temp.call('bootstrap').data.record_items.some(x=>
+await waitFor(()=>readAgain.window.KurashiLive.state().queued===0&&
+ temp.call('bootstrap').data.record_items.some(x=>
  x.product_id===standaloneProduct.product_id&&aliasText(temp,x)===standaloneRaw),
- 'auto-linked product stores original printed name and master ID');
+ 'exact OCR alias is linked automatically only after purchase is saved');
 readAgain.window.close();
 const dupStoreAlias=temp.call('store.alias.upsert',{
  chain_id:standaloneChainId,raw_alias:'COSTCO WHOLESALE'
