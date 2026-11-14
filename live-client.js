@@ -1047,7 +1047,8 @@
    if(op.kind==='product-create'){
     ws.productIdMap={...(ws.productIdMap||{}),[op.clientId]:result.entity.product_id};
     for(const rest of ws.queue){
-     if(rest.kind==='alias-create'&&rest.productId===op.clientId)
+     if(['alias-create','alias-link'].includes(rest.kind)&&rest.productId===op.clientId&&
+        !rest.request)
       rest.productId=result.entity.product_id;
      if(rest.kind==='record-create'||rest.kind==='record-update')rest.items=rest.items.map(i=>
       i.product_id===op.clientId?{...i,product_id:result.entity.product_id}:i);
@@ -1180,6 +1181,41 @@
   error='';lastSync=Date.now();notify();void flush();return true;
  }
 
+ // Recover older, persisted queues when product.create was acknowledged
+ // but a subsequent alias-link retained the temporary local product ID.
+ // A request already serialized for transmission must never be mutated.
+ async function recoverQueuedAliasProductIds(){
+  const map=workspace.productIdMap||{};
+  if(!workspace.queue.length||!Object.keys(map).length)return false;
+  const needed=workspace.queue.some(op=>
+   ['alias-create','alias-link'].includes(op.kind)&&!op.request&&
+   typeof op.productId==='string'&&op.productId.startsWith('local-')&&
+   map[op.productId]&&workspace.base?.products.some(p=>
+    p.product_id===map[op.productId]&&!p.deleted_at));
+  if(!needed)return false;
+  let unlocked=false;
+  await modify(ws=>{
+   const confirmed=new Set((ws.base?.products||[]).filter(p=>!p.deleted_at)
+    .map(p=>p.product_id));
+   for(const op of ws.queue){
+    if(!['alias-create','alias-link'].includes(op.kind)||op.request||
+       typeof op.productId!=='string'||!op.productId.startsWith('local-'))continue;
+    const mapped=ws.productIdMap?.[op.productId];
+    if(mapped&&confirmed.has(mapped))op.productId=mapped;
+   }
+   const blocked=ws.blocked,head=ws.queue[0];
+   const resolved=blocked?.productId&&ws.productIdMap?.[blocked.productId];
+   if(blocked?.reason==='PRODUCT_REFERENCE'&&resolved&&confirmed.has(resolved)&&
+      head&&['alias-create','alias-link'].includes(head.kind)&&
+      head.productId===resolved&&!head.request){
+    ws.blocked=null;unlocked=true;
+   }
+   return ws;
+  });
+  if(unlocked)error='';
+  return unlocked;
+ }
+
  let failureCount=0;
  function scheduleRetry(){
   if(retryTimer||authRequired&&!token)return;
@@ -1207,6 +1243,7 @@
   if(flushPromise)return flushPromise;
   const task=(async()=>{
    await boot();
+   await recoverQueuedAliasProductIds();
    if(workspace.blocked||!workspace.queue.length)return;
    while(workspace.queue.length){
     if(pendingDiscardReviewActive)return;
