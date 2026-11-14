@@ -1,4 +1,4 @@
-const APP_VERSION='0.89.7';
+const APP_VERSION='0.89.8';
 const CATS=['食品・飲料','キッチン','洗面・風呂','洗濯・掃除','その他','調味料'];
 const CAT_ORDER=[0,5,1,2,3,4];
 const liveMode=!!window.KurashiLive; // Data source only; original Preview v46 UI components remain.
@@ -255,7 +255,11 @@ function openRecordEntry(kind,recordId=null){
      ...(r.record_type==='shelf'||!aliasNameFor(x)||x.confirmed_name?
       {inputOrigin:'manual'}:{ocrRawName:aliasNameFor(x),savedOcrName:true}),
      quantity:r.record_type==='shelf'?1:x.quantity,amount:x.amount_tax_included,
-     productId:x.product_id||'',manuallyLinked:!!x.product_id,issues:[]}))};
+     productId:x.product_id||'',manuallyLinked:!!x.product_id,issues:[],
+     ...(x.suggested_product_name?{productSuggestion:{
+      existingName:x.suggestion_kind==='existing'?x.suggested_product_name:null,
+      newName:x.suggestion_kind==='new'?x.suggested_product_name:null
+     }}:{})}))};
  }else scanDraft=createManualRecord(kind);
  scanNewStoreMode=false;scanStatus='';
  saveScanDraft();page='recordScan';render();
@@ -327,9 +331,13 @@ function detailLineName(line){
   aliasNameFor(line)||'明細名なし';
 }
 function recordDetailView(){
+ const resolved=window.KurashiLive?.resolveRecordId?.(recordDetailId)||recordDetailId;
+ if(resolved!==recordDetailId)recordDetailId=resolved;
  const record=allPreviewRecords().find(r=>r.record_id===recordDetailId);
  if(!record)return `${head('保存済み明細','見つかりません',true)}<main></main>${nav()}`;
  const isShelf=record.record_type==='shelf';
+ const resolvedId=window.KurashiLive?.resolveRecordId?.(recordDetailId)||recordDetailId;
+ if(resolvedId!==recordDetailId)recordDetailId=resolvedId;
  const detail=allPreviewItems().filter(x=>x.record_id===recordDetailId&&!x.deleted_at)
   .sort((a,b)=>Number(a.line_order)-Number(b.line_order));
  const total=detail.reduce((sum,x)=>sum+Number(x.amount_tax_included||0),0);
@@ -2261,10 +2269,14 @@ app.addEventListener('submit',e=>{e.preventDefault();const form=e.target;const d
    const verified=['manual','photo'].includes(item.inputOrigin)||item.ocrRawName===undefined;
    const confirmedName=verified?String(d.get('name-'+i)||'').trim():'';
    const inferredName=String(item.inferredName||item.nameCandidate||'').trim();
+   const candidate=item.productSuggestion;
+   const suggestedName=String(candidate?.newName||candidate?.existingName||'').trim();
+   const suggestionKind=candidate?.newName?'new':candidate?.existingName?'existing':'';
    return {
     raw_name:verified?'':String(item.ocrRawName||'').trim(),
     ...(verified&&confirmedName?{confirmed_name:confirmedName}:{}),
     ...(inferredName?{inferred_name:inferredName}:{}),
+    ...(suggestedName?{suggested_product_name:suggestedName,suggestion_kind:suggestionKind}:{}),
     product_id:String(d.get('product-'+i)||'')||null,
     quantity:scanDraft.recordType==='shelf'?1:Number(d.get('qty-'+i)),
     amount_tax_included:String(d.get('amount-'+i)||'').trim()===''?NaN:Number(d.get('amount-'+i)),
@@ -2317,7 +2329,9 @@ app.addEventListener('submit',e=>{e.preventDefault();const form=e.target;const d
    if(aliasLines.length&&window.KurashiLive.learnAliases&&learnedChain&&learnedChain!=='__new__')
     void window.KurashiLive.learnAliases({chain_id:learnedChain,items:aliasLines})
      .catch(e=>console.warn('別名学習を保存できませんでした',e));
-   resetScan();page='list';tab='receipt';render();
+   const savedId=record?.record_id||scanDraft?.recordId;
+   resetScan();recordDetailId=savedId||null;recordDetailOrigin='list';
+   page=recordDetailId?'recordDetail':'list';tab='receipt';render();
   }).catch(err=>{
    if(submit)submit.disabled=false;
    formSaveFeedback(form,err.message||'保存できませんでした。通信状態を確認してください。');
