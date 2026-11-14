@@ -1,9 +1,8 @@
 name: Deploy only the NEW Kurashi GAS
 
+# Schema changes require a coordinated trial Sheets update before deploying GAS.
+# Deploy manually after confirming the target workbook has 11 compatible sheets.
 on:
-  push:
-    branches: [preview-v46-clean-base]
-    paths: ['gas/Api.gs', 'gas/Setup.gs', '.github/workflows/gas-deploy-new.yml']
   workflow_dispatch:
 
 permissions:
