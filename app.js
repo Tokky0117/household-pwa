@@ -59,13 +59,12 @@ const priceFixtures=[
 ];
 const demoRecords=priceFixtures.map((r,n)=>({
  record_id:'preview-r'+(n+1),household_id:'preview-only',record_type:r[4],
- chain_id:r[1],branch_name:null,raw_store_name:null,record_date:daysAgo(r[5]),
+ chain_id:r[1],branch_name:null,record_date:daysAgo(r[5]),
  created_at:null,updated_at:null,version:1,deleted_at:null
 }));
 const demoRecordItems=priceFixtures.map((r,n)=>({
  record_item_id:'preview-i'+(n+1),record_id:'preview-r'+(n+1),line_order:1,
- raw_name:'',product_id:r[0],quantity:r[3],amount_tax_included:r[2],
- category_id:r[4]==='receipt'?r[6]:null,price_eligible:true,
+ alias_id:'',confirmed_name:'',product_id:r[0],quantity:r[3],amount_tax_included:r[2],
  created_at:null,updated_at:null,version:1,deleted_at:null
 }));
 // Manual preview records remain only on this browser; never sent to a server.
@@ -97,11 +96,10 @@ function savePreviewRecord(input){
     (input.type==='receipt'&&input.category!==''&&!CATS[Number(input.category)]))return false;
  if(input.productId&&!catalogue.products.some(p=>p.id===input.productId))return false;
  const idValue=id(),now=new Date().toISOString();
- const header={record_id:idValue,household_id:'preview-only',record_type:input.type,chain_id:input.chainId,branch_name:null,raw_store_name:null,record_date:input.date,created_at:now,updated_at:now,version:1,deleted_at:null};
- const detail={record_item_id:id(),record_id:idValue,line_order:1,raw_name:input.rawName||'',
+ const header={record_id:idValue,household_id:'preview-only',record_type:input.type,chain_id:input.chainId,branch_name:null,record_date:input.date,created_at:now,updated_at:now,version:1,deleted_at:null};
+ const detail={record_item_id:id(),record_id:idValue,line_order:1,alias_id:'',confirmed_name:input.rawName||'',
  product_id:input.productId||null,quantity,amount_tax_included:amount,
- category_id:input.type==='receipt'?(input.category===''?null:Number(input.category)):null,
- price_eligible:Boolean(input.productId),created_at:now,updated_at:now,version:1,deleted_at:null};
+ created_at:now,updated_at:now,version:1,deleted_at:null};
  previewRecords.records.push(header);previewRecords.record_items.push(detail);
  localStorage.setItem(previewRecordsKey,JSON.stringify(previewRecords));return true;
 }
@@ -146,9 +144,9 @@ function chainMinima(productId,periodValue,records=allPreviewRecords(),details=a
    date:r.record.record_date,source:r.record.record_type
  })).sort((a,b)=>a.price-b.price||a.chainId.localeCompare(b.chainId));
 }
-// Keep each pre-migration receipt's original printed spelling; the shared OCR dictionary may normalize it.
-const aliasNameFor=line=>line?.confirmed_name||line?.raw_name||catalogue.productAliases?.find(a=>a.aliasId===line?.alias_id)?.ocrName||'';
-const rawReceiptName=line=>line?.raw_name||catalogue.productAliases?.find(a=>a.aliasId===line?.alias_id)?.ocrName||'';
+// A saved OCR name is referenced only through its product_aliases row.
+const rawReceiptName=line=>catalogue.productAliases?.find(a=>a.aliasId===line?.alias_id)?.ocrName||'';
+const aliasNameFor=line=>line?.confirmed_name||rawReceiptName(line);
 const chainLabel=id=>catalogue.chains.find(c=>c.id===id)?.name||'チェーン未設定';
 const listPriceText=item=>{
  const first=registeredProducts(item.id)[0];
@@ -254,7 +252,7 @@ function openRecordEntry(kind,recordId=null){
    branchName:r.branch_name||'',total:null,
    items:allPreviewItems().filter(x=>x.record_id===r.record_id&&!x.deleted_at)
     .sort((a,b)=>Number(a.line_order)-Number(b.line_order))
-    .map(x=>({name:aliasNameFor(x),inferredName:r.record_type==='shelf'?'':x.inferred_name||'',
+    .map(x=>({name:aliasNameFor(x),inferredName:r.record_type==='shelf'||x.suggestion_kind?'':x.suggested_product_name||'',
      ...(r.record_type==='shelf'||!aliasNameFor(x)||x.confirmed_name?
       {inputOrigin:'manual'}:{ocrRawName:aliasNameFor(x),savedOcrName:true}),
      quantity:r.record_type==='shelf'?1:x.quantity,amount:x.amount_tax_included,
@@ -353,7 +351,7 @@ function recordProductView(){
  const line=recordProductLine();
  if(!line)return '';
  const isNew=recordProductMode==='new';
- const proposed=line.suggested_product_name||line.inferred_name||aliasNameFor(line)||'';
+ const proposed=line.suggested_product_name||aliasNameFor(line)||'';
  const body=isNew?
   '<form id="recordProductCreateForm">'+
     UI.formField({id:'record-product-name',name:'name',label:'商品名',value:proposed,
@@ -397,10 +395,8 @@ function changeRecordProductMode(mode){
 function learnSavedReceiptAlias(line,productId){
  const resolvedItemId=window.KurashiLive?.resolveRecordItemId?.(line?.record_item_id)||line?.record_item_id;
  line=allPreviewItems().find(x=>x.record_item_id===resolvedItemId&&!x.deleted_at)||line;
- // Saved OCR names live in product_aliases; record_items.raw_name is
- // deliberately blank for new records. Never learn manual/photo guesses.
- const ocrName=String(line?.raw_name||
-  (!line?.confirmed_name&&line?.alias_id?aliasNameFor(line):'')).trim();
+ // Only a real OCR alias can be trained; photo/manual names are not OCR evidence.
+ const ocrName=String(!line?.confirmed_name&&line?.alias_id?rawReceiptName(line):'').trim();
  if(!ocrName||!productId)return;
  const resolvedRecordId=window.KurashiLive?.resolveRecordId?.(line.record_id)||line.record_id;
  const record=allPreviewRecords().find(r=>r.record_id===resolvedRecordId&&!r.deleted_at);
@@ -2427,19 +2423,17 @@ app.addEventListener('submit',e=>{e.preventDefault();const form=e.target;const d
    const confirmedName=verified?String(d.get('name-'+i)||'').trim():'';
    const inferredName=String(item.inferredName||item.nameCandidate||'').trim();
    const candidate=item.productSuggestion;
-   const suggestedName=String(candidate?.newName||candidate?.existingName||'').trim();
+   const suggestedName=String(candidate?.newName||candidate?.existingName||inferredName).trim();
    const suggestionKind=candidate?.newName?'new':candidate?.existingName?'existing':'';
    return {
     raw_name:verified?'':String(item.ocrRawName||'').trim(),
     ...(verified&&confirmedName?{confirmed_name:confirmedName}:{}),
-    ...(inferredName?{inferred_name:inferredName}:{}),
     ...(suggestedName?{suggested_product_name:suggestedName,suggestion_kind:suggestionKind}:{}),
     product_id:scanDraft.recordType==='receipt'?
      (scanDraft.recordId?scanResolvedProductId(item)||null:null):
      String(d.get('product-'+i)||'')||null,
     quantity:scanDraft.recordType==='shelf'?1:Number(d.get('qty-'+i)),
     amount_tax_included:String(d.get('amount-'+i)||'').trim()===''?NaN:Number(d.get('amount-'+i)),
-    category_id:null
    };
   });
   const codeOnlyRow=scanDraft.items.findIndex(isUnconfirmedBarcodeLine);
@@ -3164,9 +3158,7 @@ if(liveMode)window.KurashiLive.subscribe((state,data)=>{
  items=nextItems;
  catalogue=window.KurashiLive.catalogueOf(data);
  liveRecords={records:data.records||[],record_items:(data.record_items||[]).map(line=>({
-  ...line,category_id:line.category_id===''||line.category_id===null?null:Number(line.category_id),
-  quantity:Number(line.quantity),amount_tax_included:Number(line.amount_tax_included),
-  price_eligible:line.price_eligible===true||String(line.price_eligible).toLowerCase()==='true'
+  ...line,quantity:Number(line.quantity),amount_tax_included:Number(line.amount_tax_included)
  }))};
  if(page==='aliasManage'&&aliasPickerId)return;
  if(['add','edit','productEdit','productPick','productCreate','masterProductEdit','masterProductNew'].includes(page))return;
