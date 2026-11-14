@@ -1611,10 +1611,10 @@ assert.ok(learned.some(x=>x.chainId===chainForCorrection&&
 correctReopened.window.close();
 console.log('v60: persistent OCR corrections with previous offline queue: OK');
 
-/* Unmatched receipt items remain separate from product creation; individual
- * registration uses the same durable product.create queue. */
+/* Saved receipt: a product can be created, linked, unlinked and selected later.
+ * No product picker or one-tap ChatGPT registration appears before saving. */
 let bulkUI=appSession();
-await waitFor(()=>bulkUI.window.KurashiLive.state().loaded,'individual receipt registration loaded');
+await waitFor(()=>bulkUI.window.KurashiLive.state().loaded,'saved receipt registration loaded');
 bulkUI.window.document.querySelector('[data-tab="receipt"]').click();
 prepareOcrImport(bulkUI);
 bulkUI.window.eval(importer);
@@ -1624,36 +1624,41 @@ const batchJson={...chatJson,receiptTotal:410,printedCount:1,items:[{
 }]};
 bulkUI.window.document.querySelector('#chatgpt-input').value=JSON.stringify(batchJson);
 await completeOcrImport(bulkUI);
-assert.equal(bulkUI.window.document.querySelector('[data-act="scanBulkProducts"]'),null,
- 'removed batch action cannot interrupt receipt photo review');
-const unmatchedStatus=bulkUI.window.document.querySelector('.scan-product-setting');
-assert.ok(unmatchedStatus&&unmatchedStatus.querySelector('.ui-picker-value.is-unmatched')?.textContent==='未照合',
- 'an unmatched product uses the neutral shared status rather than product-name typography');
-bulkUI.window.document.querySelector('[data-act="scanPickExisting"]').click();
-bulkUI.window.document.querySelector('[data-act="scanExistingToNew"]').click();
-assert.ok(bulkUI.window.document.querySelector('.scan-product-page #scanProductForm')&&
- !bulkUI.window.document.querySelector('.sheet-back'),
- 'receipt new-product route is a full screen, not a second half modal');
-// Back returns to existing product selection without clearing the receipt row.
-bulkUI.window.document.querySelector('.top [data-act="back"]').click();
-assert.ok(bulkUI.window.document.querySelector('.scan-existing-picker'),
- 'going back from the full screen returns to the existing product chooser');
-bulkUI.window.document.querySelector('[data-act="scanExistingToNew"]').click();
-const individualForm=bulkUI.window.document.querySelector('#scanProductForm');
-assert.ok(individualForm,'unmatched item opens individual master creation');
-assert.equal(individualForm.querySelector('[name="group"]'),null,
- 'receipt product registration no longer asks for a household item');
-assert.equal(individualForm.querySelector('[name="quantity"]'),null,
- 'receipt product registration defers package capacity');
+assert.equal(bulkUI.window.document.querySelector('[data-act="scanBulkProducts"]'),null);
+assert.equal(bulkUI.window.document.querySelector('[data-act="scanPickExisting"]'),null,
+ 'receipt review has no product picker');
+const bulkReview=bulkUI.window.document.getElementById('scanConfirmForm');
+bulkReview.dispatchEvent(new bulkUI.window.Event('submit',{bubbles:true,cancelable:true}));
+await waitFor(()=>!!bulkUI.window.document.querySelector('[data-act="recordProductNew"]'),
+ 'saved receipt opens its detail where individual product operations live');
+assert.match(bulkUI.window.document.body.textContent,/商品未紐付け/);
+bulkUI.window.document.querySelector('[data-act="recordProductNew"]').click();
+const individualForm=bulkUI.window.document.getElementById('recordProductCreateForm');
+assert.ok(individualForm,'product editor uses one shared half sheet');
+assert.equal(individualForm.querySelector('[name="group"]'),null);
+assert.equal(individualForm.querySelector('[name="quantity"]'),null);
 individualForm.dispatchEvent(new bulkUI.window.Event('submit',{bubbles:true,cancelable:true}));
-await waitFor(()=>!!bulkUI.window.document.querySelector('#scanConfirmForm'),
- 'individual registration returns to receipt review');
-await waitFor(()=>temp.call('bootstrap').data.products.some(p=>
- p.name==='レシート個別登録テスト固有'),'individual product syncs to Sheets');
-await waitFor(()=>!!bulkUI.window.document.querySelector('#scanConfirmForm [name="product-0"]')?.value,
- 'individual product remains linked through local-to-Sheets ID translation');
+await waitFor(()=>bulkUI.window.KurashiLive.state().queued===0&&
+ temp.call('bootstrap').data.products.some(p=>p.name==='レシート個別登録テスト固有')&&
+ temp.call('bootstrap').data.record_items.some(x=>
+  aliasText(temp,x)==='レシート個別登録テスト固有'&&x.product_id),
+ 'product creation and saved item link reach Sheets using a durable queue');
+bulkUI.window.document.querySelector('[data-act="recordProductOpen"]').click();
+bulkUI.window.document.querySelector('[data-act="recordProductUnlink"]').click();
+await waitFor(()=>bulkUI.window.KurashiLive.state().queued===0&&
+ temp.call('bootstrap').data.record_items.some(x=>aliasText(temp,x)==='レシート個別登録テスト固有'&&!x.product_id),
+ 'unlink affects only the saved receipt item');
+bulkUI.window.document.querySelector('[data-act="recordProductOpen"]').click();
+const productChoice=bulkUI.window.document.querySelector('[data-act="recordProductChoose"]');
+assert.ok(productChoice,'registered products are available through the common picker');
+const ownProduct=temp.call('bootstrap').data.products.find(p=>p.name==='レシート個別登録テスト固有');
+bulkUI.window.document.querySelector('[data-act="recordProductChoose"][data-product-id="'+ownProduct.product_id+'"]').click();
+await waitFor(()=>bulkUI.window.KurashiLive.state().queued===0&&
+ temp.call('bootstrap').data.record_items.some(x=>
+  aliasText(temp,x)==='レシート個別登録テスト固有'&&x.product_id===ownProduct.product_id),
+ 'same master is selected again without creating a duplicate');
 bulkUI.window.close();
-console.log('v75: unmatched receipt products register individually with durable queue OK');
+console.log('stage3: save-first receipt registration, unlink and re-selection OK');
 
 /* COSTCO KitKat: receipt's printed spelling remains historical raw_name,
  * while the canonical master belongs to the household's "チョコ" item. */
