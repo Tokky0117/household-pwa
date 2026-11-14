@@ -25,7 +25,7 @@ const doc={
 const ctx={document:doc,localStorage:{getItem:k=>storage.get(k)??null,setItem:(k,v)=>storage.set(k,v),removeItem:k=>storage.delete(k)},
  navigator:{},window:{scrollTo(){},scrollY:0,KurashiReceiptValidation:validator,KurashiReceiptReview:review},crypto:{randomUUID:()=> 'test-id'},setTimeout:()=>0};
 const ui=vm.runInNewContext(source+`
-({listView,priceCompareView,pickerView,pickerResults,masterProductsView,masterProductRows,masterProductEditorView,masterGroupPickerView,masterGroupPickerRows,aliasManageView,aliasManageRows,aliasProductPickerView,aliasProductPickerRows,detailHomeView,detailAllView,receiptScanView,receiptChatGptView,recordDetailView,scanStoreNameIssue,scanValidPurchaseDate,scanReadableError,floatingActionPlacement,applyChatGptOcrAssistance,receiptOcrReference,receiptOcrRows,isUnconfirmedBarcodeLine,makeChatGptReceiptRebuildDraft,scanProductView,scanProductGroupChoices,scanExistingProductView,scanExistingProductResults,scanChainForStore,scanStoreHeaderMatch,scanAutolinkUnmatched,scanMatchProduct,scanSimilarProducts,render,initializeCompare,
+({listView,priceCompareView,pickerView,pickerResults,masterProductsView,masterProductRows,masterProductEditorView,masterGroupPickerView,masterGroupPickerRows,aliasManageView,aliasManageRows,aliasProductPickerView,aliasProductPickerRows,detailHomeView,detailAllView,receiptScanView,receiptChatGptView,recordDetailView,scanStoreNameIssue,scanValidPurchaseDate,scanReadableError,floatingActionPlacement,applyChatGptOcrAssistance,receiptOcrReference,receiptOcrRows,isUnconfirmedBarcodeLine,makeChatGptReceiptRebuildDraft,scanProductView,scanProductGroupChoices,scanExistingProductView,scanExistingProductResults,scanChainForStore,scanStoreHeaderMatch,scanAutolinkUnmatched,scanMatchProduct,scanSimilarProducts,normalizeOcrProductKana,render,initializeCompare,
  setProductGroup,reorderProducts,registeredProducts,convertQuantity,setOpenSwipe,storePickerChoices,scrollNewItemIfOffscreen,
  getItems(){return items},setItems(v){items=v},orderedItemIds,expandItemGroup(k){expandedItemGroups.add(k)},collapseItemGroup(k){expandedItemGroups.delete(k)},
  chainMinima,priceCandidates,standardizedMinima,savePreviewRecord,periodStart,
@@ -58,6 +58,37 @@ assert.ok(css.includes('.tertiary{')&&css.includes('color:var(--accent)'),'Share
 assert.ok(!source.includes('priceCells(){'),'Obsolete normal/discount UI component removed');
 assert.ok(!css.includes('grid-template-areas:"name value" "name date"'),'Obsolete two-row price CSS removed');
 assert.ok(ui.listView().includes('data-stock=')&&ui.listView().includes('data-list-edit='),'Stock and swipe list preserved');
+// v0.89.5: Kana punctuation OCR fix affects merchandise reading names only.
+// Synthetic names only; no real receipt name, image or private OCR data.
+const kanaExamples=[
+ ['キ・ト・ハ°','ギドパ'],
+ ['き・と・は°','ぎどぱ'],
+ ['ヒ・ンク','ビンク'],
+ ['か・ぱ°','がぱ°'], // ぱ is already semi-voiced; do not invent new glyphs
+ ['サコ・テスト','サコ・テスト'], // コ cannot take dakuten
+ ['タグ・','タグ・'], // グ cannot be voiced again
+ ['ハ°ト・ か・て・','パド がで'],
+ ['100° 10・ ア・','100° 10・ ア・']
+];
+for(const [input,expected] of kanaExamples)
+ assert.equal(ui.normalizeOcrProductKana(input),expected,'kana OCR transformation: '+input);
+assert.ok(source.includes('name:normalizeOcrProductKana(item.name)'),
+ 'kana normalization applies after merchandise extraction, before review and matching');
+const sampleKanaReceipt={name:'キ・ト・ハ°',quantity:2,quantitySource:'printed',
+ taxIncludedAmount:540,netAmount:540,issues:[]};
+const normalizedKanaReceipt=review.fromOcrItem(
+ {...sampleKanaReceipt,name:ui.normalizeOcrProductKana(sampleKanaReceipt.name)},
+ {rowId:'kana-test',taxBasis:'included'});
+assert.equal(normalizedKanaReceipt.ocrRawName,'ギドパ');
+assert.equal(normalizedKanaReceipt.quantity,2);
+assert.equal(normalizedKanaReceipt.amount,540);
+const beforeKanaProducts=ui.catalogue().products;
+ui.catalogue().products=[...beforeKanaProducts,{
+ id:'kana-product-test',name:'ギドパ',aliases:[]}];
+assert.equal(ui.scanMatchProduct(ui.normalizeOcrProductKana(sampleKanaReceipt.name)),
+ 'kana-product-test','the corrected OCR name matches the product master');
+ui.catalogue().products=beforeKanaProducts;
+
 
 // KS-004: only scroll when the added item is outside the usable viewport.
 const oldQuerySelector=doc.querySelector,oldViewport=ctx.window.innerHeight;
