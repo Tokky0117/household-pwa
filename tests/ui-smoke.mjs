@@ -1011,8 +1011,8 @@ assert.ok(newProductHtml.includes('class="manage-main scan-product-page"')&&
  !newProductHtml.includes('receipt-product-modal'),
  'legacy manual fallback remains available without nested sheets');
 
-// ChatGPT product suggestions do not alter the OCR name or product association.
-// The user can accept them directly within the existing review screen.
+// Receipt entry now records the purchase first. Product selection and
+// ChatGPT-assisted registration happen on the saved detail screen.
 const beforeAiDraft=ui.getScanDraft();
 ui.setScanDraft({source:'ocr',recordType:'receipt',date:'2026-11-14',
  chainId:null,chainName:'',total:100,printedCount:1,
@@ -1020,37 +1020,21 @@ ui.setScanDraft({source:'ocr',recordType:'receipt',date:'2026-11-14',
   quantity:1,amount:100,issues:[],productId:'',manuallyLinked:false,
   productSuggestion:{existingName:null,newName:'例示商品'}}]});
 const aiReviewHtml=ui.receiptScanView();
-assert.ok(aiReviewHtml.includes('新規商品候補')&&
- aiReviewHtml.includes('例示商品')&&
- aiReviewHtml.includes('data-act="scanAiCreateProduct"'),
- 'AI creates a visible one-tap option on the same receipt screen');
+assert.ok(!aiReviewHtml.includes('data-act="scanAiCreateProduct"')&&
+ !aiReviewHtml.includes('scan-product-setting')&&
+ !aiReviewHtml.includes('商品を設定'),
+ 'receipt review does not register or link products before saving');
 assert.ok(!ui.getScanDraft().items[0].productId,
  'rendering a ChatGPT candidate never auto-links a product');
 ui.setScanDraft(beforeAiDraft);
 const listingHtml=ui.receiptScanView();
-assert.ok(listingHtml.includes('class="ui-picker-value is-unmatched"')&&
- !listingHtml.includes('class="ui-picker-value is-unmatched">商品未照合'),
- 'Unmatched is a neutral state, not a registered product name');
-assert.ok(css.includes('ui-picker-value.is-unmatched')&&
- css.includes('--ui-supporting-value-font-size: 14px')&&
- source.includes("valueVariant:'supporting'")&&source.includes("valueState:scanResolvedProductId(item)?'':'unmatched'"),
- 'Form-level supporting value and neutral unmatched state use shared styling');
-assert.ok(source.includes("function scanAssistView()")&&
- source.includes("UI.statusMessage({text:scanAssistMessage,kind:'success'})")&&
- source.includes("scanAssistMessage=changed||priced?'解析結果を反映しました。'")&&
- !source.includes("scanStatus='ChatGPT推測名'"),
- 'ChatGPT action and short feedback stay together above form, with no counts');
-
 assert.ok(listingHtml.includes('ui-static-field-label">読み取り名</span>')&&
- listingHtml.includes('登録商品')&&listingHtml.includes('商品を設定'),
- 'receipt review distinguishes the read name from the selected registered product');
-assert.ok(!listingHtml.includes('data-act="scanBulkProducts"'),
- 'unmatched product batch creation is removed from receipt review');
-assert.ok(listingHtml.includes('class="formfield scan-product-setting ui-picker-inline"')&&
- listingHtml.includes('is-unmatched')&&listingHtml.includes('>未照合</strong>')&&
- !listingHtml.includes('scan-product-association')&&
- !listingHtml.includes('data-act="scanNewProduct"'),
- 'product selection is a single action without an accordion or split actions');
+ !listingHtml.includes('scan-product-setting')&&
+ !listingHtml.includes('data-act="scanBulkProducts"'),
+ 'receipt review focuses on purchase details and defers product operations');
+assert.ok(source.includes("function scanAssistView()")&&
+ source.includes("UI.statusMessage({text:scanAssistMessage,kind:'success'})"),
+ 'ChatGPT analysis status remains next to the receipt reading action');
 const existingHtml=ui.scanExistingProductView();
 assert.ok(existingHtml.includes('scan-existing-search')&&
  !existingHtml.includes('scan-existing-group')&&
@@ -1070,12 +1054,6 @@ assert.ok(listingHtml.includes('<label for="scan-amount-0">小計（円）</labe
  'receipt subtotal shows yen while retaining its numeric form value');
 assert.ok(!listingHtml.includes('type="text" value="268円"'),
  'currency unit is never injected into the saved numeric amount');
-const productAction=listingHtml.match(/<button[^>]*data-act="scanPickExisting"[^>]*>[^]*?<\/button>/)?.[0]||'';
-assert.ok(listingHtml.includes('<label for="scan-product-0-action">登録商品</label>')&&
- listingHtml.includes('name="product-0"')&&
- listingHtml.includes('id="scan-product-0-action"')&&
- listingHtml.includes('data-scan-row="0"'),
- 'Product picker uses the shared form label, existing hidden value and unchanged row action');
 assert.ok(!listingHtml.includes('scan-field-label')&&!listingHtml.includes('scan-product-setting-row'),
  'Legacy product-specific label and picker markup are removed');
 assert.ok(listingHtml.includes('class="ui-picker-action-slot"')&&
