@@ -144,6 +144,45 @@ for(const c of cases){
   total:g.total,mode:c.id==='R05'?'rebuild':'assist',
   allocated:!!allocated});
 }
+// Product matching stays an optional, user-confirmed proposal and does not
+// affect record amounts, OCR name preservation or the original seven cases.
+const productNames=['三陸カットわかめ 120g','リンドール ミルク'];
+const aiPrompt=imports.makeChatGptOcrAssistPrompt(JSON.stringify({
+ items:[{rowId:'ai-1',ocrName:'サンリクカットワカメ120G',quantity:1}]
+}),productNames);
+assert.ok(aiPrompt.includes(JSON.stringify(productNames)),
+ 'ChatGPT gets registered names, with no ID or package metadata');
+const proposal=imports.parseChatGptOcrResponse(JSON.stringify({
+ version:'kurashi-receipt-assist-1',items:[{
+  rowId:'ai-1',ocrName:'サンリクカットワカメ120G',nameCandidate:null,
+  quantity:1,amount:298,
+  productSuggestion:{existingName:'三陸カットわかめ 120g',newName:null}
+ }]
+}));
+const aiDraft={source:'ocr',chainId:null,items:[{
+ ocrRowId:'ai-1',ocrRawName:'サンリクカットワカメ120G',
+ name:'サンリクカットワカメ120G',quantity:1,amount:298,productId:'',issues:[]
+}]};
+const proposed=review.applyAssistance(aiDraft,proposal,opts);
+assert.equal(proposed.items[0].productId,'',
+ 'AI must never link an existing product automatically');
+assert.equal(proposed.items[0].productSuggestion.existingName,productNames[0]);
+assert.equal(proposed.items[0].ocrRawName,'サンリクカットワカメ120G');
+assert.equal(aiDraft.items[0].productSuggestion,undefined);
+assert.throws(()=>imports.parseChatGptOcrAssistJson(JSON.stringify({
+ version:'kurashi-receipt-assist-1',
+ items:[{rowId:'ai-1',ocrName:'X',nameCandidate:null,
+  productSuggestion:{existingName:'A',newName:'B'}}]
+})),/INVALID_PRODUCT_SUGGESTION/,'conflicting candidate types are rejected');
+const rebuiltWithCandidate=imports.parseChatGptOcrResponse(JSON.stringify({
+ version:'kurashi-receipt-rebuild-1',receiptDate:null,storeName:null,
+ receiptTotal:100,printedCount:1,
+ items:[{name:'OCRで読めない商品',quantity:1,amount:100,
+  productSuggestion:{existingName:null,newName:'商品名の候補'}}]
+}));
+const rebuiltProposal=review.fromChatGptRebuild(aiDraft,rebuiltWithCandidate,()=>null);
+assert.equal(rebuiltProposal.items[0].productSuggestion.newName,'商品名の候補');
+assert.equal(rebuiltProposal.items[0].productId,'');
 assert.deepEqual(seen.map(x=>x.id),[
  'R01','R02','R03','R04','R05','R06','R07']);
 console.log('Receipt P4: seven anonymized review/import/validation contracts OK');
