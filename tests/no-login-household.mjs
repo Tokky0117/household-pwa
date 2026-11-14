@@ -1692,7 +1692,7 @@ await waitFor(()=>bulkBatchSession.window.KurashiLive.state().loaded&&
 bulkBatchSession.window.document.querySelector('[data-tab="receipt"]').click();
 const originalPlan=bulkBatchSession.window.KurashiLive.previewBulkReceiptProducts(bulkRecordId);
 assert.equal(originalPlan.length,3,'only unlinked and unambiguous candidates are eligible');
-assert.deepEqual(originalPlan.map(x=>x.action),['new','reuse','existing'],
+assert.equal(Array.from(originalPlan,x=>x.action).join(','),'new,reuse,existing',
  'repeated new product candidate is reused and exact master is selected');
 const receiptButton=bulkBatchSession.window.document.querySelector(
  '[data-act="recordDetail"][data-record-id="'+bulkRecordId+'"]');
