@@ -1,4 +1,4 @@
-const APP_VERSION='0.89.3';
+const APP_VERSION='0.89.4';
 const CATS=['食品・飲料','キッチン','洗面・風呂','洗濯・掃除','その他','調味料'];
 const CAT_ORDER=[0,5,1,2,3,4];
 const liveMode=!!window.KurashiLive; // Data source only; original Preview v46 UI components remain.
@@ -181,6 +181,7 @@ function releaseScanThumbnail(file){const url=scanPhotoUrls.get(file);if(!url)re
 function clearScanThumbnails(){for(const f of scanPhotoUrls.keys())releaseScanThumbnail(f)}
 let scanRuntime=null,scanDraftAvailable=false,scanDraftKind='receipt',scanDraftWrites=Promise.resolve(),recordStartPending=false,chatGptError='',recordDetailId=null,scanProductRow=null;
 let scanExistingQuery='',scanGroupQuery='',scanProductGroupId='',recordDetailOrigin='list';
+const scanAiProductSavingRows=new Set();
 let storePickerTarget=null,storePickerQuery='',storePickerNewMode=false;
 function saveScanDraft(){
  if(!liveMode||!window.KurashiLive?.saveReceiptDraft)return;
@@ -631,6 +632,73 @@ function scanSimilarProducts(raw,chainId=null){
   .sort((a,b)=>ranks.get(a.id)-ranks.get(b.id)||
    a.name.localeCompare(b.name,'ja')).slice(0,4);
 }
+
+ // AI supplies only a registered name. Match it against the current master
+ // and never promote an AI guess to a product link without a user action.
+function scanAiProductCandidates(item){
+ if(!item||item.productId||item.manuallyLinked||!item.productSuggestion)return null;
+ const proposal=item.productSuggestion;
+ const existing=String(proposal.existingName||'').trim();
+ const fresh=String(proposal.newName||'').trim();
+ if(!existing&&!fresh)return null;
+ const name=existing||fresh;
+ const exact=catalogue.products.filter(p=>norm(p.name)===norm(name));
+ const similar=exact.length?[]:scanSimilarProducts(name,scanDraft?.chainId);
+ return {name,existing:!!existing,exact,similar};
+}
+function scanAiCandidateView(item,row){
+ const candidate=scanAiProductCandidates(item);
+ if(!candidate)return '';
+ const buttons=products=>products.slice(0,4).map(p=>
+  '<button type="button" class="secondary" data-act="scanAiLinkProduct" data-scan-row="'+row+
+  '" data-product-id="'+esc(p.id)+'">'+esc(productTitle(p))+' に紐付ける</button>').join('');
+ const isNew=!candidate.existing&&!candidate.exact.length;
+ return '<div class="scan-ai-candidate" aria-label="ChatGPTの商品候補">'+
+  '<p class="scan-ai-candidate-title">'+(candidate.existing||candidate.exact.length?'登録済みの商品候補':'新規商品候補')+'</p>'+
+  '<p class="scan-ai-candidate-name">'+esc(candidate.name)+'</p>'+
+  '<p class="scan-ai-candidate-note">ChatGPTの推測です。登録商品との一致を確認してください。</p>'+
+  (candidate.exact.length?
+    '<div class="scan-ai-candidate-actions">'+buttons(candidate.exact)+'</div>':
+   candidate.existing?'<p class="scan-ai-candidate-note">既存商品名が見つかりません。商品を設定から選択してください。</p>':
+   '<div class="scan-ai-candidate-actions">'+
+    (candidate.similar.length?'<p class="scan-ai-candidate-note">類似する登録商品があります。先に確認してください。</p>'+
+      buttons(candidate.similar):'')+
+    (candidate.name.length<=80?'<button type="button" class="secondary" data-act="scanAiCreateProduct" data-scan-row="'+
+      row+'">この商品を登録</button>':'')+'</div>')+
+  '</div>';
+}
+function createScanAiProduct(row,name){
+ const item=scanDraft?.items[row];
+ if(page!=='recordScan'||!item||item.productId||item.manuallyLinked||
+   String(item.productSuggestion?.newName||'').trim()!==name||
+   !name||name.length>80||scanAiProductSavingRows.has(row))return;
+ if(catalogue.products.some(p=>norm(p.name)===norm(name))){
+  scanAssistMessage='同じ名称の登録商品があります。候補から選択してください。';
+  render();return;
+ }
+ scanAiProductSavingRows.add(row);
+ const button=document.querySelector('[data-act="scanAiCreateProduct"][data-scan-row="'+row+'"]');
+ if(button)button.disabled=true;
+ window.KurashiLive.save('product.create',{
+  name,package_quantity:null,package_unit:null,item_group_id:null
+ }).then(product=>{
+  if(!product)throw Error('商品を登録できませんでした');
+  const current=scanDraft?.items[row];
+  if(current&&!current.productId&&!current.manuallyLinked&&
+     String(current.productSuggestion?.newName||'').trim()===name){
+   current.productId=product.product_id;
+   current.canonicalName=name;current.manuallyLinked=true;current.autoLinked=false;
+   current.productSuggestion=null;
+   learnConfirmedReceiptLine(current,scanDraft.chainId);
+   saveScanDraft();
+  }
+  scanAssistMessage='商品を登録しました。';
+  render();
+ }).catch(err=>{
+  scanAssistMessage=err.message||'商品を登録できませんでした';
+  render();
+ }).finally(()=>{scanAiProductSavingRows.delete(row)});
+}
 function scanSuggestionButtons(item,row){
  if(item.productId||!item.name?.trim())return '';
  const found=scanSimilarProducts(item.name,scanDraft?.chainId);
@@ -783,6 +851,7 @@ function scanFormView(){
       action:'scanPickExisting',
       actionLabel:scanResolvedProductId(item)?'変更':'商品を設定',actionRow:i,
       fieldClass:'scan-product-setting'})}
+    ${!isShelf?scanAiCandidateView(item,i):''}
     <div class="${isShelf?'scan-price-single':'scan-input-pair'}">
      ${isShelf?'':UI.formField({id:'scan-qty-'+i,name:'qty-'+i,label:'数量',type:'number',
        value:item.quantity,required:true,extra:'min="1" step="1" inputmode="numeric"',
@@ -2605,7 +2674,8 @@ if(action==='chatGptCopyPrompt'){
  const parser=window.KurashiReceiptImport;
  try{
   if(!scanDraft||scanDraft.source!=='ocr'||!parser)throw Error('読み取り結果を確認してください');
-  const prompt=parser.makeChatGptOcrAssistPrompt(receiptOcrReference(scanDraft));
+  const registeredNames=catalogue.products.map(p=>String(p.name||'').trim()).filter(Boolean);
+  const prompt=parser.makeChatGptOcrAssistPrompt(receiptOcrReference(scanDraft),registeredNames);
   navigator.clipboard.writeText(prompt)
    .then(()=>say('読み取り結果と指示文をコピーしました'))
    .catch(()=>say('コピーできませんでした'));
