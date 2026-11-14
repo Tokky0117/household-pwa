@@ -1732,6 +1732,18 @@ await waitFor(()=>temp.call('bootstrap').data.product_aliases.some(x=>
  'confirmed receipt abbreviation is learned as chain-specific alias');
 kitSession.window.close();
 
+// Product registration from a receipt is intentionally unlinked. Explicit
+// post-registration master editing may later attach it to a household item,
+// which restores its price comparison without adding a receipt-screen step.
+const kitForLink=temp.call('bootstrap').data.products.find(p=>
+ p.product_id===kitSavedProduct.product_id);
+assert.ok(kitForLink&&!kitForLink.item_group_id);
+assert.equal(temp.call('product.update',{
+ product_id:kitForLink.product_id,version:Number(kitForLink.version),
+ item_group_id:chocId
+},'op-kit-deferred-group-link-abcdefghijklmn').ok,true,
+ 'a later product-master edit links the registered product to chocolate');
+
 /* Real two-device receipt flow: the second iPhone uses its own IndexedDB
  * and the same Sheets-backed GAS snapshot, not the first phone's cache. */
 const kitBaseline=temp.call('bootstrap').data;
