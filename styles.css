@@ -2800,3 +2800,10 @@ html,body{touch-action:pan-x pan-y}
 .chain-price-pair .chain-price-value{grid-area:auto}
 .chain-price-pair small{font-size:10px;color:var(--muted);white-space:nowrap}
 /* Capacity remains editable through the product card swipe action. */
+
+/* Confirm many saved-receipt ChatGPT candidates without overflowing iPhone. */
+.dialog.dialog-receipt-bulk{display:flex;flex-direction:column;max-height:min(84dvh,700px);width:min(100%,520px)}
+.dialog-receipt-bulk .dialog-description{overflow-y:auto;overscroll-behavior:contain;min-height:0;max-height:52dvh;overflow-wrap:anywhere}
+.dialog-receipt-bulk .dialog-line{display:block;padding:3px 0}
+.record-detail-bulk{margin:14px 0 4px}
+.record-detail-bulk>button{width:100%}
