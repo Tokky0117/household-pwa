@@ -1882,6 +1882,8 @@ assert.equal(updatedLines.filter(x=>aliasText(temp,x)==='手入力の追加明�
  'record.update preserves the newly typed line');
 assert.equal(updatedLines.find(x=>aliasText(temp,x)===storedName).amount_tax_included,340,
  'editing existing receipt does not alter historical 2x KitKat line total');
+await waitFor(()=>!!thirdPhone.window.document.querySelector('[data-tab="items"]'),
+ 'saved receipt editing returns to navigable detail after local draft cleanup');
 thirdPhone.window.document.querySelector('[data-tab="items"]').click();
 await waitFor(()=>thirdPhone.window.document.body.textContent.includes('170円'),
  'day-to-day stock screen uses 340/2 = 170-yen minimum for registered KitKat');
