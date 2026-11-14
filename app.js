@@ -433,6 +433,7 @@ function recordDetailView(){
      ${line.product_id?`<span>登録商品：${esc(catalogue.products.find(p=>p.id===line.product_id)?.name||'商品を確認')}</span>`:
       '<span>商品未紐付け</span>'}</div>
     ${!isShelf&&line.suggested_product_name&&!line.product_id?`<div class="detail-record-line-meta"><span>ChatGPT商品候補（参考）：${esc(line.suggested_product_name)}</span></div>`:''}
+    ${!isShelf&&liveMode?`<div class="scan-picker-actions"><button class="tertiary" type="button" data-act="recordProductOpen" data-record-item-id="${esc(line.record_item_id)}">${line.product_id?'商品を変更':'登録商品を選択'}</button><button class="tertiary" type="button" data-act="recordProductNew" data-record-item-id="${esc(line.record_item_id)}">新しい商品を登録</button></div>`:''}
    </div>`).join('')}
   </section>
   <section class="detail-record-total" aria-label="${isShelf?'価格合計':'合計'}">
@@ -1886,6 +1887,7 @@ function render(){
  if(storePickerTarget&&((storePickerTarget==='scan'&&page==='recordScan')))
   app.insertAdjacentHTML('beforeend',storePickerView());
  else storePickerTarget=null;
+ if(recordProductItemId&&page==='recordDetail')app.insertAdjacentHTML('beforeend',recordProductView());
  if(masterGroupPickerOpen&&['masterProductEdit','masterProductNew'].includes(page))
   app.insertAdjacentHTML('beforeend',masterGroupPickerView());
  else masterGroupPickerOpen=false;
@@ -2172,7 +2174,7 @@ let composing=false;
 function updateSearchResults(){const target=document.getElementById('item-results');if(target){target.innerHTML=listResults();if(openSwipeId)setOpenSwipe(openSwipeId)}}
 const searchBindings={'store-picker-search':{set:v=>{storePickerQuery=v},update:()=>{
  const target=document.getElementById('store-picker-results');if(target)target.innerHTML=storePickerChoices()
-}},search:{set:v=>{query=v},update:updateSearchResults},'catalogue-search':{set:v=>{pickQuery=v},update:()=>{const target=document.getElementById('catalogue-results');if(target)target.innerHTML=pickerResults()}},'alias-query':{set:v=>{aliasQuery=v;aliasVisibleLimit=100},update:()=>{const rows=document.getElementById('alias-results');if(rows)rows.innerHTML=aliasManageRows()}},'alias-product-search':{set:v=>{aliasPickerQuery=v},update:()=>{const rows=document.getElementById('alias-product-results');if(rows)rows.innerHTML=aliasProductPickerRows()}},'master-group-search':{set:v=>{masterGroupQuery=v},update:()=>{const rows=document.getElementById('master-group-results');if(rows)rows.innerHTML=masterGroupPickerRows()}},'master-product-query':{set:v=>{masterQuery=v},update:()=>{const rows=document.getElementById('master-product-results');if(rows)rows.innerHTML=masterProductRows()}},'scan-existing-search':{set:v=>{scanExistingQuery=v},update:()=>{const target=document.getElementById('scan-existing-results');if(target)target.innerHTML=scanExistingProductResults()}},'scan-group-search':{set:v=>{scanGroupQuery=v},update:()=>{const target=document.getElementById('scan-product-group-results');if(target)target.innerHTML=scanProductGroupChoices()}}};
+}},search:{set:v=>{query=v},update:updateSearchResults},'catalogue-search':{set:v=>{pickQuery=v},update:()=>{const target=document.getElementById('catalogue-results');if(target)target.innerHTML=pickerResults()}},'alias-query':{set:v=>{aliasQuery=v;aliasVisibleLimit=100},update:()=>{const rows=document.getElementById('alias-results');if(rows)rows.innerHTML=aliasManageRows()}},'alias-product-search':{set:v=>{aliasPickerQuery=v},update:()=>{const rows=document.getElementById('alias-product-results');if(rows)rows.innerHTML=aliasProductPickerRows()}},'master-group-search':{set:v=>{masterGroupQuery=v},update:()=>{const rows=document.getElementById('master-group-results');if(rows)rows.innerHTML=masterGroupPickerRows()}},'master-product-query':{set:v=>{masterQuery=v},update:()=>{const rows=document.getElementById('master-product-results');if(rows)rows.innerHTML=masterProductRows()}},'scan-existing-search':{set:v=>{scanExistingQuery=v},update:()=>{const target=document.getElementById('scan-existing-results');if(target)target.innerHTML=scanExistingProductResults()}},'scan-group-search':{set:v=>{scanGroupQuery=v},update:()=>{const target=document.getElementById('scan-product-group-results');if(target)target.innerHTML=scanProductGroupChoices()}},'record-product-search':{set:v=>{recordProductQuery=v},update:()=>{const target=document.getElementById('record-product-results');if(target)target.innerHTML=recordProductChoices()}}};
 function syncSearch(input,refresh=true){const binding=searchBindings[input.id];if(!binding)return;binding.set(input.value);input.closest('.ui-search')?.querySelector('.clear-search')?.toggleAttribute('hidden',!input.value);if(refresh)binding.update()}
 app.addEventListener('compositionstart',e=>{if(searchBindings[e.target.id])composing=true});
 app.addEventListener('compositionend',e=>{if(searchBindings[e.target.id]){composing=false;syncSearch(e.target)}});
@@ -2491,7 +2493,7 @@ if(form.id==='productCreateForm'){
  if(page==='productEdit'){const p=catalogue.products.find(x=>x.id===editingProductId&&x.itemGroupId===selected);if(!p){fieldNotice(form,'商品が見つかりません','new-product-name');return}Object.assign(p,{name,packageQuantity:productQty,packageUnit:productUnit})}else{catalogue.products.push({id:id(),name,packageQuantity:productQty,packageUnit:productUnit,itemGroupId:selected,itemGroupOrder:registeredProducts(selected).length+1,aliases:[]})}
  persistCatalogue();page='compare';initializeCompare();render();
 }});
-app.addEventListener('click',e=>{if(e.target.classList?.contains('alias-product-picker-overlay')){closeAliasProductPicker();return}if(e.target.classList?.contains('master-group-picker-overlay')){closeMasterGroupPicker();return}if(e.target.classList?.contains('store-picker-overlay')){closeStorePicker();return}if(e.target.classList?.contains('sheet-back')&&['add','edit','productEdit','productPick','scanExistingProduct'].includes(page)){back();return}if(suppressClick){e.preventDefault();e.stopPropagation();suppressClick=false;return}
+app.addEventListener('click',e=>{if(e.target.classList?.contains('record-product-overlay')){closeRecordProductPicker();return}if(e.target.classList?.contains('alias-product-picker-overlay')){closeAliasProductPicker();return}if(e.target.classList?.contains('master-group-picker-overlay')){closeMasterGroupPicker();return}if(e.target.classList?.contains('store-picker-overlay')){closeStorePicker();return}if(e.target.classList?.contains('sheet-back')&&['add','edit','productEdit','productPick','scanExistingProduct'].includes(page)){back();return}if(suppressClick){e.preventDefault();e.stopPropagation();suppressClick=false;return}
 if(swipeClickGuard&&e.detail!==0){e.preventDefault();e.stopPropagation();swipeClickGuard=null;return;}
 const exposedItem=e.target.closest('.swipe-item[data-item-id].swipe-open');
 if(exposedItem&&!e.target.closest('.swipe-actions')){
@@ -2785,7 +2787,7 @@ if(action==='restoreItem'||action==='showExistingItem'){
  }item.hidden=false;item.version=(item.version||0)+1}
  revealItem(item);return;
 }
-if(action==='back'){if(aliasPickerId){closeAliasProductPicker();return}if(masterGroupPickerOpen){closeMasterGroupPicker();return}if(storePickerTarget){closeStorePicker();return}back();return}
+if(action==='back'){if(recordProductItemId){closeRecordProductPicker();return}if(aliasPickerId){closeAliasProductPicker();return}if(masterGroupPickerOpen){closeMasterGroupPicker();return}if(storePickerTarget){closeStorePicker();return}back();return}
 if(action==='aliasMore'){aliasVisibleLimit+=100;const rows=document.getElementById('alias-results');if(rows)rows.innerHTML=aliasManageRows();return}
 if(action==='aliasPickerOpen'){openAliasProductPicker(el.dataset.aliasId);return}
 if(action==='masterGroupPickerOpen'){openMasterGroupPicker();return}
@@ -2875,6 +2877,13 @@ if(action==='resumeScanDraft'){
 if(action==='scanAddPhotos'){
  if(!scanBusy&&!scanDraft)openReceiptPhotoPicker(document.getElementById('scan-add-picker'));return;
 }
+if(action==='recordProductOpen'||action==='recordProductNew'){
+ openRecordProductPicker(el.dataset.recordItemId,action==='recordProductNew'?'new':'select');return;
+}
+if(action==='recordProductShowNew'){changeRecordProductMode('new');return;}
+if(action==='recordProductShowList'){changeRecordProductMode('select');return;}
+if(action==='recordProductChoose'){linkSavedRecordProduct(el.dataset.productId);return;}
+if(action==='recordProductUnlink'){linkSavedRecordProduct(null);return;}
 if(action==='recordDetail'){
  recordDetailOrigin=page==='detailAll'?'detailAll':'list';recordDetailId=el.dataset.recordId;page='recordDetail';render();return;
 }
