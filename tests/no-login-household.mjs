@@ -1104,11 +1104,8 @@ online=false;
 recordForm.dispatchEvent(new recordUI.window.Event('submit',{bubbles:true,cancelable:true}));
 await waitFor(()=>recordUI.window.KurashiLive.state().queued===2,
  'store and multi-line receipt queued atomically while offline');
-await waitFor(()=>!!recordUI.window.document.querySelector('.detail-record-page'),
- 'A saved offline receipt opens its detail directly without requiring product registration');
-assert.ok(recordUI.window.document.querySelector('.receipt-product-section')&&
- recordUI.window.document.querySelectorAll('.detail-record-line').length===2,
- 'Saved receipt immediately displays both lines and optional price-comparison setup');
+await waitFor(()=>!!recordUI.window.document.querySelector('.ui-record-row'),
+ 'New manual receipt appears immediately in the original UI');
 await pause(70);
 recordUI.window.close();online=true;
 let recordReopened=appSession();
@@ -2929,13 +2926,13 @@ assert.equal(optionalDetails.length,2);
 assert.ok(optionalDetails.some(x=>x.raw_name===''&&x.confirmed_name===''&&
  x.product_id===''&&Number(x.amount_tax_included)===200&&x.price_eligible===false),
  'the nameless line is retained as a purchase amount, not a price-comparable registered product');
-await waitFor(()=>!!optionalUI.window.document.querySelector('.detail-record-page')&&
- optionalUI.window.document.body.textContent.includes('明細名なし'),
- 'the saved unnamed receipt opens its detail directly');
+await waitFor(()=>!!optionalUI.window.document.querySelector(
+ '[data-act="recordDetail"][data-record-id="'+optionalRecord.record_id+'"]'),
+ 'the saved unnamed receipt is shown in the app history');
+optionalUI.window.document.querySelector(
+ '[data-act="recordDetail"][data-record-id="'+optionalRecord.record_id+'"]').click();
 assert.match(optionalUI.window.document.body.textContent,/明細名なし/,
  'receipt detail displays a neutral name fallback');
-await waitFor(()=>optionalUI.window.KurashiLive.state().queued===0,
- 'the new receipt has finished its original queued save before editing');
 optionalForm=await openSavedEdit(optionalUI,'optional-name receipt edit');
 assert.equal(optionalForm.querySelector('[name="name-1"]')?.value,'',
  'the blank manual field is editable with no generated name on receipt reopen');
@@ -3364,96 +3361,3 @@ assert.equal(heldPurgeRestart.window.KurashiLive.state().queued,0);
 heldPurgeRestart.window.close();
 console.log('v0.89.2: blocked product, OCR alias and receipt can be discarded together OK');
 
-
-
-/* v0.90: the receipt is already saved before the user optionally identifies
- * a price-comparable product or links a newly created master to a household item.
- * No nested sheet is opened from the saved receipt detail. */
-const savedSetupSnapshot=temp.call('bootstrap').data;
-const savedSetupChain=savedSetupSnapshot.stores[0].chain_id;
-const savedSetupGroup=savedSetupSnapshot.item_groups.find(x=>!x.is_hidden).item_group_id;
-const savedSetupBaseProduct=savedSetupSnapshot.products[0].product_id;
-const setupCreated=temp.call('record.create',{
- record_type:'receipt',chain_id:savedSetupChain,record_date:'2026-11-14',
- items:[
-  {raw_name:'初回購入の商品001',product_id:null,quantity:2,amount_tax_included:460,category_id:null},
-  {raw_name:'初回購入の商品002',product_id:null,quantity:1,amount_tax_included:398,category_id:null}]
-},'op-v90-saved-setup-receipt-create-abcdefgh1234');
-assert.equal(setupCreated.ok,true,'a new receipt can be saved with two unlinked items');
-const setupRecordId=setupCreated.data.record.record_id;
-const savedSetupUI=appSession(new IDBFactory());
-await waitFor(()=>savedSetupUI.window.KurashiLive.state().loaded,
- 'v90 saved-receipt setup bootstrap');
-savedSetupUI.window.document.querySelector('[data-tab="receipt"]').click();
-savedSetupUI.window.document.querySelector(
- '[data-act="recordDetail"][data-record-id="'+setupRecordId+'"]').click();
-assert.equal(savedSetupUI.window.document.querySelectorAll('.detail-record-line').length,2);
-assert.match(savedSetupUI.window.document.querySelector('.receipt-product-summary').textContent,
- /未照合 2件/,'saved details explain why optional product matching is useful');
-assert.ok(!savedSetupUI.window.document.querySelector('.sheet-back'),
- 'saved receipt detail does not open a half-modal');
-savedSetupUI.window.document.querySelector('[data-act="receiptProductsToggle"]').click();
-assert.equal(savedSetupUI.window.document.querySelectorAll('.receipt-setting-row').length,2,
- 'optional setup lists both receipt items inline');
-savedSetupUI.window.document.querySelectorAll('[data-act="receiptProductOpen"]')[0].click();
-assert.ok(savedSetupUI.window.document.querySelector('.receipt-product-editor')&&
- !savedSetupUI.window.document.querySelector('.sheet-back'));
-const initialMaster=savedSetupUI.window.document.querySelector(
- '[data-act="receiptProductChoose"][data-product-id="'+savedSetupBaseProduct+'"]');
-assert.ok(initialMaster,'registered products are searchable within the saved receipt');
-initialMaster.click();
-try{
- await waitFor(()=>temp.call('bootstrap').data.record_items.some(x=>
-  x.record_id===setupRecordId&&aliasText(temp,x)==='初回購入の商品001'&&
-  x.product_id===savedSetupBaseProduct),
-  'existing product is linked to a saved receipt by a queued record update');
-}catch(err){throw Error(err.message+'; state='+JSON.stringify(savedSetupUI.window.KurashiLive.state())+
- '; html='+savedSetupUI.window.document.body.textContent.slice(-900)+
- '; server='+JSON.stringify(temp.call('bootstrap').data.record_items.filter(x=>x.record_id===setupRecordId)));}
-
-await waitFor(()=>savedSetupUI.window.document.querySelectorAll('.receipt-setting-row').length===2,
- 'saved detail stays visible after the existing-product selection');
-savedSetupUI.window.document.querySelectorAll('[data-act="receiptProductOpen"]')[1].click();
-savedSetupUI.window.document.querySelector('[data-act="receiptProductNew"]').click();
-const setupCreateForm=savedSetupUI.window.document.querySelector('#receiptProductCreateForm');
-assert.ok(setupCreateForm,'new-product form expands in place without a new page');
-setupCreateForm.querySelector('[name="name"]').value='v90 初回商品セットアップ専用';
-setupCreateForm.querySelector('[name="quantity"]').value='120';
-setupCreateForm.querySelector('[data-act="receiptItemToggle"]').click();
-const groupChoice=savedSetupUI.window.document.querySelector(
- '.receipt-item-results [data-ui-choice="'+savedSetupGroup+'"]');
-assert.ok(groupChoice,'a specific household item can be chosen directly');
-groupChoice.click();
-assert.equal(setupCreateForm.querySelector('[name="group"]').value,savedSetupGroup);
-// Switching between existing and new products must not silently discard
-// a typed product name, package size or household item choice.
-setupCreateForm.querySelector('[data-act="receiptProductExisting"]').click();
-savedSetupUI.window.document.querySelector('[data-act="receiptProductNew"]').click();
-const restoredCreateForm=savedSetupUI.window.document.querySelector('#receiptProductCreateForm');
-assert.equal(restoredCreateForm.querySelector('[name="name"]').value,'v90 初回商品セットアップ専用');
-assert.equal(restoredCreateForm.querySelector('[name="quantity"]').value,'120');
-assert.equal(restoredCreateForm.querySelector('[name="group"]').value,savedSetupGroup);
-savedSetupUI.window.document.querySelector('[data-act="receiptProductClose"]').click();
-assert.ok(savedSetupUI.window.document.querySelector('[data-dialog="confirmReceiptSetupDiscard"]'),
- 'closing a modified product editor asks before discarding entered data');
-savedSetupUI.window.document.querySelector('[data-dialog="cancel"]').click();
-assert.equal(savedSetupUI.window.document.querySelector('#receiptProductCreateForm [name="name"]').value,
- 'v90 初回商品セットアップ専用','cancel preserves the typed product form');
-restoredCreateForm.dispatchEvent(new savedSetupUI.window.Event('submit',{
- bubbles:true,cancelable:true
-}));
-await waitFor(()=>temp.call('bootstrap').data.products.some(x=>
- x.name==='v90 初回商品セットアップ専用'&&x.item_group_id===savedSetupGroup),
- 'new product saves to the selected household item');
-const setupSavedProduct=temp.call('bootstrap').data.products.find(x=>
- x.name==='v90 初回商品セットアップ専用');
-await waitFor(()=>temp.call('bootstrap').data.record_items.some(x=>
- x.record_id===setupRecordId&&aliasText(temp,x)==='初回購入の商品002'&&
- x.product_id===setupSavedProduct.product_id),
- 'saved receipt is subsequently linked to the new product without changing amount');
-assert.ok(temp.call('bootstrap').data.record_items.some(x=>
- x.record_id===setupRecordId&&aliasText(temp,x)==='初回購入の商品002'&&
- Number(x.amount_tax_included)===398&&Number(x.quantity)===1),
- 'matching leaves the original purchase amount and quantity untouched');
-savedSetupUI.window.close();
-console.log('v0.90: save-first receipt detail, existing-product match, inline new-product and household link OK');

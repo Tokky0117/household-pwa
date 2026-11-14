@@ -12,7 +12,7 @@
  const OLD_SNAPSHOT='kurashi-new-confirmed-snapshot-v1';
  const OLD_OPERATION='kurashi-new-write-v1-temporary-household';
  const listeners=new Set();
- const blank=()=>({base:null,queue:[],blocked:null,productIdMap:{},recordIdMap:{}});
+ const blank=()=>({base:null,queue:[],blocked:null,productIdMap:{}});
  let dbPromise=null,bootPromise=null,workspace=blank();
  let refreshPromise=null,flushPromise=null,retryTimer=null,retryMs=3000;
  let error='',lastSync=0,authRequired=false,token=null,subject='temporary-household',expiry=0,gisReady=false;
@@ -25,7 +25,6 @@
  // A receipt can still contain a temporary product ID after the product
  // creation was acknowledged. Keep the mapping alongside the durable queue.
  const confirmedProductId=id=>id&&Object.prototype.hasOwnProperty.call(workspace.productIdMap||{},id)?workspace.productIdMap[id]:id;
- const confirmedRecordId=id=>id&&Object.prototype.hasOwnProperty.call(workspace.recordIdMap||{},id)?workspace.recordIdMap[id]:id;
  function canonicalReceiptDraft(draft){
   if(!draft||!Array.isArray(draft.items))return draft;
   return {...draft,items:draft.items.map(line=>{
@@ -100,7 +99,7 @@
  const normalizeWorkspace=doc=>{
   if(!doc||!Array.isArray(doc.queue))return blank();
   if(doc.base)validateSnapshot(doc.base);
-  return {base:doc.base||null,queue:doc.queue,blocked:doc.blocked||null,productIdMap:doc.productIdMap&&typeof doc.productIdMap==='object'?doc.productIdMap:{},recordIdMap:doc.recordIdMap&&typeof doc.recordIdMap==='object'?doc.recordIdMap:{}};
+  return {base:doc.base||null,queue:doc.queue,blocked:doc.blocked||null,productIdMap:doc.productIdMap&&typeof doc.productIdMap==='object'?doc.productIdMap:{}};
  };
  function project(doc=workspace){
   if(!doc.base)return null;
@@ -1033,7 +1032,6 @@
       ...ws.base.item_groups.filter(i=>!ids.has(i.item_group_id)),...entities]}),
     sequence_no:Math.max(Number(ws.base.sequence_no),Number(result.sequence_no))};
    ws.queue.shift();
-   if(op.kind==='record-create')ws.recordIdMap={...(ws.recordIdMap||{}),[op.clientId]:result.record.record_id};
    if(op.kind==='create'){
     for(const rest of ws.queue){
      if(rest.targetId===op.clientId)rest.targetId=result.entity.item_group_id;
@@ -1488,7 +1486,7 @@
    else void load();
   }).catch(e=>{error=e.message||'端末内の保存領域を開けません';notify()});
  };
- window.KurashiLive={state,load,save,saveRecord,updateRecord,deleteRecord,blockedReceiptChange,discardBlockedReceipt,blockedProductChange,resolveBlockedProduct,refreshBlockedProducts,pendingOperationReview,beginPendingOperationReview,endPendingOperationReview,discardPendingOperations,confirmedProductId,confirmedRecordId,learnAliases,linkAlias,learnStoreAlias,
+ window.KurashiLive={state,load,save,saveRecord,updateRecord,deleteRecord,blockedReceiptChange,discardBlockedReceipt,blockedProductChange,resolveBlockedProduct,refreshBlockedProducts,pendingOperationReview,beginPendingOperationReview,endPendingOperationReview,discardPendingOperations,confirmedProductId,learnAliases,linkAlias,learnStoreAlias,
   saveReceiptDraft,loadReceiptDraft,saveOcrCorrections,loadOcrCorrections,toggleStock,reorderItems,reorderProducts,retry,logout,renderLogin,
   subscribe:fn=>{listeners.add(fn);return()=>listeners.delete(fn)},itemsOf,catalogueOf};
  window.addEventListener('kurashi-gis-ready',initialize);
