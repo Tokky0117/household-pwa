@@ -110,6 +110,17 @@
    records:(doc.base.records||[]).map(r=>({...r})),
    record_items:(doc.base.record_items||[]).map(i=>({...i}))};
   for(const op of doc.queue){
+   if(op.kind==='record-create'||op.kind==='record-update'){
+    if(op.kind==='record-create')
+     ws.recordIdMap={...(ws.recordIdMap||{}),[op.clientId]:result.record.record_id};
+    for(const rest of ws.queue){
+     if(op.kind==='record-create'&&rest.targetId===op.clientId)
+      rest.targetId=result.record.record_id;
+     for(let i=0;i<op.itemIds.length;i++)
+      if(rest.kind==='record-item-link'&&rest.targetId===op.itemIds[i])
+       rest.targetId=result.items[i].record_item_id;
+    }
+   }
    if(op.kind==='store-create'){
     snap.stores.push({chain_id:op.clientId,household_id:snap.household_id,
      canonical_name:op.name,normalized_name:op.name.normalize('NFKC').toLocaleLowerCase('ja'),
@@ -147,7 +158,8 @@
      branch_name:'',raw_store_name:'',version:1,deleted_at:''});
     op.items.forEach((line,i)=>snap.record_items.push({
      record_item_id:op.itemIds[i],record_id:op.clientId,line_order:i+1,
-     raw_name:line.raw_name,confirmed_name:line.confirmed_name||'',inferred_name:line.inferred_name||'',product_id:line.product_id||'',
+     raw_name:line.raw_name,confirmed_name:line.confirmed_name||'',inferred_name:line.inferred_name||'',
+     suggested_product_name:line.suggested_product_name||'',suggestion_kind:line.suggestion_kind||'',product_id:line.product_id||'',
      quantity:line.quantity,amount_tax_included:line.amount_tax_included,
      category_id:line.category_id===null?'':line.category_id,
      price_eligible:!!line.product_id,version:1,deleted_at:''
@@ -162,11 +174,18 @@
     snap.record_items=snap.record_items.filter(i=>i.record_id!==op.targetId);
     op.items.forEach((line,i)=>snap.record_items.push({
      record_item_id:op.itemIds[i],record_id:op.targetId,line_order:i+1,
-     raw_name:line.raw_name,confirmed_name:line.confirmed_name||'',inferred_name:line.inferred_name||'',product_id:line.product_id||'',
+     raw_name:line.raw_name,confirmed_name:line.confirmed_name||'',inferred_name:line.inferred_name||'',
+     suggested_product_name:line.suggested_product_name||'',suggestion_kind:line.suggestion_kind||'',product_id:line.product_id||'',
      quantity:line.quantity,amount_tax_included:line.amount_tax_included,
      category_id:line.category_id===null?'':line.category_id,
      price_eligible:!!line.product_id,version:1,deleted_at:''
     }));
+    continue;
+   }
+   if(op.kind==='record-item-link'){
+    const line=snap.record_items.find(x=>x.record_item_id===op.targetId&&!x.deleted_at);
+    if(line){line.product_id=op.productId||'';line.price_eligible=!!op.productId;
+     line.version=Number(line.version)+1}
     continue;
    }
    if(op.kind==='record-delete'){
@@ -616,6 +635,12 @@
    const confirmed=line.confirmed_name===undefined?'':String(line.confirmed_name||'').trim();
    if(line.inferred_name!==undefined&&typeof line.inferred_name!=='string')throw Error('ChatGPT推測名を確認してください');
    const inferred=String(line.inferred_name||'').trim();
+   const suggested=String(line.suggested_product_name||'').trim();
+   const suggestionKind=String(line.suggestion_kind||'');
+   if(suggested.length>120||/^[=+@\\-]/.test(suggested)||
+      /[\\x00-\\x1f\\x7f<>]/.test(suggested)||
+      (suggested&&!['existing','new'].includes(suggestionKind))||
+      (!suggested&&suggestionKind))throw Error('商品名候補を確認してください');
    if(inferred.length>120||/^[=+@\-]/.test(inferred)||/[\x00-\x1f\x7f<>]/.test(inferred))
     throw Error('ChatGPT推測名を確認してください');
    if(line.confirmed_name!==undefined&&(!confirmed||rawName))throw Error('写真確認名とOCR名を同時に保存できません');
@@ -633,7 +658,7 @@
    return {raw_name:rawName,...(confirmed?{confirmed_name:confirmed}:{}),
     ...(inferred?{inferred_name:inferred}:{}),product_id:productId,
     quantity:line.quantity,amount_tax_included:line.amount_tax_included,
-    category_id:cat};
+    category_id:cat,...(suggested?{suggested_product_name:suggested,suggestion_kind:suggestionKind}:{})};
   });
   return {id:operationId(),kind:'record-create',clientId:'local-'+uid(),
    chainId,recordType:kind,date,branchName:String(input.branch_name||'').trim(),items:lines,
@@ -735,6 +760,20 @@
     throw Error('編集時は既存チェーンを選択してください');
    const create=makeRecordDraft({...input,record_type:record.record_type},doc,input.chain_id);
    return {...create,kind:'record-update',targetId:record.record_id};
+  });
+ }
+ async function linkRecordItem(recordItemId,productId){
+  return enqueue(doc=>{
+   const snap=project(doc);
+   const line=snap?.record_items.find(x=>x.record_item_id===recordItemId&&!x.deleted_at);
+   if(!line||!snap.records.some(r=>r.record_id===line.record_id&&!r.deleted_at))
+    throw Error('購入明細が見つかりません');
+   const chosen=confirmedProductId(productId||null);
+   if(chosen&&!snap.products.some(p=>p.product_id===chosen&&!p.deleted_at))
+    throw Error('登録商品が見つかりません');
+   if(String(line.product_id||'')===String(chosen||''))return null;
+   return {id:operationId(),kind:'record-item-link',targetId:recordItemId,
+    productId:chosen,retries:0};
   });
  }
  async function deleteRecord(recordId){
@@ -856,6 +895,15 @@
     alias_id:op.aliasId,product_id:op.productId||null,
     version:Number(alias.version)}};
   }
+  if(op.kind==='record-item-link'){
+   const line=base?.record_items.find(x=>x.record_item_id===op.targetId&&!x.deleted_at);
+   if(!line)throw Error('同期済みの購入明細が見つかりません');
+   if(op.productId&&!base?.products.some(p=>p.product_id===op.productId&&!p.deleted_at))
+    throw Error('登録商品が見つかりません');
+   return {operationId:op.id,action:'record.item.link',payload:{
+    record_item_id:op.targetId,product_id:op.productId||null,
+    version:Number(line.version)}};
+  }
   if(op.kind==='record-update'||op.kind==='record-delete'){
    const record=base?.records.find(r=>r.record_id===op.targetId);
    if(!record)throw Error('更新するレシートが見つかりません');
@@ -966,6 +1014,10 @@
        (result.items.length!==0||!result.record.deleted_at||
         result.record.record_id!==plan.payload.record_id)))
     throw Error('RESPONSE_INVALID');
+  }else if(plan.action==='record.item.link'){
+   if(!result.entity||result.entity.record_item_id!==plan.payload.record_item_id||
+      String(result.entity.product_id||'')!==String(plan.payload.product_id||'')||
+      !positiveVersion(result.entity.version))throw Error('RESPONSE_INVALID');
   }else if(['alias.upsert','alias.link'].includes(plan.action)){
    if(!result.entity||typeof result.entity.alias_id!=='string'||
       String(result.entity.product_id||'')!==String(plan.payload.product_id||'')||
@@ -1023,6 +1075,9 @@
        records:[...(ws.base.records||[]).filter(r=>r.record_id!==result.record.record_id),result.record],
        record_items:[...(ws.base.record_items||[]).filter(i=>i.record_id!==result.record.record_id),...result.items],
        product_aliases:[...(ws.base.product_aliases||[]),...(result.aliases||[])]}
+     :plan.action==='record.item.link'?{record_items:[
+       ...(ws.base.record_items||[]).filter(i=>i.record_item_id!==result.entity.record_item_id),
+       result.entity]}
      :plan.action==='record.delete'?{
        records:(ws.base.records||[]).filter(r=>r.record_id!==result.record.record_id),
        record_items:(ws.base.record_items||[]).filter(i=>i.record_id!==result.record.record_id)}
@@ -1047,7 +1102,7 @@
    if(op.kind==='product-create'){
     ws.productIdMap={...(ws.productIdMap||{}),[op.clientId]:result.entity.product_id};
     for(const rest of ws.queue){
-     if(['alias-create','alias-link'].includes(rest.kind)&&rest.productId===op.clientId&&
+     if(['alias-create','alias-link','record-item-link'].includes(rest.kind)&&rest.productId===op.clientId&&
         !rest.request)
       rest.productId=result.entity.product_id;
      if(rest.kind==='record-create'||rest.kind==='record-update')rest.items=rest.items.map(i=>
@@ -1075,7 +1130,7 @@
   }
   const productIds=(op.kind==='record-create'||op.kind==='record-update')?
    (op.items||[]).map(line=>line.product_id).filter(Boolean):
-   ['alias-create','alias-link'].includes(op.kind)?[op.productId].filter(Boolean):
+   ['alias-create','alias-link','record-item-link'].includes(op.kind)?[op.productId].filter(Boolean):
    ['product-edit','product-link'].includes(op.kind)?[op.targetId].filter(Boolean):[];
   if(!productIds.length)return null;
   const missing=productIds.find(id=>!base?.products.some(p=>p.product_id===id&&!p.deleted_at));
@@ -1523,7 +1578,8 @@
    else void load();
   }).catch(e=>{error=e.message||'端末内の保存領域を開けません';notify()});
  };
- window.KurashiLive={state,load,save,saveRecord,updateRecord,deleteRecord,blockedReceiptChange,discardBlockedReceipt,blockedProductChange,resolveBlockedProduct,refreshBlockedProducts,pendingOperationReview,beginPendingOperationReview,endPendingOperationReview,discardPendingOperations,confirmedProductId,learnAliases,linkAlias,learnStoreAlias,
+ window.KurashiLive={state,load,save,saveRecord,updateRecord,deleteRecord,linkRecordItem,
+  resolveRecordId:id=>workspace.recordIdMap?.[id]||id,blockedReceiptChange,discardBlockedReceipt,blockedProductChange,resolveBlockedProduct,refreshBlockedProducts,pendingOperationReview,beginPendingOperationReview,endPendingOperationReview,discardPendingOperations,confirmedProductId,learnAliases,linkAlias,learnStoreAlias,
   saveReceiptDraft,loadReceiptDraft,saveOcrCorrections,loadOcrCorrections,toggleStock,reorderItems,reorderProducts,retry,logout,renderLogin,
   subscribe:fn=>{listeners.add(fn);return()=>listeners.delete(fn)},itemsOf,catalogueOf};
  window.addEventListener('kurashi-gis-ready',initialize);
