@@ -456,7 +456,7 @@ function recordDetailView(){
       '<span>商品未紐付け</span>'}</div>
     ${!isShelf&&!line.product_id&&line.suggested_product_name&&
       norm(line.suggested_product_name)!==norm(aliasNameFor(line))?`<div class="detail-record-line-meta"><span>ChatGPT商品候補（参考）：${esc(line.suggested_product_name)}</span></div>`:''}
-    ${!isShelf&&liveMode?`<div class="scan-picker-actions"><button class="tertiary" type="button" data-act="recordProductOpen" data-record-item-id="${esc(line.record_item_id)}">${line.product_id?'商品を変更':'登録商品を選択'}</button>${line.product_id?'':`<button class="tertiary" type="button" data-act="recordProductNew" data-record-item-id="${esc(line.record_item_id)}">新しい商品を登録</button>`}</div>`:''}
+    ${!isShelf&&liveMode?`<div class="scan-picker-actions">${UI.button({label:line.product_id?'商品を変更':'登録商品を選択',variant:'tertiary',action:'recordProductOpen',recordItemId:line.record_item_id})}${line.product_id?'':UI.button({label:'新しい商品を登録',variant:'tertiary',action:'recordProductNew',recordItemId:line.record_item_id})}</div>`:''}
    </div>`).join('')}
   </section>
   <section class="detail-record-total" aria-label="${isShelf?'価格合計':'合計'}">
@@ -809,7 +809,8 @@ function createScanAiProduct(row,name){
  if(page!=='recordScan'||!item||item.productId||item.manuallyLinked||
    String(item.productSuggestion?.newName||'').trim()!==name||
    !name||name.length>80||scanAiProductSavingRows.has(row))return;
- if(catalogue.products.some(p=>norm(p.name)===norm(name))){
+ const receiptKey=window.KurashiLive.receiptProductKey;
+  if(catalogue.products.some(p=>receiptKey(p.name)===receiptKey(name))){
   scanAssistMessage='同じ名称の登録商品があります。候補から選択してください。';
   render();return;
  }
@@ -1276,8 +1277,8 @@ const UI={
   iconButton({label,action,iconHtml,title=''}) {
     return `<button class="iconbtn" type="button" data-act="${esc(action)}" aria-label="${esc(label)}"${title?' title="'+esc(title)+'"':''}>${iconHtml}</button>`;
   },
-  button({label,variant='secondary',action='',type='button',icon='',className='',disabled=false}) {
-    return `<button type="${esc(type)}" class="${esc(variant)}${className?' '+esc(className):''}" ${action?'data-act="'+esc(action)+'"':''}${disabled?' disabled':''}>${icon?miniIcon(icon):''}<span>${esc(label)}</span></button>`;
+  button({label,variant='secondary',action='',type='button',icon='',className='',disabled=false,recordItemId=''}) {
+    return `<button type="${esc(type)}" class="${esc(variant)}${className?' '+esc(className):''}" ${action?'data-act="'+esc(action)+'"':''}${recordItemId?' data-record-item-id="'+esc(recordItemId)+'"':''}${disabled?' disabled':''}>${icon?miniIcon(icon):''}<span>${esc(label)}</span></button>`;
   },
   floatingAction({label,action,icon='',avoidSelector=''}) {
     return `<div class="ui-floating-action" data-ui-floating-action data-ui-floating-avoid="${esc(avoidSelector)}">${UI.button({label,action,icon,variant:'secondary',className:'ui-floating-action-button'})}</div>`;
