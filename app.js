@@ -233,7 +233,8 @@ function normalizedOcrItemName(item){
 }
 function resetScan({keepDraft=false}={}){
  scanToken++;closeScanViewer();clearScanThumbnails();scanPhotos=[];scanIndex=0;scanBusy=false;scanStatus='';scanAssistMessage='';scanError='';scanReadFailed=false;
- if(!keepDraft){scanDraft=null;scanNewStoreMode=false;scanReturnScrollY=null;saveScanDraft();}
+ if(!keepDraft){scanDraft=null;scanNewStoreMode=false;scanReturnScrollY=null;return saveScanDraft();}
+ return Promise.resolve();
 }
 
 function createManualRecord(type){
@@ -2467,8 +2468,11 @@ app.addEventListener('submit',e=>{e.preventDefault();const form=e.target;const d
       .catch(err=>console.warn('保存後の商品照合を保留しました',err));
     }
    }
-   resetScan();recordDetailId=savedId||null;recordDetailOrigin='list';
-   page=recordDetailId?'recordDetail':'list';tab='receipt';render();
+   const cleared=resetScan();
+   void Promise.resolve(cleared).catch(err=>console.warn('下書きを破棄できませんでした',err)).finally(()=>{
+    recordDetailId=savedId||null;recordDetailOrigin='list';
+    page=recordDetailId?'recordDetail':'list';tab='receipt';render();
+   });
   }).catch(err=>{
    if(submit)submit.disabled=false;
    formSaveFeedback(form,err.message||'保存できませんでした。通信状態を確認してください。');
