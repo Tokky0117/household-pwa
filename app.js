@@ -393,11 +393,15 @@ function changeRecordProductMode(mode){
  app.insertAdjacentHTML('beforeend',recordProductView());syncSheetScrollLock();
 }
 function learnSavedReceiptAlias(line,productId){
- if(!line?.raw_name||!productId)return;
+ // Saved OCR names live in product_aliases; record_items.raw_name is
+ // deliberately blank for new records. Never learn manual/photo guesses.
+ const ocrName=String(line?.raw_name||
+  (!line?.confirmed_name&&line?.alias_id?aliasNameFor(line):'')).trim();
+ if(!ocrName||!productId)return;
  const record=allPreviewRecords().find(r=>r.record_id===line.record_id&&!r.deleted_at);
  if(!record?.chain_id)return;
  void window.KurashiLive.learnAliases({
-  chain_id:record.chain_id,items:[{raw_name:line.raw_name,product_id:productId}]
+  chain_id:record.chain_id,items:[{raw_name:ocrName,product_id:productId}]
  }).catch(err=>console.warn('確認した商品のOCR名を記録できませんでした',err));
 }
 function linkSavedRecordProduct(productId){
