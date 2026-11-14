@@ -892,8 +892,8 @@ assert.ok(!photoReview.includes('内容を確認して保存してください�
  !photoReview.includes('scan-tax-excluded')&&
  !photoReview.includes('写真で確認'),
  'Review omits redundant guidance, tax breakdown and duplicate photo trigger');
-assert.ok(photoReview.indexOf('読み取り状況')<photoReview.indexOf('ChatGPTで確認')&&
- photoReview.indexOf('ChatGPTで確認')<photoReview.indexOf('購入情報'),
+assert.ok(photoReview.indexOf('読み取り状況')<photoReview.indexOf('生成AIで再確認')&&
+ photoReview.indexOf('生成AIで再確認')<photoReview.indexOf('購入情報'),
  'Read status groups OCR and ChatGPT before purchase details');
 ui.setScanDraft(null);
 const beforeScan=ui.receiptScanView();
