@@ -2444,8 +2444,16 @@ if(el.dataset.pick){
 }
 if(el.dataset.dialog){if(el.dataset.dialog==='cancel'&&dialog?.pending?.pendingOpsSignature){
   window.KurashiLive.endPendingOperationReview();dialog=null;renderDialogOnly();return;
- }if(el.dataset.dialog==='cancel'&&(dialog?.title==='変更を破棄しますか？'||dialog?.title==='比較単位について'||dialog?.title==='日用品との紐付けを変更しますか？'||dialog?.title==='日用品との紐付けを解除しますか？'||dialog?.title==='読み取り名の紐付けを変更しますか？'||dialog?.title==='読み取り名の紐付けを解除しますか？'||dialog?.title==='下書きに保存しますか？'||dialog?.title==='下書きがあります'||dialog?.title==='読み取り途中の内容を破棄しますか？'||dialog?.title==='読み取り結果を写真解析の結果に置き換えますか？')){dialog=null;document.querySelector('.dialog-back')?.remove();return}const action=el.dataset.dialog,p=dialog?.pending;dialog=null;
+ }if(el.dataset.dialog==='cancel'&&(dialog?.title==='変更を破棄しますか？'||dialog?.title==='比較単位について'||dialog?.title==='日用品との紐付けを変更しますか？'||dialog?.title==='日用品との紐付けを解除しますか？'||dialog?.title==='読み取り名の紐付けを変更しますか？'||dialog?.title==='読み取り名の紐付けを解除しますか？'||dialog?.title==='下書きに保存しますか？'||dialog?.title==='下書きがあります'||dialog?.title==='読み取り途中の内容を破棄しますか？'||dialog?.title==='この商品を新規登録しますか？'||dialog?.title==='読み取り結果を写真解析の結果に置き換えますか？')){dialog=null;document.querySelector('.dialog-back')?.remove();return}const action=el.dataset.dialog,p=dialog?.pending;dialog=null;
 
+
+if(action==='confirmScanAiProduct'&&p&&Number.isInteger(p.row)){
+ const row=p.row,item=scanDraft?.items[row];
+ const candidate=scanAiProductCandidates(item);
+ if(candidate&&!candidate.existing&&candidate.name===p.name&&!candidate.exact.length)
+  createScanAiProduct(row,p.name);
+ renderDialogOnly();return;
+}
 if(action==='confirmAliasLink'&&p&&Object.prototype.hasOwnProperty.call(p,'productId')){
  const alias=(catalogue.productAliases||[]).find(x=>x.aliasId===p.aliasId);
  if(!alias||String(alias.aliasId).startsWith('local-')||page!=='aliasManage'||aliasLinkSaving)return;
@@ -2761,6 +2769,36 @@ if(action==='scanPickExisting'){
  scanProductRow=Number(el.dataset.scanRow);scanExistingQuery='';
  scanReturnScrollY=window.scrollY;
  page='scanExistingProduct';render();return;
+}
+
+if(action==='scanAiLinkProduct'){
+ if(!scanDraft||page!=='recordScan')return;
+ syncScanReview();
+ const row=Number(el.dataset.scanRow),item=scanDraft.items[row];
+ const candidate=scanAiProductCandidates(item);
+ const product=catalogue.products.find(p=>p.id===el.dataset.productId);
+ if(!candidate||!product||
+   ![...candidate.exact,...candidate.similar].some(p=>p.id===product.id))return;
+ item.productId=product.id;item.manuallyLinked=true;item.autoLinked=false;
+ item.productSuggestion=null;
+ learnConfirmedReceiptLine(item,scanDraft.chainId);
+ saveScanDraft();render();return;
+}
+if(action==='scanAiCreateProduct'){
+ if(!scanDraft||page!=='recordScan')return;
+ syncScanReview();
+ const row=Number(el.dataset.scanRow),item=scanDraft.items[row];
+ const candidate=scanAiProductCandidates(item);
+ if(!candidate||candidate.existing||candidate.exact.length)return;
+ if(candidate.similar.length){
+  dialog={title:'この商品を新規登録しますか？',
+   message:'類似する登録商品があります。既存商品でないことを確認してください。',
+   buttons:[{id:'cancel',label:'キャンセル'},
+    {id:'confirmScanAiProduct',label:'新規登録する',primary:true}],
+   pending:{row,name:candidate.name}};
+  renderDialogOnly();return;
+ }
+ createScanAiProduct(row,candidate.name);return;
 }
 if(action==='scanUnlinkProduct'){
  if(!scanDraft||page!=='scanExistingProduct')return;
