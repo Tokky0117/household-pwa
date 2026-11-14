@@ -1120,7 +1120,7 @@ assert.equal(storedDetails.length,2,'both manual receipt lines saved under one r
 assert.equal(Number(storedDetails[0].amount_tax_included),340);
 assert.equal(Number(storedDetails[0].quantity),2);
 assert.equal(Number(storedDetails[1].amount_tax_included),110);
-assert.equal(String(storedDetails[0].category_id),'','budget category is retired');
+assert.equal(Object.hasOwn(storedDetails[0],'category_id'),false,'budget category column is retired');
 assert.equal(recordReopened.window.document.querySelector('[data-tab="budget"]'),null,
  'budget tab has been removed');
 recordReopened.window.document.querySelector('[data-tab="receipt"]').click();
