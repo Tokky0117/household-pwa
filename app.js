@@ -222,6 +222,14 @@ function normalizeOcrProductName(value){
   .replace(/(?<=[0-9])[Oo](?=[0-9])/gu,'0')
   .replace(/(?<=[0-9])[Ii](?=[0-9])/gu,'1');
 }
+// A barcode-only OCR row is not a merchandise name. Preserve its printed
+// evidence even when a digit was misread as O/I.
+function normalizedOcrItemName(item){
+ const name=String(item?.name??'');
+ if((item?.issues||[]).includes('商品コードのみ（商品名を確認）')||
+    /^[0-9OoIi]{13}$/.test(name)&&/\d/.test(name))return name;
+ return normalizeOcrProductName(name);
+}
 function resetScan({keepDraft=false}={}){
  scanToken++;closeScanViewer();clearScanThumbnails();scanPhotos=[];scanIndex=0;scanBusy=false;scanStatus='';scanAssistMessage='';scanError='';scanReadFailed=false;
  if(!keepDraft){scanDraft=null;scanNewStoreMode=false;scanReturnScrollY=null;saveScanDraft();}
@@ -1076,7 +1084,7 @@ async function runReceiptScan(){
    for(const item of out.parsed.items){
     const rowId='ocr-'+id();
     allItems.push(window.KurashiReceiptReview.fromOcrItem({
-     ...item,name:normalizeOcrProductName(item.name)
+     ...item,name:normalizedOcrItemName(item)
     },{
      rowId,taxBasis:out.parsed.taxBasis
     }));
