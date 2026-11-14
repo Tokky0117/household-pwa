@@ -2035,51 +2035,44 @@ assert.equal(standaloneDirect.data.entity.item_group_id,'');
 assert.equal(standaloneDirect.data.entity.item_group_order,'');
 console.log('v62: nullable master, store alias learning, next receipt auto-link and checkbox removal OK');
 
-/* v63: Cross-store exact history is reusable. Text edits still re-evaluate,
- * while a manually selected product remains selected. */
+/* v63: changing retailer leaves the printed OCR name untouched. Registered
+ * product selection is performed on the saved receipt, not before purchase. */
 let relinkSession=appSession();
 await waitFor(()=>relinkSession.window.KurashiLive.state().loaded,
- 'receipt retailer reassignment regression bootstrap');
-await waitFor(()=>relinkSession.window.KurashiLive.state().queued===0,
- 'finish earlier alias operations before chain reassignment');
+ 'saved receipt retailer reassignment bootstrap');
+await waitFor(()=>relinkSession.window.KurashiLive.state().queued===0);
 await relinkSession.window.KurashiLive.load();
 relinkSession.window.document.querySelector('[data-tab="receipt"]').click();
 prepareOcrImport(relinkSession);
 relinkSession.window.eval(importer);
 relinkSession.window.document.getElementById('chatgpt-input').value=JSON.stringify(standaloneJson);
 await completeOcrImport(relinkSession);
-const reviewField=(name)=>relinkSession.window.document
+const reviewField=name=>relinkSession.window.document
  .querySelector('#scanConfirmForm [name="'+name+'"]');
-assert.equal(reviewField('product-0').value,standaloneProduct.product_id,
- 'known Costco print alias initially identifies saved product');
+assert.equal(reviewField('product-0'),null,
+ 'product association no longer appears in receipt review');
 reviewField('chain').value=kitStore.chain_id;
 reviewField('chain').dispatchEvent(new relinkSession.window.Event('change',{bubbles:true}));
-assert.equal(reviewField('product-0').value,standaloneProduct.product_id,
- 'same uniquely confirmed print name remains linked across retailers');
 reviewField('chain').value=standaloneChainId;
 reviewField('chain').dispatchEvent(new relinkSession.window.Event('change',{bubbles:true}));
-assert.equal(reviewField('product-0').value,standaloneProduct.product_id,
- 'switching back to the original retailer re-links its known alias');
-assert.equal(relinkSession.window.document.querySelector('[name="name-0"]'),null,
- 'OCR original name cannot be modified; only product associations are editable');
+assert.equal(relinkSession.window.document.querySelector('[name="name-0"]'),null);
 assert.equal(relinkSession.window.document.querySelector('.scan-ocr-name').textContent,
- standaloneRaw,'OCR name remains unchanged when the retailer changes');
-relinkSession.window.document.querySelector('[data-act="scanPickExisting"]').click();
+ standaloneRaw,'OCR name remains immutable after retailer changes');
+relinkSession.window.document.querySelector('#scanConfirmForm').dispatchEvent(
+ new relinkSession.window.Event('submit',{bubbles:true,cancelable:true}));
+await waitFor(()=>!!relinkSession.window.document.querySelector('[data-act="recordProductOpen"]'),
+ 'saved receipt exposes common registered-product picker');
+relinkSession.window.document.querySelector('[data-act="recordProductOpen"]').click();
 const manualChoice=relinkSession.window.document.querySelector(
- '[data-act="scanChooseExisting"][data-product-id="'+standaloneProduct.product_id+'"]');
-assert.ok(manualChoice,'previously saved standalone product can be explicitly selected');
+ '[data-act="recordProductChoose"][data-product-id="'+standaloneProduct.product_id+'"]');
+assert.ok(manualChoice,'previously saved product is available for explicit selection');
 manualChoice.click();
-reviewField('chain').value=kitStore.chain_id;
-reviewField('chain').dispatchEvent(new relinkSession.window.Event('change',{bubbles:true}));
-assert.equal(reviewField('product-0').value,standaloneProduct.product_id,
- 'an explicit existing-product selection survives retailer changes');
-assert.equal(reviewField('product-0').value,standaloneProduct.product_id,
- 'explicit existing-product selection survives retailer changes');
-assert.equal(relinkSession.window.document.querySelector('.scan-ocr-name').textContent,
- standaloneRaw,'manual product selection does not rewrite the OCR name');
+await waitFor(()=>relinkSession.window.KurashiLive.state().queued===0&&
+ temp.call('bootstrap').data.record_items.some(x=>
+  aliasText(temp,x)===standaloneRaw&&x.product_id===standaloneProduct.product_id),
+ 'manual saved-receipt product choice persists after retailer edit');
 relinkSession.window.close();
-console.log('v63: retailer changes, OCR-name corrections and user-confirmed master links OK');
-
+console.log('v63: retailer change and saved-receipt manual product association OK');
 
 /* v64: saved receipts register OCR names independently of the historic row text. */
 const historyRaw='かたかな・直売X-123',historyCanonical='履歴から再照合する商品A';
