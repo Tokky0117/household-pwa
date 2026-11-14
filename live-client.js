@@ -12,7 +12,7 @@
  const OLD_SNAPSHOT='kurashi-new-confirmed-snapshot-v1';
  const OLD_OPERATION='kurashi-new-write-v1-temporary-household';
  const listeners=new Set();
- const blank=()=>({base:null,queue:[],blocked:null,productIdMap:{},recordIdMap:{}});
+ const blank=()=>({base:null,queue:[],blocked:null,productIdMap:{},recordIdMap:{},recordItemIdMap:{}});
  let dbPromise=null,bootPromise=null,workspace=blank();
  let refreshPromise=null,flushPromise=null,retryTimer=null,retryMs=3000;
  let error='',lastSync=0,authRequired=false,token=null,subject='temporary-household',expiry=0,gisReady=false;
@@ -101,7 +101,8 @@
   if(doc.base)validateSnapshot(doc.base);
   return {base:doc.base||null,queue:doc.queue,blocked:doc.blocked||null,
    productIdMap:doc.productIdMap&&typeof doc.productIdMap==='object'?doc.productIdMap:{},
-   recordIdMap:doc.recordIdMap&&typeof doc.recordIdMap==='object'?doc.recordIdMap:{}};
+   recordIdMap:doc.recordIdMap&&typeof doc.recordIdMap==='object'?doc.recordIdMap:{},
+   recordItemIdMap:doc.recordItemIdMap&&typeof doc.recordItemIdMap==='object'?doc.recordItemIdMap:{}};
  };
  function project(doc=workspace){
   if(!doc.base)return null;
@@ -760,14 +761,15 @@
  async function linkRecordItem(recordItemId,productId){
   return enqueue(doc=>{
    const snap=project(doc);
-   const line=snap?.record_items.find(x=>x.record_item_id===recordItemId&&!x.deleted_at);
+   const resolvedItemId=doc.recordItemIdMap?.[recordItemId]||recordItemId;
+   const line=snap?.record_items.find(x=>x.record_item_id===resolvedItemId&&!x.deleted_at);
    if(!line||!snap.records.some(r=>r.record_id===line.record_id&&!r.deleted_at))
     throw Error('購入明細が見つかりません');
    const chosen=confirmedProductId(productId||null);
    if(chosen&&!snap.products.some(p=>p.product_id===chosen&&!p.deleted_at))
     throw Error('登録商品が見つかりません');
    if(String(line.product_id||'')===String(chosen||''))return null;
-   return {id:operationId(),kind:'record-item-link',targetId:recordItemId,
+   return {id:operationId(),kind:'record-item-link',targetId:resolvedItemId,
     productId:chosen,retries:0};
   });
  }
@@ -1083,8 +1085,12 @@
     sequence_no:Math.max(Number(ws.base.sequence_no),Number(result.sequence_no))};
    ws.queue.shift();
    if(op.kind==='record-create'||op.kind==='record-update'){
-    if(op.kind==='record-create')
+    if(op.kind==='record-create'){
      ws.recordIdMap={...(ws.recordIdMap||{}),[op.clientId]:result.record.record_id};
+     ws.recordItemIdMap={...(ws.recordItemIdMap||{})};
+     for(let i=0;i<op.itemIds.length;i++)
+      ws.recordItemIdMap[op.itemIds[i]]=result.items[i].record_item_id;
+    }
     for(const rest of ws.queue){
      if(op.kind==='record-create'&&rest.targetId===op.clientId)
       rest.targetId=result.record.record_id;
@@ -1585,7 +1591,8 @@
   }).catch(e=>{error=e.message||'端末内の保存領域を開けません';notify()});
  };
  window.KurashiLive={state,load,save,saveRecord,updateRecord,deleteRecord,linkRecordItem,
-  resolveRecordId:id=>workspace.recordIdMap?.[id]||id,blockedReceiptChange,discardBlockedReceipt,blockedProductChange,resolveBlockedProduct,refreshBlockedProducts,pendingOperationReview,beginPendingOperationReview,endPendingOperationReview,discardPendingOperations,confirmedProductId,learnAliases,linkAlias,learnStoreAlias,
+  resolveRecordId:id=>workspace.recordIdMap?.[id]||id,
+  resolveRecordItemId:id=>workspace.recordItemIdMap?.[id]||id,blockedReceiptChange,discardBlockedReceipt,blockedProductChange,resolveBlockedProduct,refreshBlockedProducts,pendingOperationReview,beginPendingOperationReview,endPendingOperationReview,discardPendingOperations,confirmedProductId,learnAliases,linkAlias,learnStoreAlias,
   saveReceiptDraft,loadReceiptDraft,saveOcrCorrections,loadOcrCorrections,toggleStock,reorderItems,reorderProducts,retry,logout,renderLogin,
   subscribe:fn=>{listeners.add(fn);return()=>listeners.delete(fn)},itemsOf,catalogueOf};
  window.addEventListener('kurashi-gis-ready',initialize);
