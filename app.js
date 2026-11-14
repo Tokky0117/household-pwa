@@ -252,7 +252,8 @@ function openRecordEntry(kind,recordId=null){
    branchName:r.branch_name||'',total:null,
    items:allPreviewItems().filter(x=>x.record_id===r.record_id&&!x.deleted_at)
     .sort((a,b)=>Number(a.line_order)-Number(b.line_order))
-    .map(x=>({name:aliasNameFor(x),inferredName:r.record_type==='shelf'||x.suggestion_kind?'':x.suggested_product_name||'',
+    .map(x=>({name:aliasNameFor(x),inferredName:'',
+     savedUnknownSuggestion:!x.suggestion_kind?x.suggested_product_name||'':'',
      ...(r.record_type==='shelf'||!aliasNameFor(x)||x.confirmed_name?
       {inputOrigin:'manual'}:{ocrRawName:aliasNameFor(x),savedOcrName:true}),
      quantity:r.record_type==='shelf'?1:x.quantity,amount:x.amount_tax_included,
@@ -2421,9 +2422,9 @@ app.addEventListener('submit',e=>{e.preventDefault();const form=e.target;const d
   const lines=scanDraft.items.map((item,i)=>{
    const verified=['manual','photo'].includes(item.inputOrigin)||item.ocrRawName===undefined;
    const confirmedName=verified?String(d.get('name-'+i)||'').trim():'';
-   const inferredName=String(item.inferredName||item.nameCandidate||'').trim();
    const candidate=item.productSuggestion;
-   const suggestedName=String(candidate?.newName||candidate?.existingName||inferredName).trim();
+   // OCR/photo reading hints stay in the draft; only product suggestions are persisted.
+   const suggestedName=String(candidate?.newName||candidate?.existingName||item.savedUnknownSuggestion||'').trim();
    const suggestionKind=candidate?.newName?'new':candidate?.existingName?'existing':'';
    return {
     raw_name:verified?'':String(item.ocrRawName||'').trim(),
