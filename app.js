@@ -1,4 +1,4 @@
-const APP_VERSION='0.90.0';
+const APP_VERSION='0.89.3';
 const CATS=['食品・飲料','キッチン','洗面・風呂','洗濯・掃除','その他','調味料'];
 const CAT_ORDER=[0,5,1,2,3,4];
 const liveMode=!!window.KurashiLive; // Data source only; original Preview v46 UI components remain.
@@ -181,13 +181,6 @@ function releaseScanThumbnail(file){const url=scanPhotoUrls.get(file);if(!url)re
 function clearScanThumbnails(){for(const f of scanPhotoUrls.keys())releaseScanThumbnail(f)}
 let scanRuntime=null,scanDraftAvailable=false,scanDraftKind='receipt',scanDraftWrites=Promise.resolve(),recordStartPending=false,chatGptError='',recordDetailId=null,scanProductRow=null;
 let scanExistingQuery='',scanGroupQuery='',scanProductGroupId='',recordDetailOrigin='list';
-let receiptProductsExpanded=false,receiptProductRow=null,receiptProductMode='existing',
- receiptProductQuery='',receiptItemQuery='',receiptItemId='',receiptItemExpanded=false,
- receiptProductSaving=false,receiptProductNotice='';
-function resetReceiptProductEditor(){
- receiptProductRow=null;receiptProductMode='existing';receiptProductQuery='';
- receiptItemQuery='';receiptItemId='';receiptItemExpanded=false;receiptProductNotice='';
-}
 let storePickerTarget=null,storePickerQuery='',storePickerNewMode=false;
 function saveScanDraft(){
  if(!liveMode||!window.KurashiLive?.saveReceiptDraft)return;
@@ -784,7 +777,6 @@ function scanFormView(){
        UI.formField({id:'scan-proposed-'+i,control:'static',label:'推定商品名',
         value:reviewModel.items[i].proposedName,valueVariant:'supporting',fieldClass:'scan-proposed-name'}):''}
     ${(item.issues||[]).some(reason=>/商品名|商品コード|名称|名前/.test(String(reason)))?'<p class="scan-name-warning">読み取り名を確認</p>':''}
-    ${item.autoLinked?'<p class="scan-auto-match-note">登録商品を自動照合しました。内容を確認してください。</p>':''}
     ${UI.formField({id:'scan-product-'+i,name:'product-'+i,label:'登録商品',
       control:'picker',pickerLayout:'inline',value:scanResolvedProductId(item),
       display:scanSelectedProductLabel(item),valueState:scanResolvedProductId(item)?'':'unmatched',
@@ -1897,7 +1889,7 @@ function back(){
   if(page==='aliasManage'){page='list';tab='settings';render();return;}
   if(page==='scanExistingProduct'){page='recordScan';scanExistingQuery='';scanProductRow=null;render();return;}
   if(page==='scanProduct'){page='scanExistingProduct';scanGroupQuery='';scanProductGroupId='';render();return;}
-  if(page==='recordDetail'){resetReceiptProductEditor();receiptProductsExpanded=false;page=recordDetailOrigin;tab='receipt';render();return;}
+  if(page==='recordDetail'){page=recordDetailOrigin;tab='receipt';render();return;}
   if(page==='detailAll'){page='list';tab='receipt';render();return;}
   if(page==='recordChatGpt'){
    page=scanDraft?.source==='ocr'?'recordScan':'list';tab='receipt';render();return;
@@ -2231,7 +2223,7 @@ app.addEventListener('submit',e=>{e.preventDefault();const form=e.target;const d
    if(aliasLines.length&&window.KurashiLive.learnAliases&&learnedChain&&learnedChain!=='__new__')
     void window.KurashiLive.learnAliases({chain_id:learnedChain,items:aliasLines})
      .catch(e=>console.warn('別名学習を保存できませんでした',e));
-   resetScan();page='recordDetail';tab='receipt';recordDetailOrigin='list';recordDetailId=record?.record_id||null;receiptProductsExpanded=false;resetReceiptProductEditor();render();
+   resetScan();page='list';tab='receipt';render();
   }).catch(err=>{
    if(submit)submit.disabled=false;
    formSaveFeedback(form,err.message||'保存できませんでした。通信状態を確認してください。');
@@ -2824,7 +2816,7 @@ if(liveMode)window.KurashiLive.subscribe((state,data)=>{
   price_eligible:line.price_eligible===true||String(line.price_eligible).toLowerCase()==='true'
  }))};
  if(page==='aliasManage'&&aliasPickerId)return;
- if(['add','edit','productEdit','productPick','productCreate','masterProductEdit','masterProductNew'].includes(page)||page==='recordDetail'&&receiptProductRow!==null)return;
+ if(['add','edit','productEdit','productPick','productCreate','masterProductEdit','masterProductNew'].includes(page))return;
  // Preserve existing DOM buttons during writes. Recreating the entire DOM while
  // iOS completes a tap can eat the user's next click.
  if(page==='list'&&tab==='items'&&structureSame&&!query&&!onlyOut){
