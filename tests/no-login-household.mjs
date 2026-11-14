@@ -1973,8 +1973,19 @@ assert.ok(!standaloneForm.querySelector('[name="difference"]')&&
  !standaloneForm.querySelector('[name="confirmed"]'));
 standaloneForm.dispatchEvent(new standaloneSession.window.Event(
  'submit',{bubbles:true,cancelable:true}));
-await waitFor(()=>!!standaloneSession.window.document.querySelector('[data-act="recordProductNew"]'),
- 'saved standalone receipt detail permits product registration');
+try{
+ await waitFor(()=>!!standaloneSession.window.document.querySelector('[data-act="recordProductNew"]'),
+  'saved standalone receipt detail permits product registration');
+}catch(err){
+ console.log('STANDALONE_SAVE_DIAGNOSTIC',JSON.stringify({
+  state:standaloneSession.window.KurashiLive.state(),
+  feedback:standaloneSession.window.document.getElementById('scan-save-feedback')?.textContent,
+  chain:standaloneSession.window.document.querySelector('[name="chain"]')?.value,
+  date:standaloneSession.window.document.querySelector('[name="date"]')?.value,
+  page:standaloneSession.window.document.body.textContent.slice(-800)
+ }));
+ throw err;
+}
 standaloneSession.window.document.querySelector('[data-act="recordProductNew"]').click();
 const standaloneProductForm=standaloneSession.window.document.getElementById('recordProductCreateForm');
 assert.ok(standaloneProductForm&&!standaloneProductForm.querySelector('[name="group"]'),
