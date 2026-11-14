@@ -1971,8 +1971,8 @@ await waitFor(()=>temp.call('bootstrap').data.stores.some(x=>
 assert.equal(standaloneForm.querySelector('[data-act="scanPickExisting"]'),null);
 assert.ok(!standaloneForm.querySelector('[name="difference"]')&&
  !standaloneForm.querySelector('[name="confirmed"]'));
-standaloneForm.dispatchEvent(new standaloneSession.window.Event(
- 'submit',{bubbles:true,cancelable:true}));
+standaloneSession.window.document.querySelector('#scanConfirmForm').dispatchEvent(
+ new standaloneSession.window.Event('submit',{bubbles:true,cancelable:true}));
 try{
  await waitFor(()=>!!standaloneSession.window.document.querySelector('[data-act="recordProductNew"]'),
   'saved standalone receipt detail permits product registration');
