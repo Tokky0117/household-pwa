@@ -931,20 +931,20 @@ assert.equal(recordFixture.call('store.create',{name:'テストチェーン'},
  'op-record-store-duplicate-abcdef12345').error.code,'DUPLICATE',
  'a duplicate chain is not silently added');
 const receiptLine={raw_name:'未照合のお菓子',product_id:null,quantity:2,
- amount_tax_included:340,category_id:null};
+ amount_tax_included:340};
 const receiptPayload={record_type:'receipt',chain_id:newChainId,
  record_date:'2026-10-14',items:[receiptLine,{...receiptLine,
- raw_name:'日用品',quantity:1,amount_tax_included:130,category_id:1}]};
+ raw_name:'日用品',quantity:1,amount_tax_included:130}]};
 const receiptSaved=recordFixture.call('record.create',receiptPayload,
  'op-record-receipt-create-abcdef12345');
 assert.equal(receiptSaved.ok,true,'receipt parent plus two items saved');
 assert.equal(receiptSaved.data.items.length,2);
 assert.equal(receiptSaved.data.items[0].amount_tax_included,340,
  'two units for 340 yen never multiply amount again');
-assert.equal(receiptSaved.data.items[0].price_eligible,false,
- 'unlinked receipt is stored without a product price');
-assert.equal(receiptSaved.data.items[0].category_id,'',
- 'null category is saved as uncategorized');
+assert.equal(Object.hasOwn(receiptSaved.data.items[0],'price_eligible'),false,
+ 'receipt does not store a redundant price flag');
+assert.equal(Object.hasOwn(receiptSaved.data.items[0],'category_id'),false,
+ 'receipt does not store a redundant household-budget category');
 assert.equal(recordFixture.call('record.create',receiptPayload,
  'op-record-receipt-create-abcdef12345').data.record.record_id,
  receiptSaved.data.record.record_id,'receipt retry returns same IDs');
@@ -957,17 +957,17 @@ const unlinkedShelfStore=unlinkedShelfFixture.call('store.create',{name:'商品�
  'op-shelf-unlinked-store-abcdef12345').data.entity.chain_id;
 const unlinkedShelfSaved=unlinkedShelfFixture.call('record.create',{
  record_type:'shelf',chain_id:unlinkedShelfStore,record_date:'2026-11-09',
- items:[{raw_name:'',product_id:null,quantity:1,amount_tax_included:250,category_id:null}]
+ items:[{raw_name:'',product_id:null,quantity:1,amount_tax_included:250}]
 },'op-record-shelf-no-product-abcdef12345');
 assert.equal(unlinkedShelfSaved.ok,true,'Unlinked shelf is allowed without a product');
 assert.equal(unlinkedShelfSaved.data.record.record_type,'shelf');
 assert.equal(unlinkedShelfSaved.data.items[0].product_id,'');
-assert.equal(unlinkedShelfSaved.data.items[0].price_eligible,false,
+assert.equal(Object.hasOwn(unlinkedShelfSaved.data.items[0],'price_eligible'),false,
  'Unlinked shelf is recorded but not eligible for product price comparison');
 const unlinkShelfEdit=unlinkedShelfFixture.call('record.update',{
  record_id:unlinkedShelfSaved.data.record.record_id,version:1,
  chain_id:unlinkedShelfStore,record_date:'2026-11-09',branch_name:'',
- items:[{raw_name:'',product_id:null,quantity:1,amount_tax_included:230,category_id:null}]
+ items:[{raw_name:'',product_id:null,quantity:1,amount_tax_included:230}]
 },'op-update-shelf-no-product-abcdef12345');
 assert.equal(unlinkShelfEdit.ok,true,'Unlinked shelf remains editable');
 const itemForPrice=recordFixture.call('item.create',{name:'値札グループ',category_id:0},
@@ -977,12 +977,12 @@ const productForPrice=recordFixture.call('product.create',{
  item_group_id:itemForPrice.item_group_id},
  'op-record-product-price-abcdef12345').data.entity;
 const shelfLine={raw_name:'値札商品',product_id:productForPrice.product_id,quantity:2,
- amount_tax_included:300,category_id:null};
+ amount_tax_included:300};
 const shelfSaved=recordFixture.call('record.create',{record_type:'shelf',
  chain_id:newChainId,record_date:'2026-10-14',items:[shelfLine]},
  'op-record-shelf-create-abcdef12345');
 assert.equal(shelfSaved.ok,true);
-assert.equal(shelfSaved.data.items[0].price_eligible,true);
+assert.equal(Object.hasOwn(shelfSaved.data.items[0],'price_eligible'),false);
 assert.equal(recordFixture.call('bootstrap').data.records.length,2);
 assert.equal(recordFixture.call('bootstrap').data.record_items.length,3);
 
@@ -992,7 +992,7 @@ assert.equal(recordFixture.call('bootstrap').data.record_items.length,3);
 const editPayload={record_id:receiptSaved.data.record.record_id,version:1,
  chain_id:newChainId,record_date:'2026-10-15',branch_name:'駅前店',
  items:[{raw_name:'修正した商品',product_id:productForPrice.product_id,
-   quantity:2,amount_tax_included:440,category_id:null}]};
+   quantity:2,amount_tax_included:440}]};
 recordFixture.failRecordItemWriteAfter(0);
 const partialUpdate=recordFixture.call('record.update',editPayload,
  'op-record-update-retry-abcdefghijk');
@@ -1170,7 +1170,7 @@ const savedShelf=temp.call('bootstrap').data.records.find(r=>r.record_type==='sh
 const shelfDetails=temp.call('bootstrap').data.record_items.filter(x=>x.record_id===savedShelf.record_id);
 assert.equal(shelfDetails.length,2);
 assert.ok(shelfDetails.every(i=>Number(i.quantity)===1&&
- !i.product_id&&!i.price_eligible),'Shelf lines use fixed quantity 1 and optional product');
+ !i.product_id&&!Object.hasOwn(i,'price_eligible')),'Shelf lines use fixed quantity 1 and optional product');
 assert.equal(recordReopened.window.document.querySelector('[data-tab="budget"]'),null,
  'receipt and shelf saves do not restore the budget tab');
 recordReopened.window.close();
@@ -1509,7 +1509,7 @@ const shelfEditDate='2026-10-23';
 await historyRecovery.window.KurashiLive.saveRecord({
  record_type:'shelf',chain_id:chainForAlias,record_date:shelfEditDate,
  items:[{raw_name:'',confirmed_name:'棚の値札',product_id:productForAlias,
-  quantity:2,amount_tax_included:300,category_id:null}]
+  quantity:2,amount_tax_included:300}]
 });
 await waitFor(()=>historyRecovery.window.KurashiLive.state().queued===0&&
  temp.call('bootstrap').data.records.some(r=>r.record_type==='shelf'&&r.record_date===shelfEditDate),
@@ -1551,14 +1551,14 @@ console.log('v59: record editing, offline restart, deletion, alias training, she
 const unnamedFixture=fixture(api);
 const unnamedChain=unnamedFixture.call('store.create',{name:'名前任意テスト店舗'},
  'op-unnamed-chain-create-abcdef12345').data.entity.chain_id;
-const unnamedLine={raw_name:'',product_id:null,quantity:1,amount_tax_included:250,category_id:null};
+const unnamedLine={raw_name:'',product_id:null,quantity:1,amount_tax_included:250};
 const unnamedPayload={record_type:'receipt',chain_id:unnamedChain,record_date:'2026-11-08',
  items:[unnamedLine]};
 const unnamedSaved=unnamedFixture.call('record.create',unnamedPayload,'op-unnamed-create-abcdef12345');
 assert.equal(unnamedSaved.ok,true,'blank detail names can be saved without a product');
 assert.equal(unnamedSaved.data.items[0].confirmed_name,'');
 assert.equal(unnamedSaved.data.items[0].alias_id,'');
-assert.equal(unnamedSaved.data.items[0].price_eligible,false);
+assert.equal(Object.hasOwn(unnamedSaved.data.items[0],'price_eligible'),false);
 assert.equal(unnamedFixture.call('bootstrap').data.product_aliases.length,0,
  'blank detail never creates a learned OCR alias');
 const unnamedEdited=unnamedFixture.call('record.update',{
@@ -1583,8 +1583,8 @@ const unnamedLinked=unnamedFixture.call('record.create',{
  amount_tax_included:460}]
 },'op-unnamed-linked-create-abcdef12345');
 assert.equal(unnamedLinked.ok,true,'optional name and registered product may coexist');
-assert.equal(unnamedLinked.data.items[0].price_eligible,true,
- 'a linked price can be compared without a separate manual detail name');
+assert.equal(Object.hasOwn(unnamedLinked.data.items[0],'price_eligible'),false,
+ 'a linked price needs no stored eligibility flag');
 assert.equal(unnamedLinked.data.items[0].confirmed_name,'');
 assert.equal(unnamedFixture.call('bootstrap').data.product_aliases.length,0,
  'unnamed linked product must not teach a blank alias');
@@ -2166,7 +2166,7 @@ const historyId=historyProduct.data.entity.product_id;
 assert.equal(temp.call('record.create',{
  record_type:'receipt',chain_id:kitStore.chain_id,record_date:'2026-11-01',
  items:[{raw_name:historyRaw,product_id:historyId,quantity:1,
-  amount_tax_included:221,category_id:null}]
+  amount_tax_included:221}]
 },'op-v64-history-receipt-abcdefghijk').ok,true);
 assert.equal(temp.call('bootstrap').data.product_aliases.filter(a=>
  a.product_id===historyId).length,1,'original printed OCR alias is retained');
@@ -2227,7 +2227,7 @@ const shelfRaw='値札から再照合する印字名';
 assert.equal(temp.call('record.create',{
  record_type:'shelf',chain_id:kitStore.chain_id,record_date:'2026-11-02',
  items:[{raw_name:shelfRaw,product_id:historyId,quantity:1,
-  amount_tax_included:215,category_id:null}]
+  amount_tax_included:215}]
 },'op-v64-shelf-record-abcdefghijk').ok,true);
 let shelfSession=appSession();
 await waitFor(()=>shelfSession.window.KurashiLive.state().loaded);
@@ -2264,7 +2264,7 @@ assert.notEqual(conflictChainId,standaloneChainId);
 assert.equal(temp.call('record.create',{
  record_type:'receipt',chain_id:conflictChainId,record_date:'2026-11-01',
  items:[{raw_name:historyRaw,product_id:conflict.data.entity.product_id,
-  quantity:1,amount_tax_included:222,category_id:null}]
+  quantity:1,amount_tax_included:222}]
 },'op-v64-conflict-record-abcdefghijk').ok,true);
 const competingAliases=temp.call('bootstrap').data.product_aliases.filter(a=>
  a.normalized_alias===historyRaw.normalize('NFKC').toLocaleLowerCase('ja'));
@@ -2602,90 +2602,21 @@ assert.equal(aliasUI.window.KurashiLive.state().queued,0,
  'No-op alias selection keeps the IndexedDB operation queue empty');
 aliasUI.window.close();
 console.log('v86.1: OCR alias list, shared picker, IME, confirmation, unlink and history preservation OK');
-/* v64 migration: a previous schema must be upgraded in place. A failure after
- * the first historical row must allow a repeat without losing receipts or
- * adding duplicate OCR names. */
-const legacy=fixture(api);
-const legacyChain=legacy.call('store.create',{name:'旧レシート移行検証店'},
- 'op-v64-legacy-store-abcdefghijk');
-const legacyProduct=legacy.call('product.create',{
- item_group_id:null,name:'移行検証の正式商品',package_quantity:null,package_unit:null
-},'op-v64-legacy-product-abcdefghijk');
-assert.equal(legacyChain.ok,true);
-assert.equal(legacyProduct.ok,true);
-const legacyChainId=legacyChain.data.entity.chain_id;
-const legacyProductId=legacyProduct.data.entity.product_id;
-const legacyNames=['旧レシート印字・Ａ','過去印字 二号'];
-const legacyRecord=legacy.call('record.create',{
- record_type:'receipt',chain_id:legacyChainId,record_date:'2026-10-31',
- items:[
-  {raw_name:legacyNames[0],product_id:legacyProductId,quantity:2,
-    amount_tax_included:340,category_id:null},
-  {raw_name:legacyNames[1],product_id:null,quantity:1,
-    amount_tax_included:119,category_id:null}
- ]
-},'op-v64-legacy-receipt-abcdefghijk');
-assert.equal(legacyRecord.ok,true);
-const legacyOriginalItems=legacyRecord.data.items.map((row,i)=>({
- ...row,raw_name:legacyNames[i],alias_id:''
-}));
-// Restore pre-v64 sheet headers and rows to simulate an existing workbook.
-legacy.db.product_aliases.length=1;
-legacy.db.product_aliases[0].pop();
-for(let n=0;n<5;n++)legacy.db.record_items[0].pop(); // pre-v0.64 lacked alias_id and later appended name/candidate columns
-for(let i=1;i<legacy.db.record_items.length;i++){
- const line=legacyOriginalItems[i-1];
- legacy.db.record_items[i][schema.record_items.indexOf('raw_name')]=line.raw_name;
- legacy.db.record_items[i][schema.record_items.indexOf('alias_id')]='';
-}
-legacy.failRecordItemWriteAfter(2); // new header, first linked row, then simulated failure
-assert.equal(legacy.call('bootstrap').ok,false,
- 'interrupted schema migration does not claim completion');
-assert.equal(legacy.db.record_items[0].at(-1),'confirmed_name',
- 'simulated interruption happened before the final appended column');
-assert.equal(legacy.db.record_items[0].at(-2),'alias_id',
- 'earlier append-only migration columns remain intact');
-assert.equal(legacy.db.product_aliases[0].at(-1),'ocr_name',
- 'existing OCR dictionary gains only the new trailing header');
-const resumedLegacy=legacy.call('bootstrap');
-assert.equal(resumedLegacy.ok,true,'second boot resumes and completes migration');
-assert.equal(legacy.db.record_items[0].at(-1),'suggestion_kind',
- 'retry appends final product suggestion field without rebuilding Sheets');
-const savedLegacy=resumedLegacy.data.record_items.sort((a,b)=>a.line_order-b.line_order);
-assert.equal(savedLegacy.length,2,'all old receipt lines remain');
-savedLegacy.forEach((line,i)=>{
- assert.equal(line.raw_name,legacyNames[i],
-  'migration preserves the per-purchase printed name');
- assert.ok(line.alias_id,'each historical line references its OCR dictionary row');
- assert.equal(line.product_id,legacyOriginalItems[i].product_id,
-  'past product attribution is immutable');
- assert.equal(Number(line.amount_tax_included),legacyOriginalItems[i].amount_tax_included,
-  'past tax-inclusive line total is preserved');
- assert.equal(Number(line.quantity),legacyOriginalItems[i].quantity,
-  'past purchase quantity is preserved');
-});
-assert.equal(savedLegacy[0].amount_tax_included/savedLegacy[0].quantity,170,
- 'price comparison derives a single unit from complete 2-item line total');
-assert.equal(resumedLegacy.data.product_aliases.length,2,
- 'partial first migration does not create duplicate OCR names when retried');
-assert.ok(resumedLegacy.data.product_aliases.some(x=>
- x.alias_id===savedLegacy[1].alias_id&&!x.product_id),
- 'unrecognized past OCR text stays in the dictionary without a product');
-const thirdLegacy=legacy.call('bootstrap');
-assert.equal(thirdLegacy.ok,true,'completed migration remains readable');
-assert.equal(thirdLegacy.data.product_aliases.length,2,'repeated bootstrap is idempotent');
-const originalAlias=thirdLegacy.data.product_aliases.find(x=>
- x.alias_id===savedLegacy[0].alias_id);
-const detach=legacy.call('alias.link',{
- alias_id:originalAlias.alias_id,product_id:null,version:Number(originalAlias.version)
-},'op-v64-legacy-alias-unlink-abcdefghijk');
-assert.equal(detach.ok,true,'OCR link may be removed after historical migration');
-const unchangedAfterUnlink=legacy.call('bootstrap').data.record_items.find(x=>
- x.record_item_id===savedLegacy[0].record_item_id);
-assert.equal(unchangedAfterUnlink.product_id,legacyProductId,
- 'changing OCR dictionary association never rewrites confirmed purchase history');
-assert.ok(app.includes('const aliasNameFor=line=>line?.confirmed_name||line?.raw_name||'),
- 'historical receipt display prefers original spelling over normalized dictionary');
+/* The preview receipt schema is intentionally compact. Master tables are retained. */
+assert.equal(Object.keys(schema).length,11,'unused receipt_rules sheet is absent');
+for(const column of ['raw_name','category_id','price_eligible','inferred_name'])
+ assert.ok(!schema.record_items.includes(column),'legacy receipt column removed: '+column);
+assert.ok(!schema.records.includes('raw_store_name'),'raw store name is removed');
+assert.ok(schema.record_items.includes('alias_id'),'OCR alias pointer remains');
+assert.ok(schema.record_items.includes('suggested_product_name'),'product candidate is stored');
+assert.equal(recordFixture.call('bootstrap').ok,true,'compact sheet headers pass bootstrap');
+const rejectedLegacy=recordFixture.call('record.create',{
+ record_type:'receipt',chain_id:newChainId,record_date:'2026-11-08',
+ items:[{raw_name:'旧項目拒否',product_id:null,quantity:1,amount_tax_included:120,
+  inferred_name:'不必要な別名'}]
+},'op-schema-reject-legacy-abcdef12345');
+assert.equal(rejectedLegacy.error.code,'BAD_REQUEST','unused persistence fields are not accepted');
+
 // The yellow quantity warning must clear when the user re-enters even "1".
 let qtySession=appSession(new IDBFactory());
 await waitFor(()=>qtySession.window.KurashiLive.state().loaded,'uncertain quantity test bootstrap');
@@ -2710,7 +2641,7 @@ assert.equal(qtySession.window.document.querySelector('[data-field-hint="qty-0"]
 qtySession.window.close();
 console.log('v65: quantity unknown defaults to yellow one; re-entering one clears warning OK');
 
-console.log('v64: non-destructive legacy Sheets column upgrade, partial migration retry, OCR unlink and price history OK');
+console.log('schema: 11 tables, compact receipt columns, and strict API payload OK');
 
 // v68: photos with unreliable OCR can still be saved, without poisoning OCR aliases.
 const manualChain=recordFixture.call('store.create',{name:'OCR保存分離検証店'},
@@ -2721,7 +2652,7 @@ const photographed=recordFixture.call('record.create',{
  record_type:'receipt',chain_id:manualChain.data.entity.chain_id,
  record_date:'2026-10-12',
  items:[{raw_name:'',confirmed_name:'メリノクルーネックカーディガン',
-  product_id:null,quantity:1,amount_tax_included:2990,category_id:null}]
+  product_id:null,quantity:1,amount_tax_included:2990}]
 },'op-v68-photo-confirmed-abcdefghijk');
 assert.equal(photographed.ok,true,'photo confirmed row can be saved without product registration');
 assert.equal(photographed.data.items[0].confirmed_name,'メリノクルーネックカーディガン');
@@ -2735,7 +2666,7 @@ const badBoth=recordFixture.call('record.create',{
  record_type:'receipt',chain_id:manualChain.data.entity.chain_id,
  record_date:'2026-10-12',
  items:[{raw_name:'2000211787545',confirmed_name:'メリノクルーネックカーディガン',
-  product_id:null,quantity:1,amount_tax_included:2990,category_id:null}]
+  product_id:null,quantity:1,amount_tax_included:2990}]
 },'op-v68-mixed-name-abcdefghijk');
 assert.equal(badBoth.ok,false,'one row cannot silently learn a wrong OCR barcode');
 
@@ -2754,7 +2685,7 @@ const rebuildSave=recordFixture.call('record.create',{
  record_date:'2026-10-12',
  items:fullPhotoRows.map(([name,amount])=>({
   raw_name:'',confirmed_name:name,product_id:null,quantity:1,
-  amount_tax_included:amount,category_id:null
+  amount_tax_included:amount
  }))
 },'op-v69-photo-five-items-abcdefghijk');
 assert.equal(rebuildSave.ok,true,'5 photo-derived purchase items save through the existing GAS endpoint');
@@ -2772,24 +2703,26 @@ console.log('v69: five-photo-item UNIQLO receipt saved exactly without OCR alias
 
 
 const v70Ocr=recordFixture.call('record.create',{record_type:'receipt',chain_id:newChainId,record_date:'2026-11-04',items:[
- {raw_name:'リント・ール',inferred_name:'リンドール',product_id:null,quantity:2,amount_tax_included:598,category_id:null}
+ {raw_name:'リント・ール',suggested_product_name:'リンドール',suggestion_kind:'',product_id:null,quantity:2,amount_tax_included:598}
 ]},'op-v70-ocr-inference-abcdef');
 assert.equal(v70Ocr.ok,true);
 const v70OcrLine=recordFixture.call('bootstrap').data.record_items.find(x=>x.record_id===v70Ocr.data.record.record_id);
-assert.equal(v70OcrLine.inferred_name,'リンドール');
+assert.equal(v70OcrLine.suggested_product_name,'リンドール');
+assert.equal(v70OcrLine.suggestion_kind,'');
+assert.equal(Object.hasOwn(v70OcrLine,'inferred_name'),false);
 assert.equal(v70OcrLine.confirmed_name,'');
 assert.equal(v70OcrLine.amount_tax_included,598);
 assert.ok(v70OcrLine.alias_id);
 assert.equal(recordFixture.call('bootstrap').data.product_aliases.find(x=>x.alias_id===v70OcrLine.alias_id).ocr_name,'リント・ール');
 const v70Photo=recordFixture.call('record.create',{record_type:'receipt',chain_id:newChainId,record_date:'2026-11-04',items:[
- {raw_name:'',confirmed_name:'メリノクルーネックカーディガン',inferred_name:'メリノVネックカーディガン',product_id:null,quantity:1,amount_tax_included:2990,category_id:null}
+ {raw_name:'',confirmed_name:'メリノクルーネックカーディガン',suggested_product_name:'メリノVネックカーディガン',suggestion_kind:'',product_id:null,quantity:1,amount_tax_included:2990}
 ]},'op-v70-photo-inference-abcdef');
 assert.equal(v70Photo.ok,true);
 const v70PhotoLine=recordFixture.call('bootstrap').data.record_items.find(x=>x.record_id===v70Photo.data.record.record_id);
 assert.equal(v70PhotoLine.confirmed_name,'メリノクルーネックカーディガン');
-assert.equal(v70PhotoLine.inferred_name,'メリノVネックカーディガン');
+assert.equal(v70PhotoLine.suggested_product_name,'メリノVネックカーディガン');
 assert.ok(!v70PhotoLine.raw_name&&!v70PhotoLine.alias_id);
-console.log('v70: separate inferred/confirmed/OCR names persist without false aliases OK');
+console.log('receipt names: OCR alias, verified name and unified undecided candidate OK');
 
 /* v0.76.1: reproduce the real receipt-confirmation interactions that static
  * checks missed: cleared dates, a wrongly linked product, return position,
@@ -2979,8 +2912,8 @@ assert.equal(optionalRecord?.record_date,'2026-11-08','the newly saved receipt h
 assert.ok(optionalRecord,'new record can be retrieved');
 const optionalDetails=afterOptional.record_items.filter(x=>x.record_id===optionalRecord.record_id);
 assert.equal(optionalDetails.length,2);
-assert.ok(optionalDetails.some(x=>x.raw_name===''&&x.confirmed_name===''&&
- x.product_id===''&&Number(x.amount_tax_included)===200&&x.price_eligible===false),
+assert.ok(optionalDetails.some(x=>!Object.hasOwn(x,'raw_name')&&x.confirmed_name===''&&
+ x.product_id===''&&Number(x.amount_tax_included)===200&&!Object.hasOwn(x,'price_eligible')),
  'the nameless line is retained as a purchase amount, not a price-comparable registered product');
 await waitFor(()=>!!optionalUI.window.document.querySelector('.detail-record-line'),
  'saved unnamed receipt opens its detail immediately');
@@ -3056,7 +2989,7 @@ const receiptInput={
  record_id:editTarget.record_id,record_type:'receipt',chain_id:editTarget.chain_id,
  record_date:editTarget.record_date,branch_name:editTarget.branch_name||'',
  items:[{raw_name:'端末Aで確定した明細',product_id:null,quantity:1,
-  amount_tax_included:551,category_id:null}]
+  amount_tax_included:551}]
 };
 online=false;
 await editOne.window.KurashiLive.updateRecord(receiptInput);
@@ -3184,7 +3117,7 @@ await repairedPhone.window.KurashiLive.learnAliases({chain_id:repairChain,items:
 await repairedPhone.window.KurashiLive.saveRecord({
  record_type:'receipt',chain_id:repairChain,record_date:'2026-11-11',
  items:[{raw_name:'同期復旧検証OCR',product_id:pendingProduct.product_id,
-  quantity:1,amount_tax_included:127,category_id:null}]
+  quantity:1,amount_tax_included:127}]
 });
 assert.equal(repairedPhone.window.KurashiLive.state().queued,3,
  'product create, OCR alias and receipt are durably queued');
@@ -3243,7 +3176,7 @@ await oldPhone.window.KurashiLive.learnAliases({chain_id:repairChain,items:[
 await oldPhone.window.KurashiLive.saveRecord({
  record_type:'receipt',record_date:'2026-11-11',chain_id:repairChain,
  items:[{raw_name:'復旧_孤立OCR名',product_id:orphanProduct.product_id,
-  quantity:1,amount_tax_included:89,category_id:null}]
+  quantity:1,amount_tax_included:89}]
 });
 assert.equal(oldPhone.window.KurashiLive.state().queued,3);
 oldPhone.window.close();
@@ -3312,7 +3245,7 @@ await purgePhone.window.KurashiLive.learnAliases({chain_id:repairChain,items:[
 await purgePhone.window.KurashiLive.saveRecord({
  record_type:'receipt',record_date:'2026-11-11',chain_id:repairChain,
  items:[{raw_name:'破棄確認OCR名',product_id:purgeProduct.product_id,
-  quantity:2,amount_tax_included:638,category_id:null}]
+  quantity:2,amount_tax_included:638}]
 });
 assert.equal(purgePhone.window.KurashiLive.state().queued,3,
  'product, alias and receipt all remain queued');
@@ -3364,8 +3297,7 @@ await waitFor(()=>purgeRestart.window.KurashiLive.state().loaded&&
  'discard persists across a PWA restart');
 assert.ok(!temp.call('bootstrap').data.product_aliases.some(x=>x.ocr_name==='破棄確認OCR名'),
  'discarded OCR alias was never sent');
-assert.ok(!temp.call('bootstrap').data.record_items.some(x=>
- x.raw_name==='破棄確認OCR名'&&Number(x.amount_tax_included)===638),
+assert.ok(!temp.call('bootstrap').data.product_aliases.some(x=>x.ocr_name==='破棄確認OCR名'),
  'discarded receipt was never sent');
 purgeRestart.window.close();
 console.log('v0.89.2: pending operations preview, cancel, stale review, discard and restart OK');
@@ -3387,7 +3319,7 @@ await heldPurgePhone.window.KurashiLive.learnAliases({chain_id:repairChain,items
 await heldPurgePhone.window.KurashiLive.saveRecord({
  record_type:'receipt',record_date:'2026-11-11',chain_id:repairChain,
  items:[{raw_name:'破棄対象のOCR名',product_id:heldPurgeProduct.product_id,
-  quantity:1,amount_tax_included:239,category_id:null}]
+  quantity:1,amount_tax_included:239}]
 });
 assert.equal(temp.call('product.create',{
  name:heldPurgeName,package_quantity:null,package_unit:null,item_group_id:null
@@ -3406,7 +3338,7 @@ assert.equal(heldPurgePhone.window.KurashiLive.state().queued,0);
 assert.equal(heldPurgePhone.window.KurashiLive.state().blocked,false);
 assert.ok(!temp.call('bootstrap').data.product_aliases.some(x=>x.ocr_name==='破棄対象のOCR名'),
  'discard does not apply an unsent dependent alias');
-assert.ok(!temp.call('bootstrap').data.record_items.some(x=>x.raw_name==='破棄対象のOCR名'),
+assert.ok(!temp.call('bootstrap').data.product_aliases.some(x=>x.ocr_name==='破棄対象のOCR名'),
  'discard does not apply an unsent dependent receipt');
 heldPurgePhone.window.close();
 const heldPurgeRestart=appSession(heldPurgeFactory);
@@ -3545,7 +3477,7 @@ const unlink=suggestionFixture.call('record.item.link',{
 },'op-suggestion-unlink-abcdef12345');
 assert.equal(unlink.ok,true,'saved line can be unlinked');
 assert.equal(unlink.data.entity.product_id,'');
-assert.equal(unlink.data.entity.price_eligible,false);
+assert.equal(Object.hasOwn(unlink.data.entity,'price_eligible'),false);
 assert.equal(suggestionFixture.call('bootstrap').data.record_items.find(x=>
  x.record_item_id===suggestionLine.record_item_id).suggestion_kind,'new',
  'suggestion metadata survives link and unlink');
