@@ -773,6 +773,71 @@
     productId:chosen,retries:0};
   });
  }
+ // Never use an AI name as evidence for linking without a user's explicit
+ // confirmation. This pure preflight is reused by the confirmation UI and queue.
+ const receiptProductKey=name=>String(name||'').normalize('NFKC').trim()
+  .replace(/\s+/g,' ').toLocaleLowerCase('ja');
+ const receiptLooseKey=name=>receiptProductKey(name).replace(/[\s\p{P}\p{S}]/gu,'');
+ function planBulkReceipt(doc,receiptId){
+  const snap=project(doc);
+  const id=doc.recordIdMap?.[receiptId]||receiptId;
+  const receipt=snap?.records.find(r=>r.record_id===id&&!r.deleted_at&&r.record_type==='receipt');
+  if(!receipt)return [];
+  const products=snap.products.filter(p=>!p.deleted_at),candidates=[];
+  const created=new Set();
+  for(const line of snap.record_items.filter(x=>x.record_id===id&&!x.deleted_at)
+     .sort((a,b)=>Number(a.line_order)-Number(b.line_order))){
+   if(line.product_id||!['existing','new'].includes(line.suggestion_kind))continue;
+   const name=String(line.suggested_product_name||'').trim(),key=receiptProductKey(name);
+   if(!name||name.length>80||/^[=+@\-]/.test(name)||/[\x00-\x1f\x7f<>]/.test(name))continue;
+   const exact=products.filter(p=>receiptProductKey(p.name)===key);
+   if(exact.length>1||line.suggestion_kind==='existing'&&exact.length!==1)continue;
+   // Similar but non-identical punctuation must be manually resolved, not created.
+   if(!exact.length&&products.some(p=>receiptLooseKey(p.name)===receiptLooseKey(name)))continue;
+   const kind=exact.length?'existing':created.has(key)?'reuse':'new';
+   if(!exact.length)created.add(key);
+   candidates.push({record_item_id:line.record_item_id,raw_name:line.raw_name||line.confirmed_name||'',
+    proposed_name:name,suggestion_kind:line.suggestion_kind,action:kind,
+    product_id:exact[0]?.product_id||null});
+  }
+  return candidates;
+ }
+ function previewBulkReceiptProducts(receiptId){
+  return planBulkReceipt(workspace,receiptId);
+ }
+ async function bulkRegisterReceiptProducts(receiptId,expectedItemIds){
+  await boot();
+  if(!workspace.base)await load();
+  let selected=[];
+  await modify(doc=>{
+   const plan=planBulkReceipt(doc,receiptId);
+   const expected=Array.isArray(expectedItemIds)?expectedItemIds:[];
+   if(!plan.length||plan.length!==expected.length||
+      plan.some((line,i)=>line.record_item_id!==expected[i]))
+    throw Error('候補が変更されました。内容を確認し直してください');
+   const names=new Map();
+   for(const row of plan){
+    let productId=row.product_id;
+    if(!productId){
+     const key=receiptProductKey(row.proposed_name);
+     if(!names.has(key)){
+      const create=makeProductOperation('product.create',{
+       name:row.proposed_name,item_group_id:null,package_quantity:null,package_unit:null
+      },doc);
+      doc.queue.push(create);
+      names.set(key,create.clientId);
+     }
+     productId=names.get(key);
+    }
+    doc.queue.push({id:operationId(),kind:'record-item-link',
+     targetId:row.record_item_id,productId,retries:0});
+   }
+   selected=plan;
+   return doc;
+  });
+  void flush();
+  return selected;
+ }
  async function deleteRecord(recordId){
   return enqueue(doc=>{
    const record=project(doc)?.records.find(r=>r.record_id===recordId);
@@ -1591,6 +1656,7 @@
   }).catch(e=>{error=e.message||'端末内の保存領域を開けません';notify()});
  };
  window.KurashiLive={state,load,save,saveRecord,updateRecord,deleteRecord,linkRecordItem,
+  previewBulkReceiptProducts,bulkRegisterReceiptProducts,
   resolveRecordId:id=>workspace.recordIdMap?.[id]||id,
   resolveRecordItemId:id=>workspace.recordItemIdMap?.[id]||id,blockedReceiptChange,discardBlockedReceipt,blockedProductChange,resolveBlockedProduct,refreshBlockedProducts,pendingOperationReview,beginPendingOperationReview,endPendingOperationReview,discardPendingOperations,confirmedProductId,learnAliases,linkAlias,learnStoreAlias,
   saveReceiptDraft,loadReceiptDraft,saveOcrCorrections,loadOcrCorrections,toggleStock,reorderItems,reorderProducts,retry,logout,renderLogin,
