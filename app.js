@@ -454,8 +454,9 @@ function recordDetailView(){
     <div class="detail-record-line-meta"><span>${isShelf?'販売個数':'数量'} ${esc(line.quantity)}</span>
      ${line.product_id?`<span>登録商品：${esc(catalogue.products.find(p=>p.id===line.product_id)?.name||'商品を確認')}</span>`:
       '<span>商品未紐付け</span>'}</div>
-    ${!isShelf&&line.suggested_product_name&&!line.product_id?`<div class="detail-record-line-meta"><span>ChatGPT商品候補（参考）：${esc(line.suggested_product_name)}</span></div>`:''}
-    ${!isShelf&&liveMode?`<div class="scan-picker-actions"><button class="tertiary" type="button" data-act="recordProductOpen" data-record-item-id="${esc(line.record_item_id)}">${line.product_id?'商品を変更':'登録商品を選択'}</button><button class="tertiary" type="button" data-act="recordProductNew" data-record-item-id="${esc(line.record_item_id)}">新しい商品を登録</button></div>`:''}
+    ${!isShelf&&!line.product_id&&line.suggested_product_name&&
+      norm(line.suggested_product_name)!==norm(aliasNameFor(line))?`<div class="detail-record-line-meta"><span>ChatGPT商品候補（参考）：${esc(line.suggested_product_name)}</span></div>`:''}
+    ${!isShelf&&liveMode?`<div class="scan-picker-actions"><button class="tertiary" type="button" data-act="recordProductOpen" data-record-item-id="${esc(line.record_item_id)}">${line.product_id?'商品を変更':'登録商品を選択'}</button>${line.product_id?'':`<button class="tertiary" type="button" data-act="recordProductNew" data-record-item-id="${esc(line.record_item_id)}">新しい商品を登録</button>`}</div>`:''}
    </div>`).join('')}
   </section>
   <section class="detail-record-total" aria-label="${isShelf?'価格合計':'合計'}">
