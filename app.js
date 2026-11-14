@@ -1,4 +1,4 @@
-const APP_VERSION='0.89.4';
+const APP_VERSION='0.89.5';
 const CATS=['食品・飲料','キッチン','洗面・風呂','洗濯・掃除','その他','調味料'];
 const CAT_ORDER=[0,5,1,2,3,4];
 const liveMode=!!window.KurashiLive; // Data source only; original Preview v46 UI components remain.
@@ -191,6 +191,18 @@ function saveScanDraft(){
  scanDraftWrites=scanDraftWrites.catch(()=>{}).then(()=>window.KurashiLive.saveReceiptDraft(snapshot));
  scanDraftWrites.catch(err=>console.warn('レシート下書き保存失敗',err));
  return scanDraftWrites;
+}
+// For NEW OCR merchandise only, interpret an isolated dot/degree after
+// voiceable kana as dakuten/handakuten. The converted name is used for review,
+// matching and newly learned aliases. Existing aliases are not migrated.
+function normalizeOcrProductKana(value){
+ const voiced='かきくけこさしすせそたちつてとはひふへほうカキクケコサシスセソタチツテトハヒフヘホウ';
+ const semiVoiced='はひふへほハヒフヘホ';
+ return String(value??'').replace(/([^\s])([・°])/gu,(match,kana,mark)=>{
+  if(mark==='・'&&voiced.includes(kana))return (kana+'\u3099').normalize('NFC');
+  if(mark==='°'&&semiVoiced.includes(kana))return (kana+'\u309A').normalize('NFC');
+  return match;
+ });
 }
 function resetScan({keepDraft=false}={}){
  scanToken++;closeScanViewer();clearScanThumbnails();scanPhotos=[];scanIndex=0;scanBusy=false;scanStatus='';scanAssistMessage='';scanError='';scanReadFailed=false;
@@ -1045,7 +1057,9 @@ async function runReceiptScan(){
     taxTotal:out.parsed.taxTotal,receiptTotal:out.parsed.receiptTotal});
    for(const item of out.parsed.items){
     const rowId='ocr-'+id();
-    allItems.push(window.KurashiReceiptReview.fromOcrItem(item,{
+    allItems.push(window.KurashiReceiptReview.fromOcrItem({
+     ...item,name:normalizeOcrProductKana(item.name)
+    },{
      rowId,taxBasis:out.parsed.taxBasis
     }));
     // Numeric-only observation references; no raw OCR text or photo bytes.
