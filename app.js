@@ -350,8 +350,7 @@ function recordProductView(){
  const line=recordProductLine();
  if(!line)return '';
  const isNew=recordProductMode==='new';
- const proposed=line.suggestion_kind==='new'?line.suggested_product_name:
-  line.inferred_name||line.confirmed_name||line.raw_name||'';
+ const proposed=line.suggested_product_name||line.inferred_name||aliasNameFor(line)||'';
  const body=isNew?
   '<form id="recordProductCreateForm">'+
     UI.formField({id:'record-product-name',name:'name',label:'商品名',value:proposed,
