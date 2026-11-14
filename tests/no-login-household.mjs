@@ -1914,26 +1914,25 @@ const variant={...kitJson,receiptTotal:278,items:[{
 }]};
 existingSession.window.document.getElementById('chatgpt-input').value=JSON.stringify(variant);
 await completeOcrImport(existingSession);
-existingSession.window.document.querySelector('[data-act="scanPickExisting"]').click();
-assert.ok(existingSession.window.document.getElementById('scan-existing-search'));
-const existingSearch=existingSession.window.document.getElementById('scan-existing-search');
-existingSearch.value='チョコ';
-existingSearch.dispatchEvent(new existingSession.window.Event('input',{bubbles:true}));
-assert.equal(existingSession.window.document.querySelector(
- '[data-act="scanChooseExisting"][data-product-id="'+kitSavedProduct.product_id+'"]'),null,
- 'searching by a linked household item no longer returns unrelated product names');
+const variantReview=existingSession.window.document.getElementById('scanConfirmForm');
+assert.ok(variantReview&&!variantReview.querySelector('[data-act="scanPickExisting"]'));
+assert.equal(variantReview.querySelector('.scan-ocr-name').textContent,'キットカット別レシート表記');
+variantReview.dispatchEvent(new existingSession.window.Event('submit',{bubbles:true,cancelable:true}));
+await waitFor(()=>!!existingSession.window.document.querySelector('[data-act="recordProductOpen"]'),
+ 'saved receipt exposes the shared product chooser');
+existingSession.window.document.querySelector('[data-act="recordProductOpen"]').click();
+const existingSearch=existingSession.window.document.getElementById('record-product-search');
+assert.ok(existingSearch,'registered product search is in the saved receipt detail');
 existingSearch.value='キットカット濃い';
 existingSearch.dispatchEvent(new existingSession.window.Event('input',{bubbles:true}));
 const existingChoice=existingSession.window.document.querySelector(
- '[data-act="scanChooseExisting"][data-product-id="'+kitSavedProduct.product_id+'"]');
-assert.ok(existingChoice,'registered KitKat is found by its canonical product name');
-assert.match(existingChoice.textContent,/日用品リスト：チョコ/);
+ '[data-act="recordProductChoose"][data-product-id="'+kitSavedProduct.product_id+'"]');
+assert.ok(existingChoice,'canonical master can be selected without a duplicate');
 existingChoice.click();
-const selectedReview=existingSession.window.document.getElementById('scanConfirmForm');
-assert.equal(selectedReview.querySelector('[name="product-0"]').value,
- kitSavedProduct.product_id,'existing product selected without creating a duplicate');
-assert.equal(selectedReview.querySelector('.scan-ocr-name').textContent,
- 'キットカット別レシート表記','printed spelling kept when choosing existing product');
+await waitFor(()=>existingSession.window.KurashiLive.state().queued===0&&
+ temp.call('bootstrap').data.record_items.some(x=>aliasText(temp,x)==='キットカット別レシート表記'&&
+  x.product_id===kitSavedProduct.product_id),
+ 'printed spelling and selected product persist after saved receipt linking');
 existingSession.window.close();
 console.log('v61: KitKat canonical master, chocolate item link, original receipt name, alias and no-pinch gestures: OK');
 
