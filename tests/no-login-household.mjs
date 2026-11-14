@@ -2074,7 +2074,8 @@ await waitFor(()=>relinkSession.window.KurashiLive.state().queued===0&&
 relinkSession.window.close();
 console.log('v63: retailer change and saved-receipt manual product association OK');
 
-/* v64: saved receipts register OCR names independently of the historic row text. */
+/* v64: historical OCR aliases and shelf records still resolve products, but
+ * receipt linking is deferred until the receipt is saved. */
 const historyRaw='かたかな・直売X-123',historyCanonical='履歴から再照合する商品A';
 const historyProduct=temp.call('product.create',{
  item_group_id:null,name:historyCanonical,package_quantity:null,package_unit:null
@@ -2087,13 +2088,11 @@ assert.equal(temp.call('record.create',{
   amount_tax_included:221,category_id:null}]
 },'op-v64-history-receipt-abcdefghijk').ok,true);
 assert.equal(temp.call('bootstrap').data.product_aliases.filter(a=>
- a.product_id===historyId).length,1,'receipt automatically registers OCR name in dictionary');
+ a.product_id===historyId).length,1,'original printed OCR alias is retained');
 let historySession=appSession();
-await waitFor(()=>historySession.window.KurashiLive.state().loaded,'history on next session');
-await waitFor(()=>historySession.window.KurashiLive.state().queued===0,
- 'history prior durable operations have finished');
-assert.equal(await historySession.window.KurashiLive.load(),true,
- 'history fresh Sheets snapshot has been fetched');
+await waitFor(()=>historySession.window.KurashiLive.state().loaded);
+await waitFor(()=>historySession.window.KurashiLive.state().queued===0);
+await historySession.window.KurashiLive.load();
 historySession.window.document.querySelector('[data-tab="receipt"]').click();
 prepareOcrImport(historySession);
 historySession.window.eval(importer);
@@ -2103,33 +2102,46 @@ const historyJson={...kitJson,storeName:'コストコ',purchaseDate:'2026-11-03'
 historySession.window.document.querySelector('#chatgpt-input').value=JSON.stringify(historyJson);
 await completeOcrImport(historySession);
 const hfield=name=>historySession.window.document.querySelector('#scanConfirmForm [name="'+name+'"]');
-assert.equal(hfield('product-0').value,historyId,
- 'second receipt at a DIFFERENT chain uses a saved OCR dictionary alias');
-assert.equal(historySession.window.document.querySelector('.scan-ocr-name').textContent,
- historyRaw,'printed name remains unchanged');
-assert.equal(hfield('name-0'),null,'OCR text is not an editable input');
-historySession.window.close();
-historySession=appSession();
-await waitFor(()=>historySession.window.KurashiLive.state().loaded,'new OCR reading session loaded');
-historySession.window.document.querySelector('[data-tab="receipt"]').click();
-prepareOcrImport(historySession);
-historySession.window.document.getElementById('chatgpt-input').value=JSON.stringify({
- ...historyJson,items:[{...historyJson.items[0],name:'カタカナ 直売X123'}]
-});
-await completeOcrImport(historySession);
-assert.equal(hfield('product-0').value,'','kana/mark variation is NOT auto-confirmed');
-historySession.window.document.querySelector('[data-act="scanPickExisting"]').click();
-const hSuggestion=historySession.window.document.querySelector(
- '[data-act="scanChooseSuggested"][data-product-id="'+historyId+'"]');
-assert.ok(hSuggestion,'kana and punctuation variant appears as master candidate');
-hSuggestion.click();
-assert.equal(hfield('product-0').value,historyId,'choosing a candidate links the master');
-assert.equal(hfield('product-0').value,historyId,
- 'manually confirmed product is retained without editing the OCR name');
-await waitFor(()=>historySession.window.KurashiLive.state().queued===0,'candidate alias queue drained');
+assert.equal(hfield('product-0'),null,'known aliases do not create receipt entry product controls');
+assert.equal(historySession.window.document.querySelector('.scan-ocr-name').textContent,historyRaw);
+assert.equal(hfield('name-0'),null,'printed OCR name remains read-only');
+historySession.window.document.querySelector('#scanConfirmForm').dispatchEvent(
+ new historySession.window.Event('submit',{bubbles:true,cancelable:true}));
+await waitFor(()=>historySession.window.KurashiLive.state().queued===0&&
+ temp.call('bootstrap').data.record_items.filter(x=>
+  aliasText(temp,x)===historyRaw&&x.product_id===historyId).length>=2,
+ 'historical alias identifies product only after another receipt is saved');
 historySession.window.close();
 
-/* Shelf labels already use the same record_items table, and teach the name. */
+historySession=appSession();
+await waitFor(()=>historySession.window.KurashiLive.state().loaded);
+historySession.window.document.querySelector('[data-tab="receipt"]').click();
+prepareOcrImport(historySession);
+historySession.window.eval(importer);
+const changedHistoryRaw='カタカナ 直売X123';
+historySession.window.document.getElementById('chatgpt-input').value=JSON.stringify({
+ ...historyJson,items:[{...historyJson.items[0],name:changedHistoryRaw}]
+});
+await completeOcrImport(historySession);
+assert.equal(hfield('product-0'),null);
+historySession.window.document.querySelector('#scanConfirmForm').dispatchEvent(
+ new historySession.window.Event('submit',{bubbles:true,cancelable:true}));
+await waitFor(()=>!!historySession.window.document.querySelector('[data-act="recordProductOpen"]'),
+ 'similar but unconfirmed spelling can be linked after receipt save');
+assert.match(historySession.window.document.body.textContent,/商品未紐付け/,
+ 'near-name candidates are not automatically confirmed');
+historySession.window.document.querySelector('[data-act="recordProductOpen"]').click();
+const historyOption=historySession.window.document.querySelector(
+ '[data-act="recordProductChoose"][data-product-id="'+historyId+'"]');
+assert.ok(historyOption,'manual selection can resolve a near-name spelling');
+historyOption.click();
+await waitFor(()=>historySession.window.KurashiLive.state().queued===0&&
+ temp.call('bootstrap').data.record_items.some(x=>
+  aliasText(temp,x)===changedHistoryRaw&&x.product_id===historyId),
+ 'confirmed manual choice is stored without rewriting the OCR print');
+historySession.window.close();
+
+/* Value tags continue using shared records and still train OCR aliases. */
 const shelfRaw='値札から再照合する印字名';
 assert.equal(temp.call('record.create',{
  record_type:'shelf',chain_id:kitStore.chain_id,record_date:'2026-11-02',
@@ -2137,11 +2149,8 @@ assert.equal(temp.call('record.create',{
   amount_tax_included:215,category_id:null}]
 },'op-v64-shelf-record-abcdefghijk').ok,true);
 let shelfSession=appSession();
-await waitFor(()=>shelfSession.window.KurashiLive.state().loaded,'shelf history loaded');
-await waitFor(()=>shelfSession.window.KurashiLive.state().queued===0,
- 'shelf prior durable operations have finished');
-assert.equal(await shelfSession.window.KurashiLive.load(),true,
- 'shelf fresh Sheets snapshot has been fetched');
+await waitFor(()=>shelfSession.window.KurashiLive.state().loaded);
+await shelfSession.window.KurashiLive.load();
 shelfSession.window.document.querySelector('[data-tab="receipt"]').click();
 prepareOcrImport(shelfSession);
 shelfSession.window.eval(importer);
@@ -2150,17 +2159,21 @@ shelfSession.window.document.querySelector('#chatgpt-input').value=JSON.stringif
  items:[{...historyJson.items[0],name:shelfRaw,unitPrice:215,grossAmount:215,netAmount:215}]
 });
 await completeOcrImport(shelfSession);
-assert.equal(shelfSession.window.document.querySelector('[name="product-0"]').value,historyId,
- 'shelf OCR aliases also teach next receipt');
+assert.equal(shelfSession.window.document.querySelector('[name="product-0"]'),null,
+ 'even shelf-trained products are linked only after a receipt is saved');
+shelfSession.window.document.querySelector('#scanConfirmForm').dispatchEvent(
+ new shelfSession.window.Event('submit',{bubbles:true,cancelable:true}));
+await waitFor(()=>shelfSession.window.KurashiLive.state().queued===0&&
+ temp.call('bootstrap').data.record_items.some(x=>
+  aliasText(temp,x)===shelfRaw&&x.product_id===historyId),
+ 'saved receipt recognizes the shelf-trained OCR name');
 shelfSession.window.close();
 
-/* Two conflicting confirmed products for the same exact name are NOT guessed. */
+/* Two different products with the same OCR name never auto-link ambiguously. */
 const conflict=temp.call('product.create',{
  item_group_id:null,name:'別商品B（明細名の競合試験）',package_quantity:null,package_unit:null
 },'op-v64-conflict-product-abcdefghijk');
 assert.equal(conflict.ok,true);
-// The previously used Costco chain has already learned this name for product A.
-// Use a fresh chain to create a REAL cross-chain conflict with product B.
 const conflictChain=temp.call('store.create',{name:'OCR名競合検証専用チェーン'},
  'op-v64-conflict-chain-abcdefghijk');
 assert.equal(conflictChain.ok,true);
@@ -2174,18 +2187,12 @@ assert.equal(temp.call('record.create',{
 },'op-v64-conflict-record-abcdefghijk').ok,true);
 const competingAliases=temp.call('bootstrap').data.product_aliases.filter(a=>
  a.normalized_alias===historyRaw.normalize('NFKC').toLocaleLowerCase('ja'));
-assert.ok(competingAliases.some(a=>a.chain_id===kitStore.chain_id&&
- a.product_id===historyId),'original retailer confirms product A');
+assert.ok(competingAliases.some(a=>a.chain_id===kitStore.chain_id&&a.product_id===historyId));
 assert.ok(competingAliases.some(a=>a.chain_id===conflictChainId&&
- a.product_id===conflict.data.entity.product_id),'second retailer confirms DIFFERENT product B');
-assert.notEqual(historyId,conflict.data.entity.product_id,
- 'ambiguous OCR text must genuinely identify two product masters');
+ a.product_id===conflict.data.entity.product_id));
 let conflictSession=appSession();
-await waitFor(()=>conflictSession.window.KurashiLive.state().loaded,'conflicting history loaded');
-await waitFor(()=>conflictSession.window.KurashiLive.state().queued===0,
- 'conflict prior durable operations have finished');
-assert.equal(await conflictSession.window.KurashiLive.load(),true,
- 'conflict fresh Sheets snapshot has been fetched');
+await waitFor(()=>conflictSession.window.KurashiLive.state().loaded);
+await conflictSession.window.KurashiLive.load();
 conflictSession.window.document.querySelector('[data-tab="receipt"]').click();
 prepareOcrImport(conflictSession);
 conflictSession.window.eval(importer);
@@ -2193,28 +2200,30 @@ conflictSession.window.document.querySelector('#chatgpt-input').value=JSON.strin
  ...historyJson,storeName:'初めての不明チェーンXY'
 });
 await completeOcrImport(conflictSession);
-assert.equal(conflictSession.window.document.querySelector('[name="product-0"]').value,'',
- 'without retailer context an ambiguous confirmed name stays unlinked');
-conflictSession.window.document.querySelector('[data-act="scanPickExisting"]').click();
+assert.equal(conflictSession.window.document.querySelector('[name="product-0"]'),null);
+conflictSession.window.document.querySelector('#scanConfirmForm').dispatchEvent(
+ new conflictSession.window.Event('submit',{bubbles:true,cancelable:true}));
+await waitFor(()=>!!conflictSession.window.document.querySelector('[data-act="recordProductOpen"]'),
+ 'unknown retailer receipt can be saved without assigning an ambiguous product');
+assert.match(conflictSession.window.document.body.textContent,/商品未紐付け/);
+conflictSession.window.document.querySelector('[data-act="recordProductOpen"]').click();
 assert.ok(conflictSession.window.document.querySelectorAll(
- '[data-act="scanChooseSuggested"]').length>=2,
- 'conflicting exact matches are shown as manual candidate choices');
+ '[data-act="recordProductChoose"]').length>=2,
+ 'ambiguous OCR spellings allow explicit product selection');
 conflictSession.window.close();
 
-/* Removing a product from the item group must not delete its product master. */
+/* Removing an item-group association never deletes its product master or
+ * rewrites historical record_items.product_id values. */
 const kitCurrent=temp.call('bootstrap').data.products.find(p=>
  p.product_id===kitSavedProduct.product_id);
 assert.equal(temp.call('product.update',{
  product_id:kitCurrent.product_id,version:Number(kitCurrent.version),item_group_id:null
 },'op-v64-product-unlink-abcdefghijk').ok,true);
 assert.ok(temp.call('bootstrap').data.products.some(p=>
- p.product_id===kitSavedProduct.product_id&&!p.item_group_id),
- 'product still exists after unlink');
+ p.product_id===kitSavedProduct.product_id&&!p.item_group_id));
 assert.ok(temp.call('bootstrap').data.record_items.some(x=>
- aliasText(temp,x)===kitRaw&&x.product_id===kitSavedProduct.product_id),
- 'past receipt/product ID remains stable after product is removed from daily item');
-console.log('v64: receipt/shelf exact history, cross-chain matching, safe kana suggestions, conflicts, master unlink OK');
-
+ aliasText(temp,x)===kitRaw&&x.product_id===kitSavedProduct.product_id));
+console.log('v64: OCR history, shelf OCR training, ambiguous names, master unlink after save OK');
 
 /* v65: manage independent product masters without linking to a daily item. */
 let masterUI=appSession();
