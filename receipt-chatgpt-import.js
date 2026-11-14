@@ -419,7 +419,7 @@ function makeChatGptOcrAssistPrompt(ocrReference,registeredNames=[]){
   '',
   '【登録商品との照合（レシート写真と数量・金額の解析後に実施）】',
   '以下の登録商品名一覧はアプリが作成した商品マスタの名前だけであり、商品ID・容量・日用品等は含まない。既に登録されている商品と同一と判断できる場合だけ、productSuggestion.existingNameに一覧中の名称を文字どおり正確に記す。曖昧な場合はnull。',
-  '既存の商品名に該当しない場合のみ、productSuggestion.newNameに適切な新規登録候補名を推測する。メーカー・規格を確定できないなら捏造せず、商品種別までの自然な名称かnullにする。existingNameとnewNameを同時に指定しない。',
+  '既存の商品名に該当しない場合のみ、productSuggestion.newNameに適切な新規登録候補名を推測する。可能ならウェブ検索を利用して商品名を確認する。検索できない場合やメーカー・規格を確定できない場合は捏造せず、商品種別までの自然な名称かnullにする。検索した根拠がないのに実在商品を特定できたと主張しない。existingNameとnewNameを同時に指定しない。',
   'nameCandidateは写真によるOCR誤読の補正候補であり、商品マスタ用の商品推測名（productSuggestion）とは別。OCR原文・行ID・数量を商品候補のために書き換えない。候補は未確認で、登録と紐付けはアプリ上で利用者が選ぶ。',
   '登録商品名一覧（各要素は登録商品名のみ。空配列なら照合候補なし）：'+JSON.stringify(registeredNames),
   '',
