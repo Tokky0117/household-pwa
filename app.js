@@ -1,4 +1,4 @@
-const APP_VERSION='0.89.8';
+const APP_VERSION='0.89.9';
 const CATS=['食品・飲料','キッチン','洗面・風呂','洗濯・掃除','その他','調味料'];
 const CAT_ORDER=[0,5,1,2,3,4];
 const liveMode=!!window.KurashiLive; // Data source only; original Preview v46 UI components remain.
@@ -336,8 +336,6 @@ function recordDetailView(){
  const record=allPreviewRecords().find(r=>r.record_id===recordDetailId);
  if(!record)return `${head('保存済み明細','見つかりません',true)}<main></main>${nav()}`;
  const isShelf=record.record_type==='shelf';
- const resolvedId=window.KurashiLive?.resolveRecordId?.(recordDetailId)||recordDetailId;
- if(resolvedId!==recordDetailId)recordDetailId=resolvedId;
  const detail=allPreviewItems().filter(x=>x.record_id===recordDetailId&&!x.deleted_at)
   .sort((a,b)=>Number(a.line_order)-Number(b.line_order));
  const total=detail.reduce((sum,x)=>sum+Number(x.amount_tax_included||0),0);
@@ -354,11 +352,13 @@ function recordDetailView(){
    ${UI.sectionHeading({title:isShelf?'価格情報':'購入明細',subtitle:detail.length+'件'})}
    ${detail.map(line=>`<div class="panel detail-record-line">
     <div class="detail-record-line-main">
-     <strong class="detail-record-line-name">${esc(detailLineName(line))}</strong>
+     <strong class="detail-record-line-name">${esc(isShelf?detailLineName(line):aliasNameFor(line)||"明細名なし")}</strong>
      <strong class="detail-record-line-amount">${yen(Number(line.amount_tax_included||0))}</strong>
     </div>
     <div class="detail-record-line-meta"><span>${isShelf?'販売個数':'数量'} ${esc(line.quantity)}</span>
-     ${!line.product_id?'<span>商品未照合</span>':''}</div>
+     ${line.product_id?`<span>登録商品：${esc(catalogue.products.find(p=>p.id===line.product_id)?.name||'商品を確認')}</span>`:
+      '<span>商品未紐付け</span>'}</div>
+    ${!isShelf&&line.suggested_product_name&&!line.product_id?`<div class="detail-record-line-meta"><span>ChatGPT商品候補（参考）：${esc(line.suggested_product_name)}</span></div>`:''}
    </div>`).join('')}
   </section>
   <section class="detail-record-total" aria-label="${isShelf?'価格合計':'合計'}">
@@ -569,7 +569,8 @@ function scanStoreHeaderMatch(raw){
 }
 function scanChainForStore(raw){return scanStoreHeaderMatch(raw).chain;}
 function scanAutolinkUnmatched(){
- if(!scanDraft)return 0;
+ // Receipt product linking takes place only after the receipt is saved.
+ if(!scanDraft||scanDraft.recordType==='receipt')return 0;
  let added=0;
  for(const item of scanDraft.items){
   if(item.inputOrigin==='manual'||item.manuallyLinked||isUnconfirmedBarcodeLine(item))continue;
@@ -852,7 +853,7 @@ function scanFormView(){
  if(!scanDraft)return '';
  const isShelf=scanDraft.recordType==='shelf';
  const reviewModel=window.KurashiReceiptReview.buildReviewModel(scanDraft);
- const unmatchedCount=scanDraft.items.filter(x=>!scanResolvedProductId(x)).length;
+ const unmatchedCount=isShelf?scanDraft.items.filter(x=>!scanResolvedProductId(x)).length:0;
  return `<form id="scanConfirmForm" class="scan-review" novalidate>
   <section class="scan-receipt-meta" aria-label="${isShelf?'値札情報':'購入情報'}">
   ${UI.sectionHeading({title:isShelf?'値札情報':'購入情報'})}
@@ -883,13 +884,12 @@ function scanFormView(){
        UI.formField({id:'scan-proposed-'+i,control:'static',label:'推定商品名',
         value:reviewModel.items[i].proposedName,valueVariant:'supporting',fieldClass:'scan-proposed-name'}):''}
     ${(item.issues||[]).some(reason=>/商品名|商品コード|名称|名前/.test(String(reason)))?'<p class="scan-name-warning">読み取り名を確認</p>':''}
-    ${UI.formField({id:'scan-product-'+i,name:'product-'+i,label:'登録商品',
+    ${isShelf?UI.formField({id:'scan-product-'+i,name:'product-'+i,label:'登録商品',
       control:'picker',pickerLayout:'inline',value:scanResolvedProductId(item),
       display:scanSelectedProductLabel(item),valueState:scanResolvedProductId(item)?'':'unmatched',
       action:'scanPickExisting',
       actionLabel:scanResolvedProductId(item)?'変更':'商品を設定',actionRow:i,
-      fieldClass:'scan-product-setting'})}
-    ${!isShelf?scanAiCandidateView(item,i):''}
+      fieldClass:'scan-product-setting'}):''}
     <div class="${isShelf?'scan-price-single':'scan-input-pair'}">
      ${isShelf?'':UI.formField({id:'scan-qty-'+i,name:'qty-'+i,label:'数量',type:'number',
        value:item.quantity,required:true,extra:'min="1" step="1" inputmode="numeric"',
@@ -2202,7 +2202,10 @@ function syncScanReview(){
   it.name=nextName;
   // Retailer/printed-name corrections invalidate automatic links only;
   // explicit user choices must not be overwritten.
-  if(needsMatch&&!it.manuallyLinked&&(wasAutomatic||!previousId)){
+  if(scanDraft.recordType==='receipt'){
+   // Receipt editing must keep existing product associations without a picker.
+   if(!scanDraft.recordId){it.productId='';it.autoLinked=false;}
+  }else if(needsMatch&&!it.manuallyLinked&&(wasAutomatic||!previousId)){
    it.productId=scanMatchProduct(nextName,nextChainId);
    it.autoLinked=!!it.productId;
    const hidden=form.querySelector('[name="product-'+i+'"]');
@@ -2277,7 +2280,9 @@ app.addEventListener('submit',e=>{e.preventDefault();const form=e.target;const d
     ...(verified&&confirmedName?{confirmed_name:confirmedName}:{}),
     ...(inferredName?{inferred_name:inferredName}:{}),
     ...(suggestedName?{suggested_product_name:suggestedName,suggestion_kind:suggestionKind}:{}),
-    product_id:String(d.get('product-'+i)||'')||null,
+    product_id:scanDraft.recordType==='receipt'?
+     (scanDraft.recordId?scanResolvedProductId(item)||null:null):
+     String(d.get('product-'+i)||'')||null,
     quantity:scanDraft.recordType==='shelf'?1:Number(d.get('qty-'+i)),
     amount_tax_included:String(d.get('amount-'+i)||'').trim()===''?NaN:Number(d.get('amount-'+i)),
     category_id:null
@@ -2330,6 +2335,16 @@ app.addEventListener('submit',e=>{e.preventDefault();const form=e.target;const d
     void window.KurashiLive.learnAliases({chain_id:learnedChain,items:aliasLines})
      .catch(e=>console.warn('別名学習を保存できませんでした',e));
    const savedId=record?.record_id||scanDraft?.recordId;
+   // A unique exact registered name or OCR alias may be linked only after
+   // the receipt is durably saved. Fuzzy / AI suggestions cannot auto-link.
+   if(savedId&&!scanDraft.recordId&&values.record_type==='receipt'){
+    const rows=allPreviewItems().filter(x=>x.record_id===savedId&&!x.deleted_at);
+    for(const item of rows){
+     const matched=scanMatchProduct(item.confirmed_name||item.raw_name,learnedChain);
+     if(matched)void window.KurashiLive.linkRecordItem(item.record_item_id,matched)
+      .catch(err=>console.warn('保存後の商品照合を保留しました',err));
+    }
+   }
    resetScan();recordDetailId=savedId||null;recordDetailOrigin='list';
    page=recordDetailId?'recordDetail':'list';tab='receipt';render();
   }).catch(err=>{
