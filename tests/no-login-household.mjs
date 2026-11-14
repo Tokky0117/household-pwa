@@ -1668,7 +1668,7 @@ const bulkOriginal=temp.call('product.create',{
 assert.equal(bulkOriginal.ok,true);
 const bulkExistingId=bulkOriginal.data.entity.product_id;
 const bulkSaved=temp.call('record.create',{
- record_type:'receipt',chain_id:kitStore.chain_id,record_date:'2026-11-10',
+ record_type:'receipt',chain_id:temp.call('bootstrap').data.stores[0].chain_id,record_date:'2026-11-10',
  items:[
   {confirmed_name:'一括候補明細 A',quantity:1,amount_tax_included:101,
    suggested_product_name:'一括新規商品テスト',suggestion_kind:'new'},
