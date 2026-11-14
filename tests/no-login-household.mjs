@@ -1104,8 +1104,8 @@ online=false;
 recordForm.dispatchEvent(new recordUI.window.Event('submit',{bubbles:true,cancelable:true}));
 await waitFor(()=>recordUI.window.KurashiLive.state().queued===2,
  'store and multi-line receipt queued atomically while offline');
-await waitFor(()=>!!recordUI.window.document.querySelector('.ui-record-row'),
- 'New manual receipt appears immediately in the original UI');
+await waitFor(()=>!!recordUI.window.document.querySelector('.detail-record-line'),
+ 'New manual receipt opens saved detail immediately even while offline');
 await pause(70);
 recordUI.window.close();online=true;
 let recordReopened=appSession();
@@ -2923,11 +2923,8 @@ assert.equal(optionalDetails.length,2);
 assert.ok(optionalDetails.some(x=>x.raw_name===''&&x.confirmed_name===''&&
  x.product_id===''&&Number(x.amount_tax_included)===200&&x.price_eligible===false),
  'the nameless line is retained as a purchase amount, not a price-comparable registered product');
-await waitFor(()=>!!optionalUI.window.document.querySelector(
- '[data-act="recordDetail"][data-record-id="'+optionalRecord.record_id+'"]'),
- 'the saved unnamed receipt is shown in the app history');
-optionalUI.window.document.querySelector(
- '[data-act="recordDetail"][data-record-id="'+optionalRecord.record_id+'"]').click();
+await waitFor(()=>!!optionalUI.window.document.querySelector('.detail-record-line'),
+ 'saved unnamed receipt opens its detail immediately');
 assert.match(optionalUI.window.document.body.textContent,/明細名なし/,
  'receipt detail displays a neutral name fallback');
 optionalForm=await openSavedEdit(optionalUI,'optional-name receipt edit');
