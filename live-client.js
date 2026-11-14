@@ -805,6 +805,30 @@
  function previewBulkReceiptProducts(receiptId){
   return planBulkReceipt(workspace,receiptId);
  }
+ // A single user tap durably enqueues BOTH master creation and line linking.
+ // Never leave an orphan master if the app closes between separate transactions.
+ async function registerReceiptItemProduct(recordItemId,name){
+  await boot();
+  if(!workspace.base)await load();
+  let createdId=null;
+  await modify(doc=>{
+   const snap=project(doc);
+   const line=snap?.record_items.find(x=>x.record_item_id===recordItemId&&!x.deleted_at);
+   if(!line||!snap.records.some(r=>r.record_id===line.record_id&&
+      r.record_type==='receipt'&&!r.deleted_at))
+    throw Error('保存済みレシートの明細が見つかりません');
+   const create=makeProductOperation('product.create',{
+    item_group_id:null,name,package_quantity:null,package_unit:null
+   },doc);
+   doc.queue.push(create);
+   doc.queue.push({id:operationId(),kind:'record-item-link',
+    targetId:recordItemId,productId:create.clientId,retries:0});
+   createdId=create.clientId;
+   return doc;
+  });
+  void flush();
+  return {product_id:createdId};
+ }
  async function bulkRegisterReceiptProducts(receiptId,expectedItemIds){
   await boot();
   if(!workspace.base)await load();
@@ -1655,7 +1679,7 @@
    else void load();
   }).catch(e=>{error=e.message||'端末内の保存領域を開けません';notify()});
  };
- window.KurashiLive={state,load,save,saveRecord,updateRecord,deleteRecord,linkRecordItem,
+ window.KurashiLive={state,load,save,saveRecord,updateRecord,deleteRecord,linkRecordItem,registerReceiptItemProduct,
   previewBulkReceiptProducts,bulkRegisterReceiptProducts,
   resolveRecordId:id=>workspace.recordIdMap?.[id]||id,
   resolveRecordItemId:id=>workspace.recordItemIdMap?.[id]||id,blockedReceiptChange,discardBlockedReceipt,blockedProductChange,resolveBlockedProduct,refreshBlockedProducts,pendingOperationReview,beginPendingOperationReview,endPendingOperationReview,discardPendingOperations,confirmedProductId,learnAliases,linkAlias,learnStoreAlias,

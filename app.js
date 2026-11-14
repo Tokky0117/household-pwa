@@ -2371,19 +2371,17 @@ app.addEventListener('submit',e=>{e.preventDefault();const form=e.target;const d
   recordProductSaving=true;
   const button=form.querySelector('[type="submit"]');
   if(button)button.disabled=true;
-  let createdProductId=null;
-  window.KurashiLive.save('product.create',{
-   item_group_id:null,name,package_quantity:null,package_unit:null
-  }).then(product=>{
-   if(!product?.product_id)throw Error('商品を登録できませんでした');
-   createdProductId=product.product_id;
-   return window.KurashiLive.linkRecordItem(line.record_item_id,createdProductId);
-  }).then(()=>{learnSavedReceiptAlias(line,createdProductId);closeRecordProductPicker();render()}).catch(err=>{
-   recordProductSaving=false;
-   if(button?.isConnected)button.disabled=false;
-   if(form.isConnected)fieldNotice(form,err.message||'登録できませんでした','record-product-name');
-   else say(err.message||'登録できませんでした');
-  });
+  window.KurashiLive.registerReceiptItemProduct(line.record_item_id,name)
+   .then(product=>{
+    if(!product?.product_id)throw Error('商品を登録できませんでした');
+    learnSavedReceiptAlias(line,product.product_id);
+    closeRecordProductPicker();render();
+   }).catch(err=>{
+    recordProductSaving=false;
+    if(button?.isConnected)button.disabled=false;
+    if(form.isConnected)fieldNotice(form,err.message||'登録できませんでした','record-product-name');
+    else say(err.message||'登録できませんでした');
+   });
   return;
  }
  if(form.id==='scanConfirmForm'){
