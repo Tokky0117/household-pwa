@@ -1689,52 +1689,41 @@ kitSession.window.document.getElementById('chatgpt-input').value=JSON.stringify(
 await completeOcrImport(kitSession);
 assert.ok(kitSession.window.document.getElementById('scanConfirmForm'),
  'malformed name appears on receipt confirmation page');
-kitSession.window.document.querySelector('[data-act="scanPickExisting"]').click();
-kitSession.window.document.querySelector('[data-act="scanExistingToNew"]').click();
-const kitForm=kitSession.window.document.getElementById('scanProductForm');
-assert.ok(kitForm,'receipt shows explicit new master registration form');
-assert.equal(kitForm.querySelector('[name="group"]'),null,
- 'receipt product registration does not select an item group');
-assert.equal(kitForm.querySelector('[name="name"]').value,kitRaw,
- 'printed OCR name pre-fills editable canonical name');
-kitForm.querySelector('[name="name"]').value=kitCanonical;
-assert.equal(kitForm.querySelector('#scan-product-group-results'),null,
- 'item-group selection is deferred to product-master management');
-assert.equal(kitForm.querySelector('[name="quantity"]'),null,
- 'package quantity is deferred to product-master management');
-kitForm.dispatchEvent(new kitSession.window.Event('submit',{bubbles:true,cancelable:true}));
-await waitFor(()=>!!kitSession.window.document.getElementById('scanConfirmForm'),
- 'new product returns directly to the same receipt');
-try{
- await waitFor(()=>temp.call('bootstrap').data.products.some(x=>
- x.name===kitCanonical&&!x.item_group_id),
- 'canonical master is unlinked when created during receipt review');
-}catch(err){
- console.log('DEBUG KitKat state',JSON.stringify(kitSession.window.KurashiLive.state()));
- console.log('DEBUG KitKat sheet',JSON.stringify(temp.call('bootstrap').data.products.slice(-5)));
- console.log('DEBUG KitKat UI',kitSession.window.document.body.textContent.slice(-900));
- throw err;
-}
-const kitSavedProduct=temp.call('bootstrap').data.products.find(x=>x.name===kitCanonical);
-await waitFor(()=>kitSession.window.document.querySelector(
- '#scanConfirmForm [name="product-0"]')?.value===kitSavedProduct.product_id,
- 'local product ID reconciles to permanent Sheets ID even with different OCR spelling');
 const kitReview=kitSession.window.document.getElementById('scanConfirmForm');
 assert.equal(kitReview.querySelector('.scan-ocr-name').textContent,kitRaw,
- 'raw receipt name is never silently replaced with canonical master name');
-assert.match(kitReview.textContent,/キットカット濃い抹茶10袋/,
- 'canonical product appears as selected master in confirmation view');
-assert.equal(kitReview.querySelector('.scan-product-setting .ui-picker-value')?.textContent,kitCanonical,
- 'receipt review shows only the chosen registered product name, without item-group metadata');
+ 'the scanned product spelling is retained before saving');
+assert.equal(kitReview.querySelector('[data-act="scanPickExisting"]'),null,
+ 'the receipt review has no registration route');
 kitReview.dispatchEvent(new kitSession.window.Event('submit',{bubbles:true,cancelable:true}));
+await waitFor(()=>!!kitSession.window.document.querySelector('[data-act="recordProductNew"]'),
+ 'saved KitKat receipt opens its detail');
+assert.match(kitSession.window.document.querySelector('.detail-record-line').textContent,
+ /キットカットコイマッチャ10フクロ/,
+ 'detail retains original OCR product spelling');
+kitSession.window.document.querySelector('[data-act="recordProductNew"]').click();
+const kitForm=kitSession.window.document.getElementById('recordProductCreateForm');
+assert.ok(kitForm&&kitSession.window.document.querySelector('.record-product-overlay'),
+ 'new product editor is one shared half sheet');
+assert.equal(kitForm.querySelector('[name="group"]'),null);
+assert.equal(kitForm.querySelector('[name="quantity"]'),null);
+assert.equal(kitForm.querySelector('[name="name"]').value,kitRaw,
+ 'the OCR name pre-fills the editable master name');
+kitForm.querySelector('[name="name"]').value=kitCanonical;
+kitForm.dispatchEvent(new kitSession.window.Event('submit',{bubbles:true,cancelable:true}));
 await waitFor(()=>kitSession.window.KurashiLive.state().queued===0&&
+ temp.call('bootstrap').data.products.some(p=>p.name===kitCanonical)&&
  temp.call('bootstrap').data.record_items.some(x=>
-  aliasText(temp,x)===kitRaw&&x.product_id===kitSavedProduct.product_id),
- 'receipt stores printed raw spelling with linked canonical product ID');
+  aliasText(temp,x)===kitRaw&&x.product_id),
+ 'saved product name is linked to the original printed receipt item');
+const kitSavedProduct=temp.call('bootstrap').data.products.find(x=>x.name===kitCanonical);
+assert.ok(kitSavedProduct&&!kitSavedProduct.item_group_id);
+const kitSavedLine=temp.call('bootstrap').data.record_items.find(x=>
+ aliasText(temp,x)===kitRaw&&x.product_id===kitSavedProduct.product_id);
+assert.ok(kitSavedLine,'the receipt item keeps its own confirmed product ID');
 await waitFor(()=>temp.call('bootstrap').data.product_aliases.some(x=>
  x.product_id===kitSavedProduct.product_id&&x.chain_id===kitStore.chain_id&&
  x.normalized_alias===kitRaw.toLocaleLowerCase('ja')),
- 'confirmed receipt abbreviation is learned as chain-specific alias');
+ 'an explicit saved item link trains its printed OCR alias');
 kitSession.window.close();
 
 // Product registration from a receipt is intentionally unlinked. Explicit
