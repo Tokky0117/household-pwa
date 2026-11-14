@@ -2737,8 +2737,8 @@ reviewFlow.window.eval(importer);
 reviewFlow.window.document.getElementById('chatgpt-input').value=JSON.stringify(kitJson);
 await completeOcrImport(reviewFlow);
 let flowForm=reviewFlow.window.document.getElementById('scanConfirmForm');
-assert.equal(flowForm.querySelector('[name="product-0"]').value,kitSavedProduct.product_id,
- 'known OCR spelling is initially linked to the same registered product');
+assert.equal(flowForm.querySelector('[name="product-0"]'),null,
+ 'product selection belongs to saved receipt detail, not pre-save review');
 const clearedDate=flowForm.querySelector('[name="date"]');
 clearedDate.value='';
 clearedDate.dispatchEvent(new reviewFlow.window.Event('input',{bubbles:true}));
@@ -2749,31 +2749,8 @@ assert.equal(flowForm.querySelector('.ui-date-value').textContent,'日付を選�
 const preservedScroll=[];
 reviewFlow.window.scrollY=456;
 reviewFlow.window.scrollTo=(_,y)=>{preservedScroll.push(y);reviewFlow.window.scrollY=y;};
-flowForm.querySelector('[data-act="scanPickExisting"]').click();
-const flowPicker=reviewFlow.window.document.querySelector('.scan-existing-picker');
-assert.ok(flowPicker,'single product picker opens');
-assert.ok(flowPicker.querySelector('[data-act="scanExistingToNew"]'),
- 'new-product registration is visible before the long results list');
-assert.ok(flowPicker.querySelector('[data-act="scanUnlinkProduct"]'),
- 'the existing product can be explicitly unlinked without deleting the master');
-const sharedSearch=flowPicker.querySelector('#scan-existing-search');
-assert.ok(sharedSearch?.closest('.ui-search'),'product chooser uses the shared search field');
-sharedSearch.value='テスト';
-sharedSearch.dispatchEvent(new reviewFlow.window.Event('input',{bubbles:true}));
-assert.ok(flowPicker.querySelector('[data-search-clear="scan-existing-search"]:not([hidden])'),
- 'search clear action appears after typing in the shared search field');
-flowPicker.querySelector('[data-search-clear="scan-existing-search"]').click();
-assert.equal(sharedSearch.value,'','clearing search uses the shared binding');
-assert.ok(flowPicker.querySelectorAll('[data-act="scanChooseExisting"]').length>0,
- 'cleared search restores the existing product candidates');
-flowPicker.querySelector('[data-act="scanUnlinkProduct"]').click();
-flowForm=reviewFlow.window.document.getElementById('scanConfirmForm');
-assert.equal(flowForm.querySelector('[name="date"]').value,'',
- 'leaving product selection does not silently restore a cleared date');
-assert.equal(flowForm.querySelector('[name="product-0"]').value,'',
- 'explicit product unlink is retained on returning to review');
-assert.ok(preservedScroll.includes(456),
- 'closing the product sheet explicitly restores the original receipt scroll position');
+assert.equal(flowForm.querySelector('[data-act="scanPickExisting"]'),null,
+ 'receipt review no longer has product pickers, even after date editing');
 let storeField=flowForm.querySelector('#scan-chain');
 assert.equal(storeField.type,'hidden','receipt picker preserves chain FormData');
 assert.ok(flowForm.querySelector('.ui-picker-surface [data-act="storePickerOpen"]'),
@@ -2811,8 +2788,8 @@ assert.equal(reviewFlow.window.document.body.style.position,'',
  'closing store choice restores native underlying page scrolling');
 assert.ok(preservedScroll.includes(456),
  'closing store sheet restores the exact review scroll position');
-assert.equal(flowForm.querySelector('[name="product-0"]').value,'',
- 'a user-unlinked product does not auto-relink when retailer changes');
+assert.equal(flowForm.querySelector('[name="product-0"]'),null,
+ 'retailer changes cannot make a pre-save product picker reappear');
 assert.equal(flowForm.querySelector('#scan-chain').value,differentStore.dataset.uiChoice,
  'chosen retailer remains in receipt FormData');
 flowForm.querySelector('[data-act="storePickerOpen"]').click();
