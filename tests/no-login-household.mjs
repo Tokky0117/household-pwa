@@ -2960,7 +2960,7 @@ assert.equal(invalidForm.querySelector('#scan-save-feedback')?.hidden,true,
 assert.ok(optionalUI.window.document.querySelector('.scan-assist-area [data-act="chatGptAssist"]'),
  'ChatGPT help is outside the review form near the photo area');
 assert.match(optionalUI.window.document.querySelector('.scan-assist-area .ui-status-message')?.textContent||'',
- /反映できる修正候補はありませんでした/,
+ /解析結果に変更はありませんでした/,
  'the assist result appears by the operation, without misleading item counters');
 optionalUI.window.document.querySelector('[data-act="scanAddItem"]').click();
 let optionalForm=optionalUI.window.document.querySelector('#scanConfirmForm');
