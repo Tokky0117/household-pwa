@@ -626,8 +626,8 @@
    const inferred=String(line.inferred_name||'').trim();
    const suggested=String(line.suggested_product_name||'').trim();
    const suggestionKind=String(line.suggestion_kind||'');
-   if(suggested.length>120||/^[=+@\\-]/.test(suggested)||
-      /[\\x00-\\x1f\\x7f<>]/.test(suggested)||
+   if(suggested.length>120||/^[=+@\-]/.test(suggested)||
+      /[\x00-\x1f\x7f<>]/.test(suggested)||
       (suggested&&!['existing','new'].includes(suggestionKind))||
       (!suggested&&suggestionKind))throw Error('商品名候補を確認してください');
    if(inferred.length>120||/^[=+@\-]/.test(inferred)||/[\x00-\x1f\x7f<>]/.test(inferred))
