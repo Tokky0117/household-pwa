@@ -1625,6 +1625,10 @@ assert.ok(ui.receiptScanView().includes('ui-static-field-label">推定商品名<
  ui.receiptScanView().includes('ui-value-supporting'),
  'Proposed product name uses a shared supporting-value field, not a freeform candidate paragraph');
 assert.ok(source.includes('suggested_product_name:suggestedName')&&!source.includes('inferred_name:inferredName'));
+assert.ok(source.includes("const suggestedName=String(candidate?.newName||candidate?.existingName||item.savedUnknownSuggestion||'').trim()"),
+ 'OCR correction/nameCandidate is not persisted as a product registration candidate');
+assert.ok(source.includes("savedUnknownSuggestion:!x.suggestion_kind?x.suggested_product_name||'':''"),
+ 'previously saved undecided product suggestions survive an edit');
 assert.ok(source.includes('const aliasLines=lines.filter'));
 assert.match(imports.makeChatGptOcrAssistPrompt(ocrRef),/構造問題/);
 console.log('v70: obsolete OCR adoption/detachment buttons removed OK');
