@@ -12,7 +12,7 @@
  const OLD_SNAPSHOT='kurashi-new-confirmed-snapshot-v1';
  const OLD_OPERATION='kurashi-new-write-v1-temporary-household';
  const listeners=new Set();
- const blank=()=>({base:null,queue:[],blocked:null,productIdMap:{}});
+ const blank=()=>({base:null,queue:[],blocked:null,productIdMap:{},recordIdMap:{}});
  let dbPromise=null,bootPromise=null,workspace=blank();
  let refreshPromise=null,flushPromise=null,retryTimer=null,retryMs=3000;
  let error='',lastSync=0,authRequired=false,token=null,subject='temporary-household',expiry=0,gisReady=false;
@@ -99,7 +99,9 @@
  const normalizeWorkspace=doc=>{
   if(!doc||!Array.isArray(doc.queue))return blank();
   if(doc.base)validateSnapshot(doc.base);
-  return {base:doc.base||null,queue:doc.queue,blocked:doc.blocked||null,productIdMap:doc.productIdMap&&typeof doc.productIdMap==='object'?doc.productIdMap:{}};
+  return {base:doc.base||null,queue:doc.queue,blocked:doc.blocked||null,
+   productIdMap:doc.productIdMap&&typeof doc.productIdMap==='object'?doc.productIdMap:{},
+   recordIdMap:doc.recordIdMap&&typeof doc.recordIdMap==='object'?doc.recordIdMap:{}};
  };
  function project(doc=workspace){
   if(!doc.base)return null;
@@ -585,13 +587,17 @@
  async function enqueue(build){
   await boot();
   if(!workspace.base)await load();
+  let operation=null;
   const ws=await modify(doc=>{
    if(!doc.base)throw Error('最初の同期が必要です。通信を確認してください');
    const op=build(doc);
+   if(!op)return doc; // Idempotent no-op: never persist a null queue entry.
+   operation=op;
    doc.queue.push(op);
    return doc;
   });
-  const current=ws.queue[ws.queue.length-1];
+  if(!operation)return null;
+  const current=operation;
   const snap=project(),visible=current.kind.startsWith('product-')
    ?snap?.products.find(p=>p.product_id===(current.clientId||current.targetId))
    :snap?.item_groups.find(i=>i.item_group_id===(current.clientId||current.targetId));
