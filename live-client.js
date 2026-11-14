@@ -813,7 +813,8 @@
   let createdId=null;
   await modify(doc=>{
    const snap=project(doc);
-   const line=snap?.record_items.find(x=>x.record_item_id===recordItemId&&!x.deleted_at);
+   const mappedId=doc.recordItemIdMap?.[recordItemId]||recordItemId;
+   const line=snap?.record_items.find(x=>x.record_item_id===mappedId&&!x.deleted_at);
    if(!line||!snap.records.some(r=>r.record_id===line.record_id&&
       r.record_type==='receipt'&&!r.deleted_at))
     throw Error('保存済みレシートの明細が見つかりません');
@@ -822,7 +823,7 @@
    },doc);
    doc.queue.push(create);
    doc.queue.push({id:operationId(),kind:'record-item-link',
-    targetId:recordItemId,productId:create.clientId,retries:0});
+    targetId:mappedId,productId:create.clientId,retries:0});
    createdId=create.clientId;
    return doc;
   });
