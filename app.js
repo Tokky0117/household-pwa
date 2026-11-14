@@ -148,6 +148,7 @@ function chainMinima(productId,periodValue,records=allPreviewRecords(),details=a
 }
 // Keep each pre-migration receipt's original printed spelling; the shared OCR dictionary may normalize it.
 const aliasNameFor=line=>line?.confirmed_name||line?.raw_name||catalogue.productAliases?.find(a=>a.aliasId===line?.alias_id)?.ocrName||'';
+const rawReceiptName=line=>line?.raw_name||catalogue.productAliases?.find(a=>a.aliasId===line?.alias_id)?.ocrName||'';
 const chainLabel=id=>catalogue.chains.find(c=>c.id===id)?.name||'チェーン未設定';
 const listPriceText=item=>{
  const first=registeredProducts(item.id)[0];
@@ -449,6 +450,7 @@ function recordDetailView(){
      <strong class="detail-record-line-name">${esc(isShelf?detailLineName(line):aliasNameFor(line)||"明細名なし")}</strong>
      <strong class="detail-record-line-amount">${yen(Number(line.amount_tax_included||0))}</strong>
     </div>
+    ${!isShelf&&line.confirmed_name&&rawReceiptName(line)&&rawReceiptName(line)!==line.confirmed_name?`<div class="detail-record-line-meta"><span>読み取り名：${esc(rawReceiptName(line))}</span></div>`:''}
     <div class="detail-record-line-meta"><span>${isShelf?'販売個数':'数量'} ${esc(line.quantity)}</span>
      ${line.product_id?`<span>登録商品：${esc(catalogue.products.find(p=>p.id===line.product_id)?.name||'商品を確認')}</span>`:
       '<span>商品未紐付け</span>'}</div>
