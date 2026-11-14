@@ -2462,7 +2462,7 @@ app.addEventListener('submit',e=>{e.preventDefault();const form=e.target;const d
    if(savedId&&!scanDraft.recordId&&values.record_type==='receipt'){
     const rows=allPreviewItems().filter(x=>x.record_id===savedId&&!x.deleted_at);
     for(const item of rows){
-     const matched=scanMatchProduct(item.confirmed_name||item.raw_name,learnedChain);
+     const matched=scanMatchProduct(aliasNameFor(item),learnedChain);
      if(matched)void window.KurashiLive.linkRecordItem(item.record_item_id,matched)
       .catch(err=>console.warn('保存後の商品照合を保留しました',err));
     }
