@@ -416,8 +416,9 @@ function linkSavedRecordProduct(productId){
   learnSavedReceiptAlias(line,productId);closeRecordProductPicker();render();
  }).catch(err=>{
   recordProductSaving=false;
-  inlineActionNotice(document.querySelector('.record-product-overlay .sheet-body'),
-   err.message||'紐付けできませんでした');
+  const container=app.querySelector('.record-product-overlay .sheet-body');
+  if(container)inlineActionNotice(container,err.message||'紐付けできませんでした');
+  else console.warn('保存済み明細の商品紐付けを同期できませんでした',err);
  });
 }
 function recordDetailView(){
