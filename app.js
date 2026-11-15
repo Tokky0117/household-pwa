@@ -1005,7 +1005,8 @@ function scanFormView(){
  if(!scanDraft)return '';
  const isShelf=scanDraft.recordType==='shelf';
  const reviewModel=window.KurashiReceiptReview.buildReviewModel(scanDraft);
- const unmatchedCount=isShelf?scanDraft.items.filter(x=>!scanResolvedProductId(x)).length:0;
+ const unmatchedCount=isShelf?scanDraft.items.filter(x=>!x.pendingDeletion&&!scanResolvedProductId(x)).length:0;
+ const remainingCount=scanDraft.items.filter(x=>!x.pendingDeletion).length;
  return `<section class="scan-review-intro" aria-label="確認方法"><h2>読み取り結果の確認</h2><p class="hint">店舗・購入日・明細を確認し、間違いがあれば修正して保存してください。</p></section><form id="scanConfirmForm" class="scan-review" novalidate>
   <section class="scan-receipt-meta" aria-label="${isShelf?'値札情報':'購入情報'}">
   ${UI.sectionHeading({title:isShelf?'値札情報':'購入情報'})}
@@ -1020,10 +1021,11 @@ function scanFormView(){
   ${UI.formField({id:'scan-date',name:'date',label:isShelf?'値札確認日':'購入日',control:'date',
    value:scanDraft.date,required:true,hint:true,fieldClass:'scan-date-field'})}
   </section>
-  ${UI.sectionHeading({title:isShelf?'価格情報':'購入明細',subtitle:scanDraft.items.length+'件'+(unmatchedCount?'・未照合'+unmatchedCount+'件':'')})}
-  ${scanDraft.items.map((item,i)=>`<div class="panel scan-review-item">
+  ${UI.sectionHeading({title:isShelf?'価格情報':'購入明細',subtitle:remainingCount+'件'+(unmatchedCount?'・未照合'+unmatchedCount+'件':'')})}
+  ${scanDraft.items.map((item,i)=>`<div class="panel scan-review-item${item.pendingDeletion?' is-pending-delete':''}">
+    <div class="scan-item-content" ${item.pendingDeletion?'inert aria-hidden="true"':''}>
     <div class="scan-item-head"><strong>明細 ${i+1}</strong><div class="scan-item-tools">
-     <button type="button" class="scan-item-tool" data-act="scanRemoveItem" data-scan-row="${i}">${miniIcon('trash')}<span>削除</span></button>
+     ${item.pendingDeletion?'':`<button type="button" class="scan-item-tool" data-act="scanRemoveItem" data-scan-row="${i}">${miniIcon('trash')}<span>削除</span></button>`}
     </div></div>
     ${isUnconfirmedBarcodeLine(item)?'<p class="scan-name-warning">商品コードだけの明細を確認</p>':''}
     ${item.inputOrigin==='manual'?'':item.inputOrigin==='photo'||item.ocrRawName===undefined?
@@ -1062,6 +1064,8 @@ function scanFormView(){
       id:'scan-name-'+i,name:'name-'+i,label:'明細名（任意）',
       placeholder:'例：みかん',value:item.name,maxlength:120,
       hint:true,fieldClass:'scan-manual-name'}):''}
+    </div>
+    ${item.pendingDeletion?`<div class="scan-delete-undo"><span>削除予定</span>${UI.button({label:'戻す',variant:'tertiary',action:'scanRestoreItem',scanRow:i})}</div>`:''}
     </div>`).join('')}
   <div class="scan-add-action">${UI.button({label:'明細を追加',variant:'tertiary',action:'scanAddItem',icon:'plus'})}</div>
   ${UI.sectionHeading({title:isShelf?'価格の確認':'合計の確認'})}
@@ -2352,8 +2356,9 @@ function syncScanReview(){
  scanDraft.date=String(d.get('date')??'');
  let relinked=false;
  for(let i=0;i<scanDraft.items.length;i++){
-  const it=scanDraft.items[i],previousName=it.name;
-  const previousId=String(it.productId||'');
+  const it=scanDraft.items[i];
+  if(it.pendingDeletion)continue;
+  const previousName=it.name,previousId=String(it.productId||'');
   const nextName=['manual','photo'].includes(it.inputOrigin)||it.ocrRawName===undefined?
    String(d.get('name-'+i)||''):String(it.ocrRawName||'');
   const wasAutomatic=!it.manuallyLinked&&!!previousId&&
@@ -2979,8 +2984,8 @@ if(action==='chatGptImport'){
   }
   const previous=scanDraft;
   scanDraft=applyChatGptOcrAssistance(scanDraft,response);
-  
   scanAiChanges=scanAiDiff(previous,scanDraft);
+  scanNewStoreMode=!scanDraft.chainId&&!!scanDraft.chainName;
   saveScanDraft();
   scanAssistMessage=scanAiChanges.length?'生成AIの解析結果を取り込みました。':'解析結果に変更はありませんでした。';
   scanStatus='';
@@ -3154,7 +3159,16 @@ if(action==='scanRemovePhoto'){
 }
 if(action==='scanRemoveItem'&&scanDraft){
  syncScanReview();
- scanDraft.items.splice(Number(el.dataset.scanRow),1);
+ const index=Number(el.dataset.scanRow);
+ if(!Number.isInteger(index)||!scanDraft.items[index]||scanDraft.items[index].pendingDeletion)return;
+ scanDraft.items[index].pendingDeletion=true;
+ saveScanDraft();render();return;
+}
+if(action==='scanRestoreItem'&&scanDraft){
+ syncScanReview();
+ const index=Number(el.dataset.scanRow);
+ if(!Number.isInteger(index)||!scanDraft.items[index]?.pendingDeletion)return;
+ delete scanDraft.items[index].pendingDeletion;
  saveScanDraft();render();return;
 }
 if(action==='scanSaveDraft'){void leaveScanAsDraft();return}
