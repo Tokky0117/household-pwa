@@ -55,6 +55,7 @@ jobs:
           node tests/no-login-household.mjs
           node tests/trial-sheet-schema-cutover.mjs
           node tests/gas-execution-result.mjs
+          node tests/v94-local-snapshot-upgrade.mjs
       - name: Prepare temporary credentials and target
         env:
           CLASPRC_JSON: ${{ secrets.CLASPRC_JSON }}
