@@ -12,9 +12,10 @@ const current=JSON.parse(JSON.stringify(vm.runInContext('KURASHI_NEW_SCHEMA',con
 const old=JSON.parse(JSON.stringify(vm.runInContext('KURASHI_PRENAME_SCHEMA',context)));
 const run=book=>context.kurashiEnsureTrialNaming_(book);
 
-function fixture({hasBranchData=false,prepared=false,corrupt=false,mixed=false,extraTable=false,extraColumn=false,sampleData=false,legacyReceipt=false,rulesData=false}={}){
+function fixture({hasBranchData=false,prepared=false,corrupt=false,mixed=false,extraTable=false,extraColumn=false,sampleData=false,legacyReceipt=false,rulesData=false,blank=false}={}){
  const db=new Map();
- for(const [name,headers] of Object.entries(current)){
+ if(blank)db.set('Sheet1',[['']]);
+ else for(const [name,headers] of Object.entries(current)){
   const spec=old[name];
   const legacy=spec?spec.old:name;
   const first=legacyReceipt&&['records','record_items'].includes(legacy)?
@@ -50,6 +51,11 @@ function fixture({hasBranchData=false,prepared=false,corrupt=false,mixed=false,e
   getLastRow:()=>db.get(key).length,
   getLastColumn:()=>Math.max(0,...db.get(key).map(row=>row.length)),
   getName:()=>key,
+  copyTo:target=>{
+   const targetName='Copy of '+key;
+   target.db.set(targetName,db.get(key).map(row=>row.slice()));
+   return target.getSheetByName(targetName);
+  },
   getRange:(r,c,rows,cols)=>({
    getValues:()=>Array.from({length:rows},(_,i)=>Array.from({length:cols},(_,j)=>
     db.get(key)[r-1+i]?.[c-1+j]??'')),
@@ -63,7 +69,8 @@ function fixture({hasBranchData=false,prepared=false,corrupt=false,mixed=false,e
   deleteColumn:column=>{deletions++;db.set(key,db.get(key).map(row=>
    row.filter((_,i)=>i!==column-1)))}
  }};
- return {book:{getId:()=> 'trial-book',getSheetByName,
+ return {book:{getId:()=> 'trial-book',db,
+  getSheetByName,
   getSheets:()=>Array.from(db.keys()).map(name=>getSheetByName(name)),
   deleteSheet:s=>{sheetDeletions++;db.delete(s.getName())}},db,
   stats:()=>({writes,renames,deletions}),sheetDeletions:()=>sheetDeletions};
@@ -82,7 +89,7 @@ assert.ok(!gasBookSource.includes('kurashiEnsureTrialNaming_('),
 assert.ok(api.includes('function kurashiApplyTrialNamingCutoverForCi(approval)')&&
  api.includes("approval!=='APPLY_TRIAL_SCHEMA'")&&
  api.includes("KURASHI_NEW_WORKBOOK_ID")&&
- api.includes('DriveApp.getFileById'),
+ api.includes('SpreadsheetApp.create(backupName)'),
  'CI cutover needs explicit approval, verified workbook properties and backup');
 assert.equal(run(clean.book),true);
 assert.equal(clean.db.size,11);
@@ -138,11 +145,11 @@ const ci=fixture({legacyReceipt:true,sampleData:false});
 context.PropertiesService={getScriptProperties:()=>({getProperty:k=>({
  SPREADSHEET_ID:'trial-book',KURASHI_NEW_WORKBOOK_ID:'trial-book',KURASHI_SCHEMA_VERSION:'1'
 })[k]||''})};
-context.SpreadsheetApp={openById:id=>{assert.equal(id,'trial-book');return ci.book}};
+let backupDb=null;
+context.SpreadsheetApp={openById:id=>{assert.equal(id,'trial-book');return ci.book},
+ create:()=>{copyCount++;const copy=fixture({blank:true});backupDb=copy.db;return copy.book}};
 context.LockService={getScriptLock:()=>({waitLock(){},releaseLock(){}})};
-context.DriveApp={getFileById:id=>{assert.equal(id,'trial-book');return {makeCopy:()=>{
- copyCount++;return {getId:()=> 'backup-id',getUrl:()=> 'https://example.test/backup'}
-}}}};
+
 context.Utilities={formatDate:()=> '20261115_000000'};
 const ciStatus=JSON.parse(context.kurashiTrialNamingPreflightForCi());
 assert.equal(ciStatus.stage,'legacy_12_to_11');
@@ -152,6 +159,8 @@ assert.equal(copyCount,0,'bad approval cannot trigger a backup or write');
 const applied=JSON.parse(context.kurashiApplyTrialNamingCutoverForCi('APPLY_TRIAL_SCHEMA'));
 assert.equal(applied.status,'SCHEMA_NAMING_UPDATED_11_TABLES');
 assert.equal(copyCount,1,'a backup precedes one combined migration');
+assert.equal(backupDb.size,12,'the backup retains all original legacy worksheets');
+assert.ok(backupDb.has('receipt_rules'),'legacy receipt rules are copied into backup');
 assert.equal(JSON.parse(context.kurashiTrialNamingPreflightForCi()).status,'ALREADY_COMPLETE');
 assert.equal(JSON.parse(context.kurashiApplyTrialNamingCutoverForCi('APPLY_TRIAL_SCHEMA')).status,'ALREADY_COMPLETE');
 assert.equal(copyCount,1,'re-running does not copy or write again');
