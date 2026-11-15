@@ -2526,12 +2526,8 @@ app.addEventListener('submit',e=>{e.preventDefault();const form=e.target;const d
     void window.KurashiLive.learnStoreAlias({
      chain_id:learnedChain,raw_alias:scanDraft.rawStoreName
     }).catch(err=>console.warn('購入店舗の別名を保存できません',err));
-   // Product-specific aliases are synchronized through the preexisting queue.
-   // Include the exact original OCR name after explicit confirmation.
-   const aliasLines=lines.filter(line=>!!line.raw_name);
-   if(aliasLines.length&&window.KurashiLive.learnAliases&&learnedChain&&learnedChain!=='__new__')
-    void window.KurashiLive.learnAliases({chain_id:learnedChain,items:aliasLines})
-     .catch(e=>console.warn('別名学習を保存できませんでした',e));
+   // OCR names and their product mappings are journaled by GAS together
+   // with record.create/update. Do not enqueue one alias request per line.
    const savedId=record?.record_id||scanDraft?.recordId;
    // Product matches are included in record.create; do not queue a second
    // per-line record.item.link pass after saving the same receipt.
