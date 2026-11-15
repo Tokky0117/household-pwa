@@ -40,6 +40,7 @@ jobs:
           node tests/receipt-prompt-p3.mjs
           node tests/production-build.mjs
           node tests/trial-sheet-schema-cutover.mjs
+          node tests/gas-execution-result.mjs
 
       - name: Build verified prior PaddleOCR for the main receipt screen
         shell: bash
