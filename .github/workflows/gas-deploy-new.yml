@@ -1,7 +1,7 @@
 name: Deploy only the NEW Kurashi GAS
 
 # Schema changes require a coordinated trial Sheets update before deploying GAS.
-# Deploy manually after confirming the target workbook has 11 compatible sheets.
+# Deploy manually only AFTER the verified trial workbook has the renamed v94 schema.
 on:
   workflow_dispatch:
 
@@ -14,7 +14,7 @@ concurrency:
 
 jobs:
   deploy:
-    if: github.ref == 'refs/heads/preview-v46-clean-base'
+    if: github.ref == 'refs/heads/preview-v94-schema-names'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
