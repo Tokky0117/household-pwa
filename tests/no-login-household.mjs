@@ -3503,7 +3503,8 @@ const linked=suggestionFixture.call('record.item.link',suggestionLink,
 assert.equal(linked.ok,true,'single saved receipt line can link to a master product');
 assert.equal(linked.data.entity.version,2,'line version increases');
 assert.equal(linked.data.entity.line_total_tax_included,340,'link does not change amount');
-assert.equal(linked.data.entity.product_name_candidate,'登録候補の正式商品名');
+assert.equal(linked.data.entity.product_name_candidate,'',
+ 'Confirmed product link clears the obsolete AI candidate');
 assert.equal(suggestionFixture.call('record.item.link',suggestionLink,
  'op-suggestion-link-abcdef12345').data.entity.version,2,
  'same operation ID does not link twice');
