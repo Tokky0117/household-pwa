@@ -1173,7 +1173,7 @@ const savedShelf=temp.call('bootstrap').data.records.find(r=>r.record_type==='pr
 const shelfDetails=temp.call('bootstrap').data.record_items.filter(x=>x.record_id===savedShelf.record_id);
 assert.equal(shelfDetails.length,2);
 assert.ok(shelfDetails.every(i=>Number(i.quantity)===1&&
- !i.product_id&&!Object.hasOwn(i,'price_eligible')),'Shelf lines use fixed quantity 1 and optional product');
+ !i.linked_product_id&&!Object.hasOwn(i,'price_eligible')),'Shelf lines use fixed quantity 1 and optional product');
 assert.equal(recordReopened.window.document.querySelector('[data-tab="budget"]'),null,
  'receipt and shelf saves do not restore the budget tab');
 recordReopened.window.close();
@@ -1645,12 +1645,12 @@ individualForm.dispatchEvent(new bulkUI.window.Event('submit',{bubbles:true,canc
 await waitFor(()=>bulkUI.window.KurashiLive.state().queued===0&&
  temp.call('bootstrap').data.products.some(p=>p.name==='レシート個別登録テスト固有')&&
  temp.call('bootstrap').data.record_items.some(x=>
-  aliasText(temp,x)==='レシート個別登録テスト固有'&&x.product_id),
+  aliasText(temp,x)==='レシート個別登録テスト固有'&&x.linked_product_id),
  'product creation and saved item link reach Sheets using a durable queue');
 bulkUI.window.document.querySelector('[data-act="recordProductOpen"]').click();
 bulkUI.window.document.querySelector('[data-act="recordProductUnlink"]').click();
 await waitFor(()=>bulkUI.window.KurashiLive.state().queued===0&&
- temp.call('bootstrap').data.record_items.some(x=>aliasText(temp,x)==='レシート個別登録テスト固有'&&!x.product_id),
+ temp.call('bootstrap').data.record_items.some(x=>aliasText(temp,x)==='レシート個別登録テスト固有'&&!x.linked_product_id),
  'unlink affects only the saved receipt item');
 bulkUI.window.document.querySelector('[data-act="recordProductOpen"]').click();
 const productChoice=bulkUI.window.document.querySelector('[data-act="recordProductChoose"]');
@@ -1659,7 +1659,7 @@ const ownProduct=temp.call('bootstrap').data.products.find(p=>p.name==='レシ�
 bulkUI.window.document.querySelector('[data-act="recordProductChoose"][data-product-id="'+ownProduct.product_id+'"]').click();
 await waitFor(()=>bulkUI.window.KurashiLive.state().queued===0&&
  temp.call('bootstrap').data.record_items.some(x=>
-  aliasText(temp,x)==='レシート個別登録テスト固有'&&x.product_id===ownProduct.product_id),
+  aliasText(temp,x)==='レシート個別登録テスト固有'&&x.linked_product_id===ownProduct.linked_product_id),
  'same master is selected again without creating a duplicate');
 bulkUI.window.close();
 console.log('stage3: save-first receipt registration, unlink and re-selection OK');
@@ -1683,7 +1683,7 @@ const bulkSaved=temp.call('record.create',{
   {non_ocr_name:'一括除外明細 D',quantity:1,line_total_tax_included:104,
    product_name_candidate:'一括対応先不明',candidate_match_type:'existing'},
   {non_ocr_name:'一括紐付済 E',quantity:1,line_total_tax_included:105,
-   product_id:bulkExistingId,
+   linked_product_id:bulkExistingId,
    product_name_candidate:'一括別新規商品テスト',candidate_match_type:'new'}
  ].map(line=>({raw_name:'',linked_product_id:null,...line}))
 },'op-bulk-new-receipt-abcdefghijklmn');
@@ -1712,7 +1712,7 @@ assert.ok(!bulkDialog.textContent.includes('一括対応先不明'),
 bulkBatchSession.window.document.querySelector('[data-dialog="confirmRecordBulk"]').click();
 await waitFor(()=>bulkBatchSession.window.KurashiLive.state().queued===0&&
  temp.call('bootstrap').data.record_items.filter(x=>
-  x.record_id===bulkRecordId&&x.product_id).length===4,
+  x.record_id===bulkRecordId&&x.linked_product_id).length===4,
  'three matching items all link through one persisted queue with linked original');
 const afterBulk=temp.call('bootstrap').data;
 assert.equal(afterBulk.products.filter(x=>x.name==='一括新規商品テスト').length,1,
@@ -1785,12 +1785,12 @@ kitForm.dispatchEvent(new kitSession.window.Event('submit',{bubbles:true,cancela
 await waitFor(()=>kitSession.window.KurashiLive.state().queued===0&&
  temp.call('bootstrap').data.products.some(p=>p.name===kitCanonical)&&
  temp.call('bootstrap').data.record_items.some(x=>
-  aliasText(temp,x)===kitRaw&&x.product_id),
+  aliasText(temp,x)===kitRaw&&x.linked_product_id),
  'saved product name is linked to the original printed receipt item');
 const kitSavedProduct=temp.call('bootstrap').data.products.find(x=>x.name===kitCanonical);
 assert.ok(kitSavedProduct&&!kitSavedProduct.household_item_id);
 const kitSavedLine=temp.call('bootstrap').data.record_items.find(x=>
- aliasText(temp,x)===kitRaw&&x.product_id===kitSavedProduct.product_id);
+ aliasText(temp,x)===kitRaw&&x.linked_product_id===kitSavedProduct.linked_product_id);
 assert.ok(kitSavedLine,'the receipt item keeps its own confirmed product ID');
 try{
  await waitFor(()=>temp.call('bootstrap').data.receipt_name_mappings.some(x=>
@@ -1834,7 +1834,7 @@ await waitFor(()=>!otherPhone.window.KurashiLive.state().cached,
  'other iPhone finished remote bootstrap');
 otherPhone.window.document.querySelector('[data-tab="receipt"]').click();
 const syncedKitLine=kitBaseline.record_items.find(x=>
- aliasText(temp,x)===kitRaw&&x.product_id===kitSavedProduct.product_id);
+ aliasText(temp,x)===kitRaw&&x.linked_product_id===kitSavedProduct.linked_product_id);
 assert.ok(syncedKitLine&&otherPhone.window.document.querySelector(
  '[data-record-id="'+syncedKitLine.record_id+'"]'),
  'second iPhone displays the first iPhone purchase record without product-name summary');
@@ -1861,7 +1861,7 @@ await waitFor(()=>temp.call('bootstrap').data.records.length===kitRecordCount+1,
 await waitFor(()=>otherPhone.window.KurashiLive.state().queued===0&&
  temp.call('bootstrap').data.record_items.some(x=>
   x.record_id===temp.call('bootstrap').data.records.at(-1).record_id&&
-  x.product_id===kitSavedProduct.product_id),
+  x.linked_product_id===kitSavedProduct.linked_product_id),
  'The intentional second receipt auto-links its known OCR alias only after save');
 assert.equal(temp.call('bootstrap').data.receipt_name_mappings.length,kitAliasCount,
  'Rereading the same name does not duplicate OCR alias data');
@@ -1892,7 +1892,7 @@ repeatedKitReview.dispatchEvent(new newPurchasePhone.window.Event('submit',{
  bubbles:true,cancelable:true
 }));
 await waitFor(()=>temp.call('bootstrap').data.record_items.some(x=>
- x.product_id===kitSavedProduct.product_id&&Number(x.quantity)===2&&
+ x.linked_product_id===kitSavedProduct.linked_product_id&&Number(x.quantity)===2&&
  Number(x.line_total_tax_included)===340),
  'second device saved exact tax-inclusive line total without multiplying by quantity');
 await waitFor(()=>newPurchasePhone.window.KurashiLive.state().queued===0,
@@ -1919,7 +1919,7 @@ assert.match(thirdPhone.window.document.body.textContent,/340円/,
 // Saved OCR names must remain immutable, but a newly appended line must be
 // editable and must survive the same durable record.update journal.
 const purchasedLine=kitAfterSecondPurchase.record_items.find(x=>
- x.product_id===kitSavedProduct.product_id&&Number(x.quantity)===2&&
+ x.linked_product_id===kitSavedProduct.linked_product_id&&Number(x.quantity)===2&&
  Number(x.line_total_tax_included)===340);
 assert.ok(purchasedLine,'locate the actual 2x KitKat receipt');
 const purchasedReceiptId=purchasedLine.record_id;
@@ -2008,7 +2008,7 @@ assert.ok(existingChoice,'canonical master can be selected without a duplicate')
 existingChoice.click();
 await waitFor(()=>existingSession.window.KurashiLive.state().queued===0&&
  temp.call('bootstrap').data.record_items.some(x=>aliasText(temp,x)==='キットカット別レシート表記'&&
-  x.product_id===kitSavedProduct.product_id),
+  x.linked_product_id===kitSavedProduct.linked_product_id),
  'printed spelling and selected product persist after saved receipt linking');
 existingSession.window.close();
 console.log('v61: KitKat canonical master, chocolate item link, original receipt name, alias and no-pinch gestures: OK');
@@ -2101,7 +2101,7 @@ matchedReview.dispatchEvent(new readAgain.window.Event('submit',{
 }));
 await waitFor(()=>readAgain.window.KurashiLive.state().queued===0&&
  temp.call('bootstrap').data.record_items.some(x=>
- x.product_id===standaloneProduct.product_id&&aliasText(temp,x)===standaloneRaw),
+ x.linked_product_id===standaloneProduct.linked_product_id&&aliasText(temp,x)===standaloneRaw),
  'exact OCR alias is linked automatically only after purchase is saved');
 readAgain.window.close();
 const dupStoreAlias=temp.call('store.alias.upsert',{
@@ -2158,7 +2158,7 @@ assert.ok(manualChoice,'previously saved product is available for explicit selec
 manualChoice.click();
 await waitFor(()=>relinkSession.window.KurashiLive.state().queued===0&&
  temp.call('bootstrap').data.record_items.some(x=>
-  aliasText(temp,x)===standaloneRaw&&x.product_id===standaloneProduct.product_id),
+  aliasText(temp,x)===standaloneRaw&&x.linked_product_id===standaloneProduct.linked_product_id),
  'manual saved-receipt product choice persists after retailer edit');
 relinkSession.window.close();
 console.log('v63: retailer change and saved-receipt manual product association OK');
@@ -2198,7 +2198,7 @@ historySession.window.document.querySelector('#scanConfirmForm').dispatchEvent(
  new historySession.window.Event('submit',{bubbles:true,cancelable:true}));
 await waitFor(()=>historySession.window.KurashiLive.state().queued===0&&
  temp.call('bootstrap').data.record_items.filter(x=>
-  aliasText(temp,x)===historyRaw&&x.product_id===historyId).length>=2,
+  aliasText(temp,x)===historyRaw&&x.linked_product_id===historyId).length>=2,
  'historical alias identifies product only after another receipt is saved');
 historySession.window.close();
 
@@ -2226,7 +2226,7 @@ assert.ok(historyOption,'manual selection can resolve a near-name spelling');
 historyOption.click();
 await waitFor(()=>historySession.window.KurashiLive.state().queued===0&&
  temp.call('bootstrap').data.record_items.some(x=>
-  aliasText(temp,x)===changedHistoryRaw&&x.product_id===historyId),
+  aliasText(temp,x)===changedHistoryRaw&&x.linked_product_id===historyId),
  'confirmed manual choice is stored without rewriting the OCR print');
 historySession.window.close();
 
@@ -2254,7 +2254,7 @@ shelfSession.window.document.querySelector('#scanConfirmForm').dispatchEvent(
  new shelfSession.window.Event('submit',{bubbles:true,cancelable:true}));
 await waitFor(()=>shelfSession.window.KurashiLive.state().queued===0&&
  temp.call('bootstrap').data.record_items.some(x=>
-  aliasText(temp,x)===shelfRaw&&x.product_id===historyId),
+  aliasText(temp,x)===shelfRaw&&x.linked_product_id===historyId),
  'saved receipt recognizes the shelf-trained OCR name');
 shelfSession.window.close();
 
@@ -2311,7 +2311,7 @@ assert.equal(temp.call('product.update',{
 assert.ok(temp.call('bootstrap').data.products.some(p=>
  p.product_id===kitSavedProduct.product_id&&!p.household_item_id));
 assert.ok(temp.call('bootstrap').data.record_items.some(x=>
- aliasText(temp,x)===kitRaw&&x.product_id===kitSavedProduct.product_id));
+ aliasText(temp,x)===kitRaw&&x.linked_product_id===kitSavedProduct.linked_product_id));
 console.log('v64: OCR history, shelf OCR training, ambiguous names, master unlink after save OK');
 
 /* v65: manage independent product masters without linking to a daily item. */
@@ -2703,7 +2703,7 @@ assert.equal(rebuiltSaved.length,5,'the nine invalid OCR rows are not added to p
 assert.equal(rebuiltSaved.reduce((sum,row)=>sum+Number(row.line_total_tax_included),0),11550);
 assert.equal(rebuiltSaved.filter(x=>x.non_ocr_name==='メリノクルーネックカーディガン').length,2);
 assert.equal(rebuiltSaved.filter(x=>x.non_ocr_name==='メリノVネックカーディガン').length,1);
-assert.ok(rebuiltSaved.every(x=>!x.receipt_name_id&&!x.raw_name&&!x.product_id),
+assert.ok(rebuiltSaved.every(x=>!x.receipt_name_id&&!x.raw_name&&!x.linked_product_id),
  'photo parsing never creates fake OCR names or automatic master associations');
 assert.equal(recordFixture.db.receipt_name_mappings.length,aliasesBeforeFullPhoto,
  'GAS saves five validated photo rows without learning five OCR aliases');
@@ -2948,7 +2948,7 @@ assert.ok(optionalRecord,'new record can be retrieved');
 const optionalDetails=afterOptional.record_items.filter(x=>x.record_id===optionalRecord.record_id);
 assert.equal(optionalDetails.length,2);
 assert.ok(optionalDetails.some(x=>!Object.hasOwn(x,'raw_name')&&x.non_ocr_name===''&&
- x.product_id===''&&Number(x.line_total_tax_included)===200&&!Object.hasOwn(x,'price_eligible')),
+ x.linked_product_id===''&&Number(x.line_total_tax_included)===200&&!Object.hasOwn(x,'price_eligible')),
  'the nameless line is retained as a purchase amount, not a price-comparable registered product');
 await waitFor(()=>!!optionalUI.window.document.querySelector('.detail-record-line'),
  'saved unnamed receipt opens its detail immediately');
@@ -3187,7 +3187,7 @@ assert.ok(fixedSnapshot.record_items.some(line=>
  line.line_total_tax_included===127),'recovered receipt retains its amount and chosen product');
 assert.ok(fixedSnapshot.receipt_name_mappings.some(a=>
  a.ocr_name==='同期復旧検証OCR'&&
- a.product_id===duplicateSaved.data.entity.product_id),
+ a.auto_match_product_id===duplicateSaved.data.entity.auto_match_product_id),
  'recovered OCR alias points at the confirmed product');
 assert.equal(repairedPhone.window.KurashiLive.confirmedProductId(
  pendingProduct.product_id),duplicateSaved.data.entity.product_id,
@@ -3258,7 +3258,7 @@ assert.ok(orphanActual.record_items.some(line=>
  line.line_total_tax_included===89),'orphaned receipt is saved without losing amounts');
 assert.ok(orphanActual.receipt_name_mappings.some(a=>
  a.ocr_name==='復旧_孤立OCR名'&&
- a.product_id===orphanExisting.data.entity.product_id),
+ a.auto_match_product_id===orphanExisting.data.entity.auto_match_product_id),
  'orphaned OCR link is also recovered');
 const newPhone=appSession(orphanFactory);
 await waitFor(()=>newPhone.window.KurashiLive.state().loaded,
@@ -3392,7 +3392,7 @@ console.log('v0.89.2: blocked product, OCR alias and receipt can be discarded to
 const aliasRecoveryChain=temp.call('bootstrap').data.retail_chains[0].chain_id;
 const pendingLinkAlias=temp.call('alias.upsert',{
  chain_id:aliasRecoveryChain,raw_alias:'一時商品ID_別名紐付けテスト',
- product_id:null
+ auto_match_product_id:null
 },'op-alias-link-regression-create-aaaaaaaaaa');
 assert.equal(pendingLinkAlias.ok,true);
 const pendingAliasId=pendingLinkAlias.data.entity.receipt_name_id;
@@ -3413,7 +3413,7 @@ online=true;
 const aliasRecoveryReopen=appSession(aliasRecoveryDb);
 await waitFor(()=>aliasRecoveryReopen.window.KurashiLive.state().queued===0&&
  temp.call('bootstrap').data.receipt_name_mappings.some(x=>
-  x.receipt_name_id===pendingAliasId&&x.auto_match_product_id&&x.product_id.startsWith('product-')),
+  x.receipt_name_id===pendingAliasId&&x.auto_match_product_id&&x.auto_match_product_id.startsWith('product-')),
  'new product ID propagates through alias-link and queue drains');
 const resolvedAliasProduct=temp.call('bootstrap').data.receipt_name_mappings.find(x=>
  x.receipt_name_id===pendingAliasId).auto_match_product_id;
@@ -3427,7 +3427,7 @@ aliasRecoveryReopen.window.close();
 // prove a normal restart repairs only the known local ID, preserving order.
 const blockedFixAlias=temp.call('alias.upsert',{
  chain_id:aliasRecoveryChain,raw_alias:'以前の保留別名リンクテスト',
- product_id:null
+ auto_match_product_id:null
 },'op-alias-link-previous-create-aaaaaaaaaa');
 assert.equal(blockedFixAlias.ok,true);
 const serverProduct=temp.call('product.create',{
@@ -3470,7 +3470,7 @@ const recoveredClient=appSession(blockedFixFactory);
 await waitFor(()=>recoveredClient.window.KurashiLive.state().queued===0&&
  temp.call('bootstrap').data.receipt_name_mappings.some(x=>
   x.receipt_name_id===blockedFixAlias.data.entity.receipt_name_id&&
-  x.product_id===serverProduct.data.entity.product_id)&&
+  x.auto_match_product_id===serverProduct.data.entity.auto_match_product_id)&&
  temp.call('bootstrap').data.retail_chains.some(x=>
   x.chain_id===aliasRecoveryChain&&String(x.aliases).includes('店舗名_保留操作復旧後の追加')),
  'legacy blocked alias-link auto-recovers, then the following operation drains');
@@ -3493,11 +3493,11 @@ const suggestionReceipt=suggestionFixture.call('record.create',{
 },'op-suggestion-record-abcdef12345');
 assert.equal(suggestionReceipt.ok,true,'receipt with ChatGPT product suggestion is saved');
 const suggestionLine=suggestionReceipt.data.items[0];
-assert.equal(suggestionLine.product_id,'','suggestion never auto-links the purchase');
+assert.equal(suggestionLine.linked_product_id,'','suggestion never auto-links the purchase');
 assert.equal(suggestionLine.product_name_candidate,'登録候補の正式商品名');
 assert.equal(suggestionLine.candidate_match_type,'new');
 const suggestionLink={record_item_id:suggestionLine.record_item_id,
- product_id:suggestionProduct,version:1};
+ linked_product_id:suggestionProduct,version:1};
 const linked=suggestionFixture.call('record.item.link',suggestionLink,
  'op-suggestion-link-abcdef12345');
 assert.equal(linked.ok,true,'single saved receipt line can link to a master product');
@@ -3508,14 +3508,14 @@ assert.equal(suggestionFixture.call('record.item.link',suggestionLink,
  'op-suggestion-link-abcdef12345').data.entity.version,2,
  'same operation ID does not link twice');
 assert.equal(suggestionFixture.call('record.item.link',{
- ...suggestionLink,product_id:null
+ ...suggestionLink,linked_product_id:null
 },'op-suggestion-stale-abcdef12345').error.code,'VERSION_CONFLICT',
  'concurrent stale line link is rejected');
 const unlink=suggestionFixture.call('record.item.link',{
- record_item_id:suggestionLine.record_item_id,product_id:null,version:2
+ record_item_id:suggestionLine.record_item_id,linked_product_id:null,version:2
 },'op-suggestion-unlink-abcdef12345');
 assert.equal(unlink.ok,true,'saved line can be unlinked');
-assert.equal(unlink.data.entity.product_id,'');
+assert.equal(unlink.data.entity.linked_product_id,'');
 assert.equal(Object.hasOwn(unlink.data.entity,'price_eligible'),false);
 assert.equal(suggestionFixture.call('bootstrap').data.record_items.find(x=>
  x.record_item_id===suggestionLine.record_item_id).candidate_match_type,'new',
