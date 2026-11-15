@@ -463,6 +463,12 @@ function recordDetailView(){
   window.KurashiLive.previewBulkReceiptProducts?.(record.record_id)||[]:[];
  return `${head(isShelf?'値札詳細':'レシート詳細','くらしストック',true)}
  <main class="preview-record-page detail-record-page">
+  ${wasJustSaved?'<section class="record-detail-saved" role="status">'+
+   '<strong>✓ '+(isShelf?'値札を保存しました':'レシートを保存しました')+'</strong>'+
+   (!isShelf&&detail.some(line=>!line.product_id)?
+    '<p>未紐付けの商品は「商品を設定」から登録できます。'+
+    (bulkCandidates.length?' 生成AI候補はまとめて登録できます。':'')+'</p>':'')+
+   '</section>':''}
   <section class="detail-record-info" aria-label="${isShelf?'値札情報':'購入情報'}">
    ${UI.sectionHeading({title:isShelf?'値札情報':'購入情報'})}
    <div class="detail-record-info-fields">
@@ -470,12 +476,7 @@ function recordDetailView(){
     ${UI.formField({id:'detail-record-date',control:'static',label:isShelf?'値札確認日':'購入日',value:String(record.record_date||'').replaceAll('-','/')})}
    </div>
   </section>
-  ${wasJustSaved?'<section class="record-detail-saved" role="status">'+
-   '<strong>'+(isShelf?'値札を保存しました':'レシートを保存しました')+'</strong>'+
-   (window.KurashiLive?.state()?.queued?'<p>Google Sheetsへ同期中です。</p>':'')+
-   '</section>':''}
- ${!isShelf&&detail.some(line=>!line.product_id)?'<p class="record-detail-guidance">商品未紐付けの明細は、各明細の「商品を設定」から登録・紐付けできます。'+
-   (bulkCandidates.length?' 生成AIの商品候補はまとめて登録できます。':'')+'</p>':''}
+
  ${bulkCandidates.length?'<div class="record-detail-bulk">'+UI.button({label:'生成AI候補をまとめて登録（'+bulkCandidates.length+'件）',variant:'secondary',action:'recordBulkPreview',disabled:recordBulkSaving})+'</div>':''}
   <section class="detail-record-lines" aria-label="${isShelf?'価格情報':'購入明細'}">
    ${UI.sectionHeading({title:isShelf?'価格情報':'購入明細',subtitle:detail.length+'件'})}
@@ -1002,13 +1003,8 @@ function scanAiChangesView(){
   UI.sectionHeading({title:'生成AIの解析結果'})+
   '<p class="hint">'+summary.map(x=>esc(x.label)+'：'+esc(x.before)+' → '+esc(x.after)).join('、')+'</p></section>';
 }
-function scanAiLineChangesView(row){
- const changes=scanAiChanges.filter(x=>x.row===row);
- if(!changes.length)return '';
- return '<div class="scan-ai-line-changes" aria-label="生成AIで変更した項目">'+
-  '<strong>生成AIで変更</strong>'+
-  changes.map(x=>'<p>'+esc(x.label)+'：'+esc(x.before)+' → '+esc(x.after)+'</p>').join('')+
-  '</div>';
+function scanAiFieldChanged(row,label){
+ return scanAiChanges.some(x=>x.row===row&&x.label===label);
 }
 function scanAssistView(){
  if(!scanDraft)return '';
@@ -1068,8 +1064,8 @@ function scanFormView(){
         reviewModel.items[i].proposedName)?
        UI.formField({id:'scan-proposed-'+i,control:'static',label:'商品名候補',
         value:item.productSuggestion?.existingName||item.productSuggestion?.newName||
-         reviewModel.items[i].proposedName,fieldClass:'scan-proposed-name'}):''}
-    ${scanAiLineChangesView(i+1)}
+         reviewModel.items[i].proposedName,
+        fieldClass:'scan-proposed-name'+(scanAiFieldChanged(i+1,'商品名候補')?' scan-ai-updated':'')}):''}
     ${(item.issues||[]).some(reason=>/商品名|商品コード|名称|名前/.test(String(reason)))?'<p class="scan-name-warning">読み取り名を確認</p>':''}
     ${isShelf?UI.formField({id:'scan-product-'+i,name:'product-'+i,label:'登録商品',
       control:'picker',pickerLayout:'inline',value:scanResolvedProductId(item),
@@ -1080,11 +1076,11 @@ function scanFormView(){
     <div class="${isShelf?'scan-price-single':'scan-input-pair'}">
      ${isShelf?'':UI.formField({id:'scan-qty-'+i,name:'qty-'+i,label:'数量',type:'number',
        value:item.quantity,required:true,extra:'min="1" step="1" inputmode="numeric"',
-       hint:true})}
+       hint:true,fieldClass:scanAiFieldChanged(i+1,'数量')?'scan-ai-updated':''})}
      ${UI.formField({id:'scan-amount-'+i,name:'amount-'+i,label:isShelf?'販売価格（税込・円）':'小計（円）',
        type:'number',value:item.amount,required:true,
        placeholder:'金額を入力',extra:'min="0" step="1" inputmode="numeric"',
-       hint:true})}
+       hint:true,fieldClass:scanAiFieldChanged(i+1,'金額')?'scan-ai-updated':''})}
     </div>
     ${item.inputOrigin==='manual'?UI.formField({
       id:'scan-name-'+i,name:'name-'+i,label:'明細名（任意）',
