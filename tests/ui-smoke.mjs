@@ -1209,7 +1209,7 @@ const localDraft={source:'ocr',recordType:'receipt',chainId:null,items:[
  {name:'日用品A',ocrRawName:'日用品A',ocrRowId:'photo-store',quantity:1,amount:100,productId:''}
 ]};
 const storeApplied=ui.applyChatGptOcrAssistance(localDraft,storePhoto);
-assert.equal(storeApplied.chainId,'c-konomiya','AI photo store maps to registered Konomiya');
+assert.equal(storeApplied.chainId,null,'AI photo store is ignored: retailer confirmation belongs to OCR or the user');
 const notListed=ui.applyChatGptOcrAssistance(localDraft,{...storePhoto,storeName:'登録のないお店XY'});
 assert.equal(notListed.chainId,null,'AI cannot automatically register unknown retailers');
 const lockedStore=ui.applyChatGptOcrAssistance({...localDraft,chainId:'c-a',storeManuallySelected:true},storePhoto);
