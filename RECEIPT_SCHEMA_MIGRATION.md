@@ -62,6 +62,19 @@
 
 「API executableがない」「必要なOAuthスコープがない」などで `check` が失敗した場合は、Sheetsや公開版GASに変更を加えず停止する。アプリのデータを削除したり、別GASに自動切替したりしない。Apps Script APIの条件は[Google公式の実行手順](https://developers.google.com/apps-script/api/how-tos/execute)も参照する。
 
+## `GAS_EXECUTION_API_NOT_FOUND` が出た場合
+
+`check` が返した Google 側の `NOT_FOUND` は **試作Sheetsの不整合が判明したという意味ではありません**。Apps Script API経由の関数実行自体が成立せず、シート構成はまだ不明です。**この時点で `migrate_and_deploy` は実行しない**でください。なお `check` によって試作GASの未公開HEADソースは更新済みですが、公開中のWebアプリのデプロイは更新されません。
+
+次を順に確認します。
+
+1. 試作用Apps Scriptプロジェクトの「デプロイを管理」を開き、**Webアプリとは別の「API実行可能ファイル」**のデプロイがあるか確認する。アクセス権は **「自分のみ」** とし、公開範囲を広げない。
+2. API実行可能ファイルがない場合は、既存のGASと呼び出し元に共通の**標準Google Cloudプロジェクト**、Apps Script APIの有効化、OAuth認証スコープを確認する。デフォルトのGoogle CloudプロジェクトだけではApps Script API実行の要件を満たさない。
+3. Google側の一時的な障害でも同様のエラーになることがある。設定が正しい場合は、単純なGAS関数の実行でも再現するかを確認する。
+4. Google Cloud設定の変更を避ける場合、**試作用GASエディタ上で、すでにGitHubから転送済みの `kurashiTrialNamingPreflight` を直接実行する代替経路**もある。データ変更は行わず、結果の `stage` / `status` だけ確認する。GASコードを貼り付ける必要はない。
+
+API実行可能ファイルの要件は [Google公式](https://developers.google.com/apps-script/api/how-tos/execute) を参照してください。`check` の失敗時には移行処理やWebアプリデプロイへ進まず、安全に停止する。
+
 ## テスト
 
 `tests/trial-sheet-schema-cutover.mjs` は旧12シート・旧11シート・新11シート、バックアップ、繰返し実行、未知の列、未完了操作、支店名の残存を検査する。その他のUI・GAS同期・レシート回帰テストは従来のCIで確認する。
