@@ -121,6 +121,22 @@ jobs:
             fi
           done < <(git for-each-ref --format='%(refname:short)' refs/remotes/origin)
 
+          # Serve an immutable source fingerprint outside all preview SW scopes.
+          # This contains only public code revision/hashes, never household data.
+          if [[ -f _site/previews/preview-v94-schema-names/app.js ]]; then
+            mkdir -p _site/diagnostics
+            {
+              printf 'branch=preview-v94-schema-names\n'
+              printf 'revision=%s\n' "$(git rev-parse --short=12 refs/remotes/origin/preview-v94-schema-names)"
+              grep "^const APP_VERSION=" _site/previews/preview-v94-schema-names/app.js
+              sha256sum _site/previews/preview-v94-schema-names/index.html \
+                _site/previews/preview-v94-schema-names/app.js \
+                _site/previews/preview-v94-schema-names/live-client.js \
+                _site/previews/preview-v94-schema-names/sw.js
+            } > _site/diagnostics/preview-v94-schema-names.txt
+            echo "Source fingerprint: /diagnostics/preview-v94-schema-names.txt"
+          fi
+
           # GitHub Pages should serve the copied files as-is.
           touch _site/.nojekyll
 
