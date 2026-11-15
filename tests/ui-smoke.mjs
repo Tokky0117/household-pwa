@@ -1196,6 +1196,25 @@ assert.equal(ui.scanChainForStore('スーパー青空 商品A ¥123'),null,
 assert.equal(ui.scanChainForStore('架空衣料店\nコノミヤ'),null,
  'two matched store headers are ambiguous; never auto-select one');
 assert.equal(ui.scanStoreHeaderMatch('架空衣料店\nコノミヤ').status,'ambiguous');
+// AI-assisted retailer correction uses the same registered-chain matching.
+// A photo-verified chain may fix an OCR header that missed the store.
+const storePhoto=imports.parseChatGptOcrAssistJson(JSON.stringify({
+ version:'kurashi-receipt-assist-1',storeName:'コノミヤ 枚方店',items:[{
+  rowId:'photo-store',ocrName:'日用品A',
+  productSuggestion:{existingName:null,newName:null}
+ }]
+}));
+assert.equal(storePhoto.storeName,'コノミヤ 枚方店');
+const localDraft={source:'ocr',recordType:'receipt',chainId:null,items:[
+ {name:'日用品A',ocrRawName:'日用品A',ocrRowId:'photo-store',quantity:1,amount:100,productId:''}
+]};
+const storeApplied=ui.applyChatGptOcrAssistance(localDraft,storePhoto);
+assert.equal(storeApplied.chainId,'c-konomiya','AI photo store maps to registered Konomiya');
+const notListed=ui.applyChatGptOcrAssistance(localDraft,{...storePhoto,storeName:'登録のないお店XY'});
+assert.equal(notListed.chainId,null,'AI cannot automatically register unknown retailers');
+const lockedStore=ui.applyChatGptOcrAssistance({...localDraft,chainId:'c-a',storeManuallySelected:true},storePhoto);
+assert.equal(lockedStore.chainId,'c-a','Manually confirmed retailer is preserved');
+
 const sampleKohnan={id:'c-photo-kohnan',name:'コーナン',aliases:[]};
 const sampleKonomiya=catalog.chains.find(c=>c.name==='コノミヤ');
 assert.ok(sampleKonomiya,'sample catalogue has registered Konomiya chain');
@@ -1241,9 +1260,10 @@ assert.ok(countReview.includes('scan-count-text')&&countReview.includes('scan-co
  'Printed item count is shown independently from extracted rows');
 assert.ok(countReview.includes('data-field-hint="date"'),
  'Unknown date warns the user before saving');
-assert.ok(source.includes('scanDraft.items.splice(Number(el.dataset.scanRow),1);')&&
- source.includes('rememberScanUndo(undo);saveScanDraft();render();return;'),
- 'Deleting a false OCR row persists the edited draft and can be undone');
+assert.ok(source.includes('scanDraft.items[index].pendingDeletion=true;')&&
+ source.includes('delete scanDraft.items[index].pendingDeletion;')&&
+ source.includes('const lines=activeItems.map(({item,i})=>{'),
+ 'Deleted receipt rows are greyed out, restorable, and omitted only when saved');
 assert.ok(source.includes("saveScanDraft();render();return;"),
  'Adding a missing merchandise row persists the corrected draft');
 console.log('v66: uncertain date, printed-count review, and draft row persistence OK');
