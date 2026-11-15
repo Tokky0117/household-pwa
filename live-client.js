@@ -48,42 +48,63 @@
   pending:workspace.queue.length?{count:workspace.queue.length}:null,
   error:error||workspace.blocked?.message||'',lastSync
  });
- function validateSnapshot(data){
-  if(!data||typeof data.household_id!=='string'||!data.household_id||
-     !Array.isArray(data.categories)||!Array.isArray(data.household_items)||
-     !Array.isArray(data.products)||!Array.isArray(data.retail_chains)||
-     !Number.isSafeInteger(Number(data.sequence_no)))throw Error('DATA_INVALID');
-  // Old persisted snapshots may lack record arrays.
+ // Identify the affected section without exposing household values in error text.
+ function invalidSnapshot(section,source='local'){
+  throw Error((source==='server'?'SERVER_DATA_INVALID:':'LOCAL_DATA_INVALID:')+section);
+ }
+ function validateSnapshot(data,source='local'){
+  if(source==='server'&&legacyV46Snapshot(data))
+   throw Error('GASの公開版が旧データ形式です。v94用のWebアプリデプロイを確認してください。');
+  if(!data||typeof data.household_id!=='string'||!data.household_id)
+   invalidSnapshot('household_id',source);
+  if(!Array.isArray(data.categories))
+   invalidSnapshot('categories',source);
+  if(!Array.isArray(data.household_items))
+   invalidSnapshot('household_items',source);
+  if(!Array.isArray(data.products))
+   invalidSnapshot('products',source);
+  if(!Array.isArray(data.retail_chains))
+   invalidSnapshot('retail_chains',source);
+  if(!Number.isSafeInteger(Number(data.sequence_no)))
+   invalidSnapshot('sequence_no',source);
+  // Older local and server snapshots may legitimately omit these arrays.
   if(data.records===undefined)data.records=[];
   if(data.record_items===undefined)data.record_items=[];
   if(data.receipt_name_mappings===undefined)data.receipt_name_mappings=[];
-  if(!Array.isArray(data.receipt_name_mappings)||!Array.isArray(data.records)||!Array.isArray(data.record_items))
-   throw Error('DATA_INVALID');
+  if(!Array.isArray(data.receipt_name_mappings))
+   invalidSnapshot('receipt_name_mappings',source);
+  if(!Array.isArray(data.records))
+   invalidSnapshot('records',source);
+  if(!Array.isArray(data.record_items))
+   invalidSnapshot('record_items',source);
   const oldCats=['飲食','キッチン','洗面・風呂','洗濯・掃除','その他'];
   const cats=['食品・飲料','キッチン','洗面・風呂','洗濯・掃除','その他','調味料'];
   const expected=data.categories.length===5?oldCats:cats;
   if(![5,6].includes(data.categories.length)||data.categories.some((c,i)=>
-    Number(c.category_id)!==i||c.name!==expected[i]))throw Error('CATEGORY_MISMATCH');
-  const seen=new Set();
-  const productIds=new Set();
+    Number(c.category_id)!==i||c.name!==expected[i]))
+   throw Error((source==='server'?'SERVER_':'LOCAL_')+'CATEGORY_MISMATCH');
+  const seen=new Set(),productIds=new Set();
   for(const p of data.products){
    if(typeof p.product_id!=='string'||!p.product_id||
       p.household_id!==data.household_id||productIds.has(p.product_id)||
-      typeof p.name!=='string'||!positiveVersion(p.version))throw Error('DATA_INVALID');
+      typeof p.name!=='string'||!positiveVersion(p.version))
+    invalidSnapshot('products.rows',source);
    productIds.add(p.product_id);
   }
   const recordIds=new Set();
   for(const r of data.records){
    if(typeof r.record_id!=='string'||!r.record_id||
       r.household_id!==data.household_id||recordIds.has(r.record_id)||
-      !positiveVersion(r.version))throw Error('DATA_INVALID');
+      !positiveVersion(r.version))
+    invalidSnapshot('records.rows',source);
    recordIds.add(r.record_id);
   }
   const detailIds=new Set();
   for(const line of data.record_items){
    if(typeof line.record_item_id!=='string'||!line.record_item_id||
       !recordIds.has(line.record_id)||detailIds.has(line.record_item_id)||
-      !positiveVersion(line.version))throw Error('DATA_INVALID');
+      !positiveVersion(line.version))
+    invalidSnapshot('record_items.rows',source);
    detailIds.add(line.record_item_id);
   }
   for(const i of data.household_items){
@@ -91,7 +112,8 @@
       i.household_id!==data.household_id||seen.has(i.household_item_id)||
       !Number.isInteger(Number(i.category_id))||
       Number(i.category_id)<0||Number(i.category_id)>5||
-      typeof i.name!=='string'||!positiveVersion(i.version))throw Error('DATA_INVALID');
+      typeof i.name!=='string'||!positiveVersion(i.version))
+    invalidSnapshot('household_items.rows',source);
    seen.add(i.household_item_id);
   }
   return data;
@@ -545,7 +567,7 @@
  }
  async function remoteBootstrap(){
   const serial=loginSerial;
-  const data=validateSnapshot(await request('bootstrap'));
+  const data=validateSnapshot(await request('bootstrap'),'server');
   if(serial!==loginSerial)throw Error('LOGIN_CHANGED');
   if(workspace.base&&workspace.base.household_id!==data.household_id)
    throw Error('HOUSEHOLD_CHANGED');
@@ -1366,7 +1388,7 @@
  async function refreshBlockedProducts(){
   await boot();
   if(!blockedProductChange())throw Error('要確認の操作がありません');
-  const latest=validateSnapshot(await request('bootstrap'));
+  const latest=validateSnapshot(await request('bootstrap'),'server');
   await modify(ws=>{
    if(ws.base&&ws.base.household_id!==latest.household_id)throw Error('HOUSEHOLD_CHANGED');
    ws.base=latest;return ws;
@@ -1380,7 +1402,7 @@
   const chosen=productId?String(productId):null;
   if(!chosen&&!held.canUnlink)throw Error('登録済みの商品を選んでください');
   // Always verify the authoritative product list before changing a queued ID.
-  const latest=validateSnapshot(await request('bootstrap'));
+  const latest=validateSnapshot(await request('bootstrap'),'server');
   if(chosen&&!latest.products.some(p=>p.product_id===chosen&&!p.deleted_at))
    throw Error('選択した商品が見つかりません');
   const oldId=workspace.queue[0].id;
@@ -1486,7 +1508,7 @@
   // VERSION_CONFLICT is a definite rejection (no GAS operation journal).
   // Obtain fresh server versions, keep the user intent, assign a new operation ID.
   if((op.retries||0)>=3)throw Error('VERSION_CONFLICT_RETRY_LIMIT');
-  const base=validateSnapshot(await request('bootstrap'));
+  const base=validateSnapshot(await request('bootstrap'),'server');
   await modify(ws=>{
    if(ws.base&&ws.base.household_id!==base.household_id)throw Error('HOUSEHOLD_CHANGED');
    const first=ws.queue[0];if(!first||first.id!==op.id)throw Error('QUEUE_CHANGED');
@@ -1631,7 +1653,7 @@
   if(!held)throw Error('取り消せる競合レシートがありません');
   const oldId=workspace.queue[0].id;
   // Fetch first. If offline, leave both the original draft and queue intact.
-  const latest=validateSnapshot(await request('bootstrap'));
+  const latest=validateSnapshot(await request('bootstrap'),'server');
   await modify(ws=>{
    if(ws.queue[0]?.id!==oldId||ws.blocked?.id!==oldId||
       ws.blocked.reason!=='RECORD_CONFLICT'||
