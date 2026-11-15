@@ -166,29 +166,15 @@ jobs:
         run: |
           set -euo pipefail
           cd "$RUNNER_TEMP/new-gas/stage"
-          # An absent API executable/OAuth permission fails closed before writes.
-          npx --yes @google/clasp@3 run-function kurashiTrialNamingPreflightForCi \
-            > "$RUNNER_TEMP/trial-schema-before.txt"
-          node - <<'NODE'
-          const fs=require('node:fs');
-          const data=fs.readFileSync(process.env.RUNNER_TEMP+'/trial-schema-before.txt','utf8');
-          const lines=data.split(/\r?\n/).map(x=>x.trim()).filter(Boolean);
-          let report=null;
-          for(const line of lines.reverse()){
-            try{const o=JSON.parse(line);if(o?.status&&o?.stage){report=o;break}}
-            catch(_){}
-          }
-          if(!report||!['READY_AFTER_USER_CHECK','ALREADY_COMPLETE'].includes(report.status)||
-              !['legacy_12_to_11','v94_names','complete'].includes(report.stage))
-            throw Error('SCHEMA_PREFLIGHT_NO_VERIFIED_RESULT: stop before any change');
-          if(process.env.OPERATION==='deploy_only'&&report.status!=='ALREADY_COMPLETE')
-            throw Error('SCHEMA_CUTOVER_REQUIRED: deploy refused');
-          fs.appendFileSync(process.env.GITHUB_OUTPUT,'schema_status='+report.status+'\n');
-          console.log('Trial workbook preflight: '+report.status+', stage='+report.stage+
-            ', changes='+report.changes.length+' (no row content printed)');
-          fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY,
-            'Trial schema preflight: '+report.status+' / '+report.stage+'\n');
-          NODE
+          # clasp can return exit 0 even after an Apps Script execution exception.
+          # Its JSON envelope must be checked for an error and validated.
+          npx --yes @google/clasp@3 run-function \
+            kurashiTrialNamingPreflightForCi --json \
+            > "$RUNNER_TEMP/trial-schema-before.json" \
+            2> "$RUNNER_TEMP/trial-schema-before.err" || true
+          node "$GITHUB_WORKSPACE/scripts/verify-gas-execution.mjs" \
+            preflight "$RUNNER_TEMP/trial-schema-before.json" \
+            "$RUNNER_TEMP/trial-schema-before.err" "$OPERATION"
       - name: Apply guarded trial schema migration only with explicit approval
         if: inputs.schema_operation == 'migrate_and_deploy'
         shell: bash
@@ -201,33 +187,22 @@ jobs:
             exit 1
           fi
           cd "$RUNNER_TEMP/new-gas/stage"
-          npx --yes @google/clasp@3 run-function kurashiApplyTrialNamingCutoverForCi \
-            --params '["APPLY_TRIAL_SCHEMA"]' > "$RUNNER_TEMP/trial-schema-apply.txt"
-          node - <<'NODE'
-          const fs=require('node:fs');
-          const lines=fs.readFileSync(process.env.RUNNER_TEMP+'/trial-schema-apply.txt','utf8')
-            .split(/\r?\n/).map(x=>x.trim()).filter(Boolean);
-          const accepted=['SCHEMA_NAMING_UPDATED_11_TABLES','ALREADY_COMPLETE'];
-          let report=null;
-          for(const line of lines.reverse()){
-            try{const obj=JSON.parse(line);if(accepted.includes(obj?.status)){report=obj;break}}
-            catch(_){}
-          }
-          if(!report)throw Error('SCHEMA_APPLY_NOT_VERIFIED: do not deploy');
-          console.log('Authenticated schema migration: '+report.status);
-          NODE
-          npx --yes @google/clasp@3 run-function kurashiTrialNamingPreflightForCi \
-            > "$RUNNER_TEMP/trial-schema-after.txt"
-          node - <<'NODE'
-          const fs=require('node:fs');
-          const lines=fs.readFileSync(process.env.RUNNER_TEMP+'/trial-schema-after.txt','utf8')
-            .split(/\r?\n/).map(x=>x.trim()).filter(Boolean);
-          if(!lines.some(line=>{
-            try{const x=JSON.parse(line);return x?.status==='ALREADY_COMPLETE'&&x.stage==='complete'}
-            catch(_){return false}
-          }))throw Error('SCHEMA_POST_MIGRATION_CHECK_FAILED: do not deploy');
-          console.log('Trial schema post-check: ALREADY_COMPLETE');
-          NODE
+          # Do not silently accept an Apps Script exception as success.
+          npx --yes @google/clasp@3 run-function \
+            kurashiApplyTrialNamingCutoverForCi \
+            --params '["APPLY_TRIAL_SCHEMA"]' --json \
+            > "$RUNNER_TEMP/trial-schema-apply.json" \
+            2> "$RUNNER_TEMP/trial-schema-apply.err" || true
+          node "$GITHUB_WORKSPACE/scripts/verify-gas-execution.mjs" \
+            apply "$RUNNER_TEMP/trial-schema-apply.json" \
+            "$RUNNER_TEMP/trial-schema-apply.err"
+          npx --yes @google/clasp@3 run-function \
+            kurashiTrialNamingPreflightForCi --json \
+            > "$RUNNER_TEMP/trial-schema-after.json" \
+            2> "$RUNNER_TEMP/trial-schema-after.err" || true
+          node "$GITHUB_WORKSPACE/scripts/verify-gas-execution.mjs" \
+            postflight "$RUNNER_TEMP/trial-schema-after.json" \
+            "$RUNNER_TEMP/trial-schema-after.err"
       - name: Confirm manual deployment operation is eligible
         if: inputs.schema_operation != 'check'
         shell: bash
