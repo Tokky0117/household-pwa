@@ -1010,13 +1010,6 @@ function kurashiRawName_(raw){
     kurashiFail_('BAD_REQUEST','明細名を確認してください');
   return raw.trim();
 }
-function kurashiBranchName_(v){
- const value=v===undefined||v===null?'':String(v).trim();
- if(value.length>80||/^[=+@\-]/.test(value)||/[\x00-\x1f\x7f<>]/.test(value))
-   kurashiFail_('BAD_REQUEST','支店名を確認してください');
- return value;
-}
-
 /* OCR names are immutable. Prepare new aliases before journaling a record. */
 function kurashiAliasIndex_(book){
  const index=new Map();
@@ -1055,8 +1048,7 @@ function kurashiRecordLineFields_(line) {
 }
 
 function kurashiCreateRecord_(user,payload,id){
-  if(!['chain_id,items,record_date,record_type',
-    'branch_name,chain_id,items,record_date,record_type'].includes(
+  if(!['chain_id,items,record_date,record_type'].includes(
      Object.keys(payload).sort().join(',')))
     kurashiFail_('BAD_REQUEST','記録保存の形式が不正です');
   const hid=user.householdId,action='record.create';
@@ -1103,7 +1095,7 @@ function kurashiCreateRecord_(user,payload,id){
       plan={status:'prepared',action,
         record:{record_id:recordId,household_id:hid,
           record_type:payload.record_type,chain_id:payload.chain_id,
-          branch_name:kurashiBranchName_(payload.branch_name),record_date:date,
+          record_date:date,
           created_at:now,updated_at:now,version:1,deleted_at:''},
         items:lineItems,aliases:newAliases,
         sequence_no:kurashiSequence_(hid,book)+1,updated_at:now};
@@ -1141,7 +1133,7 @@ function kurashiRecordTransition_(name,idField,before,after,book){
 function kurashiMutateRecord_(user,action,payload,id){
  const deleting=action==='record.delete';
  const fields=Object.keys(payload).sort().join(',');
- if(!deleting&&fields!=='branch_name,chain_id,items,record_date,record_id,version'||
+ if(!deleting&&fields!=='chain_id,items,record_date,record_id,version'||
     deleting&&fields!=='record_id,version')
   kurashiFail_('BAD_REQUEST','レシート更新の形式が不正です');
  const hid=user.householdId,lock=LockService.getScriptLock();

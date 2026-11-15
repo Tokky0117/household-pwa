@@ -59,7 +59,7 @@ const priceFixtures=[
 ];
 const demoRecords=priceFixtures.map((r,n)=>({
  record_id:'preview-r'+(n+1),household_id:'preview-only',record_type:r[4],
- chain_id:r[1],branch_name:null,record_date:daysAgo(r[5]),
+ chain_id:r[1],record_date:daysAgo(r[5]),
  created_at:null,updated_at:null,version:1,deleted_at:null
 }));
 const demoRecordItems=priceFixtures.map((r,n)=>({
@@ -96,7 +96,7 @@ function savePreviewRecord(input){
     (input.type==='receipt'&&input.category!==''&&!CATS[Number(input.category)]))return false;
  if(input.productId&&!catalogue.products.some(p=>p.id===input.productId))return false;
  const idValue=id(),now=new Date().toISOString();
- const header={record_id:idValue,household_id:'preview-only',record_type:input.type,chain_id:input.chainId,branch_name:null,record_date:input.date,created_at:now,updated_at:now,version:1,deleted_at:null};
+ const header={record_id:idValue,household_id:'preview-only',record_type:input.type,chain_id:input.chainId,record_date:input.date,created_at:now,updated_at:now,version:1,deleted_at:null};
  const detail={record_item_id:id(),record_id:idValue,line_order:1,receipt_name_id:'',non_ocr_name:input.rawName||'',
  product_id:input.productId||null,quantity,line_total_tax_included:amount,
  created_at:now,updated_at:now,version:1,deleted_at:null};
@@ -250,7 +250,7 @@ function openRecordEntry(kind,recordId=null){
   if(!r){say('明細が見つかりません');return;}
   scanDraft={recordId:r.record_id,recordType:r.record_type,source:'edit',
    date:r.record_date,chainId:r.chain_id,chainName:'',
-   branchName:r.branch_name||'',total:null,
+   total:null,
    items:allPreviewItems().filter(x=>x.record_id===r.record_id&&!x.deleted_at)
     .sort((a,b)=>Number(a.line_order)-Number(b.line_order))
     .map(x=>({name:aliasNameFor(x),inferredName:'',
@@ -2509,7 +2509,6 @@ app.addEventListener('submit',e=>{e.preventDefault();const form=e.target;const d
   const submit=form.querySelector('[type="submit"]');if(submit?.disabled)return;
   if(submit)submit.disabled=true;
   const values={record_type:scanDraft.recordType==='price_tag'?'price_tag':'receipt',chain_id,chain_name:chain_id==='__new__'?storeName:'',
-   branch_name:scanDraft.recordId?scanDraft.branchName||'':'',
    record_date:String(d.get('date')||''),items:lines};
   const work=scanDraft.recordId?
     window.KurashiLive.updateRecord({...values,record_id:scanDraft.recordId}):

@@ -968,7 +968,7 @@ assert.equal(Object.hasOwn(unlinkedShelfSaved.data.items[0],'price_eligible'),fa
  'Unlinked shelf is recorded but not eligible for product price comparison');
 const unlinkShelfEdit=unlinkedShelfFixture.call('record.update',{
  record_id:unlinkedShelfSaved.data.record.record_id,version:1,
- chain_id:unlinkedShelfStore,record_date:'2026-11-09',branch_name:'',
+ chain_id:unlinkedShelfStore,record_date:'2026-11-09',
  items:[{raw_name:'',product_id:null,quantity:1,line_total_tax_included:230}]
 },'op-update-shelf-no-product-abcdef12345');
 assert.equal(unlinkShelfEdit.ok,true,'Unlinked shelf remains editable');
@@ -992,7 +992,7 @@ assert.equal(recordFixture.call('bootstrap').data.record_items.length,3);
 /* Multi-line record updates/deletes must preserve journal recovery and
  * remove the replaced rows from the active catalogue, including price data. */
 const editPayload={record_id:receiptSaved.data.record.record_id,version:1,
- chain_id:newChainId,record_date:'2026-10-15',branch_name:'駅前店',
+ chain_id:newChainId,record_date:'2026-10-15',
  items:[{raw_name:'修正した商品',product_id:productForPrice.product_id,
    quantity:2,line_total_tax_included:440}]};
 recordFixture.failRecordItemWriteAfter(0);
@@ -1005,7 +1005,7 @@ const editRecovered=recordFixture.call('record.update',editPayload,
  'op-record-update-retry-abcdefghijk');
 assert.equal(editRecovered.ok,true,'same edit ID completes existing prepared transaction');
 assert.equal(editRecovered.data.items.length,1);
-assert.equal(editRecovered.data.record.branch_name,'駅前店');
+assert.equal(Object.prototype.hasOwnProperty.call(editRecovered.data.record,'branch_name'),false);
 assert.equal(editRecovered.data.record.version,2);
 assert.equal(recordFixture.call('record.update',editPayload,
  'op-record-update-retry-abcdefghijk').data.record.version,2,
@@ -1565,7 +1565,7 @@ assert.equal(unnamedFixture.call('bootstrap').data.receipt_name_mappings.length,
  'blank detail never creates a learned OCR alias');
 const unnamedEdited=unnamedFixture.call('record.update',{
  record_id:unnamedSaved.data.record.record_id,version:1,
- chain_id:unnamedChain,branch_name:'',record_date:'2026-11-08',
+ chain_id:unnamedChain,record_date:'2026-11-08',
  items:[{...unnamedLine,line_total_tax_included:300}]
 },'op-unnamed-update-abcdef12345');
 assert.equal(unnamedEdited.ok,true,'blank-name receipt rows remain editable');
@@ -3025,7 +3025,7 @@ await waitFor(()=>[editOne,editTwo].every(phone=>
  'independent receipt editors load the same confirmed version');
 const receiptInput={
  record_id:editTarget.record_id,record_type:'receipt',chain_id:editTarget.chain_id,
- record_date:editTarget.record_date,branch_name:editTarget.branch_name||'',
+ record_date:editTarget.record_date,
  items:[{raw_name:'端末Aで確定した明細',product_id:null,quantity:1,
   line_total_tax_included:551}]
 };

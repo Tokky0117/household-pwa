@@ -660,7 +660,7 @@
     ...(suggested?{product_name_candidate:suggested,candidate_match_type:suggestionKind}:{})};
   });
   return {id:operationId(),kind:'record-create',clientId:'local-'+uid(),
-   chainId,recordType:kind,date,branchName:String(input.branch_name||'').trim(),items:lines,
+   chainId,recordType:kind,date,items:lines,
    itemIds:lines.map(()=> 'local-'+uid()),retries:0};
  }
  async function learnStoreAlias({chain_id,raw_alias}){
@@ -980,7 +980,7 @@
     throw Error('記録の商品が見つかりません');
    return {operationId:op.id,action:'record.create',payload:{
     record_type:op.recordType,chain_id:op.chainId,
-    record_date:op.date,...(op.branchName?{branch_name:op.branchName}:{}),
+    record_date:op.date,
     items:op.items
    }};
   }
@@ -1024,7 +1024,7 @@
     throw Error('商品が見つかりません');
    return {operationId:op.id,action:'record.update',payload:{
     record_id:op.targetId,version:Number(record.version),chain_id:op.chainId,
-    record_date:op.date,branch_name:op.branchName||'',items:op.items
+    record_date:op.date,items:op.items
    }};
   }
   if(op.kind==='product-reorder'){
