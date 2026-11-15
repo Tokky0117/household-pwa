@@ -242,15 +242,15 @@ assert.ok(source.includes("'master-group-search':{set:v=>{masterGroupQuery=v}")&
 
 
 
-const masterCat=ui.catalogue(),originalAliases=masterCat.productAliases;
-masterCat.productAliases=Array.from({length:121},(_,i)=>({
- aliasId:'test-alias-'+i,chainId:'c-a',
+const masterCat=ui.catalogue(),originalAliases=masterCat.receiptNameMappings;
+masterCat.receiptNameMappings=Array.from({length:121},(_,i)=>({
+ receiptNameId:'test-alias-'+i,chainId:'c-a',
  ocrName:'テスト印字名'+String(i).padStart(3,'0'),
- normalizedAlias:'テスト印字名'+String(i).padStart(3,'0'),
+ normalizedReceiptName:'テスト印字名'+String(i).padStart(3,'0'),
  productId:i===0?'p-milk-1':'',version:1
 }));
-masterCat.productAliases.push({aliasId:'local-unsynced',chainId:'c-a',
- ocrName:'同期前の読み取り名',normalizedAlias:'同期前の読み取り名',
+masterCat.receiptNameMappings.push({receiptNameId:'local-unsynced',chainId:'c-a',
+ ocrName:'同期前の読み取り名',normalizedReceiptName:'同期前の読み取り名',
  productId:'',version:1});
 ui.setAliasQuery('');
 const aliasList=ui.aliasManageView();
@@ -293,12 +293,12 @@ assert.ok(aliasSheet.includes('class="sheet-back alias-product-picker-overlay"')
  aliasSheet.includes('テスト印字名000'),
  'One common searchable sheet shows the selected OCR row, unlinked choice and products');
 assert.ok(source.includes("'alias-product-search':{set:v=>{aliasPickerQuery=v}")&&
- source.includes("window.KurashiLive.linkAlias(alias.aliasId,p.productId||null)")&&
+ source.includes("window.KurashiLive.linkAlias(alias.receiptNameId,p.productId||null)")&&
  source.includes("if(action==='confirmAliasLink'")&&
  !source.includes("if(form.dataset.aliasForm)")&&
  css.includes('.alias-product-picker-results{'),
  'Alias picker uses shared IME handlers and the original linkAlias queue only after confirmation');
-masterCat.productAliases=originalAliases;
+masterCat.receiptNameMappings=originalAliases;
 ui.setAliasPickerId(null);ui.setAliasQuery('');
 
 const syncCase=(next={})=>ui.settingsSyncSummary({
@@ -419,7 +419,7 @@ let view=ui.priceCompareView();
 assert.ok(view.includes('登録商品')&&view.includes('税込・安い順'));
 assert.ok(view.includes('内容量換算の最安値')&&view.includes('100mLあたり'),
  'Per-item view compares all registered products by compatible standardized capacity');
-const winners=ui.standardizedMinima(ui.catalogue().products.filter(p=>p.itemGroupId==='demo-1'),'1y');
+const winners=ui.standardizedMinima(ui.catalogue().products.filter(p=>p.householdItemId==='demo-1'),'1y');
 assert.ok(winners.some(w=>w.label==='100mL'&&w.price>0&&w.productName),
  'Normalized minima identify the winning product while retaining its original chain');
 
@@ -467,9 +467,9 @@ assert.ok(css.includes('.swipe-item.drag-ghost,')&&css.includes('border-radius:1
 assert.ok(ui.reorderProducts('demo-1',['p-milk-2','p-milk-1']),'Registered product reordering works');
 ui.initializeCompare();assert.equal(ui.getCompare()[1],'L');
 const p=ui.catalogue().products.find(x=>x.id==='p-milk-3');
-ui.setProductGroup(p,'demo-1');assert.equal(p.itemGroupOrder,3);
-ui.setProductGroup(p,null);assert.equal(p.itemGroupOrder,null);
-ui.setProductGroup(p,'demo-15');assert.equal(p.itemGroupOrder,1,'First product in empty group begins with order 1');
+ui.setProductGroup(p,'demo-1');assert.equal(p.householdItemOrder,3);
+ui.setProductGroup(p,null);assert.equal(p.householdItemOrder,null);
+ui.setProductGroup(p,'demo-15');assert.equal(p.householdItemOrder,1,'First product in empty group begins with order 1');
 
 const exampleManual=ui.createManualRecord('receipt');
 ui.setScanDraft(exampleManual);ui.setScanPhotos([]);
@@ -483,7 +483,7 @@ assert.ok(manualReceiptPage.includes('レシート入力')&&
  !manualReceiptPage.includes('読み取り状況')&&
  !manualReceiptPage.includes('data-act="scanOpenCurrentPhoto"'),
  'Manual receipt reuses OCR multi-line confirmation with no photo/OCR buttons');
-const exampleShelf=ui.createManualRecord('shelf');
+const exampleShelf=ui.createManualRecord('price_tag');
 ui.setScanDraft(exampleShelf);
 const manualShelfPage=ui.receiptScanView();
 assert.ok(manualShelfPage.includes('値札入力')&&
@@ -495,7 +495,7 @@ assert.ok(manualShelfPage.includes('値札入力')&&
  manualShelfPage.includes('data-act="scanAddItem"')&&
  manualShelfPage.includes('data-act="scanSaveDraft"'),
  'Shelf uses the same multi-line form without visible quantity and with optional product');
-assert.ok(!source.includes("if(input.type==='shelf'&&!input.productId)return false"),
+assert.ok(!source.includes("if(input.type==='price_tag'&&!input.productId)return false"),
  'Unlinked shelf can be recorded without a product in preview validation');
 ui.setScanDraft(null);
 
@@ -514,7 +514,7 @@ assert.ok(source.includes("UI.button({label:'編集',variant:'tertiary',icon:'pe
  !css.includes('.record-detail-actions>.record-delete-action{')&&
  !css.includes('.record-detail-actions>.primary{'),
  'History edit and delete are equal shared tertiary actions without destructive red');
-assert.ok(source.includes("scanDraft.recordType==='shelf'")&&
+assert.ok(source.includes("scanDraft.recordType==='price_tag'")&&
  source.includes("recordId:r.record_id,recordType:r.record_type,source:'edit'"),
  'Editing a shelf record uses its saved kind and correct wording');
 assert.ok(ui.detailHomeView().includes('明細一覧'));
@@ -532,20 +532,20 @@ assert.ok(source.includes('function detailHomeView(')&&
  !source.includes('function receiptView(')&&
  !source.includes('function receiptAllView('),
  'Page-only view functions describe the shared receipt and shelf detail role');
-// Saved OCR names are dereferenced via product_aliases, never record_items.raw_name.
-const originalPreviewAliases=ui.catalogue().productAliases;
-ui.catalogue().productAliases=[...(originalPreviewAliases||[]),{aliasId:'test-ocr-name',ocrName:'OCR原文'}];
-assert.equal(ui.detailLineName({product_id:'p-milk-1',confirmed_name:'確定した別名',alias_id:'test-ocr-name'}),
+// Saved OCR names are dereferenced via receipt_name_mappings, never record_items.raw_name.
+const originalPreviewAliases=ui.catalogue().receiptNameMappings;
+ui.catalogue().receiptNameMappings=[...(originalPreviewAliases||[]),{receiptNameId:'test-ocr-name',ocrName:'OCR原文'}];
+assert.equal(ui.detailLineName({product_id:'p-milk-1',non_ocr_name:'確定した別名',receipt_name_id:'test-ocr-name'}),
  'おいしい牛乳','Linked product title takes precedence');
-assert.equal(ui.detailLineName({product_id:null,confirmed_name:'確認した商品名',alias_id:'test-ocr-name'}),
+assert.equal(ui.detailLineName({product_id:null,non_ocr_name:'確認した商品名',receipt_name_id:'test-ocr-name'}),
  '確認した商品名','Unlinked confirmed line title takes precedence');
-assert.equal(ui.detailLineName({product_id:null,alias_id:'test-ocr-name',suggested_product_name:'推定候補'}),
+assert.equal(ui.detailLineName({product_id:null,receipt_name_id:'test-ocr-name',product_name_candidate:'推定候補'}),
  'OCR原文','OCR title is the fallback when not confirmed');
-assert.equal(ui.detailLineName({product_id:null,suggested_product_name:'未確定の生成AI候補'}),
+assert.equal(ui.detailLineName({product_id:null,product_name_candidate:'未確定の生成AI候補'}),
  '明細名なし','An undecided candidate is never silently promoted to a saved title');
-assert.equal(ui.detailLineName({product_id:'p-milk-2',alias_id:''}),
+assert.equal(ui.detailLineName({product_id:'p-milk-2',receipt_name_id:''}),
  '北海道牛乳','A linked item without a printed name still shows its master name');
-ui.catalogue().productAliases=originalPreviewAliases;
+ui.catalogue().receiptNameMappings=originalPreviewAliases;
 ui.setRecordDetailId(ui.demoRecords.find(r=>r.record_type==='receipt').record_id);
 const savedReceiptDetail=ui.recordDetailView();
 assert.ok(savedReceiptDetail.includes('class="detail-record-info"')&&
@@ -562,7 +562,7 @@ assert.ok(!savedReceiptDetail.includes('ChatGPT推測名：')&&
  !savedReceiptDetail.includes('レシートの読み取り名：')&&
  !savedReceiptDetail.includes('照合商品：'),
  'Saved details omit receipt-analysis provenance and duplicate titles');
-ui.setRecordDetailId(ui.demoRecords.find(r=>r.record_type==='shelf').record_id);
+ui.setRecordDetailId(ui.demoRecords.find(r=>r.record_type==='price_tag').record_id);
 const savedShelfDetail=ui.recordDetailView();
 assert.ok(savedShelfDetail.includes('>値札確認日</span>')&&
  savedShelfDetail.includes('>価格情報</h2>')&&
@@ -890,7 +890,7 @@ assert.ok(photoReview.includes('id="scanConfirmForm" class="scan-review" novalid
  'receipt save uses application validation and shared feedback');
 assert.ok(source.includes("function formSaveFeedback(")&&
  source.includes("formSaveFeedback(form,storeError,{fieldName:'chain'})")&&
- source.includes("formSaveFeedback(form,scanDraft.recordType==='shelf'?'値札確認日を入力してください。':'購入日を入力してください。',{fieldName:'date'})")&&
+ source.includes("formSaveFeedback(form,scanDraft.recordType==='price_tag'?'値札確認日を入力してください。':'購入日を入力してください。',{fieldName:'date'})")&&
  source.includes("formSaveFeedback(form,err.message||'保存できませんでした。通信状態を確認してください。')"),
  'receipt save failures use the same feedback helper across validation and async error');
 
@@ -1120,7 +1120,7 @@ const oldCount=shopMaster.length;
 for(let i=0;i<125;i++)shopMaster.push({id:'bulk-store-'+i,name:'追加検証店舗'+i});
 const manyShops=ui.storePickerChoices();
 assert.equal((manyShops.match(/class="ui-choice-row/g)||[]).length,oldCount+125,
- 'all 125 newly registered stores appear in the scrollable shared choice list');
+ 'all 125 newly registered retail_chains appear in the scrollable shared choice list');
 assert.ok(manyShops.includes('追加検証店舗124'),
  'last registered store remains reachable without a fixed result cap');
 assert.ok(css.includes('.store-picker-results{')&&
@@ -1163,8 +1163,8 @@ ui.setScanDraft({source:'chatgpt',date:'2026-11-02',chainId:'c-a',total:200,
  items:[{name:'マスタとは異なる印字略称',quantity:1,amount:200,
   productId:'',issues:[]}]});
 const catalog=ui.catalogue();
-catalog.productAliases=[{productId:'p-milk-1',chainId:'c-a',
- normalizedAlias:'マスタとは異なる印字略称'}];
+catalog.receiptNameMappings=[{productId:'p-milk-1',chainId:'c-a',
+ normalizedReceiptName:'マスタとは異なる印字略称'}];
 catalog.chains.find(x=>x.id==='c-a').aliases=['COSTCO WHOLESALE'];
 assert.equal(ui.scanChainForStore('COSTCO WHOLESALE')?.id,'c-a',
  'print name resolves to the previously confirmed chain alias');
@@ -1673,11 +1673,11 @@ assert.ok(!ui.receiptScanView().includes('scanUsePhotoCandidate'));
 assert.ok(ui.receiptScanView().includes('ui-static-field-label">商品名候補</span>')&&
  !ui.receiptScanView().includes('ui-static-field-label">推定商品名</span>'),
  'One product name proposal is shown without duplicate inference labels');
-assert.ok(source.includes('suggested_product_name:suggestedName')&&!source.includes('inferred_name:inferredName'));
+assert.ok(source.includes('product_name_candidate:suggestedName')&&!source.includes('inferred_name:inferredName'));
 assert.ok(source.includes('item.nameCandidate||item.inferredName||item.savedUnknownSuggestion')&&
  source.includes("const suggestionKind=candidate?.newName?'new':candidate?.existingName?'existing':''"),
  'legacy OCR corrections are unified as undecided names and never bulk registered');
-assert.ok(source.includes("savedUnknownSuggestion:!x.suggestion_kind?x.suggested_product_name||'':''"),
+assert.ok(source.includes("savedUnknownSuggestion:!x.candidate_match_type?x.product_name_candidate||'':''"),
  'previously saved undecided product suggestions survive an edit');
 assert.ok(source.includes('const aliasLines=lines.filter'));
 assert.match(imports.makeChatGptOcrAssistPrompt(ocrRef),/構造問題/);
@@ -2002,7 +2002,7 @@ assert.ok(!unifiedPicker.includes('登録先の日用品を変更（任意）'),
  'existing product selection no longer includes changing product-item ownership');
 const originalCatalogue=ui.catalogue().products.slice();
 ui.catalogue().products.push({id:'receipt-search-test',name:'専用実験商品',
- packageQuantity:null,packageUnit:null,itemGroupId:'demo-1',itemGroupOrder:9,aliases:[]});
+ packageQuantity:null,packageUnit:null,householdItemId:'demo-1',householdItemOrder:9,aliases:[]});
 ui.setScanExistingQuery('牛乳');
 assert.ok(!ui.scanExistingProductResults().includes('専用実験商品'),
  'a product is not found just because its linked household item matches the query');
@@ -2088,16 +2088,16 @@ ui.setItems([...ui.getItems(),{id:'demo-wakame',
  name:'わかめ',subName:'',category:0,inStock:true,hidden:false,order:999,version:1}]);
 ui.catalogue().products.push(
  {id:'test-wakame120',name:'三陸カットわかめ120g',packageQuantity:120,packageUnit:'g',
-  itemGroupId:'demo-wakame',itemGroupOrder:1,aliases:[]},
+  householdItemId:'demo-wakame',householdItemOrder:1,aliases:[]},
  {id:'test-wakame50',name:'カットわかめ50g',packageQuantity:50,packageUnit:'g',
-  itemGroupId:'demo-wakame',itemGroupOrder:2,aliases:[]},
+  householdItemId:'demo-wakame',householdItemOrder:2,aliases:[]},
  {id:'test-wakame-unknown',name:'わかめ容量不明',packageQuantity:null,packageUnit:null,
-  itemGroupId:'demo-wakame',itemGroupOrder:3,aliases:[]}
+  householdItemId:'demo-wakame',householdItemOrder:3,aliases:[]}
 );
 const wakameDate=ui.demoRecords[0].record_date;
 for(const [productId,amount] of [
  ['test-wakame120',360],['test-wakame50',180],['test-wakame-unknown',80]]){
- assert.equal(ui.savePreviewRecord({type:'shelf',chainId:'c-life',date:wakameDate,
+ assert.equal(ui.savePreviewRecord({type:'price_tag',chainId:'c-life',date:wakameDate,
   quantity:1,amount,productId,category:''}),true);
 }
 const standardizedWakame=ui.standardizedMinima(ui.registeredProducts('demo-wakame'),'1y');
