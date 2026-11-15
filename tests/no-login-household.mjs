@@ -99,7 +99,9 @@ assert.equal(create.data.entity.in_stock,false,'new items initially not in stock
 const id=create.data.entity.household_item_id;
 assert.equal(temp.call('item.create',{name:'牛乳',category_id:0},'op-create-abcdefghijklmn').data.entity.household_item_id,id,'no duplicate replay');
 assert.equal(temp.call('item.create',{name:'牛乳',category_id:0},'op-other-abcdefghijklmn').error.code,'DUPLICATE','same name cannot be created again');
-assert.equal(temp.call('item.update',{household_item_id:id,version:1,in_stock:true},'op-stock-abcdefghijklmn').ok,true,'anonymous stock update');
+const stockUpdate=temp.call('item.update',{household_item_id:id,version:1,in_stock:true},'op-stock-abcdefghijklmn');
+if(!stockUpdate.ok)console.error('SCHEMA_NAME_DEBUG_STOCK',JSON.stringify(stockUpdate));
+assert.equal(stockUpdate.ok,true,'anonymous stock update');
 assert.equal(temp.call('bootstrap').data.household_items[0].in_stock,true,'shared read reflects stock');
 assert.equal(temp.call('item.update',{household_item_id:id,version:1,in_stock:false},'op-stale-abcdefghijklmn').error.code,'VERSION_CONFLICT','old version rejected');
 assert.equal(temp.db.household_items.length,2,'one item, not two');
