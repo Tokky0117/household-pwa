@@ -155,7 +155,7 @@ function fromOcrItem(item,{rowId,taxBasis}={}){
    throw Error('写真からの明細再解析データを確認してください');
   return {source:'chatgpt-rebuild',date:result.receiptDate||'',
    chainId:previous.chainId||null,chainName:previous.chainName||'',
-   branchName:previous.branchName||'',total:result.receiptTotal??null,
+   total:result.receiptTotal??null,
    printedCount:result.printedCount??null,ocrReplacedCount:previous.items.length,
    // Do not carry old row IDs, OCR names, product associations or
    // OCR-specific unresolved observations into a fresh photo reconstruction.
