@@ -2469,12 +2469,20 @@ app.addEventListener('submit',e=>{e.preventDefault();const form=e.target;const d
    const suggestedName=String(candidate?.newName||candidate?.existingName||
     item.nameCandidate||item.inferredName||item.savedUnknownSuggestion||'').trim();
    const suggestionKind=candidate?.newName?'new':candidate?.existingName?'existing':'';
+   // Exact product matches used to trigger one record.item.link request per
+   // row AFTER record.create. Commit the same match in record.create instead.
+   // Preserve an explicit "商品未照合にする" choice and never use AI guesses.
+   const chosenProductId=scanResolvedProductId(item);
+   const matchedBeforeSave=scanDraft.recordType==='receipt'&&!item.manuallyLinked&&
+     !chosenProductId?
+     scanMatchProduct(verified?confirmedName:item.ocrRawName,
+       String(d.get('chain')||'')):'';
    return {
     raw_name:verified?'':String(item.ocrRawName||'').trim(),
     ...(verified&&confirmedName?{non_ocr_name:confirmedName}:{}),
     ...(suggestedName?{product_name_candidate:suggestedName,candidate_match_type:suggestionKind}:{}),
     linked_product_id:scanDraft.recordType==='receipt'?
-     (scanResolvedProductId(item)||null):
+     (chosenProductId||matchedBeforeSave||null):
      String(d.get('product-'+i)||'')||null,
     quantity:scanDraft.recordType==='price_tag'?1:Number(d.get('qty-'+i)),
     line_total_tax_included:String(d.get('amount-'+i)||'').trim()===''?NaN:Number(d.get('amount-'+i)),
@@ -2525,17 +2533,8 @@ app.addEventListener('submit',e=>{e.preventDefault();const form=e.target;const d
     void window.KurashiLive.learnAliases({chain_id:learnedChain,items:aliasLines})
      .catch(e=>console.warn('別名学習を保存できませんでした',e));
    const savedId=record?.record_id||scanDraft?.recordId;
-   // Persist any already-known match in record.create. A previously missing
-   // alias can become available during synchronization, so do a second exact-only
-   // lookup for still-unmatched lines after local commit (never fuzzy/AI matching).
-   if(savedId&&!scanDraft.recordId&&values.record_type==='receipt'){
-    const rows=allPreviewItems().filter(x=>x.record_id===savedId&&!x.deleted_at&&!x.linked_product_id);
-    for(const line of rows){
-     const matched=scanMatchProduct(aliasNameFor(line),learnedChain);
-     if(matched)void window.KurashiLive.linkRecordItem(line.record_item_id,matched)
-      .catch(err=>console.warn('保存後の商品照合を保留しました',err));
-    }
-   }
+   // Product matches are included in record.create; do not queue a second
+   // per-line record.item.link pass after saving the same receipt.
    const cleared=resetScan();
    void Promise.resolve(cleared).catch(err=>console.warn('下書きを破棄できませんでした',err)).finally(()=>{
     recordDetailId=savedId||null;recordDetailOrigin='list';
