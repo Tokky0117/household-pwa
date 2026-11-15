@@ -50,14 +50,14 @@
  });
  function validateSnapshot(data){
   if(!data||typeof data.household_id!=='string'||!data.household_id||
-     !Array.isArray(data.categories)||!Array.isArray(data.item_groups)||
-     !Array.isArray(data.products)||!Array.isArray(data.stores)||
+     !Array.isArray(data.categories)||!Array.isArray(data.household_items)||
+     !Array.isArray(data.products)||!Array.isArray(data.retail_chains)||
      !Number.isSafeInteger(Number(data.sequence_no)))throw Error('DATA_INVALID');
   // Old persisted snapshots may lack record arrays.
   if(data.records===undefined)data.records=[];
   if(data.record_items===undefined)data.record_items=[];
-  if(data.product_aliases===undefined)data.product_aliases=[];
-  if(!Array.isArray(data.product_aliases)||!Array.isArray(data.records)||!Array.isArray(data.record_items))
+  if(data.receipt_name_mappings===undefined)data.receipt_name_mappings=[];
+  if(!Array.isArray(data.receipt_name_mappings)||!Array.isArray(data.records)||!Array.isArray(data.record_items))
    throw Error('DATA_INVALID');
   const oldCats=['飲食','キッチン','洗面・風呂','洗濯・掃除','その他'];
   const cats=['食品・飲料','キッチン','洗面・風呂','洗濯・掃除','その他','調味料'];
@@ -86,13 +86,13 @@
       !positiveVersion(line.version))throw Error('DATA_INVALID');
    detailIds.add(line.record_item_id);
   }
-  for(const i of data.item_groups){
-   if(typeof i.item_group_id!=='string'||!i.item_group_id||
-      i.household_id!==data.household_id||seen.has(i.item_group_id)||
+  for(const i of data.household_items){
+   if(typeof i.household_item_id!=='string'||!i.household_item_id||
+      i.household_id!==data.household_id||seen.has(i.household_item_id)||
       !Number.isInteger(Number(i.category_id))||
       Number(i.category_id)<0||Number(i.category_id)>5||
       typeof i.name!=='string'||!positiveVersion(i.version))throw Error('DATA_INVALID');
-   seen.add(i.item_group_id);
+   seen.add(i.household_item_id);
   }
   return data;
  }
@@ -106,10 +106,10 @@
  };
  function project(doc=workspace){
   if(!doc.base)return null;
-  const snap={...doc.base,item_groups:doc.base.item_groups.map(i=>({...i})),
+  const snap={...doc.base,household_items:doc.base.household_items.map(i=>({...i})),
    products:doc.base.products.map(p=>({...p})),
-   stores:doc.base.stores.map(s=>({...s})),
-   product_aliases:(doc.base.product_aliases||[]).map(a=>({...a})),
+   retail_chains:doc.base.retail_chains.map(s=>({...s})),
+   receipt_name_mappings:(doc.base.receipt_name_mappings||[]).map(a=>({...a})),
    records:(doc.base.records||[]).map(r=>({...r})),
    record_items:(doc.base.record_items||[]).map(i=>({...i}))};
   // Pending OCR evidence stays in the queue; projected rows reference an alias.
@@ -117,22 +117,22 @@
    const name=String(raw||'').trim();
    if(!name)return '';
    const normalized=name.normalize('NFKC').trim().replace(/\s+/g,' ').toLocaleLowerCase('ja');
-   const existing=snap.product_aliases.find(a=>a.chain_id===chainId&&a.normalized_alias===normalized);
-   if(existing)return existing.alias_id;
-   const aliasId='local-receipt-alias-'+itemId;
-   snap.product_aliases.push({alias_id:aliasId,chain_id:chainId,product_id:'',
-    normalized_alias:normalized,ocr_name:name,version:1});
-   return aliasId;
+   const existing=snap.receipt_name_mappings.find(a=>a.chain_id===chainId&&a.normalized_receipt_name===normalized);
+   if(existing)return existing.receipt_name_id;
+   const receiptNameId='local-receipt-alias-'+itemId;
+   snap.receipt_name_mappings.push({receipt_name_id:receiptNameId,chain_id:chainId,product_id:'',
+    normalized_receipt_name:normalized,ocr_name:name,version:1});
+   return receiptNameId;
   };
   for(const op of doc.queue){
    if(op.kind==='store-create'){
-    snap.stores.push({chain_id:op.clientId,household_id:snap.household_id,
+    snap.retail_chains.push({chain_id:op.clientId,household_id:snap.household_id,
      canonical_name:op.name,normalized_name:op.name.normalize('NFKC').toLocaleLowerCase('ja'),
      aliases:'',version:1});
     continue;
    }
    if(op.kind==='store-alias'){
-    const store=snap.stores.find(x=>x.chain_id===op.chainId);
+    const store=snap.retail_chains.find(x=>x.chain_id===op.chainId);
     if(store){
      let names=[];
      try{
@@ -145,14 +145,14 @@
     continue;
    }
    if(op.kind==='alias-create'){
-    snap.product_aliases.push({alias_id:op.clientId,product_id:op.productId||'',
-     chain_id:op.chainId,normalized_alias:op.alias.normalize('NFKC')
+    snap.receipt_name_mappings.push({receipt_name_id:op.clientId,product_id:op.productId||'',
+     chain_id:op.chainId,normalized_receipt_name:op.alias.normalize('NFKC')
       .trim().replace(/\s+/g,' ').toLocaleLowerCase('ja'),
      ocr_name:op.alias,version:1});
     continue;
    }
    if(op.kind==='alias-link'){
-    const alias=snap.product_aliases.find(a=>a.alias_id===op.aliasId);
+    const alias=snap.receipt_name_mappings.find(a=>a.receipt_name_id===op.receiptNameId);
     if(alias){alias.product_id=op.productId||'';alias.version=Number(alias.version)+1}
     continue;
    }
@@ -162,9 +162,9 @@
      branch_name:op.branchName||'',version:1,deleted_at:''});
     op.items.forEach((line,i)=>snap.record_items.push({
      record_item_id:op.itemIds[i],record_id:op.clientId,line_order:i+1,
-     alias_id:receiptAlias(op.chainId,line.raw_name,op.itemIds[i]),confirmed_name:line.confirmed_name||'',
-     suggested_product_name:line.suggested_product_name||'',suggestion_kind:line.suggestion_kind||'',product_id:line.product_id||'',
-     quantity:line.quantity,amount_tax_included:line.amount_tax_included,
+     receipt_name_id:receiptAlias(op.chainId,line.raw_name,op.itemIds[i]),non_ocr_name:line.non_ocr_name||'',
+     product_name_candidate:line.product_name_candidate||'',candidate_match_type:line.candidate_match_type||'',product_id:line.product_id||'',
+     quantity:line.quantity,line_total_tax_included:line.line_total_tax_included,
      version:1,deleted_at:''
     }));
     continue;
@@ -177,9 +177,9 @@
     snap.record_items=snap.record_items.filter(i=>i.record_id!==op.targetId);
     op.items.forEach((line,i)=>snap.record_items.push({
      record_item_id:op.itemIds[i],record_id:op.targetId,line_order:i+1,
-     alias_id:receiptAlias(op.chainId,line.raw_name,op.itemIds[i]),confirmed_name:line.confirmed_name||'',
-     suggested_product_name:line.suggested_product_name||'',suggestion_kind:line.suggestion_kind||'',product_id:line.product_id||'',
-     quantity:line.quantity,amount_tax_included:line.amount_tax_included,
+     receipt_name_id:receiptAlias(op.chainId,line.raw_name,op.itemIds[i]),non_ocr_name:line.non_ocr_name||'',
+     product_name_candidate:line.product_name_candidate||'',candidate_match_type:line.candidate_match_type||'',product_id:line.product_id||'',
+     quantity:line.quantity,line_total_tax_included:line.line_total_tax_included,
      version:1,deleted_at:''
     }));
     continue;
@@ -196,23 +196,23 @@
     continue;
    }
    if(op.kind==='product-reorder'){
-    const active=snap.products.filter(p=>p.item_group_id===op.groupId&&!p.deleted_at);
+    const active=snap.products.filter(p=>p.household_item_id===op.groupId&&!p.deleted_at);
     const byId=new Map(active.map(p=>[p.product_id,p]));
     const ids=op.product_ids.filter(id=>byId.has(id));
     const extras=active.filter(p=>!ids.includes(p.product_id))
-     .sort((a,b)=>(Number(a.item_group_order)||0)-(Number(b.item_group_order)||0))
+     .sort((a,b)=>(Number(a.household_item_order)||0)-(Number(b.household_item_order)||0))
      .map(p=>p.product_id);
-    [...ids,...extras].forEach((id,n)=>{byId.get(id).item_group_order=n+1});
+    [...ids,...extras].forEach((id,n)=>{byId.get(id).household_item_order=n+1});
     continue;
    }
    if(op.kind==='product-create'){
     const order=op.groupId?Math.max(0,...snap.products.filter(p=>
-     p.item_group_id===op.groupId).map(p=>Number(p.item_group_order)||0))+1:'';
+     p.household_item_id===op.groupId).map(p=>Number(p.household_item_order)||0))+1:'';
     snap.products.push({product_id:op.clientId,household_id:snap.household_id,
-     item_group_id:op.groupId||'',name:op.name,
+     household_item_id:op.groupId||'',name:op.name,
      normalized_name:op.name.normalize('NFKC').toLocaleLowerCase('ja'),
      package_quantity:op.quantity??'',package_unit:op.unit||'',
-     item_group_order:order,version:1,deleted_at:''});
+     household_item_order:order,version:1,deleted_at:''});
     continue;
    }
    if(op.kind==='product-edit'||op.kind==='product-link'){
@@ -221,34 +221,34 @@
     if(op.kind==='product-edit'){
      p.name=op.name;p.package_quantity=op.quantity??'';
      p.package_unit=op.unit||'';
-    }else if(p.item_group_id!==op.groupId){
-     p.item_group_id=op.groupId||'';
-     p.item_group_order=op.groupId?
+    }else if(p.household_item_id!==op.groupId){
+     p.household_item_id=op.groupId||'';
+     p.household_item_order=op.groupId?
       Math.max(0,...snap.products.filter(x=>x.product_id!==p.product_id&&
-       x.item_group_id===op.groupId).map(x=>Number(x.item_group_order)||0))+1:'';
+       x.household_item_id===op.groupId).map(x=>Number(x.household_item_order)||0))+1:'';
     }
     continue;
    }
    if(op.kind==='reorder'){
-    const list=snap.item_groups.filter(i=>
+    const list=snap.household_items.filter(i=>
      Number(i.category_id)===op.category_id&&!i.deleted_at&&!toBoolean(i.is_hidden));
-    const byId=new Map(list.map(i=>[i.item_group_id,i]));
-    const ids=op.item_group_ids.filter(id=>byId.has(id));
-    const extras=list.filter(i=>!ids.includes(i.item_group_id))
+    const byId=new Map(list.map(i=>[i.household_item_id,i]));
+    const ids=op.household_item_ids.filter(id=>byId.has(id));
+    const extras=list.filter(i=>!ids.includes(i.household_item_id))
      .sort((a,b)=>(Number(a.sort_order)||0)-(Number(b.sort_order)||0))
-     .map(i=>i.item_group_id);
+     .map(i=>i.household_item_id);
     [...ids,...extras].forEach((id,n)=>{byId.get(id).sort_order=n+1});
     continue;
    }
    if(op.kind==='create'){
-    snap.item_groups.push({item_group_id:op.clientId,
+    snap.household_items.push({household_item_id:op.clientId,
       household_id:snap.household_id,category_id:op.category_id,
       name:op.name,sub_name:op.subName||'',in_stock:false,is_hidden:false,
-      sort_order:Math.max(0,...snap.item_groups.filter(i=>Number(i.category_id)===op.category_id)
+      sort_order:Math.max(0,...snap.household_items.filter(i=>Number(i.category_id)===op.category_id)
        .map(i=>Number(i.sort_order)||0))+1,version:1,deleted_at:''});
     continue;
    }
-   const target=snap.item_groups.find(i=>i.item_group_id===op.targetId);
+   const target=snap.household_items.find(i=>i.household_item_id===op.targetId);
    if(!target)continue;
    if(op.kind==='toggle')target.in_stock=op.stock;
    else if(op.kind==='set-stock')target.in_stock=op.stock;
@@ -410,7 +410,7 @@
        const kind=old.action==='item.create'?'create':'legacy';
        const op={
         id:old.operationId,kind,
-        targetId:old.payload.item_group_id||null,
+        targetId:old.payload.household_item_id||null,
         clientId:kind==='create'?'local-'+uid():null,
         name:old.payload.name,category_id:old.payload.category_id,
         request:{action:old.action,payload:old.payload,operationId:old.operationId},
@@ -532,8 +532,8 @@
   const snap=project(doc),products=snap?.products||[];
   if(action==='product.create'){
    const fields=productFields(payload),
-    groupId=payload.item_group_id===null?null:String(payload.item_group_id||'');
-   if(groupId!==null&&!snap.item_groups.some(i=>i.item_group_id===groupId&&!i.deleted_at))
+    groupId=payload.household_item_id===null?null:String(payload.household_item_id||'');
+   if(groupId!==null&&!snap.household_items.some(i=>i.household_item_id===groupId&&!i.deleted_at))
     throw Error('登録先の日用品が見つかりません');
    if(products.some(p=>p.name.normalize('NFKC')===fields.name.normalize('NFKC')&&
      Number(p.package_quantity||0)===Number(fields.quantity||0)&&
@@ -546,9 +546,9 @@
   const targetId=String(payload.product_id||''),
    product=products.find(p=>p.product_id===targetId);
   if(!product)throw Error('商品が見つかりません');
-  if(Object.prototype.hasOwnProperty.call(payload,'item_group_id')){
-   const groupId=payload.item_group_id===null?null:String(payload.item_group_id);
-   if(groupId!==null&&!snap.item_groups.some(i=>i.item_group_id===groupId&&!i.deleted_at))
+  if(Object.prototype.hasOwnProperty.call(payload,'household_item_id')){
+   const groupId=payload.household_item_id===null?null:String(payload.household_item_id);
+   if(groupId!==null&&!snap.household_items.some(i=>i.household_item_id===groupId&&!i.deleted_at))
     throw Error('登録先の日用品が見つかりません');
    return {id:operationId(),kind:'product-link',targetId,groupId,retries:0};
   }
@@ -566,15 +566,15 @@
    if(!name||name.length>80||subName.length>80||!Number.isInteger(category_id)||category_id<0||category_id>5)
     throw Error('日用品名・カテゴリを確認してください');
    const normalized=name.normalize('NFKC').toLocaleLowerCase('ja');
-   if(project(doc)?.item_groups.some(i=>!i.deleted_at&&
+   if(project(doc)?.household_items.some(i=>!i.deleted_at&&
       i.name.normalize('NFKC').toLocaleLowerCase('ja')===normalized&&
       Number(i.category_id)===category_id&&String(i.sub_name||'').normalize('NFKC').toLocaleLowerCase('ja')===subName.normalize('NFKC').toLocaleLowerCase('ja')))
     throw Error('同じ日用品が登録済みです');
    return {id:operationId(),kind:'create',clientId:'local-'+uid(),name,subName,category_id,retries:0};
   }
   if(action!=='item.update')throw Error('UNSUPPORTED');
-  const targetId=String(payload.item_group_id||'');
-  const target=project(doc)?.item_groups.find(i=>i.item_group_id===targetId&&!i.deleted_at);
+  const targetId=String(payload.household_item_id||'');
+  const target=project(doc)?.household_items.find(i=>i.household_item_id===targetId&&!i.deleted_at);
   if(!target)throw Error('日用品が見つかりません');
   if(Object.prototype.hasOwnProperty.call(payload,'in_stock')){
    // Callers use toggleStock() to preserve each tap as one semantic operation.
@@ -587,7 +587,7 @@
    if(!name||name.length>80||subName.length>80||!Number.isInteger(cat)||cat<0||cat>5)
     throw Error('日用品名・カテゴリを確認してください');
    const normalized=name.normalize('NFKC').toLocaleLowerCase('ja');
-   if(project(doc)?.item_groups.some(i=>i.item_group_id!==targetId&&
+   if(project(doc)?.household_items.some(i=>i.household_item_id!==targetId&&
      !i.deleted_at&&i.name.normalize('NFKC').toLocaleLowerCase('ja')===normalized&&
       Number(i.category_id)===cat&&String(i.sub_name||'').normalize('NFKC').toLocaleLowerCase('ja')===subName.normalize('NFKC').toLocaleLowerCase('ja')))
     throw Error('同じ日用品が登録済みです');
@@ -611,7 +611,7 @@
   const current=operation;
   const snap=project(),visible=current.kind.startsWith('product-')
    ?snap?.products.find(p=>p.product_id===(current.clientId||current.targetId))
-   :snap?.item_groups.find(i=>i.item_group_id===(current.clientId||current.targetId));
+   :snap?.household_items.find(i=>i.household_item_id===(current.clientId||current.targetId));
   void flush();
   return visible||null;
  }
@@ -622,7 +622,7 @@
  // A new chain and its record share one atomic IndexedDB transaction.
  function makeRecordDraft(input,doc,chainId){
   const snap=project(doc),kind=input.record_type,date=input.record_date;
-  if(!['receipt','shelf'].includes(kind)||
+  if(!['receipt','price_tag'].includes(kind)||
      typeof date!=='string'||!/^\d{4}-\d{2}-\d{2}$/.test(date))
    throw Error('記録の種類と日付を確認してください');
   const [yy,mm,dd]=date.split('-').map(Number);
@@ -630,7 +630,7 @@
   if(yy<2000||yy>2100||dt.getUTCFullYear()!==yy||
      dt.getUTCMonth()+1!==mm||dt.getUTCDate()!==dd)
    throw Error('日付を確認してください');
-  if(!snap.stores.some(x=>x.chain_id===chainId))
+  if(!snap.retail_chains.some(x=>x.chain_id===chainId))
    throw Error('チェーンを確認してください');
   const raw=input.items;
   if(!Array.isArray(raw)||!raw.length||raw.length>100)
@@ -638,14 +638,14 @@
   const lines=raw.map(line=>{
    const productId=confirmedProductId(line.product_id??null);
    const rawName=String(line.raw_name||'').trim();
-   const confirmed=line.confirmed_name===undefined?'':String(line.confirmed_name||'').trim();
-   const suggested=String(line.suggested_product_name||'').trim();
-   const suggestionKind=String(line.suggestion_kind||'');
+   const confirmed=line.non_ocr_name===undefined?'':String(line.non_ocr_name||'').trim();
+   const suggested=String(line.product_name_candidate||'').trim();
+   const suggestionKind=String(line.candidate_match_type||'');
    if(suggested.length>120||/^[=+@\-]/.test(suggested)||
       /[\x00-\x1f\x7f<>]/.test(suggested)||
       (suggested&&!['','existing','new'].includes(suggestionKind))||
       (!suggested&&suggestionKind))throw Error('商品名候補を確認してください');
-   if(line.confirmed_name!==undefined&&(!confirmed||rawName))throw Error('写真確認名とOCR名を同時に保存できません');
+   if(line.non_ocr_name!==undefined&&(!confirmed||rawName))throw Error('写真確認名とOCR名を同時に保存できません');
    if(confirmed.length>120||/^[=+@\-]/.test(confirmed)||/[\x00-\x1f\x7f<>]/.test(confirmed))throw Error('写真で確認した明細名を確認してください');
    if(rawName.length>120||/^[=+@\-]/.test(rawName)||
       /[\x00-\x1f\x7f<>]/.test(rawName))
@@ -653,11 +653,11 @@
    if(productId!==null&&!snap.products.some(p=>p.product_id===productId&&!p.deleted_at))
     throw Error('商品が見つかりません');
    if(!Number.isSafeInteger(line.quantity)||line.quantity<=0||
-      !Number.isSafeInteger(line.amount_tax_included)||line.amount_tax_included<0)
+      !Number.isSafeInteger(line.line_total_tax_included)||line.line_total_tax_included<0)
     throw Error('数量・税込金額を確認してください');
-   return {raw_name:rawName,...(confirmed?{confirmed_name:confirmed}:{}),product_id:productId,
-    quantity:line.quantity,amount_tax_included:line.amount_tax_included,
-    ...(suggested?{suggested_product_name:suggested,suggestion_kind:suggestionKind}:{})};
+   return {raw_name:rawName,...(confirmed?{non_ocr_name:confirmed}:{}),product_id:productId,
+    quantity:line.quantity,line_total_tax_included:line.line_total_tax_included,
+    ...(suggested?{product_name_candidate:suggested,candidate_match_type:suggestionKind}:{})};
   });
   return {id:operationId(),kind:'record-create',clientId:'local-'+uid(),
    chainId,recordType:kind,date,branchName:String(input.branch_name||'').trim(),items:lines,
@@ -672,7 +672,7 @@
    .replace(/\s+/g,' ').toLocaleLowerCase('ja');
   let changed=false;
   await modify(doc=>{
-   const snap=project(doc),store=snap?.stores.find(x=>x.chain_id===chainId);
+   const snap=project(doc),store=snap?.retail_chains.find(x=>x.chain_id===chainId);
    if(!store)throw Error('登録先のチェーンが見つかりません');
    if(normalize(store.canonical_name)===normalize(alias))return doc;
    const getAliases=value=>{
@@ -682,7 +682,7 @@
    };
    const current=getAliases(store.aliases);
    if(current.some(x=>normalize(x)===normalize(alias)))return doc;
-   if(snap.stores.some(x=>x.chain_id!==chainId&&(
+   if(snap.retail_chains.some(x=>x.chain_id!==chainId&&(
       normalize(x.canonical_name)===normalize(alias)||
       getAliases(x.aliases).some(v=>normalize(v)===normalize(alias)))))
     throw Error('別のチェーンが同じ店舗名を使っています');
@@ -697,7 +697,7 @@
   await boot();if(!workspace.base)await load();
   await modify(doc=>{
    const snap=project(doc);
-   if(!snap?.stores.some(c=>c.chain_id===chain_id))
+   if(!snap?.retail_chains.some(c=>c.chain_id===chain_id))
     throw Error('別名のチェーンがありません');
    const normal=s=>String(s||'').normalize('NFKC').trim().replace(/\s+/g,' ').toLocaleLowerCase('ja');
    const queued=new Set();
@@ -711,12 +711,12 @@
     const key=chain_id+'|'+normal(alias);
     if(queued.has(key))continue;
     queued.add(key);
-    const existing=snap.product_aliases.find(a=>a.chain_id===chain_id&&
-      a.normalized_alias===normal(alias));
+    const existing=snap.receipt_name_mappings.find(a=>a.chain_id===chain_id&&
+      a.normalized_receipt_name===normal(alias));
     if(existing){
      if(!productId||String(existing.product_id||'')===productId)continue;
-     if(!String(existing.alias_id).startsWith('local-'))
-      doc.queue.push({id:operationId(),kind:'alias-link',aliasId:existing.alias_id,
+     if(!String(existing.receipt_name_id).startsWith('local-'))
+      doc.queue.push({id:operationId(),kind:'alias-link',receiptNameId:existing.receipt_name_id,
        productId,version:Number(existing.version),retries:0});
      continue;
     }
@@ -727,18 +727,18 @@
   });
   void flush();
  }
- async function linkAlias(aliasId,productId){
+ async function linkAlias(receiptNameId,productId){
   await boot();if(!workspace.base)await load();
   let changed=false;
   await modify(doc=>{
-   const snap=project(doc),alias=snap?.product_aliases.find(x=>x.alias_id===aliasId);
+   const snap=project(doc),alias=snap?.receipt_name_mappings.find(x=>x.receipt_name_id===receiptNameId);
    if(!alias)throw Error('OCR名が見つかりません');
    productId=confirmedProductId(productId);
    if(productId&&!snap.products.some(x=>x.product_id===productId))
     throw Error('登録商品が見つかりません');
    if(String(alias.product_id||'')===String(productId||''))return doc;
-   if(String(aliasId).startsWith('local-'))throw Error('OCR名の同期後に変更してください');
-   doc.queue.push({id:operationId(),kind:'alias-link',aliasId,
+   if(String(receiptNameId).startsWith('local-'))throw Error('OCR名の同期後に変更してください');
+   doc.queue.push({id:operationId(),kind:'alias-link',receiptNameId,
      productId:productId||null,version:Number(alias.version),retries:0});
    changed=true;
    return doc; // modify() requires a complete durable workspace, never a boolean.
@@ -793,18 +793,18 @@
   const created=new Set();
   for(const line of snap.record_items.filter(x=>x.record_id===id&&!x.deleted_at)
      .sort((a,b)=>Number(a.line_order)-Number(b.line_order))){
-   if(line.product_id||!['existing','new'].includes(line.suggestion_kind))continue;
-   const name=String(line.suggested_product_name||'').trim(),key=receiptProductKey(name);
+   if(line.product_id||!['existing','new'].includes(line.candidate_match_type))continue;
+   const name=String(line.product_name_candidate||'').trim(),key=receiptProductKey(name);
    if(!validReceiptProductName(name))continue;
    const exact=products.filter(p=>receiptProductKey(p.name)===key);
-   if(exact.length>1||line.suggestion_kind==='existing'&&exact.length!==1)continue;
+   if(exact.length>1||line.candidate_match_type==='existing'&&exact.length!==1)continue;
    // Similar but non-identical punctuation must be manually resolved, not created.
    if(!exact.length&&products.some(p=>receiptLooseKey(p.name)===receiptLooseKey(name)))continue;
    const kind=exact.length?'existing':created.has(key)?'reuse':'new';
    if(!exact.length)created.add(key);
-   candidates.push({record_item_id:line.record_item_id,raw_name:line.confirmed_name||
-    snap.product_aliases.find(a=>a.alias_id===line.alias_id)?.ocr_name||'',
-    proposed_name:name,suggestion_kind:line.suggestion_kind,action:kind,
+   candidates.push({record_item_id:line.record_item_id,raw_name:line.non_ocr_name||
+    snap.receipt_name_mappings.find(a=>a.receipt_name_id===line.receipt_name_id)?.ocr_name||'',
+    proposed_name:name,candidate_match_type:line.candidate_match_type,action:kind,
     product_id:exact[0]?.product_id||null});
   }
   return candidates;
@@ -832,7 +832,7 @@
       receiptLooseKey(p.name)===receiptLooseKey(name)))
     throw Error('同じ名前または類似した商品があります。登録済みの商品から選択してください');
    const create=makeProductOperation('product.create',{
-    item_group_id:null,name,package_quantity:null,package_unit:null
+    household_item_id:null,name,package_quantity:null,package_unit:null
    },doc);
    doc.queue.push(create);
    doc.queue.push({id:operationId(),kind:'record-item-link',
@@ -860,7 +860,7 @@
      const key=receiptProductKey(row.proposed_name);
      if(!names.has(key)){
       const create=makeProductOperation('product.create',{
-       name:row.proposed_name,item_group_id:null,package_quantity:null,package_unit:null
+       name:row.proposed_name,household_item_id:null,package_quantity:null,package_unit:null
       },doc);
       doc.queue.push(create);
       names.set(key,create.clientId);
@@ -899,7 +899,7 @@
     if(!chainName||chainName.length>80||/^[=+@\-]/.test(chainName)||
       /[\x00-\x1f\x7f<>]/.test(chainName))
      throw Error('新しいチェーン名を確認してください');
-    if(project(doc).stores.some(x=>x.canonical_name.normalize('NFKC').toLocaleLowerCase('ja')===
+    if(project(doc).retail_chains.some(x=>x.canonical_name.normalize('NFKC').toLocaleLowerCase('ja')===
        chainName.normalize('NFKC').toLocaleLowerCase('ja')))
      throw Error('登録済みチェーンがあります。選択して使用してください');
     const storeOp={id:operationId(),kind:'store-create',clientId:'local-'+uid(),
@@ -918,15 +918,15 @@
  async function reorderItems(categoryId,orderedIds){
   return enqueue(doc=>{
    const category=Number(categoryId),ids=Array.isArray(orderedIds)?[...orderedIds]:[];
-   const active=project(doc)?.item_groups.filter(i=>
+   const active=project(doc)?.household_items.filter(i=>
     Number(i.category_id)===category&&!i.deleted_at&&!toBoolean(i.is_hidden))||[];
-   const available=new Set(active.map(i=>i.item_group_id));
+   const available=new Set(active.map(i=>i.household_item_id));
    if(!Number.isInteger(category)||category<0||category>5||ids.length<2||
       ids.length!==active.length||new Set(ids).size!==ids.length||
       ids.some(id=>typeof id!=='string'||!available.has(id)))
     throw Error('並び順を確認できません。画面を更新してください');
    return {id:operationId(),kind:'reorder',category_id:category,
-    item_group_ids:ids,retries:0};
+    household_item_ids:ids,retries:0};
   });
  }
  async function reorderProducts(itemId,orderedIds){
@@ -934,8 +934,8 @@
    const groupId=String(itemId||''),
     ids=Array.isArray(orderedIds)?[...orderedIds]:[];
    const snap=project(doc);
-   const group=snap?.item_groups.find(x=>x.item_group_id===groupId&&!x.deleted_at);
-   const active=snap?.products.filter(p=>p.item_group_id===groupId&&!p.deleted_at)||[];
+   const group=snap?.household_items.find(x=>x.household_item_id===groupId&&!x.deleted_at);
+   const active=snap?.products.filter(p=>p.household_item_id===groupId&&!p.deleted_at)||[];
    const available=new Set(active.map(p=>p.product_id));
    if(!group||active.length<2||ids.length!==active.length||
       new Set(ids).size!==ids.length||
@@ -947,7 +947,7 @@
  }
  async function toggleStock(itemId){
   return enqueue(doc=>{
-   const item=project(doc)?.item_groups.find(i=>i.item_group_id===itemId&&!i.deleted_at);
+   const item=project(doc)?.household_items.find(i=>i.household_item_id===itemId&&!i.deleted_at);
    if(!item)throw Error('日用品が見つかりません');
    // Persist desired state, not an unbounded "flip" instruction: the user's
    // intent survives retries, concurrent-device version rebases and restart.
@@ -960,13 +960,13 @@
   if(op.kind==='store-create')
    return {operationId:op.id,action:'store.create',payload:{name:op.name}};
   if(op.kind==='store-alias'){
-   if(!base?.stores.some(x=>x.chain_id===op.chainId))
+   if(!base?.retail_chains.some(x=>x.chain_id===op.chainId))
     throw Error('別名のチェーンが見つかりません');
    return {operationId:op.id,action:'store.alias.upsert',payload:{
     chain_id:op.chainId,raw_alias:op.alias}};
   }
   if(op.kind==='record-create'){
-   if(!base?.stores.some(s=>s.chain_id===op.chainId))
+   if(!base?.retail_chains.some(s=>s.chain_id===op.chainId))
     throw Error('記録のチェーンが見つかりません');
    if(op.items.some(line=>line.product_id&&!base?.products.some(p=>
        p.product_id===line.product_id&&!p.deleted_at)))
@@ -978,7 +978,7 @@
    }};
   }
   if(op.kind==='alias-create'){
-   if(!base?.stores.some(x=>x.chain_id===op.chainId)||
+   if(!base?.retail_chains.some(x=>x.chain_id===op.chainId)||
       (op.productId&&!base?.products.some(x=>
         x.product_id===op.productId&&!x.deleted_at)))
     throw Error('OCR名のチェーンまたは商品がありません');
@@ -986,13 +986,13 @@
     chain_id:op.chainId,product_id:op.productId||null,raw_alias:op.alias}};
   }
   if(op.kind==='alias-link'){
-   const alias=base?.product_aliases.find(x=>x.alias_id===op.aliasId);
+   const alias=base?.receipt_name_mappings.find(x=>x.receipt_name_id===op.receiptNameId);
    if(!alias)throw Error('OCR名がありません');
    if(op.productId&&!base?.products.some(x=>
      x.product_id===op.productId&&!x.deleted_at))
     throw Error('商品が見つかりません');
    return {operationId:op.id,action:'alias.link',payload:{
-    alias_id:op.aliasId,product_id:op.productId||null,
+    receipt_name_id:op.receiptNameId,product_id:op.productId||null,
     version:Number(alias.version)}};
   }
   if(op.kind==='record-item-link'){
@@ -1010,7 +1010,7 @@
    if(op.kind==='record-delete')
     return {operationId:op.id,action:'record.delete',
      payload:{record_id:op.targetId,version:Number(record.version)}};
-   if(!base?.stores.some(s=>s.chain_id===op.chainId))
+   if(!base?.retail_chains.some(s=>s.chain_id===op.chainId))
     throw Error('チェーンが見つかりません');
    if(op.items.some(line=>line.product_id&&!base?.products.some(p=>
        p.product_id===line.product_id&&!p.deleted_at)))
@@ -1022,11 +1022,11 @@
   }
   if(op.kind==='product-reorder'){
    const active=(base?.products||[]).filter(p=>
-    p.item_group_id===op.groupId&&!p.deleted_at);
+    p.household_item_id===op.groupId&&!p.deleted_at);
    const byId=new Map(active.map(p=>[p.product_id,p]));
    const ids=op.product_ids.filter(id=>byId.has(id));
    const extras=active.filter(p=>!ids.includes(p.product_id))
-    .sort((a,b)=>(Number(a.item_group_order)||0)-(Number(b.item_group_order)||0))
+    .sort((a,b)=>(Number(a.household_item_order)||0)-(Number(b.household_item_order)||0))
     .map(p=>p.product_id);
    const merged=[...ids,...extras];
    if(merged.length<2||new Set(merged).size!==merged.length){
@@ -1034,17 +1034,17 @@
     e.code='NOT_FOUND';throw e;
    }
    return {operationId:op.id,action:'product.reorder',payload:{
-    item_group_id:op.groupId,product_ids:merged,
+    household_item_id:op.groupId,product_ids:merged,
     versions:merged.map(id=>Number(byId.get(id).version))
    }};
   }
   if(op.kind==='product-create'){
-   if(op.groupId!==null&&!base?.item_groups.some(i=>
-       i.item_group_id===op.groupId&&!i.deleted_at))
+   if(op.groupId!==null&&!base?.household_items.some(i=>
+       i.household_item_id===op.groupId&&!i.deleted_at))
     throw Error('登録先の日用品が見つかりません');
    return {operationId:op.id,action:'product.create',payload:{
     name:op.name,package_quantity:op.quantity,package_unit:op.unit,
-    item_group_id:op.groupId}};
+    household_item_id:op.groupId}};
   }
   if(op.kind==='product-edit'||op.kind==='product-link'){
    const p=base?.products.find(x=>x.product_id===op.targetId);
@@ -1053,30 +1053,30 @@
    if(op.kind==='product-edit'){
     payload.name=op.name;payload.package_quantity=op.quantity;
     payload.package_unit=op.unit;
-   }else payload.item_group_id=op.groupId;
+   }else payload.household_item_id=op.groupId;
    return {operationId:op.id,action:'product.update',payload};
   }
   if(op.kind==='create')return {operationId:op.id,action:'item.create',
    payload:{name:op.name,category_id:op.category_id,...(op.subName!==undefined?{sub_name:op.subName}:{})}};
   if(op.kind==='reorder'){
-   const active=(base?.item_groups||[]).filter(i=>
+   const active=(base?.household_items||[]).filter(i=>
     Number(i.category_id)===op.category_id&&!i.deleted_at&&!toBoolean(i.is_hidden));
-   const byId=new Map(active.map(i=>[i.item_group_id,i]));
-   const ids=op.item_group_ids.filter(id=>byId.has(id));
-   const extras=active.filter(i=>!ids.includes(i.item_group_id))
+   const byId=new Map(active.map(i=>[i.household_item_id,i]));
+   const ids=op.household_item_ids.filter(id=>byId.has(id));
+   const extras=active.filter(i=>!ids.includes(i.household_item_id))
     .sort((a,b)=>(Number(a.sort_order)||0)-(Number(b.sort_order)||0))
-    .map(i=>i.item_group_id);
+    .map(i=>i.household_item_id);
    const merged=[...ids,...extras];
    if(merged.length<2||new Set(merged).size!==merged.length)
     throw Error('並び替え対象を確認できません');
    return {operationId:op.id,action:'item.reorder',payload:{
-    category_id:op.category_id,item_group_ids:merged,
+    category_id:op.category_id,household_item_ids:merged,
     versions:merged.map(id=>Number(byId.get(id).version))
    }};
   }
-  const item=base?.item_groups.find(x=>x.item_group_id===op.targetId);
+  const item=base?.household_items.find(x=>x.household_item_id===op.targetId);
   if(!item||item.deleted_at)throw Error('保存対象の日用品が見つかりません');
-  const payload={item_group_id:item.item_group_id,version:Number(item.version)};
+  const payload={household_item_id:item.household_item_id,version:Number(item.version)};
   if(op.kind==='toggle')payload.in_stock=op.stock;
   else if(op.kind==='set-stock')payload.in_stock=op.stock;
   else if(op.kind==='hide')payload.is_hidden=op.hidden;
@@ -1119,10 +1119,10 @@
       String(result.entity.product_id||'')!==String(plan.payload.product_id||'')||
       !positiveVersion(result.entity.version))throw Error('RESPONSE_INVALID');
   }else if(['alias.upsert','alias.link'].includes(plan.action)){
-   if(!result.entity||typeof result.entity.alias_id!=='string'||
+   if(!result.entity||typeof result.entity.receipt_name_id!=='string'||
       String(result.entity.product_id||'')!==String(plan.payload.product_id||'')||
       (plan.action==='alias.upsert'&&result.entity.chain_id!==plan.payload.chain_id)||
-      (plan.action==='alias.link'&&result.entity.alias_id!==plan.payload.alias_id))
+      (plan.action==='alias.link'&&result.entity.receipt_name_id!==plan.payload.receipt_name_id))
     throw Error('RESPONSE_INVALID');
   }else if(plan.action==='store.alias.upsert'){
    if(!result.entity||typeof result.entity.chain_id!=='string'||
@@ -1132,18 +1132,18 @@
    if(!Array.isArray(result.entities)||
       result.entities.length!==plan.payload.product_ids.length||
       result.entities.some((p,i)=>p?.product_id!==plan.payload.product_ids[i]||
-       p.item_group_id!==plan.payload.item_group_id||
-       Number(p.item_group_order)!==i+1||!positiveVersion(p.version)))
+       p.household_item_id!==plan.payload.household_item_id||
+       Number(p.household_item_order)!==i+1||!positiveVersion(p.version)))
     throw Error('RESPONSE_INVALID');
   }else if(plan.action==='item.reorder'){
    if(!Array.isArray(result.entities)||
-      result.entities.length!==plan.payload.item_group_ids.length||
-      result.entities.some((e,i)=>e?.item_group_id!==plan.payload.item_group_ids[i]||
+      result.entities.length!==plan.payload.household_item_ids.length||
+      result.entities.some((e,i)=>e?.household_item_id!==plan.payload.household_item_ids[i]||
        Number(e.sort_order)!==i+1||!positiveVersion(e.version)))
     throw Error('RESPONSE_INVALID');
   }else if(!result.entity||typeof (plan.action==='store.create'?
       result.entity.chain_id:plan.action.startsWith('product.')?
-      result.entity.product_id:result.entity.item_group_id)!=='string'){
+      result.entity.product_id:result.entity.household_item_id)!=='string'){
    throw Error('RESPONSE_INVALID');
   }
   await modify(ws=>{
@@ -1161,20 +1161,20 @@
    if(recordAction&&result.items.some(i=>i.record_id!==result.record.record_id))
     throw Error('RESPONSE_INVALID');
    const productAction=plan.action.startsWith('product.');
-   const ids=new Set(entities.map(e=>productAction?e.product_id:e.item_group_id));
+   const ids=new Set(entities.map(e=>productAction?e.product_id:e.household_item_id));
    ws.base={...ws.base,
-    ...(['alias.upsert','alias.link'].includes(plan.action)?{product_aliases:[
-      ...(ws.base.product_aliases||[]).filter(a=>a.alias_id!==result.entity.alias_id),result.entity]}
-     :['store.create','store.alias.upsert'].includes(plan.action)?{stores:[
-      ...ws.base.stores.filter(x=>x.chain_id!==result.entity.chain_id),result.entity]}
+    ...(['alias.upsert','alias.link'].includes(plan.action)?{receipt_name_mappings:[
+      ...(ws.base.receipt_name_mappings||[]).filter(a=>a.receipt_name_id!==result.entity.receipt_name_id),result.entity]}
+     :['store.create','store.alias.upsert'].includes(plan.action)?{retail_chains:[
+      ...ws.base.retail_chains.filter(x=>x.chain_id!==result.entity.chain_id),result.entity]}
      :plan.action==='record.create'?{
        records:[...(ws.base.records||[]),result.record],
        record_items:[...(ws.base.record_items||[]),...result.items],
-       product_aliases:[...(ws.base.product_aliases||[]),...(result.aliases||[])]}
+       receipt_name_mappings:[...(ws.base.receipt_name_mappings||[]),...(result.aliases||[])]}
      :plan.action==='record.update'?{
        records:[...(ws.base.records||[]).filter(r=>r.record_id!==result.record.record_id),result.record],
        record_items:[...(ws.base.record_items||[]).filter(i=>i.record_id!==result.record.record_id),...result.items],
-       product_aliases:[...(ws.base.product_aliases||[]),...(result.aliases||[])]}
+       receipt_name_mappings:[...(ws.base.receipt_name_mappings||[]),...(result.aliases||[])]}
      :plan.action==='record.item.link'?{record_items:[
        ...(ws.base.record_items||[]).filter(i=>i.record_item_id!==result.entity.record_item_id),
        result.entity]}
@@ -1183,8 +1183,8 @@
        record_items:(ws.base.record_items||[]).filter(i=>i.record_id!==result.record.record_id)}
      :productAction?{products:[
       ...ws.base.products.filter(p=>!ids.has(p.product_id)),...entities]}
-     :{item_groups:[
-      ...ws.base.item_groups.filter(i=>!ids.has(i.item_group_id)),...entities]}),
+     :{household_items:[
+      ...ws.base.household_items.filter(i=>!ids.has(i.household_item_id)),...entities]}),
     sequence_no:Math.max(Number(ws.base.sequence_no),Number(result.sequence_no))};
    ws.queue.shift();
    if(op.kind==='record-create'||op.kind==='record-update'){
@@ -1204,10 +1204,10 @@
    }
    if(op.kind==='create'){
     for(const rest of ws.queue){
-     if(rest.targetId===op.clientId)rest.targetId=result.entity.item_group_id;
-     if(rest.groupId===op.clientId)rest.groupId=result.entity.item_group_id;
-     if(rest.kind==='reorder')rest.item_group_ids=rest.item_group_ids.map(id=>
-      id===op.clientId?result.entity.item_group_id:id);
+     if(rest.targetId===op.clientId)rest.targetId=result.entity.household_item_id;
+     if(rest.groupId===op.clientId)rest.groupId=result.entity.household_item_id;
+     if(rest.kind==='reorder')rest.household_item_ids=rest.household_item_ids.map(id=>
+      id===op.clientId?result.entity.household_item_id:id);
     }
    }
    if(op.kind==='store-create'){
@@ -1264,8 +1264,8 @@
    '対象商品：'+(front.name||blocked.productId||''),
    '操作ID：'+front.id];
   (front.items||[]).forEach((line,i)=>lines.push(
-   (i+1)+'. '+(line.confirmed_name||line.raw_name||'名称未設定')+
-   '／数量 '+line.quantity+'／税込金額 '+line.amount_tax_included+
+   (i+1)+'. '+(line.non_ocr_name||line.raw_name||'名称未設定')+
+   '／数量 '+line.quantity+'／税込金額 '+line.line_total_tax_included+
    '円／商品ID '+(ids[i]||'なし')));
   if(front.alias)lines.push('読み取り名：'+front.alias);
   lines.push('未反映の操作：'+workspace.queue.length+'件');
@@ -1517,7 +1517,7 @@
   if(!op||blocked?.id!==op.id||blocked.reason!=='RECORD_CONFLICT'||
      !['record-update','record-delete'].includes(op.kind))return null;
   const original=workspace.base?.records.find(r=>r.record_id===op.targetId);
-  const store=workspace.base?.stores.find(s=>s.chain_id===op.chainId);
+  const store=workspace.base?.retail_chains.find(s=>s.chain_id===op.chainId);
   const kind=op.kind==='record-update'?'edit':'delete';
   const lines=[
    'くらしストック｜他の端末と競合した未反映の記録',
@@ -1530,10 +1530,10 @@
   if(kind==='edit'){
    lines.push('明細（この端末に保存されていた内容）：');
    (op.items||[]).forEach((line,i)=>lines.push(
-    String(i+1)+'. '+(line.confirmed_name||line.raw_name||'明細名なし')+
-    '／数量 '+line.quantity+'／税込明細合計 '+line.amount_tax_included+'円'+
+    String(i+1)+'. '+(line.non_ocr_name||line.raw_name||'明細名なし')+
+    '／数量 '+line.quantity+'／税込明細合計 '+line.line_total_tax_included+'円'+
     (line.product_id?'／商品ID '+line.product_id:'')+
-    (line.suggested_product_name?'／商品名候補 '+line.suggested_product_name:'')
+    (line.product_name_candidate?'／商品名候補 '+line.product_name_candidate:'')
    ));
   }
   return {kind,recordId:op.targetId,text:lines.join('\n')};
@@ -1568,11 +1568,11 @@
   if(!workspace.queue.length)return null;
   const snap=project();
   const itemLabel=id=>{
-   const item=snap?.item_groups.find(x=>x.item_group_id===id);
+   const item=snap?.household_items.find(x=>x.household_item_id===id);
    return item?(item.name+(item.sub_name?'／'+item.sub_name:'')):id||'未設定';
   };
   const productLabel=id=>snap?.products.find(x=>x.product_id===id)?.name||id||'紐付けなし';
-  const storeLabel=id=>snap?.stores.find(x=>x.chain_id===id)?.canonical_name||id||'不明';
+  const storeLabel=id=>snap?.retail_chains.find(x=>x.chain_id===id)?.canonical_name||id||'不明';
   const lines=[];
   workspace.queue.forEach((op,i)=>{
    let title='',detail=[];
@@ -1582,7 +1582,7 @@
     case 'edit':title='日用品の編集：'+target+' → '+op.name+(op.subName?'／'+op.subName:'');break;
     case 'toggle':case 'set-stock':title='在庫変更：'+target+' → '+(op.stock?'あり':'なし');break;
     case 'hide':title='日用品の'+(op.hidden?'非表示':'再表示')+'：'+target;break;
-    case 'reorder':title='日用品の並び替え';detail=(op.item_group_ids||[]).map(itemLabel);break;
+    case 'reorder':title='日用品の並び替え';detail=(op.household_item_ids||[]).map(itemLabel);break;
     case 'product-create':title='商品の追加：'+op.name;detail=[
      '紐付け先：'+itemLabel(op.groupId),
      '内容量：'+(op.quantity==null?'未設定':op.quantity+(op.unit||''))];break;
@@ -1594,7 +1594,7 @@
     case 'store-alias':title='店舗名の追加：'+storeLabel(op.chainId)+'／'+op.alias;break;
     case 'alias-create':title='読み取り名の追加：'+op.alias;
      detail=['店舗：'+storeLabel(op.chainId),'商品：'+productLabel(op.productId)];break;
-    case 'alias-link':title='読み取り名の紐付け変更：'+(snap?.product_aliases.find(x=>x.alias_id===op.aliasId)?.ocr_name||op.aliasId);
+    case 'alias-link':title='読み取り名の紐付け変更：'+(snap?.receipt_name_mappings.find(x=>x.receipt_name_id===op.receiptNameId)?.ocr_name||op.receiptNameId);
      detail=['商品：'+productLabel(op.productId)];break;
     case 'record-create':case 'record-update':case 'record-delete':{
      const r=workspace.base?.records.find(x=>x.record_id===(op.targetId||op.clientId))||
@@ -1604,9 +1604,9 @@
       '：'+(op.date||r?.record_date||'日付不明')+'／'+storeLabel(op.chainId||r?.chain_id);
      const rows=op.items||((op.kind==='record-delete')?
       (workspace.base?.record_items||[]).filter(x=>x.record_id===op.targetId):[]);
-     detail=rows.map(line=>(line.confirmed_name||line.raw_name||line.suggested_product_name||
-       snap?.product_aliases.find(a=>a.alias_id===line.alias_id)?.ocr_name||'商品名なし')+
-      '／'+(line.quantity??'?')+'点／'+(line.amount_tax_included??'?')+'円');
+     detail=rows.map(line=>(line.non_ocr_name||line.raw_name||line.product_name_candidate||
+       snap?.receipt_name_mappings.find(a=>a.receipt_name_id===line.receipt_name_id)?.ocr_name||'商品名なし')+
+      '／'+(line.quantity??'?')+'点／'+(line.line_total_tax_included??'?')+'円');
      if(!detail.length)detail=['明細なし'];break;
     }
     case 'legacy':title='以前の保存操作：'+(op.request?.action||'種類不明');break;
@@ -1660,16 +1660,16 @@
   return flush();
  }
  function itemsOf(data){
-  return (data?.item_groups||[]).filter(x=>!x.deleted_at).map(x=>({
-   id:x.item_group_id,name:x.name,subName:x.sub_name||'',category:Number(x.category_id),
+  return (data?.household_items||[]).filter(x=>!x.deleted_at).map(x=>({
+   id:x.household_item_id,name:x.name,subName:x.sub_name||'',category:Number(x.category_id),
    inStock:toBoolean(x.in_stock),hidden:toBoolean(x.is_hidden),
    order:Number(x.sort_order)||0,version:Number(x.version)
   }));
  }
  function catalogueOf(data){
-  const productAliases=(data?.product_aliases||[]).map(a=>({
-   aliasId:a.alias_id,productId:a.product_id||'',chainId:a.chain_id,
-   normalizedAlias:a.normalized_alias,ocrName:a.ocr_name||a.normalized_alias,
+  const receiptNameMappings=(data?.receipt_name_mappings||[]).map(a=>({
+   receiptNameId:a.receipt_name_id,productId:a.product_id||'',chainId:a.chain_id,
+   normalizedReceiptName:a.normalized_receipt_name,ocrName:a.ocr_name||a.normalized_receipt_name,
    version:Number(a.version)
   }));
   const aliases=value=>{
@@ -1679,13 +1679,13 @@
    catch(_){}
    return String(value||'').split(/[,、\n]/).map(x=>x.trim()).filter(Boolean);
   };
-  return {productAliases,products:(data?.products||[]).map(p=>({
+  return {receiptNameMappings,products:(data?.products||[]).map(p=>({
    id:p.product_id,name:p.name,packageQuantity:p.package_quantity===''?null:p.package_quantity,
-   packageUnit:p.package_unit||null,itemGroupId:p.item_group_id||null,
-   itemGroupOrder:p.item_group_order===''?null:Number(p.item_group_order),
-   version:Number(p.version),aliases:productAliases.filter(a=>a.productId===p.product_id)
-    .map(a=>a.normalizedAlias)
-  })),chains:(data?.stores||[]).map(s=>({id:s.chain_id,name:s.canonical_name,
+   packageUnit:p.package_unit||null,householdItemId:p.household_item_id||null,
+   householdItemOrder:p.household_item_order===''?null:Number(p.household_item_order),
+   version:Number(p.version),aliases:receiptNameMappings.filter(a=>a.productId===p.product_id)
+    .map(a=>a.normalizedReceiptName)
+  })),chains:(data?.retail_chains||[]).map(s=>({id:s.chain_id,name:s.canonical_name,
    aliases:aliases(s.aliases)})),branches:[]};
  }
  const kick=()=>{

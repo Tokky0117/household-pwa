@@ -127,7 +127,7 @@ function fromOcrItem(item,{rowId,taxBasis}={}){
     item.productId:findProduct(item.ocrRawName||'',next.chainId);
    const proposedLine=proposed.get(rowId);
    // OCR correction and product registration suggestions are distinct draft inputs.
-   // Only productSuggestion can become saved suggested_product_name in app.js.
+   // Only productSuggestion can become saved product_name_candidate in app.js.
    item.nameCandidate=proposedLine.nameCandidate||'';
    item.productSuggestion=proposedLine.productSuggestion||null;
    if(productId){
