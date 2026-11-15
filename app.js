@@ -184,6 +184,33 @@ const scanAiProductSavingRows=new Set();
 let storePickerTarget=null,storePickerQuery='',storePickerNewMode=false;
 let recordProductItemId=null,recordProductMode='select',recordProductQuery='',recordProductSaving=false,recordBulkSaving=false;
 let recordJustSavedId=null;
+const scanUndoStack=[];
+let scanFocusUndoSnapshot=null;
+const scanUndoSnapshot=()=>scanDraft?{
+ draft:JSON.parse(JSON.stringify(scanDraft)),
+ changes:JSON.parse(JSON.stringify(scanAiChanges)),
+ assist:scanAssistMessage,status:scanStatus,newStoreMode:scanNewStoreMode
+}:null;
+function scanUndoRefreshButton(){
+ const button=document.querySelector('[data-act="scanUndo"]');
+ if(button)button.disabled=!scanUndoStack.length;
+}
+function rememberScanUndo(snapshot=scanUndoSnapshot()){
+ if(!snapshot||!scanDraft||JSON.stringify(snapshot.draft)===JSON.stringify(scanDraft)&&
+  JSON.stringify(snapshot.changes)===JSON.stringify(scanAiChanges))return;
+ scanUndoStack.push(snapshot);
+ if(scanUndoStack.length>20)scanUndoStack.shift();
+ scanUndoRefreshButton();
+}
+function undoLastScanChange(){
+ if(!scanUndoStack.length||!scanDraft)return;
+ const previous=scanUndoStack.pop();
+ scanDraft=previous.draft;scanAiChanges=previous.changes;
+ scanAssistMessage=previous.assist;scanStatus=previous.status;
+ scanNewStoreMode=previous.newStoreMode;
+ scanFocusUndoSnapshot=null;
+ saveScanDraft();page='recordScan';render();
+}
 function saveScanDraft(){
  if(!liveMode||!window.KurashiLive?.saveReceiptDraft)return;
  const snapshot=scanDraft?JSON.parse(JSON.stringify(scanDraft)):null;
@@ -233,6 +260,7 @@ function normalizedOcrItemName(item){
 }
 function resetScan({keepDraft=false}={}){
  scanToken++;closeScanViewer();clearScanThumbnails();scanPhotos=[];scanIndex=0;scanBusy=false;scanStatus='';scanAiChanges=[];scanAssistMessage='';scanError='';scanReadFailed=false;
+ scanUndoStack.length=0;scanFocusUndoSnapshot=null;
  if(!keepDraft){scanDraft=null;scanNewStoreMode=false;scanReturnScrollY=null;return saveScanDraft();}
  return Promise.resolve();
 }
@@ -595,6 +623,8 @@ function chooseStoreFromPicker(chainId,chainName=''){
  const form=document.getElementById('scanConfirmForm');
  const chain=form?.elements.namedItem('chain'),name=form?.elements.namedItem('chain_name');
  if(!chain||!name)return;
+ syncScanReview();
+ const undo=scanUndoSnapshot();
  chain.value=chainId;name.value=chainId==='__new__'?chainName:'';
  const display=chainId==='__new__'?chainName:catalogue.chains.find(c=>c.id===chainId)?.name||'';
  const field=chain.closest('.formfield');
@@ -605,6 +635,7 @@ function chooseStoreFromPicker(chainId,chainName=''){
  closeStorePicker();
  if(target==='scan')chain.dispatchEvent(new Event('change',{bubbles:true}));
  else field?.classList.remove('ui-field-error');
+ rememberScanUndo(undo);
 }
 function receiptChatGptView(){
  return head('生成AIによる確認','読み取り名の確認・写真からの再解析',true)+
@@ -1003,6 +1034,7 @@ function scanFormView(){
  const reviewModel=window.KurashiReceiptReview.buildReviewModel(scanDraft);
  const unmatchedCount=isShelf?scanDraft.items.filter(x=>!scanResolvedProductId(x)).length:0;
  return `<section class="scan-review-intro" aria-label="確認方法"><h2>読み取り結果の確認</h2><p class="hint">店舗・購入日・明細を確認し、間違いがあれば修正して保存してください。</p></section><form id="scanConfirmForm" class="scan-review" novalidate>
+  <div class="scan-undo-action">${UI.button({label:'元に戻す',variant:'tertiary',action:'scanUndo',disabled:!scanUndoStack.length})}</div>
   <section class="scan-receipt-meta" aria-label="${isShelf?'値札情報':'購入情報'}">
   ${UI.sectionHeading({title:isShelf?'値札情報':'購入情報'})}
   <div class="scan-store-picker">
@@ -2767,8 +2799,9 @@ if(action==='confirmProductMove'&&p){
 }
 if(action==='confirmChatGptRebuild'&&p?.rebuild){
  try{
-  const previous=scanDraft;
+  const previous=scanDraft,undo=scanUndoSnapshot();
   scanDraft=makeChatGptReceiptRebuildDraft(scanDraft,p.rebuild);
+  rememberScanUndo(undo);
   scanAiChanges=scanAiDiff(previous,scanDraft);
   scanNewStoreMode=!scanDraft.chainId&&!!scanDraft.chainName;
   scanAutolinkUnmatched();
@@ -2961,8 +2994,9 @@ if(action==='chatGptImport'){
     pending:{rebuild:response}};
    renderDialogOnly();return;
   }
-  const previous=scanDraft;
+  const previous=scanDraft,undo=scanUndoSnapshot();
   scanDraft=applyChatGptOcrAssistance(scanDraft,response);
+  rememberScanUndo(undo);
   scanAiChanges=scanAiDiff(previous,scanDraft);
   saveScanDraft();
   scanAssistMessage=scanAiChanges.length?'生成AIの解析結果を取り込みました。':'解析結果に変更はありませんでした。';
@@ -3048,8 +3082,9 @@ if(action==='scanAiLinkProduct'){
  const product=catalogue.products.find(p=>p.id===el.dataset.productId);
  if(!candidate||!product||
    ![...candidate.exact,...candidate.similar].some(p=>p.id===product.id))return;
+ const undo=scanUndoSnapshot();
  item.productId=product.id;item.manuallyLinked=true;item.autoLinked=false;
- item.productSuggestion=null;
+ item.productSuggestion=null;rememberScanUndo(undo);
  learnConfirmedReceiptLine(item,scanDraft.chainId);
  saveScanDraft();render();return;
 }
@@ -3072,8 +3107,9 @@ if(action==='scanAiCreateProduct'){
 if(action==='scanUnlinkProduct'){
  if(!scanDraft||page!=='scanExistingProduct')return;
  const item=scanDraft.items[scanProductRow];if(!item)return;
+ const undo=scanUndoSnapshot();
  item.productId='';item.manuallyLinked=true;item.autoLinked=false;
- saveScanDraft();page='recordScan';scanExistingQuery='';scanProductRow=null;render();return;
+ rememberScanUndo(undo);saveScanDraft();page='recordScan';scanExistingQuery='';scanProductRow=null;render();return;
 }
 if(action==='scanExistingToNew'){
  if(!scanDraft)return;
@@ -3093,8 +3129,9 @@ if(action==='scanChooseSuggested'){
  const product=catalogue.products.find(p=>p.id===el.dataset.productId);
  if(!product||!item||!scanSimilarProducts(item.name,scanDraft.chainId)
    .some(p=>p.id===product.id))return;
+ const undo=scanUndoSnapshot();
  item.productId=product.id;item.manuallyLinked=true;item.autoLinked=false;
- learnConfirmedReceiptLine(item,scanDraft.chainId);
+ rememberScanUndo(undo);learnConfirmedReceiptLine(item,scanDraft.chainId);
  saveScanDraft();page='recordScan';render();return;
 }
 if(action==='scanChooseExisting'){
@@ -3102,8 +3139,10 @@ if(action==='scanChooseExisting'){
  const product=catalogue.products.find(p=>p.id===el.dataset.productId);
  if(!product)return;
  if(scanDraft.items[scanProductRow]){
+  const undo=scanUndoSnapshot();
   scanDraft.items[scanProductRow].productId=product.id;
   scanDraft.items[scanProductRow].manuallyLinked=true;scanDraft.items[scanProductRow].autoLinked=false;
+  rememberScanUndo(undo);
   learnConfirmedReceiptLine(scanDraft.items[scanProductRow],scanDraft.chainId);
   saveScanDraft();page='recordScan';scanExistingQuery='';render();
  }
@@ -3131,13 +3170,17 @@ if(action==='scanRemovePhoto'){
  render();return;
 }
 if(action==='scanRemoveItem'&&scanDraft){
- syncScanReview();scanDraft.items.splice(Number(el.dataset.scanRow),1);saveScanDraft();render();return;
+ syncScanReview();const undo=scanUndoSnapshot();
+ scanDraft.items.splice(Number(el.dataset.scanRow),1);
+ rememberScanUndo(undo);saveScanDraft();render();return;
 }
 if(action==='scanSaveDraft'){void leaveScanAsDraft();return}
 if(action==='scanAddItem'&&scanDraft){
- syncScanReview();scanDraft.items.push({name:'',inputOrigin:'manual',quantity:1,quantityUncertain:false,amount:'',productId:'',issues:[]});
- saveScanDraft();render();return;
+ syncScanReview();const undo=scanUndoSnapshot();
+ scanDraft.items.push({name:'',inputOrigin:'manual',quantity:1,quantityUncertain:false,amount:'',productId:'',issues:[]});
+ rememberScanUndo(undo);saveScanDraft();render();return;
 }
+if(action==='scanUndo'&&page==='recordScan'){undoLastScanChange();return;}
 if(action==='newReceipt'||action==='newShelf'){beginRecordEntry(action==='newReceipt'?'receipt':'shelf');return}
 if(action==='prevMonth'||action==='nextMonth'){
  const [year,month]=budgetMonth.split('-').map(Number);const d=new Date(year,month-1+(action==='prevMonth'?-1:1),1);
@@ -3582,6 +3625,10 @@ function refreshScanTotalUI(){
    '<div class="scan-compare-warning-head">レシート記載点数を確認</div>';
  }
 }
+app.addEventListener('focusin',e=>{
+ if(page==='recordScan'&&e.target.closest('#scanConfirmForm'))
+  scanFocusUndoSnapshot=scanUndoSnapshot();
+});
 app.addEventListener('input',e=>{
  if(e.target.id==='store-picker-new-name'&&storePickerNewMode){
   const issue=scanStoreNameIssue(e.target.value);
@@ -3614,7 +3661,10 @@ app.addEventListener('input',e=>{
 app.addEventListener('change',e=>{
  if(e.target.matches('input[type="date"][name="date"]'))refreshReceiptDateDisplay(e.target);
  if(page==='recordScan'&&e.target.closest('#scanConfirmForm')){
-  syncScanReview();saveScanDraft();refreshScanTotalUI();
+  syncScanReview();
+  if(scanFocusUndoSnapshot)rememberScanUndo(scanFocusUndoSnapshot);
+  scanFocusUndoSnapshot=null;
+  saveScanDraft();refreshScanTotalUI();
  }
 });
 if(liveMode){
