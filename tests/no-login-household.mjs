@@ -299,8 +299,19 @@ clickStock(a);
 await waitFor(()=>pill(a)==='なし'&&a.window.KurashiLive.state().queued===1,
  'first tap persists, updates visible stock');
 clickStock(a);
-await waitFor(()=>pill(a)==='あり'&&a.window.KurashiLive.state().queued===2,
- 'second tap accepted before previous GAS write');
+await waitFor(()=>pill(a)==='あり'&&a.window.KurashiLive.state().queued===0,
+ 'second tap cancels the unsent stock change');
+// Multiple rapid taps should retain only the final durable stock state.
+for(let i=0;i<5;i++){
+ clickStock(a);
+ await waitFor(()=>pill(a)===(i%2===0?'なし':'あり'),
+  'rapid stock tap '+(i+1)+' updates immediately');
+}
+assert.equal(a.window.KurashiLive.state().queued,1,
+ 'five rapid taps create one pending state, not five network requests');
+clickStock(a);
+await waitFor(()=>pill(a)==='あり'&&a.window.KurashiLive.state().queued===0,
+ 'last tap restores original stock without any server operation');
 // An exposed Notes-style swipe card is dimmed and must not toggle stock.
 a.window.eval('setOpenSwipe('+JSON.stringify(id)+')');
 const exposedRow=a.window.document.querySelector('[data-item-id="'+id+'"]');
@@ -359,17 +370,17 @@ editAction.dispatchEvent(new a.window.MouseEvent('click',{bubbles:true,cancelabl
 assert.ok(a.window.document.querySelector('#itemForm')?.textContent.includes('変更を保存'),
  'the next physical tap immediately opens the real item editing form');
 a.window.close();online=true;
-// Fresh PWA process, same IndexedDB database. It must drain both commands.
+// Fresh PWA process, same IndexedDB database: cancelled stock taps remain absent.
 let b=appSession();
-await waitFor(()=>b.window.KurashiLive.state().queued===0&&getVersion()===4,
- 'restarted PWA replays both operations');
-assert.equal(getStock(),true,'two queued toggles round-trip back to in stock');
-assert.equal(pill(b),'あり','DOM reflects both queued toggles');
+await waitFor(()=>b.window.KurashiLive.state().queued===0&&getVersion()===2,
+ 'restarted PWA retains confirmed stock without redundant operations');
+assert.equal(getStock(),true,'rapid toggles preserve the final in-stock state');
+assert.equal(pill(b),'あり','DOM reflects the final stock state');
 const history=temp.db.processed_operations.length;
 // Simulate server commit with the HTTP response lost, then app restart.
 loseOneWriteResponse=true;
 clickStock(b);
-await waitFor(()=>getVersion()===5&&b.window.KurashiLive.state().queued===1,
+await waitFor(()=>getVersion()===3&&b.window.KurashiLive.state().queued===1,
  'server committed but no response received');
 const afterCommit=temp.db.processed_operations.length;
 assert.equal(afterCommit,history+1);
@@ -377,7 +388,7 @@ b.window.close();
 let c=appSession();
 await waitFor(()=>c.window.KurashiLive.state().queued===0&&pill(c)==='なし',
  'same operation ID safely replayed and displayed on restart');
-assert.equal(getVersion(),5,'replay did not toggle again');
+assert.equal(getVersion(),3,'replay did not toggle again');
 assert.equal(temp.db.processed_operations.length,afterCommit,
  'GAS did not create an extra processed operation');
 assert.equal(pill(c),'なし');
@@ -440,13 +451,13 @@ assert.ok(hidden&&hidden.is_hidden===true&&Number(hidden.version)===3,
 // *desired* stock value, rather than applying another blind inversion.
 await waitFor(()=>!d.window.KurashiLive.state().busy,'finished post-queue refresh');
 const other=temp.call('item.update',{
- household_item_id:id,version:5,in_stock:true
+ household_item_id:id,version:3,in_stock:true
 },'op-other-device-abcdefghijklmnop');
 assert.equal(other.ok,true,'spouse simulated update');
-assert.equal(Number(other.data.entity.version),6);
+assert.equal(Number(other.data.entity.version),4);
 const accepted=await d.window.KurashiLive.toggleStock(id);
 assert.equal(accepted.in_stock,true,'optimistic value expresses the tapped intention');
-await waitFor(()=>temp.call('bootstrap').data.household_items.find(x=>x.household_item_id===id).version===7 &&
+await waitFor(()=>temp.call('bootstrap').data.household_items.find(x=>x.household_item_id===id).version===5 &&
  d.window.KurashiLive.state().queued===0,
  'VERSION_CONFLICT triggers rebase and desired state is preserved');
 assert.equal(temp.call('bootstrap').data.household_items.find(x=>x.household_item_id===id).in_stock,true);
