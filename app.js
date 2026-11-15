@@ -2554,8 +2554,17 @@ app.addEventListener('submit',e=>{e.preventDefault();const form=e.target;const d
     void window.KurashiLive.learnAliases({chain_id:learnedChain,items:aliasLines})
      .catch(e=>console.warn('別名学習を保存できませんでした',e));
    const savedId=record?.record_id||scanDraft?.recordId;
-   // Exact OCR/master matches were already included atomically in record.create.
-   // No second asynchronous record.item.link pass is needed.
+   // Persist any already-known match in record.create. A previously missing
+   // alias can become available during synchronization, so do a second exact-only
+   // lookup for still-unmatched lines after local commit (never fuzzy/AI matching).
+   if(savedId&&!scanDraft.recordId&&values.record_type==='receipt'){
+    const rows=allPreviewItems().filter(x=>x.record_id===savedId&&!x.deleted_at&&!x.product_id);
+    for(const line of rows){
+     const matched=scanMatchProduct(aliasNameFor(line),learnedChain);
+     if(matched)void window.KurashiLive.linkRecordItem(line.record_item_id,matched)
+      .catch(err=>console.warn('保存後の商品照合を保留しました',err));
+    }
+   }
    const cleared=resetScan();
    void Promise.resolve(cleared).catch(err=>console.warn('下書きを破棄できませんでした',err)).finally(()=>{
     recordDetailId=savedId||null;recordDetailOrigin='list';
