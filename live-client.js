@@ -1558,8 +1558,7 @@
    '操作：'+(kind==='edit'?'レシートの編集':'レシートの削除'),
    'レシートID：'+op.targetId,
    '購入日：'+(op.date||original?.record_date||''),
-   '店舗：'+(store?.canonical_name||op.chainId||''),
-   '支店：'+(op.branchName||'')
+   '店舗：'+(store?.canonical_name||op.chainId||'')
   ];
   if(kind==='edit'){
    lines.push('明細（この端末に保存されていた内容）：');
@@ -1720,7 +1719,7 @@
    version:Number(p.version),aliases:receiptNameMappings.filter(a=>a.productId===p.product_id)
     .map(a=>a.normalizedReceiptName)
   })),chains:(data?.retail_chains||[]).map(s=>({id:s.chain_id,name:s.canonical_name,
-   aliases:aliases(s.aliases)})),branches:[]};
+   aliases:aliases(s.aliases)}))};
  }
  const kick=()=>{
   boot().then(()=>{
