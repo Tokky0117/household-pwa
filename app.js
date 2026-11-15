@@ -2462,9 +2462,13 @@ app.addEventListener('submit',e=>{e.preventDefault();const form=e.target;const d
  if(form.id==='scanConfirmForm'){
   clearFormSaveFeedback(form);
   if(!liveMode){formSaveFeedback(form,'保存機能を利用できません。接続状態を確認してください。');return;}
-  if(!scanDraft||!scanDraft.items.length){formSaveFeedback(form,'保存する明細がありません。');return;}
+  if(!scanDraft||!scanDraft.items.some(item=>!item.pendingDeletion)){
+    formSaveFeedback(form,'保存する明細がありません。');return;
+   }
   refreshScanTotalUI();
-  const lines=scanDraft.items.map((item,i)=>{
+  const activeItems=scanDraft.items.map((item,i)=>({item,i}))
+    .filter(x=>!x.item.pendingDeletion);
+   const lines=activeItems.map(({item,i})=>{
    const verified=['manual','photo'].includes(item.inputOrigin)||item.ocrRawName===undefined;
    const confirmedName=verified?String(d.get('name-'+i)||'').trim():'';
    const candidate=item.productSuggestion;
@@ -2484,19 +2488,19 @@ app.addEventListener('submit',e=>{e.preventDefault();const form=e.target;const d
     amount_tax_included:String(d.get('amount-'+i)||'').trim()===''?NaN:Number(d.get('amount-'+i)),
    };
   });
-  const codeOnlyRow=scanDraft.items.findIndex(isUnconfirmedBarcodeLine);
+  const codeOnlyRow=scanDraft.items.findIndex(item=>!item.pendingDeletion&&isUnconfirmedBarcodeLine(item));
   if(codeOnlyRow>=0){
    formSaveFeedback(form,'商品コードだけの明細を確認するか、不要な明細を削除してください。',{row:codeOnlyRow});return;
   }
-  const badRow=lines.findIndex((x,i)=>(!x.raw_name&&!x.confirmed_name&&scanDraft.items[i]?.inputOrigin!=='manual')||
+  const badRow=lines.findIndex((x,i)=>(!x.raw_name&&!x.confirmed_name&&activeItems[i].item.inputOrigin!=='manual')||
      !Number.isSafeInteger(x.quantity)||x.quantity<1||
      !Number.isSafeInteger(x.amount_tax_included)||x.amount_tax_included<0);
   if(badRow>=0){
-   const x=lines[badRow],item=scanDraft.items[badRow];
+   const x=lines[badRow],item=activeItems[badRow].item;
    const badName=!x.raw_name&&!x.confirmed_name&&item.inputOrigin!=='manual';
    const badQty=!Number.isSafeInteger(x.quantity)||x.quantity<1;
    formSaveFeedback(form,'赤い項目を修正してください。',{
-    fieldName:(badName?'name-':badQty?'qty-':'amount-')+badRow
+    fieldName:(badName?'name-':badQty?'qty-':'amount-')+activeItems[badRow].i
    });return;
   }
   const chain_id=String(d.get('chain')||'');
@@ -2525,8 +2529,7 @@ app.addEventListener('submit',e=>{e.preventDefault();const form=e.target;const d
     }).catch(err=>console.warn('購入店舗の別名を保存できません',err));
    // Product-specific aliases are synchronized through the preexisting queue.
    // Include the exact original OCR name after explicit confirmation.
-   const aliasLines=lines.filter((_,i)=>!['manual','photo'].includes(scanDraft.items[i].inputOrigin)&&!isUnconfirmedBarcodeLine(scanDraft.items[i])&&
-    scanDraft.items[i].ocrRawName!==undefined);
+   const aliasLines=lines.filter(line=>!!line.raw_name);
    if(aliasLines.length&&window.KurashiLive.learnAliases&&learnedChain&&learnedChain!=='__new__')
     void window.KurashiLive.learnAliases({chain_id:learnedChain,items:aliasLines})
      .catch(e=>console.warn('別名学習を保存できませんでした',e));
@@ -3557,11 +3560,12 @@ app.addEventListener('touchcancel',e=>{
 function refreshScanTotalUI(){
  const form=document.getElementById('scanConfirmForm');if(!form||!scanDraft)return;
  const d=new FormData(form);
- const rows=scanDraft.items.map((item,i)=>({
-  quantity:scanDraft.recordType==='shelf'?'1':String(d.get('qty-'+i)||'').trim(),amount:String(d.get('amount-'+i)||'').trim(),
-  quantityUncertain:!!item.quantityUncertain,
-  taxExcludedAmount:item.taxExcludedAmount,allocatedTax:item.allocatedTax
- }));
+ const rows=scanDraft.items.map((item,i)=>({item,i}))
+  .filter(x=>!x.item.pendingDeletion).map(({item,i})=>({
+   quantity:scanDraft.recordType==='shelf'?'1':String(d.get('qty-'+i)||'').trim(),amount:String(d.get('amount-'+i)||'').trim(),
+   quantityUncertain:!!item.quantityUncertain,
+   taxExcludedAmount:item.taxExcludedAmount,allocatedTax:item.allocatedTax
+  }));
  const result=window.KurashiReceiptReview.evaluateDraft(scanDraft,rows);
  function mark(name,status,message){
   const input=form.elements.namedItem(name);if(!input)return;
@@ -3585,7 +3589,9 @@ function refreshScanTotalUI(){
  const dateOk=scanValidPurchaseDate(date);
  mark('date',dateOk?'':'error',dateOk?'':scanDraft.recordType==='shelf'?'値札確認日を入力してください。':'購入日を入力してください。');
  scanDraft.items.forEach((item,i)=>{
-  const q=rows[i].quantity,v=rows[i].amount;
+  if(item.pendingDeletion)return;
+  const q=scanDraft.recordType==='shelf'?'1':String(d.get('qty-'+i)||'').trim();
+  const v=String(d.get('amount-'+i)||'').trim();
   const validQty=/^\d+$/.test(q)&&Number.isSafeInteger(Number(q))&&Number(q)>0;
   const validAmount=/^\d+$/.test(v)&&Number.isSafeInteger(Number(v))&&Number(v)>=0;
   mark('qty-'+i,!validQty?'error':item.quantityUncertain?'warning':'',
