@@ -781,9 +781,10 @@ ui.setScanAiChanges([{row:2,label:'数量',before:'2',after:'1'}]);
 const reviewedMatch=ui.receiptScanView();
 assert.ok(reviewedMatch.includes('登録商品と一致')&&reviewedMatch.includes('おいしい牛乳'),
  'An exact matched product is displayed on the OCR review before saving');
-const lineCards=reviewedMatch.split('class="panel scan-review-item"');
-assert.ok(!lineCards[1].includes('生成AIで変更')&&lineCards[2].includes('数量：2 → 1'),
- 'Only the affected item card displays the AI correction instead of a global list');
+const lineCards=reviewedMatch.split(/class="panel scan-review-item[^"]*"/);
+assert.ok(!lineCards[1].includes('scan-ai-updated')&&lineCards[2].includes('scan-ai-updated')&&
+ !reviewedMatch.includes('数量：2 → 1')&&!reviewedMatch.includes('生成AIで変更'),
+ 'Only the changed field is marked as AI-updated without verbose before/after text');
 ui.setScanAiChanges([]);
 ui.setScanDraft(rowOcr);
 assert.match(ocrReview,/data-ocr-row="0"/,'OCR name is plain text');
