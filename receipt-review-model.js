@@ -92,7 +92,7 @@ function fromOcrItem(item,{rowId,taxBasis}={}){
    quantityOrigin:item.quantitySource==='printed'?'ocr-printed':'ocr-candidate'
   };
  }
- function applyAssistance(draft,result,{findProduct,isUnconfirmedBarcodeLine}={}){
+ function applyAssistance(draft,result,{findProduct,findChain,isUnconfirmedBarcodeLine}={}){
   if(!draft||draft.source!=='ocr')throw Error('先に写真をOCRで読み取ってください');
   const rows=ocrRows(draft);
   if(!rows.length)throw Error('対応するOCR明細がありません');
@@ -109,6 +109,12 @@ function fromOcrItem(item,{rowId,taxBasis}={}){
   }
   const next={...draft,items:draft.items.map(x=>({...x})),
    matchedCount:0,unmatchedCount:0};
+  // Recognize only one already-registered chain; never create a store from AI.
+  const matchedStore=result.storeName&&findChain?.(result.storeName);
+  if(matchedStore&&!draft.storeManuallySelected){
+   next.chainId=matchedStore.id;
+   next.chainName='';
+  }
   for(const {i} of rows){
    const item=next.items[i],rowId=item.ocrRowId||'row-'+(i+1);
    if(!proposed.has(rowId))throw Error('OCR行IDが不足しています');
@@ -116,7 +122,8 @@ function fromOcrItem(item,{rowId,taxBasis}={}){
     item.productId='';item.autoLinked=false;item.nameCandidate='';
     next.unmatchedCount++;continue;
    }
-   const productId=item.productId||findProduct(item.ocrRawName||'',next.chainId);
+   const productId=item.manuallyLinked?item.productId:
+    findProduct(item.ocrRawName||'',next.chainId);
    const proposedLine=proposed.get(rowId);
    // OCR correction and product registration suggestions are distinct draft inputs.
    // Only productSuggestion can become saved suggested_product_name in app.js.
