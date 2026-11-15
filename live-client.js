@@ -763,19 +763,41 @@
   });
  }
  async function linkRecordItem(recordItemId,productId){
-  return enqueue(doc=>{
-   const snap=project(doc);
-   const resolvedItemId=doc.recordItemIdMap?.[recordItemId]||recordItemId;
-   const line=snap?.record_items.find(x=>x.record_item_id===resolvedItemId&&!x.deleted_at);
-   if(!line||!snap.records.some(r=>r.record_id===line.record_id&&!r.deleted_at))
-    throw Error('購入明細が見つかりません');
+  // One local transaction queues changes for all occurrences of the same
+  // printed OCR name on THIS receipt. Historical receipts are immutable.
+  await boot();if(!workspace.base)await load();
+  let touched=0;
+  await modify(doc=>{
+   const snap=project(doc),mapped=doc.recordItemIdMap?.[recordItemId]||recordItemId;
+   const line=snap?.record_items.find(x=>x.record_item_id===mapped&&!x.deleted_at);
+   const receipt=snap?.records.find(r=>r.record_id===line?.record_id&&!r.deleted_at);
+   if(!line||!receipt)throw Error('購入明細が見つかりません');
    const chosen=confirmedProductId(productId||null);
    if(chosen&&!snap.products.some(p=>p.product_id===chosen&&!p.deleted_at))
     throw Error('登録商品が見つかりません');
-   if(String(line.linked_product_id||'')===String(chosen||''))return null;
-   return {id:operationId(),kind:'record-item-link',targetId:resolvedItemId,
-    productId:chosen,retries:0};
+   const nameId=line.receipt_name_id&&!line.non_ocr_name?line.receipt_name_id:null;
+   const siblings=snap.record_items.filter(x=>!x.deleted_at&&x.record_id===line.record_id&&
+    (x.record_item_id===mapped||nameId&&x.receipt_name_id===nameId&&!x.non_ocr_name));
+   for(const item of siblings){
+    if(String(item.linked_product_id||'')===String(chosen||''))continue;
+    doc.queue.push({id:operationId(),kind:'record-item-link',
+     targetId:item.record_item_id,productId:chosen,retries:0});
+    touched++;
+   }
+   if(nameId){
+    const alias=snap.receipt_name_mappings.find(a=>a.receipt_name_id===nameId&&
+     a.chain_id===receipt.chain_id);
+    if(alias&&String(alias.auto_match_product_id||'')!==String(chosen||'')&&
+       !String(alias.receipt_name_id).startsWith('local-')){
+     doc.queue.push({id:operationId(),kind:'alias-link',receiptNameId:alias.receipt_name_id,
+      productId:chosen,version:Number(alias.version),retries:0});
+     touched++;
+    }
+   }
+   return doc;
   });
+  if(touched)void flush();
+  return touched>0;
  }
  // Never use an AI name as evidence for linking without a user's explicit
  // confirmation. This pure preflight is reused by the confirmation UI and queue.
