@@ -2871,6 +2871,27 @@ optionalUI.window.document.querySelector('#chatgpt-input').value=JSON.stringify(
  }]
 });
 await completeOcrImport(optionalUI);
+// Undo reverts draft operations without deleting anything from Sheets.
+let undoReview=optionalUI.window.document.querySelector('#scanConfirmForm');
+assert.equal(undoReview.querySelector('[data-act="scanUndo"]')?.disabled,true,
+ 'Undo is disabled until the user changes the review draft');
+undoReview.querySelector('[data-act="scanAddItem"]').click();
+assert.equal(optionalUI.window.document.querySelectorAll('.scan-review-item').length,2,
+ 'Adding a line is applied locally');
+optionalUI.window.document.querySelector('[data-act="scanUndo"]').click();
+undoReview=optionalUI.window.document.querySelector('#scanConfirmForm');
+assert.equal(undoReview.querySelectorAll('.scan-review-item').length,1,
+ 'Undo restores the draft before an added row');
+const editableQuantity=undoReview.querySelector('[name="qty-0"]');
+editableQuantity.dispatchEvent(new optionalUI.window.Event('focusin',{bubbles:true}));
+editableQuantity.value='2';
+editableQuantity.dispatchEvent(new optionalUI.window.Event('input',{bubbles:true}));
+editableQuantity.dispatchEvent(new optionalUI.window.Event('change',{bubbles:true}));
+assert.equal(undoReview.querySelector('[data-act="scanUndo"]')?.disabled,false,
+ 'Finishing an edit enables undo');
+undoReview.querySelector('[data-act="scanUndo"]').click();
+assert.equal(optionalUI.window.document.querySelector('[name="qty-0"]')?.value,'1',
+ 'Undo restores the previously entered quantity');
 // No stored photograph accompanies an imported/resumed OCR draft.
 assert.equal(optionalUI.window.document.querySelector('[data-act="scanOpenCurrentPhoto"]'),null,
  'An OCR draft without in-memory photos has no photo/reselection control');
@@ -2917,6 +2938,10 @@ assert.ok(optionalDetails.some(x=>!Object.hasOwn(x,'raw_name')&&x.confirmed_name
  'the nameless line is retained as a purchase amount, not a price-comparable registered product');
 await waitFor(()=>!!optionalUI.window.document.querySelector('.detail-record-line'),
  'saved unnamed receipt opens its detail immediately');
+assert.match(optionalUI.window.document.body.textContent,/レシートを保存しました/,
+ 'First saved-detail visit shows a clear save confirmation');
+assert.equal(optionalUI.window.document.querySelectorAll('[data-act="recordProductNew"]').length,0,
+ 'Saved receipt uses only one action per line for product selection or creation');
 assert.match(optionalUI.window.document.body.textContent,/明細名なし/,
  'receipt detail displays a neutral name fallback');
 await waitFor(()=>optionalUI.window.KurashiLive.state().queued===0,
