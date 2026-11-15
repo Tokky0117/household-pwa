@@ -3258,7 +3258,7 @@ assert.ok(orphanActual.record_items.some(line=>
  line.line_total_tax_included===89),'orphaned receipt is saved without losing amounts');
 assert.ok(orphanActual.receipt_name_mappings.some(a=>
  a.ocr_name==='復旧_孤立OCR名'&&
- a.auto_match_product_id===orphanExisting.data.entity.auto_match_product_id),
+ a.auto_match_product_id===orphanExisting.data.entity.product_id),
  'orphaned OCR link is also recovered');
 const newPhone=appSession(orphanFactory);
 await waitFor(()=>newPhone.window.KurashiLive.state().loaded,
