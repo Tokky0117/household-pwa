@@ -320,8 +320,8 @@ function kurashiSaveItem_(user,action,payload,operationId) {
   const keys=Object.keys(payload).sort().join(',');
   if (isCreate && !['category_id,name','category_id,name,sub_name'].includes(keys))
     kurashiFail_('BAD_REQUEST','登録する日用品を確認してください');
-  if (!isCreate && !['in_stock,household_item_id,version',
-      'is_hidden,household_item_id,version','category_id,household_item_id,name,version',
+  if (!isCreate && !['household_item_id,in_stock,version',
+      'household_item_id,is_hidden,version','category_id,household_item_id,name,version',
       'category_id,household_item_id,name,sub_name,version'].includes(keys))
     kurashiFail_('BAD_REQUEST','更新する日用品を確認してください');
   const hash=kurashiDigest_(action,payload), hid=user.householdId;
@@ -390,9 +390,9 @@ function kurashiSaveItem_(user,action,payload,operationId) {
           kurashiFail_('VERSION_CONFLICT','別の端末で変更されています');
         before=kurashiPublic_(record);
         entity=Object.assign({},record);
-        if (keys==='in_stock,household_item_id,version' ||
-            keys==='is_hidden,household_item_id,version') {
-          const field=keys.startsWith('in_stock')?'in_stock':'is_hidden';
+        if (keys==='household_item_id,in_stock,version' ||
+            keys==='household_item_id,is_hidden,version') {
+          const field=Object.prototype.hasOwnProperty.call(payload,'in_stock')?'in_stock':'is_hidden';
           if (typeof payload[field]!=='boolean')
             kurashiFail_('BAD_REQUEST','在庫・表示状態が不正です');
           entity[field]=payload[field];
