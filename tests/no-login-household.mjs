@@ -3519,6 +3519,6 @@ assert.equal(unlink.ok,true,'saved line can be unlinked');
 assert.equal(unlink.data.entity.linked_product_id,'');
 assert.equal(Object.hasOwn(unlink.data.entity,'price_eligible'),false);
 assert.equal(suggestionFixture.call('bootstrap').data.record_items.find(x=>
- x.record_item_id===suggestionLine.record_item_id).candidate_match_type,'new',
- 'suggestion metadata survives link and unlink');
+ x.record_item_id===suggestionLine.record_item_id).candidate_match_type,'',
+ 'confirmed AI candidate stays cleared after an unlink');
 console.log('stage1: persisted ChatGPT suggestions, versioned item link, replay and unlink OK');
