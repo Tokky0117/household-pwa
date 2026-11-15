@@ -1192,7 +1192,6 @@ function kurashiMutateRecord_(user,action,payload,id){
       created_at:now,updated_at:now,version:1,deleted_at:''};
     });
     next.chain_id=payload.chain_id;next.record_date=date;
-    next.branch_name=kurashiBranchName_(payload.branch_name);
     next.aliasesToCreate=newAliases;
    }
    const originals=oldRows.map(x=>kurashiPublic_(x.value));
