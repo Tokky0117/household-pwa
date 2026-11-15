@@ -187,6 +187,7 @@
    if(op.kind==='record-item-link'){
     const line=snap.record_items.find(x=>x.record_item_id===op.targetId&&!x.deleted_at);
     if(line){line.linked_product_id=op.productId||'';
+     if(op.productId){line.product_name_candidate='';line.candidate_match_type=''}
      line.version=Number(line.version)+1}
     continue;
    }
