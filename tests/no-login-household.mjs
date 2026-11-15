@@ -1846,6 +1846,8 @@ assert.equal(duplicateKitReview.querySelector('[name="product-0"]'),null,
  'second iPhone also defers product linking until after receipt save');
 assert.equal(duplicateKitReview.querySelector('.scan-ocr-name').textContent,kitRaw,
  'reimport does not replace original printed name');
+assert.match(duplicateKitReview.textContent,/登録商品と一致/,
+ 'second device displays its confirmed OCR-alias product before saving');
 assert.equal(duplicateKitReview.querySelector('#scan-duplicate-warning'),null,
  'An identical receipt does not display unnecessary duplicate confirmation');
 duplicateKitReview.dispatchEvent(new otherPhone.window.Event('submit',{
