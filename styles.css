@@ -2822,6 +2822,9 @@ html,body{touch-action:pan-x pan-y}
 .record-detail-saved p{margin:4px 0 0;color:var(--muted);font-size:12px}
 .record-detail-guidance{margin:8px 0 14px;color:var(--muted);font-size:13px;line-height:1.55}
 .detail-record-line-meta.detail-product-proposal{color:var(--ink)}
+.detail-product-proposal .detail-candidate-origin{display:inline-flex;align-items:center;flex:none;color:var(--muted)}
+.detail-product-proposal .detail-candidate-origin svg{width:16px;height:16px}
+.detail-product-proposal .detail-candidate-origin+span::before{content:none;margin:0}
 
 
 /* A shared sparkle/green language for AI assistance. Never obscure input outlines. */
