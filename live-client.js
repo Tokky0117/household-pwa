@@ -837,6 +837,13 @@
    doc.queue.push(create);
    doc.queue.push({id:operationId(),kind:'record-item-link',
     targetId:mappedId,productId:create.clientId,retries:0});
+   // Queue OCR-name learning with product creation instead of racing sync.
+   const receipt=snap.records.find(r=>r.record_id===line.record_id);
+   const mapping=snap.receipt_name_mappings.find(a=>
+    a.receipt_name_id===line.receipt_name_id&&a.chain_id===receipt?.chain_id);
+   if(mapping&&!mapping.product_id&&!String(mapping.receipt_name_id).startsWith('local-'))
+    doc.queue.push({id:operationId(),kind:'alias-link',receiptNameId:mapping.receipt_name_id,
+     productId:create.clientId,version:Number(mapping.version),retries:0});
    createdId=create.clientId;
    return doc;
   });
