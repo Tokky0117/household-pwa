@@ -33,21 +33,23 @@ function fixture({hasBranchData=false,prepared=false,corrupt=false,mixed=false}=
  ]);
  if(corrupt)db.get('products')[0][2]='unexpected_header';
  let writes=0,renames=0,deletions=0;
- const getSheetByName=name=>!db.has(name)?null:{
-  getLastRow:()=>db.get(name).length,
+ const getSheetByName=name=>{if(!db.has(name))return null;
+  let key=name;
+  return {
+  getLastRow:()=>db.get(key).length,
   getRange:(r,c,rows,cols)=>({
    getValues:()=>Array.from({length:rows},(_,i)=>Array.from({length:cols},(_,j)=>
-    db.get(name)[r-1+i]?.[c-1+j]??'')),
+    db.get(key)[r-1+i]?.[c-1+j]??'')),
    setValues:matrix=>{writes++;matrix.forEach((row,i)=>{
-    const record=db.get(name)[r-1+i]||[];
+    const record=db.get(key)[r-1+i]||[];
     row.forEach((v,j)=>{record[c-1+j]=v});
-    db.get(name)[r-1+i]=record;
+    db.get(key)[r-1+i]=record;
    })}
   }),
-  setName:newName=>{renames++;const data=db.get(name);db.delete(name);db.set(newName,data)},
-  deleteColumn:column=>{deletions++;db.set(name,db.get(name).map(row=>
+  setName:newName=>{renames++;const data=db.get(key);db.delete(key);db.set(newName,data);key=newName},
+  deleteColumn:column=>{deletions++;db.set(key,db.get(key).map(row=>
    row.filter((_,i)=>i!==column-1)))}
- };
+ }};
  return {book:{getSheetByName},db,
   stats:()=>({writes,renames,deletions})};
 }
