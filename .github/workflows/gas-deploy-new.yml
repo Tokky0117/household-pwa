@@ -53,6 +53,7 @@ jobs:
           node --check "$RUNNER_TEMP/Api.js"
           node --check "$RUNNER_TEMP/Setup.js"
           node tests/no-login-household.mjs
+          node tests/trial-sheet-schema-cutover.mjs
       - name: Prepare temporary credentials and target
         env:
           CLASPRC_JSON: ${{ secrets.CLASPRC_JSON }}
