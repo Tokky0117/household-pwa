@@ -1454,7 +1454,7 @@ function kurashiMutateRecord_(user,action,payload,id){
     String(x.value.record_id)===recordId&&!x.value.deleted_at);
    const now=new Date().toISOString(),next={...original,version:Number(original.version)+1,
     updated_at:now};
-   let fresh=[];
+   let fresh=[],aliasUpdates=[];
    if(deleting){
     next.deleted_at=now;
    }else{
@@ -1468,7 +1468,7 @@ function kurashiMutateRecord_(user,action,payload,id){
     const known=new Set(kurashiRows_('products',book).filter(x=>
      String(x.value.household_id)===hid&&!x.value.deleted_at)
      .map(x=>String(x.value.product_id)));
-    const aliasIndex=kurashiAliasIndex_(book),newAliases=[],aliasUpdates=[];
+    const aliasIndex=kurashiAliasIndex_(book),newAliases=[];
     fresh=payload.items.map((line,n)=>{
      const suggestion=kurashiRecordLineFields_(line);
      const prod=line.linked_product_id;
