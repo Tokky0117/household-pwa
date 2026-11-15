@@ -318,9 +318,9 @@ function kurashiEnsureTrialNaming_(book,options={}){
  }
  return true;
 }
-// Run these functions explicitly in the verified TRIAL Apps Script editor.
-// The public API never invokes a migration. Approval and workbook ID must be
-// set manually after stopping clients and checking all local queues are empty.
+// Trial migration functions are callable only by an authenticated Apps
+// Script API execution or by the owner in the script editor. Never via doPost.
+// The dedicated GitHub Action verifies the exact trial script before executing.
 function kurashiTrialNamingBook_(){
  const props=PropertiesService.getScriptProperties();
  const id=props.getProperty('SPREADSHEET_ID');
