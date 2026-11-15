@@ -1229,8 +1229,9 @@ assert.ok(countReview.includes('scan-count-text')&&countReview.includes('scan-co
  'Printed item count is shown independently from extracted rows');
 assert.ok(countReview.includes('data-field-hint="date"'),
  'Unknown date warns the user before saving');
-assert.ok(source.includes('scanDraft.items.splice(Number(el.dataset.scanRow),1);saveScanDraft();'),
- 'Deleting a false OCR merchandise row persists the corrected draft');
+assert.ok(source.includes('scanDraft.items.splice(Number(el.dataset.scanRow),1);')&&
+ source.includes('rememberScanUndo(undo);saveScanDraft();render();return;'),
+ 'Deleting a false OCR row persists the edited draft and can be undone');
 assert.ok(source.includes("saveScanDraft();render();return;"),
  'Adding a missing merchandise row persists the corrected draft');
 console.log('v66: uncertain date, printed-count review, and draft row persistence OK');
