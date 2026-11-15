@@ -1307,11 +1307,15 @@
      :plan.action==='record.create'?{
        records:[...(ws.base.records||[]),result.record],
        record_items:[...(ws.base.record_items||[]),...result.items],
-       receipt_name_mappings:[...(ws.base.receipt_name_mappings||[]),...(result.aliases||[])]}
+       receipt_name_mappings:[...(ws.base.receipt_name_mappings||[]).filter(a=>
+        !(result.aliases||[]).some(newAlias=>newAlias.receipt_name_id===a.receipt_name_id)),
+        ...(result.aliases||[])]}
      :plan.action==='record.update'?{
        records:[...(ws.base.records||[]).filter(r=>r.record_id!==result.record.record_id),result.record],
        record_items:[...(ws.base.record_items||[]).filter(i=>i.record_id!==result.record.record_id),...result.items],
-       receipt_name_mappings:[...(ws.base.receipt_name_mappings||[]),...(result.aliases||[])]}
+       receipt_name_mappings:[...(ws.base.receipt_name_mappings||[]).filter(a=>
+        !(result.aliases||[]).some(newAlias=>newAlias.receipt_name_id===a.receipt_name_id)),
+        ...(result.aliases||[])]}
      :plan.action==='record.item.link'?{record_items:[
        ...(ws.base.record_items||[]).filter(i=>i.record_item_id!==result.entity.record_item_id),
        result.entity]}
