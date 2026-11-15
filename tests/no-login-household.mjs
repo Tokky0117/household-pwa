@@ -372,7 +372,8 @@ assert.ok(a.window.document.querySelector('#itemForm')?.textContent.includes('�
 a.window.close();online=true;
 // Fresh PWA process, same IndexedDB database: cancelled stock taps remain absent.
 let b=appSession();
-await waitFor(()=>b.window.KurashiLive.state().queued===0&&getVersion()===2,
+await waitFor(()=>b.window.KurashiLive.state().loaded&&
+ b.window.KurashiLive.state().queued===0&&getVersion()===2&&pill(b)==='あり',
  'restarted PWA retains confirmed stock without redundant operations');
 assert.equal(getStock(),true,'rapid toggles preserve the final in-stock state');
 assert.equal(pill(b),'あり','DOM reflects the final stock state');
