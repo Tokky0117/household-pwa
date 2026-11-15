@@ -243,7 +243,7 @@ function kurashiBootstrap_(user) {
           String(x.value.household_id)===hid).map(x=>String(x.value.chain_id)));
         return kurashiRows_('receipt_name_mappings',book).filter(x=>
           chainIds.has(String(x.value.chain_id))&&
-          (!x.value.product_id||own.has(String(x.value.product_id))))
+          (!x.value.auto_match_product_id||own.has(String(x.value.auto_match_product_id))))
           .map(x=>kurashiPublic_(x.value));
       })(),
       records:kurashiRows_('records',book)
@@ -1025,7 +1025,7 @@ function kurashiPlanAlias_(raw,chainId,productId,index,newRows,now){
  if(!original)return '';
  const normalized=kurashiNormalize_(original),key=chainId+'|'+normalized;
  if(index.has(key))return String(index.get(key).receipt_name_id);
- const entity={receipt_name_id:'alias-'+Utilities.getUuid(),product_id:productId||'',
+ const entity={receipt_name_id:'alias-'+Utilities.getUuid(),auto_match_product_id:productId||'',
   chain_id:chainId,normalized_receipt_name:normalized,ocr_name:original,
   version:1,updated_at:now};
  index.set(key,entity);newRows.push(entity);
@@ -1034,10 +1034,10 @@ function kurashiPlanAlias_(raw,chainId,productId,index,newRows,now){
 /* Suggestions are metadata only; an undecided suggestion has an empty kind. */
 function kurashiRecordLineFields_(line) {
  if(!line||typeof line!=='object'||Array.isArray(line))kurashiFail_('BAD_REQUEST','明細の形式が不正です');
- const allowed=new Set(['raw_name','non_ocr_name','product_id','quantity',
+ const allowed=new Set(['raw_name','non_ocr_name','linked_product_id','quantity',
   'line_total_tax_included','product_name_candidate','candidate_match_type']);
  if(Object.keys(line).some(k=>!allowed.has(k))||
-    !['raw_name','product_id','quantity','line_total_tax_included']
+    !['raw_name','linked_product_id','quantity','line_total_tax_included']
       .every(k=>Object.prototype.hasOwnProperty.call(line,k)))
   kurashiFail_('BAD_REQUEST','明細の形式が不正です');
  const name=line.product_name_candidate===undefined?'':kurashiRawName_(line.product_name_candidate);
@@ -1075,7 +1075,7 @@ function kurashiCreateRecord_(user,payload,id){
       const aliasIndex=kurashiAliasIndex_(book),newAliases=[];
       const lineItems=payload.items.map((line,n)=>{
         const suggestion=kurashiRecordLineFields_(line);
-        const prod=line.product_id;
+        const prod=line.linked_product_id;
         if(prod!==null&&(typeof prod!=='string'||!productIds.has(prod)))
           kurashiFail_('NOT_FOUND','商品が見つかりません');
         const qty=line.quantity,amount=line.line_total_tax_included;
@@ -1088,7 +1088,7 @@ function kurashiCreateRecord_(user,payload,id){
           aliasIndex,newAliases,now);
         return {record_item_id:'recorditem-'+Utilities.getUuid(),
           record_id:recordId,line_order:n+1,receipt_name_id:receiptNameId,non_ocr_name:confirmed,
-          product_id:prod||'',quantity:qty,line_total_tax_included:amount,
+          linked_product_id:prod||'',quantity:qty,line_total_tax_included:amount,
           product_name_candidate:suggestion.name,candidate_match_type:suggestion.kind,
           created_at:now,updated_at:now,version:1,deleted_at:''};
       });
@@ -1173,7 +1173,7 @@ function kurashiMutateRecord_(user,action,payload,id){
     const aliasIndex=kurashiAliasIndex_(book),newAliases=[];
     fresh=payload.items.map((line,n)=>{
      const suggestion=kurashiRecordLineFields_(line);
-     const prod=line.product_id;
+     const prod=line.linked_product_id;
      if(prod!==null&&(!known.has(prod)||typeof prod!=='string'))
        kurashiFail_('NOT_FOUND','商品がありません');
      if(!Number.isSafeInteger(line.quantity)||line.quantity<=0||
@@ -1186,7 +1186,7 @@ function kurashiMutateRecord_(user,action,payload,id){
        aliasIndex,newAliases,now);
      return {record_item_id:'recorditem-'+Utilities.getUuid(),
       record_id:recordId,line_order:n+1,receipt_name_id:receiptNameId,non_ocr_name:confirmed,
-      product_id:prod||'',quantity:line.quantity,
+      linked_product_id:prod||'',quantity:line.quantity,
       line_total_tax_included:line.line_total_tax_included,
       product_name_candidate:suggestion.name,candidate_match_type:suggestion.kind,
       created_at:now,updated_at:now,version:1,deleted_at:''};
@@ -1231,7 +1231,7 @@ function kurashiMutateRecord_(user,action,payload,id){
  * are immutable. The parent record is checked for ownership and deletion. */
 function kurashiLinkRecordItem_(user,payload,id){
  const action='record.item.link',hid=user.householdId;
- if(Object.keys(payload).sort().join(',')!=='product_id,record_item_id,version')
+ if(Object.keys(payload).sort().join(',')!=='linked_product_id,record_item_id,version')
   kurashiFail_('BAD_REQUEST','明細の紐付け形式が不正です');
  const lock=LockService.getScriptLock();
  if(!lock.tryLock(20000))kurashiFail_('BUSY','保存が混み合っています');
@@ -1252,19 +1252,19 @@ function kurashiLinkRecordItem_(user,payload,id){
    if(!Number.isSafeInteger(payload.version)||payload.version<1||
       Number(before.version)!==payload.version)
     kurashiFail_('VERSION_CONFLICT','別の端末で明細が更新されました');
-   const productId=payload.product_id===null?'':String(payload.product_id||'');
-   if(payload.product_id!==null&&
-      (typeof payload.product_id!=='string'||!productId))
+   const productId=payload.linked_product_id===null?'':String(payload.linked_product_id||'');
+   if(payload.linked_product_id!==null&&
+      (typeof payload.linked_product_id!=='string'||!productId))
     kurashiFail_('BAD_REQUEST','登録商品を確認してください');
    if(productId&&!kurashiRows_('products',book).some(x=>
      String(x.value.product_id)===productId&&
      String(x.value.household_id)===hid&&!x.value.deleted_at))
     kurashiFail_('NOT_FOUND','登録商品が見つかりません');
-   if(String(before.product_id||'')===productId)
+   if(String(before.linked_product_id||'')===productId)
     return {status:'completed',action,entity:before,
      sequence_no:kurashiSequence_(hid,book)};
    const now=new Date().toISOString();
-   const entity={...before,product_id:productId,
+   const entity={...before,linked_product_id:productId,
     version:Number(before.version)+1,updated_at:now};
    plan={status:'prepared',action,before,entity,
     sequence_no:kurashiSequence_(hid,book)+1,updated_at:now};
@@ -1282,7 +1282,7 @@ function kurashiLinkRecordItem_(user,payload,id){
 
 /* OCR names are immutable, and may exist without a linked product. */
 function kurashiUpsertAlias_(user,payload,id){
- if(Object.keys(payload).sort().join(',')!=='chain_id,product_id,raw_alias')
+ if(Object.keys(payload).sort().join(',')!=='auto_match_product_id,chain_id,raw_alias')
   kurashiFail_('BAD_REQUEST','商品別名の形式が不正です');
  const hid=user.householdId,action='alias.upsert',lock=LockService.getScriptLock();
  if(!lock.tryLock(20000))kurashiFail_('BUSY','保存が混み合っています');
@@ -1291,7 +1291,7 @@ function kurashiUpsertAlias_(user,payload,id){
   let plan=check.found;
   if(plan?.status==='completed')return kurashiPublic_(plan);
   if(!plan){
-   const productId=payload.product_id===null?'':String(payload.product_id||'');
+   const productId=payload.auto_match_product_id===null?'':String(payload.auto_match_product_id||'');
    const validChain=kurashiRows_('retail_chains',book).some(x=>
      String(x.value.chain_id)===payload.chain_id&&
      String(x.value.household_id)===hid);
@@ -1311,15 +1311,15 @@ function kurashiUpsertAlias_(user,payload,id){
    let entity,before=null;
    if(found.length){
      before=kurashiPublic_(found[0].value);
-     if(!productId||String(before.product_id)===productId)
+     if(!productId||String(before.auto_match_product_id)===productId)
        return {status:'completed',action,entity:before,
          sequence_no:kurashiSequence_(hid,book)};
-     if(before.product_id)
+     if(before.auto_match_product_id)
        kurashiFail_('DUPLICATE','別の商品に紐付いています。OCR名管理から訂正してください');
-     entity={...before,product_id:productId,
+     entity={...before,auto_match_product_id:productId,
        version:Number(before.version)+1,updated_at:now};
    }else{
-     entity={receipt_name_id:'alias-'+Utilities.getUuid(),product_id:productId,
+     entity={receipt_name_id:'alias-'+Utilities.getUuid(),auto_match_product_id:productId,
        chain_id:payload.chain_id,normalized_receipt_name:normalized,
        ocr_name:original,version:1,updated_at:now};
    }
@@ -1341,7 +1341,7 @@ function kurashiUpsertAlias_(user,payload,id){
  }finally{lock.releaseLock()}
 }
 function kurashiLinkAlias_(user,payload,id){
- if(Object.keys(payload).sort().join(',')!=='receipt_name_id,product_id,version')
+ if(Object.keys(payload).sort().join(',')!=='auto_match_product_id,receipt_name_id,version')
    kurashiFail_('BAD_REQUEST','OCR名紐付けの形式が不正です');
  const hid=user.householdId,action='alias.link',lock=LockService.getScriptLock();
  if(!lock.tryLock(20000))kurashiFail_('BUSY','保存が混み合っています');
@@ -1356,7 +1356,7 @@ function kurashiLinkAlias_(user,payload,id){
      String(x.value.household_id)===hid).map(x=>String(x.value.chain_id)));
    if(rows.length!==1||!retail_chains.has(String(rows[0].value.chain_id)))
      kurashiFail_('NOT_FOUND','OCR名がありません');
-   const productId=payload.product_id===null?'':String(payload.product_id||'');
+   const productId=payload.auto_match_product_id===null?'':String(payload.auto_match_product_id||'');
    if(productId&&!kurashiRows_('products',book).some(x=>
      String(x.value.product_id)===productId&&
      String(x.value.household_id)===hid&&!x.value.deleted_at))
@@ -1364,11 +1364,11 @@ function kurashiLinkAlias_(user,payload,id){
    const before=kurashiPublic_(rows[0].value);
    if(!Number.isSafeInteger(payload.version)||Number(before.version)!==payload.version)
      kurashiFail_('VERSION_CONFLICT','別の端末でOCR名が更新されています');
-   if(String(before.product_id||'')===productId)
+   if(String(before.auto_match_product_id||'')===productId)
      return {status:'completed',action,entity:before,
        sequence_no:kurashiSequence_(hid,book)};
    const now=new Date().toISOString();
-   const entity={...before,product_id:productId,
+   const entity={...before,auto_match_product_id:productId,
      version:Number(before.version)+1,updated_at:now};
    plan={status:'prepared',action,before,entity,
      sequence_no:kurashiSequence_(hid,book)+1,updated_at:now};
