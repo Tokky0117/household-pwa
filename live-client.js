@@ -703,7 +703,8 @@
    const queued=new Set();
    for(const line of items||[]){
     if(!line.raw_name)continue;
-    const productId=confirmedProductId(line.auto_match_product_id||null);
+    const productId=confirmedProductId(
+     line.auto_match_product_id??line.linked_product_id??null);
     if(productId&&!snap.products.some(x=>x.product_id===productId&&!x.deleted_at))continue;
     const alias=String(line.raw_name).trim();
     if(!alias||alias.length>120||/^[=+@\-]/.test(alias)||
