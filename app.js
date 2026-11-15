@@ -441,7 +441,7 @@ function recordDetailView(){
    </div>
   </section>
 
- ${bulkCandidates.length?'<div class="record-detail-bulk">'+UI.button({label:'生成AI候補をまとめて登録（'+bulkCandidates.length+'件）',variant:'secondary',action:'recordBulkPreview',disabled:recordBulkSaving})+'</div>':''}
+ ${bulkCandidates.length?'<div class="record-detail-bulk">'+UI.button({label:'候補をまとめて登録（'+bulkCandidates.length+'件）',icon:'sparkles',variant:'secondary',action:'recordBulkPreview',disabled:recordBulkSaving})+'</div>':''}
   <section class="detail-record-lines" aria-label="${isShelf?'価格情報':'購入明細'}">
    ${UI.sectionHeading({title:isShelf?'価格情報':'購入明細',subtitle:detail.length+'件'})}
    ${!isShelf&&detail.some(line=>!line.linked_product_id)?'<p class="record-detail-benefit">商品を紐付けると、購入履歴を価格比較に活用できます。</p>':''}
@@ -454,7 +454,7 @@ function recordDetailView(){
     <div class="detail-record-line-meta"><span>${isShelf?'販売個数':'数量'} ${esc(line.quantity)}</span>
      ${line.linked_product_id?`<span>登録商品：${esc(catalogue.products.find(p=>p.id===line.linked_product_id)?.name||'商品を確認')}</span>`:
       '<span>商品未紐付け</span>'}</div>
-    ${!isShelf&&!line.linked_product_id&&line.product_name_candidate?`<div class="detail-record-line-meta detail-product-proposal"><span>生成AIの商品名候補：${esc(line.product_name_candidate)}${line.candidate_match_type==='new'?'（新規）':line.candidate_match_type==='existing'?'（既存）':'（未判定）'}</span></div>`:''}
+    ${!isShelf&&!line.linked_product_id&&line.product_name_candidate?`<div class="detail-record-line-meta detail-product-proposal"><span class="detail-candidate-origin" role="img" aria-label="生成AIによる候補">${miniIcon('sparkles')}</span><span>商品名候補：${esc(line.product_name_candidate)}${line.candidate_match_type==='new'?'（新規）':line.candidate_match_type==='existing'?'（既存）':'（未判定）'}</span></div>`:''}
     ${!isShelf&&liveMode?`<div class="scan-picker-actions">${UI.button({label:'商品を設定',variant:'tertiary',action:'recordProductOpen',recordItemId:line.record_item_id})}</div>`:''}
    </div>`).join('')}
   </section>
@@ -3019,7 +3019,7 @@ if(action==='recordBulkPreview'&&page==='recordDetail'&&!recordBulkSaving){
  if(!candidates.length)return;
  const names=candidates.map(row=>row.proposed_name+
   '（'+(row.action==='existing'?'既存':'新規')+'）');
- dialog={title:'生成AIの商品候補をまとめて登録しますか？',
+ dialog={title:'商品名候補をまとめて登録しますか？',
   message:names.join('\n'),
   buttons:[{id:'cancel',label:'キャンセル'},{id:'confirmRecordBulk',label:'まとめて登録'}],
   pending:{bulkReceiptId:receiptId,itemIds:candidates.map(x=>x.record_item_id)}};
