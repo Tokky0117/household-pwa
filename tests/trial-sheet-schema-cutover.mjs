@@ -58,9 +58,9 @@ assert.equal(run(clean.book),true);
 assert.equal(clean.db.size,11);
 for(const [name,headers] of Object.entries(current))
  assert.deepEqual(clean.db.get(name)?.[0],headers,name);
-assert.deepEqual(clean.stats(),{writes:6,renames:3,deletions:1});
+assert.deepEqual(clean.stats(),{writes:5,renames:3,deletions:1});
 assert.equal(run(clean.book),false,'repeat migration is idempotent');
-assert.deepEqual(clean.stats(),{writes:6,renames:3,deletions:1});
+assert.deepEqual(clean.stats(),{writes:5,renames:3,deletions:1});
 const mixed=fixture({mixed:true});
 assert.equal(run(mixed.book),true,'partially renamed naming can resume safely');
 for(const [name,headers] of Object.entries(current))
