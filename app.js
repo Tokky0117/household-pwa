@@ -450,6 +450,8 @@ function linkSavedRecordProduct(productId){
 }
 function recordDetailView(){
  const resolved=window.KurashiLive?.resolveRecordId?.(recordDetailId)||recordDetailId;
+ const wasJustSaved=!!recordJustSavedId&&
+  (window.KurashiLive?.resolveRecordId?.(recordJustSavedId)||recordJustSavedId)===resolved;
  if(resolved!==recordDetailId)recordDetailId=resolved;
  const record=allPreviewRecords().find(r=>r.record_id===recordDetailId);
  if(!record)return `${head('保存済み明細','見つかりません',true)}<main></main>${nav()}`;
@@ -468,8 +470,8 @@ function recordDetailView(){
     ${UI.formField({id:'detail-record-date',control:'static',label:isShelf?'値札確認日':'購入日',value:String(record.record_date||'').replaceAll('-','/')})}
    </div>
   </section>
-  ${recordJustSavedId===recordDetailId?'<section class="record-detail-saved" role="status">'+
-   '<strong>レシートを保存しました</strong>'+
+  ${wasJustSaved?'<section class="record-detail-saved" role="status">'+
+   '<strong>'+(isShelf?'値札を保存しました':'レシートを保存しました')+'</strong>'+
    (window.KurashiLive?.state()?.queued?'<p>Google Sheetsへ同期中です。</p>':'')+
    '</section>':''}
  ${!isShelf&&detail.some(line=>!line.product_id)?'<p class="record-detail-guidance">商品未紐付けの明細は、各明細の「商品を設定」から登録・紐付けできます。'+
