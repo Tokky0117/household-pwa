@@ -364,8 +364,28 @@ function kurashiTrialNamingCutoverCore_(){
   const plan=legacy.length?[]:kurashiEnsureTrialNaming_(book,{dryRun:true});
   if(!legacy.length&&!plan.length)return {status:'ALREADY_COMPLETE'};
   const backupName='くらしストック_試作_スキーマ変更前_'+Utilities.formatDate(new Date(),'Asia/Tokyo','yyyyMMdd_HHmmss');
-  const backup=DriveApp.getFileById(book.getId()).makeCopy(backupName);
-  if(!backup||!backup.getId())throw Error('バックアップの作成を確認できません。変更しません');
+  // SpreadsheetApp uses the existing Sheets authorization; no Drive API
+  // connector or expanded Drive scope is needed to copy all worksheet data.
+  const backup=SpreadsheetApp.create(backupName);
+  if(!backup||!backup.getId())throw Error('バックアップ用Sheetsを作成できません');
+  const placeholder=backup.getSheets()[0];
+  for(const source of book.getSheets()){
+   const copy=source.copyTo(backup);
+   copy.setName(source.getName());
+   if(copy.getLastRow()!==source.getLastRow()||
+      copy.getLastColumn()!==source.getLastColumn())
+    throw Error('バックアップの行数・列数が一致しません。変更しません');
+   const last=source.getLastRow(),width=source.getLastColumn();
+   if(last>0&&width>0){
+    const a=source.getRange(1,1,last,width).getValues();
+    const b=copy.getRange(1,1,last,width).getValues();
+    if(JSON.stringify(a)!==JSON.stringify(b))
+     throw Error('バックアップのデータが一致しません。変更しません');
+   }
+  }
+  if(placeholder)backup.deleteSheet(placeholder);
+  if(backup.getSheets().length!==book.getSheets().length)
+   throw Error('バックアップのシート数が一致しません。変更しません');
   // Every stage revalidates the sheet headers before writing.
   if(legacy.length)kurashiTrialLegacyReceiptCutover_(book);
   kurashiEnsureTrialNaming_(book);
