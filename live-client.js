@@ -655,7 +655,7 @@
    if(!Number.isSafeInteger(line.quantity)||line.quantity<=0||
       !Number.isSafeInteger(line.line_total_tax_included)||line.line_total_tax_included<0)
     throw Error('数量・税込金額を確認してください');
-   return {raw_name:rawName,...(confirmed?{non_ocr_name:confirmed}:{}),product_id:productId,
+   return {raw_name:rawName,...(confirmed?{non_ocr_name:confirmed}:{}),linked_product_id:productId,
     quantity:line.quantity,line_total_tax_included:line.line_total_tax_included,
     ...(suggested?{product_name_candidate:suggested,candidate_match_type:suggestionKind}:{})};
   });
@@ -703,7 +703,7 @@
    const queued=new Set();
    for(const line of items||[]){
     if(!line.raw_name)continue;
-    const productId=confirmedProductId(line.linked_product_id||null);
+    const productId=confirmedProductId(line.auto_match_product_id||null);
     if(productId&&!snap.products.some(x=>x.product_id===productId&&!x.deleted_at))continue;
     const alias=String(line.raw_name).trim();
     if(!alias||alias.length>120||/^[=+@\-]/.test(alias)||
@@ -990,7 +990,7 @@
         x.product_id===op.productId&&!x.deleted_at)))
     throw Error('OCR名のチェーンまたは商品がありません');
    return {operationId:op.id,action:'alias.upsert',payload:{
-    chain_id:op.chainId,product_id:op.productId||null,raw_alias:op.alias}};
+    chain_id:op.chainId,auto_match_product_id:op.productId||null,raw_alias:op.alias}};
   }
   if(op.kind==='alias-link'){
    const alias=base?.receipt_name_mappings.find(x=>x.receipt_name_id===op.receiptNameId);
@@ -999,7 +999,7 @@
      x.product_id===op.productId&&!x.deleted_at))
     throw Error('商品が見つかりません');
    return {operationId:op.id,action:'alias.link',payload:{
-    receipt_name_id:op.receiptNameId,product_id:op.productId||null,
+    receipt_name_id:op.receiptNameId,auto_match_product_id:op.productId||null,
     version:Number(alias.version)}};
   }
   if(op.kind==='record-item-link'){
@@ -1008,7 +1008,7 @@
    if(op.productId&&!base?.products.some(p=>p.product_id===op.productId&&!p.deleted_at))
     throw Error('登録商品が見つかりません');
    return {operationId:op.id,action:'record.item.link',payload:{
-    record_item_id:op.targetId,product_id:op.productId||null,
+    record_item_id:op.targetId,linked_product_id:op.productId||null,
     version:Number(line.version)}};
   }
   if(op.kind==='record-update'||op.kind==='record-delete'){
@@ -1123,11 +1123,11 @@
     throw Error('RESPONSE_INVALID');
   }else if(plan.action==='record.item.link'){
    if(!result.entity||result.entity.record_item_id!==plan.payload.record_item_id||
-      String(result.entity.product_id||'')!==String(plan.payload.product_id||'')||
+      String(result.entity.linked_product_id||'')!==String(plan.payload.linked_product_id||'')||
       !positiveVersion(result.entity.version))throw Error('RESPONSE_INVALID');
   }else if(['alias.upsert','alias.link'].includes(plan.action)){
    if(!result.entity||typeof result.entity.receipt_name_id!=='string'||
-      String(result.entity.product_id||'')!==String(plan.payload.product_id||'')||
+      String(result.entity.auto_match_product_id||'')!==String(plan.payload.auto_match_product_id||'')||
       (plan.action==='alias.upsert'&&result.entity.chain_id!==plan.payload.chain_id)||
       (plan.action==='alias.link'&&result.entity.receipt_name_id!==plan.payload.receipt_name_id))
     throw Error('RESPONSE_INVALID');
@@ -1228,7 +1228,7 @@
         !rest.request)
       rest.productId=result.entity.product_id;
      if(rest.kind==='record-create'||rest.kind==='record-update')rest.items=rest.items.map(i=>
-      i.product_id===op.clientId?{...i,product_id:result.entity.product_id}:i);
+      i.linked_product_id===op.clientId?{...i,linked_product_id:result.entity.product_id}:i);
      if(rest.targetId===op.clientId)rest.targetId=result.entity.product_id;
      if(rest.kind==='product-reorder')
       rest.product_ids=rest.product_ids.map(id=>
@@ -1326,9 +1326,9 @@
       remaining.targetId=chosen;changed=true;
      }
      if(['record-create','record-update'].includes(remaining.kind)&&
-      remaining.items?.some(i=>i.product_id===unresolvedId)){
-      remaining.items=remaining.items.map(i=>i.product_id===unresolvedId?
-       {...i,product_id:chosen}:i);
+      remaining.items?.some(i=>i.linked_product_id===unresolvedId)){
+      remaining.items=remaining.items.map(i=>i.linked_product_id===unresolvedId?
+       {...i,linked_product_id:chosen}:i);
       changed=true;
      }
      if(chosen&&remaining.kind==='product-reorder'&&
@@ -1489,7 +1489,7 @@
           q.targetId!==rejected.clientId&&q.groupId!==rejected.clientId);
          if(rejected.kind==='product-create')ws.queue=ws.queue.filter(q=>
           q.targetId!==rejected.clientId&&
-          !(q.kind==='record-create'&&q.items.some(i=>i.product_id===rejected.clientId)));
+          !(q.kind==='record-create'&&q.items.some(i=>i.linked_product_id===rejected.clientId)));
          if(rejected.kind==='store-create')ws.queue=ws.queue.filter(q=>
           q.chainId!==rejected.clientId);
         }
