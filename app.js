@@ -2473,7 +2473,7 @@ app.addEventListener('submit',e=>{e.preventDefault();const form=e.target;const d
    // row AFTER record.create. Commit the same match in record.create instead.
    // Preserve an explicit "商品未照合にする" choice and never use AI guesses.
    const chosenProductId=scanResolvedProductId(item);
-   const matchedBeforeSave=scanDraft.recordType==='receipt'&&!item.manuallyLinked&&
+   const matchedBeforeSave=scanDraft.recordType!=='price_tag'&&!item.manuallyLinked&&
      !chosenProductId?
      scanMatchProduct(verified?confirmedName:item.ocrRawName,
        String(d.get('chain')||'')):'';
@@ -2481,7 +2481,7 @@ app.addEventListener('submit',e=>{e.preventDefault();const form=e.target;const d
     raw_name:verified?'':String(item.ocrRawName||'').trim(),
     ...(verified&&confirmedName?{non_ocr_name:confirmedName}:{}),
     ...(suggestedName?{product_name_candidate:suggestedName,candidate_match_type:suggestionKind}:{}),
-    linked_product_id:scanDraft.recordType==='receipt'?
+    linked_product_id:scanDraft.recordType!=='price_tag'?
      (chosenProductId||matchedBeforeSave||null):
      String(d.get('product-'+i)||'')||null,
     quantity:scanDraft.recordType==='price_tag'?1:Number(d.get('qty-'+i)),
