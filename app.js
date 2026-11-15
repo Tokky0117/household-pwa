@@ -183,7 +183,6 @@ let scanExistingQuery='',scanGroupQuery='',scanProductGroupId='',recordDetailOri
 const scanAiProductSavingRows=new Set();
 let storePickerTarget=null,storePickerQuery='',storePickerNewMode=false;
 let recordProductItemId=null,recordProductMode='select',recordProductQuery='',recordProductSaving=false,recordBulkSaving=false;
-let recordJustSavedId=null;
 function saveScanDraft(){
  if(!liveMode||!window.KurashiLive?.saveReceiptDraft)return;
  const snapshot=scanDraft?JSON.parse(JSON.stringify(scanDraft)):null;
@@ -423,8 +422,6 @@ function linkSavedRecordProduct(productId){
 }
 function recordDetailView(){
  const resolved=window.KurashiLive?.resolveRecordId?.(recordDetailId)||recordDetailId;
- const wasJustSaved=!!recordJustSavedId&&
-  (window.KurashiLive?.resolveRecordId?.(recordJustSavedId)||recordJustSavedId)===resolved;
  if(resolved!==recordDetailId)recordDetailId=resolved;
  const record=allPreviewRecords().find(r=>r.record_id===recordDetailId);
  if(!record)return `${head('保存済み明細','見つかりません',true)}<main></main>${nav()}`;
@@ -436,12 +433,6 @@ function recordDetailView(){
   window.KurashiLive.previewBulkReceiptProducts?.(record.record_id)||[]:[];
  return `${head(isShelf?'値札詳細':'レシート詳細','くらしストック',true)}
  <main class="preview-record-page detail-record-page">
-  ${wasJustSaved?'<section class="record-detail-saved" role="status">'+
-   '<strong>✓ '+(isShelf?'値札を保存しました':'レシートを保存しました')+'</strong>'+
-   (!isShelf&&detail.some(line=>!line.product_id)?
-    '<p>未紐付けの商品は「商品を設定」から登録できます。'+
-    (bulkCandidates.length?' 生成AI候補はまとめて登録できます。':'')+'</p>':'')+
-   '</section>':''}
   <section class="detail-record-info" aria-label="${isShelf?'値札情報':'購入情報'}">
    ${UI.sectionHeading({title:isShelf?'値札情報':'購入情報'})}
    <div class="detail-record-info-fields">
@@ -453,6 +444,7 @@ function recordDetailView(){
  ${bulkCandidates.length?'<div class="record-detail-bulk">'+UI.button({label:'生成AI候補をまとめて登録（'+bulkCandidates.length+'件）',variant:'secondary',action:'recordBulkPreview',disabled:recordBulkSaving})+'</div>':''}
   <section class="detail-record-lines" aria-label="${isShelf?'価格情報':'購入明細'}">
    ${UI.sectionHeading({title:isShelf?'価格情報':'購入明細',subtitle:detail.length+'件'})}
+   ${!isShelf&&detail.some(line=>!line.product_id)?'<p class="record-detail-benefit">商品を紐付けると、購入履歴を価格比較に活用できます。</p>':''}
    ${detail.map(line=>`<div class="panel detail-record-line">
     <div class="detail-record-line-main">
      <strong class="detail-record-line-name">${esc(isShelf?detailLineName(line):aliasNameFor(line)||"明細名なし")}</strong>
@@ -986,7 +978,7 @@ function scanAssistView(){
  const canAssist=scanDraft.source==='ocr'&&receiptOcrRows(scanDraft).length>0;
  if(!canAssist&&!scanAssistMessage)return '';
  return `<div class="scan-assist-area">
-  ${canAssist?'<p class="hint">生成AIで読み取り結果の修正・補完ができます。</p>'+UI.textAction({label:'生成AIを使用',action:'chatGptAssist'}):''}
+  ${canAssist?'<p class="hint">生成AIで読み取り結果の修正・補完ができます。</p>'+'<button type="button" class="ui-text-action scan-ai-entry" data-act="chatGptAssist">'+miniIcon('sparkles')+'<span>生成AIを使用</span></button>':''}
   ${scanAssistMessage?UI.statusMessage({text:scanAssistMessage,kind:'success'}):''}
  </div>`;
 }
@@ -1023,9 +1015,11 @@ function scanFormView(){
   </section>
   ${UI.sectionHeading({title:isShelf?'価格情報':'購入明細',subtitle:remainingCount+'件'+(unmatchedCount?'・未照合'+unmatchedCount+'件':'')})}
   ${scanDraft.items.map((item,i)=>`<div class="panel scan-review-item${item.pendingDeletion?' is-pending-delete':''}">
-    <div class="scan-item-content" ${item.pendingDeletion?'inert aria-hidden="true"':''}>
+    <div class="scan-item-content">
     <div class="scan-item-head"><strong>明細 ${i+1}</strong><div class="scan-item-tools">
-     ${item.pendingDeletion?'':`<button type="button" class="scan-item-tool" data-act="scanRemoveItem" data-scan-row="${i}">${miniIcon('trash')}<span>削除</span></button>`}
+     ${item.pendingDeletion?
+      `<button type="button" class="scan-item-tool scan-item-restore" data-act="scanRestoreItem" data-scan-row="${i}">${miniIcon('undo')}<span>戻す</span></button>`:
+      `<button type="button" class="scan-item-tool" data-act="scanRemoveItem" data-scan-row="${i}">${miniIcon('trash')}<span>削除</span></button>`}
     </div></div>
     ${isUnconfirmedBarcodeLine(item)?'<p class="scan-name-warning">商品コードだけの明細を確認</p>':''}
     ${item.inputOrigin==='manual'?'':item.inputOrigin==='photo'||item.ocrRawName===undefined?
@@ -1065,7 +1059,6 @@ function scanFormView(){
       placeholder:'例：みかん',value:item.name,maxlength:120,
       hint:true,fieldClass:'scan-manual-name'}):''}
     </div>
-    ${item.pendingDeletion?`<div class="scan-delete-undo"><span>削除予定</span>${UI.textAction({label:'戻す',action:'scanRestoreItem',row:i,arrow:false})}</div>`:''}
     </div>`).join('')}
   <div class="scan-add-action">${UI.button({label:'明細を追加',variant:'tertiary',action:'scanAddItem',icon:'plus'})}</div>
   ${UI.sectionHeading({title:isShelf?'価格の確認':'合計の確認'})}
@@ -1317,7 +1310,7 @@ const id=()=>crypto.randomUUID?.()||`id-${Date.now()}-${Math.random()}`;
 function persist(){if(!liveMode)localStorage.setItem(key,JSON.stringify(items))}function visible(){return items.filter(i=>!i.hidden)}function current(){return items.find(i=>i.id===selected)}
 const icons={items:'<rect x="4" y="5" width="16" height="16" rx="2"/><path d="M4 11h16M10 5v16"/>',receipt:'<path d="M6 3h12v18l-3-2-3 2-3-2-3 2z"/><path d="M9 8h6M9 12h6"/>',budget:'<rect x="3" y="5" width="18" height="15" rx="3"/><path d="M3 10h18M16 15h3"/>',settings:'<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.9 4.9 7 7M17 17l2.1 2.1M2 12h3M19 12h3M4.9 19.1 7 17M17 7l2.1-2.1"/>'};
 const chevron=(direction='right')=>`<svg class="ui-chevron ${direction}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg>`;
-const miniIcon=k=>{const paths={camera:'<path d="M4 7h4l2-3h4l2 3h4v13H4z"/><circle cx="12" cy="13" r="4"/>',calendar:'<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M7 3v4M17 3v4M3 10h18"/>',tag:'<path d="M3 11V4h7l11 11-7 7z"/><circle cx="7.5" cy="7.5" r="1"/>',receiptText:'<path d="M5 3h14v18l-3-2-4 2-4-2-3 2z"/><path d="M9 8h6M9 12h6M9 16h4"/>',search:'<circle cx="10.8" cy="10.8" r="7"/><path d="m16 16 5 5"/>',plus:'<path d="M12 5v14M5 12h14"/>',copy:'<rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/>',pencil:'<path d="M12 20h9"/><path d="m16 4 4 4-12 12H4v-4L16 4Z"/>',unlink:'<path d="M10 13a5 5 0 0 1-1.6-3.5M14 11a5 5 0 0 1 1.6 3.5"/><path d="m8.3 9.7-2.1 2.1a4 4 0 0 0 5.7 5.7l1.3-1.3M15.7 14.3l2.1-2.1a4 4 0 0 0-5.7-5.7l-1.3 1.3"/><path d="M3 3l18 18"/>',trash:'<path d="M4 7h16M10 7V4h4v3M7 7l1 13h8l1-13M10 11v6M14 11v6"/>',star:'<path d="m12 2 3.1 6.4 7 .9-5.1 5 .9 7-5.9-3.2-5.9 3.2.9-7-5.1-5 7-.9z"/>',package:'<path d="m3 7 9-4 9 4v10l-9 4-9-4zM3 7l9 4 9-4M12 11v10"/>',ruler:'<path d="M3 16 16 3l5 5L8 21zM13 6l3 3M10 9l3 3M7 12l3 3"/>',close:'<path d="M5 5l14 14M19 5 5 19"/>'};return `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths[k]||''}</svg>`};
+const miniIcon=k=>{const paths={camera:'<path d="M4 7h4l2-3h4l2 3h4v13H4z"/><circle cx="12" cy="13" r="4"/>',calendar:'<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M7 3v4M17 3v4M3 10h18"/>',tag:'<path d="M3 11V4h7l11 11-7 7z"/><circle cx="7.5" cy="7.5" r="1"/>',receiptText:'<path d="M5 3h14v18l-3-2-4 2-4-2-3 2z"/><path d="M9 8h6M9 12h6M9 16h4"/>',search:'<circle cx="10.8" cy="10.8" r="7"/><path d="m16 16 5 5"/>',plus:'<path d="M12 5v14M5 12h14"/>',copy:'<rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/>',pencil:'<path d="M12 20h9"/><path d="m16 4 4 4-12 12H4v-4L16 4Z"/>',unlink:'<path d="M10 13a5 5 0 0 1-1.6-3.5M14 11a5 5 0 0 1 1.6 3.5"/><path d="m8.3 9.7-2.1 2.1a4 4 0 0 0 5.7 5.7l1.3-1.3M15.7 14.3l2.1-2.1a4 4 0 0 0-5.7-5.7l-1.3 1.3"/><path d="M3 3l18 18"/>',trash:'<path d="M4 7h16M10 7V4h4v3M7 7l1 13h8l1-13M10 11v6M14 11v6"/>',undo:'<path d="M9 14 4 9l5-5M4 9h10a6 6 0 0 1 0 12h-2"/>',sparkles:'<path d="m12 3 2 6 6 2-6 2-2 6-2-6-6-2 6-2zM19 16l1 2 2 1-2 1-1 2-1-2-2-1 2-1"/>',star:'<path d="m12 2 3.1 6.4 7 .9-5.1 5 .9 7-5.9-3.2-5.9 3.2.9-7-5.1-5 7-.9z"/>',package:'<path d="m3 7 9-4 9 4v10l-9 4-9-4zM3 7l9 4 9-4M12 11v10"/>',ruler:'<path d="M3 16 16 3l5 5L8 21zM13 6l3 3M10 9l3 3M7 12l3 3"/>',close:'<path d="M5 5l14 14M19 5 5 19"/>'};return `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths[k]||''}</svg>`};
 // One menu DOM for actions and choices, with optional icons and selection.
 function commonMenu(items,{label='',compact=false,hidden=false}={}){
  return `<div class="ui-menu ${compact?'ui-menu-compact':''}" role="group" aria-label="${esc(label)}" ${hidden?'hidden':''}>${items.map(item=>{
@@ -2548,8 +2541,8 @@ app.addEventListener('submit',e=>{e.preventDefault();const form=e.target;const d
    const cleared=resetScan();
    void Promise.resolve(cleared).catch(err=>console.warn('下書きを破棄できませんでした',err)).finally(()=>{
     recordDetailId=savedId||null;recordDetailOrigin='list';
-    recordJustSavedId=recordDetailId;
     page=recordDetailId?'recordDetail':'list';tab='receipt';render();
+    say(values.record_type==='price_tag'?'値札を保存しました':'レシートを保存しました');
    });
   }).catch(err=>{
    if(submit)submit.disabled=false;
@@ -3042,7 +3035,7 @@ if(action==='recordProductChoose'){linkSavedRecordProduct(el.dataset.productId);
 if(action==='recordProductUnlink'){linkSavedRecordProduct(null);return;}
 if(action==='recordDetail'){
  recordDetailOrigin=page==='detailAll'?'detailAll':'list';recordDetailId=el.dataset.recordId;
- recordJustSavedId=null;page='recordDetail';render();return;
+ page='recordDetail';render();return;
 }
 if(action==='recordEdit'){
  const r=allPreviewRecords().find(x=>x.record_id===recordDetailId);
