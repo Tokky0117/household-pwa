@@ -122,8 +122,9 @@ function fromOcrItem(item,{rowId,taxBasis}={}){
     item.productId='';item.autoLinked=false;item.nameCandidate='';
     next.unmatchedCount++;continue;
    }
-   const productId=item.manuallyLinked?item.productId:
-    findProduct(item.ocrRawName||'',next.chainId);
+   const storeChanged=next.chainId!==draft.chainId;
+   const productId=item.manuallyLinked||(!storeChanged&&item.productId)?
+    item.productId:findProduct(item.ocrRawName||'',next.chainId);
    const proposedLine=proposed.get(rowId);
    // OCR correction and product registration suggestions are distinct draft inputs.
    // Only productSuggestion can become saved suggested_product_name in app.js.
