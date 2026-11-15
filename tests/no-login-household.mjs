@@ -3187,7 +3187,7 @@ assert.ok(fixedSnapshot.record_items.some(line=>
  line.line_total_tax_included===127),'recovered receipt retains its amount and chosen product');
 assert.ok(fixedSnapshot.receipt_name_mappings.some(a=>
  a.ocr_name==='同期復旧検証OCR'&&
- a.auto_match_product_id===duplicateSaved.data.entity.auto_match_product_id),
+ a.auto_match_product_id===duplicateSaved.data.entity.product_id),
  'recovered OCR alias points at the confirmed product');
 assert.equal(repairedPhone.window.KurashiLive.confirmedProductId(
  pendingProduct.product_id),duplicateSaved.data.entity.product_id,
