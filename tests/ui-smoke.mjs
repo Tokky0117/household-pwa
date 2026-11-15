@@ -34,7 +34,7 @@ const ui=vm.runInNewContext(source+`
  setPeriod(v){period=v},setQty(v){compareQuantity=v},setUnit(v){compareUnit=v},
  createManualRecord,scanDate,
   detailLineName,settingsView,settingsSyncSummary,settingsLastSyncText,setRecordDetailId(v){recordDetailId=v},
- setScanDraft(v){scanDraft=v},setScanPhotos(v){scanPhotos=v},setScanState({busy=false,status='',error='',failed=false}){scanBusy=busy;scanStatus=status;scanError=error;scanReadFailed=failed},setScanProductRow(v){scanProductRow=v},setScanExistingQuery(v){scanExistingQuery=v},setScanGroupQuery(v){scanGroupQuery=v},setScanProductGroupId(v){scanProductGroupId=v},setOcrLearning(v){ocrLearning=v},getScanDraft(){return scanDraft},
+ setScanDraft(v){scanDraft=v},setScanAiChanges(v){scanAiChanges=v},setScanPhotos(v){scanPhotos=v},setScanState({busy=false,status='',error='',failed=false}){scanBusy=busy;scanStatus=status;scanError=error;scanReadFailed=failed},setScanProductRow(v){scanProductRow=v},setScanExistingQuery(v){scanExistingQuery=v},setScanGroupQuery(v){scanGroupQuery=v},setScanProductGroupId(v){scanProductGroupId=v},setOcrLearning(v){ocrLearning=v},getScanDraft(){return scanDraft},
  getCompare(){return [compareQuantity,compareUnit]},getSwipe(){return openSwipeId},
  getPeriod(){return period},getListHelpOpen(){return listHelpOpen},listHelpView,readListHelpOpen,catalogue:()=>catalogue})
 `,ctx,{filename:'app.js'});
@@ -775,6 +775,17 @@ const rowOcr={...ocrDraft,items:ocrDraft.items.map((x,i)=>({...x,ocrRowId:'row-'
 ui.setScanDraft(rowOcr);
 const ocrReview=ui.receiptScanView();
 assert.ok(ocrReview.includes('chatGptAssist'),'ChatGPT helper is available only after OCR');
+ui.setScanDraft({...rowOcr,recordType:'receipt',items:[{...rowOcr.items[0],productId:'p-milk-1'},
+ {...rowOcr.items[1],productId:''}]});
+ui.setScanAiChanges([{row:2,label:'数量',before:'2',after:'1'}]);
+const reviewedMatch=ui.receiptScanView();
+assert.ok(reviewedMatch.includes('登録商品と一致')&&reviewedMatch.includes('おいしい牛乳'),
+ 'An exact matched product is displayed on the OCR review before saving');
+const lineCards=reviewedMatch.split('class="panel scan-review-item"');
+assert.ok(!lineCards[1].includes('生成AIで変更')&&lineCards[2].includes('数量：2 → 1'),
+ 'Only the affected item card displays the AI correction instead of a global list');
+ui.setScanAiChanges([]);
+ui.setScanDraft(rowOcr);
 assert.match(ocrReview,/data-ocr-row="0"/,'OCR name is plain text');
 assert.ok(!ocrReview.includes('name="name-0"'),'OCR print name is never editable');
 assert.ok(!ui.detailHomeView().includes('receiptChatGpt'),'no standalone ChatGPT import button');
