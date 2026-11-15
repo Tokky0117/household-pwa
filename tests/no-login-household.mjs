@@ -2888,10 +2888,10 @@ firstDelete.click();
 deleteReview=optionalUI.window.document.querySelector('#scanConfirmForm');
 assert.equal(deleteReview.querySelectorAll('.scan-review-item.is-pending-delete').length,1,
  'A removed card remains visible and greyed out');
-assert.match(deleteReview.textContent,/削除予定/,
- 'The card explains that its deletion is pending');
+assert.equal(deleteReview.querySelector('.scan-review-item.is-pending-delete [data-act="scanRemoveItem"]'),null,
+ 'A pending-deleted card replaces the delete action with restore');
 assert.ok(deleteReview.querySelector('[data-act="scanRestoreItem"][data-scan-row="0"]'),
- 'The restore action is shown immediately below the removed card');
+ 'The restore action occupies the former delete button position');
 deleteReview.querySelector('[data-act="scanRestoreItem"][data-scan-row="0"]').click();
 deleteReview=optionalUI.window.document.querySelector('#scanConfirmForm');
 assert.equal(deleteReview.querySelectorAll('.scan-review-item.is-pending-delete').length,0,
