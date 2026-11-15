@@ -2541,7 +2541,7 @@ app.addEventListener('submit',e=>{e.preventDefault();const form=e.target;const d
    void Promise.resolve(cleared).catch(err=>console.warn('下書きを破棄できませんでした',err)).finally(()=>{
     recordDetailId=savedId||null;recordDetailOrigin='list';
     page=recordDetailId?'recordDetail':'list';tab='receipt';render();
-    say(values.record_type==='price_tag'?'値札を保存しました':'レシートを保存しました');
+    if(window.document?.body) say(values.record_type==='price_tag'?'値札を保存しました':'レシートを保存しました');
    });
   }).catch(err=>{
    if(submit)submit.disabled=false;
