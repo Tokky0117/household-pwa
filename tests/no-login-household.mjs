@@ -932,7 +932,7 @@ assert.equal(recordFixture.call('store.create',{name:'テストチェーン'},
 assert.equal(recordFixture.call('store.create',{name:'テストチェーン'},
  'op-record-store-duplicate-abcdef12345').error.code,'DUPLICATE',
  'a duplicate chain is not silently added');
-const receiptLine={raw_name:'未照合のお菓子',auto_match_product_id:null,quantity:2,
+const receiptLine={raw_name:'未照合のお菓子',linked_product_id:null,quantity:2,
  line_total_tax_included:340};
 const receiptPayload={record_type:'receipt',chain_id:newChainId,
  record_date:'2026-10-14',items:[receiptLine,{...receiptLine,
@@ -959,7 +959,7 @@ const unlinkedShelfStore=unlinkedShelfFixture.call('store.create',{name:'商品�
  'op-shelf-unlinked-store-abcdef12345').data.entity.chain_id;
 const unlinkedShelfSaved=unlinkedShelfFixture.call('record.create',{
  record_type:'price_tag',chain_id:unlinkedShelfStore,record_date:'2026-11-09',
- items:[{raw_name:'',auto_match_product_id:null,quantity:1,line_total_tax_included:250}]
+ items:[{raw_name:'',linked_product_id:null,quantity:1,line_total_tax_included:250}]
 },'op-record-shelf-no-product-abcdef12345');
 assert.equal(unlinkedShelfSaved.ok,true,'Unlinked shelf is allowed without a product');
 assert.equal(unlinkedShelfSaved.data.record.record_type,'price_tag');
@@ -969,7 +969,7 @@ assert.equal(Object.hasOwn(unlinkedShelfSaved.data.items[0],'price_eligible'),fa
 const unlinkShelfEdit=unlinkedShelfFixture.call('record.update',{
  record_id:unlinkedShelfSaved.data.record.record_id,version:1,
  chain_id:unlinkedShelfStore,record_date:'2026-11-09',
- items:[{raw_name:'',auto_match_product_id:null,quantity:1,line_total_tax_included:230}]
+ items:[{raw_name:'',linked_product_id:null,quantity:1,line_total_tax_included:230}]
 },'op-update-shelf-no-product-abcdef12345');
 if(!unlinkShelfEdit.ok)console.error('SCHEMA_NAME_DEBUG_SHELF',JSON.stringify(unlinkShelfEdit));
 assert.equal(unlinkShelfEdit.ok,true,'Unlinked shelf remains editable');
@@ -979,7 +979,7 @@ const productForPrice=recordFixture.call('product.create',{
  name:'値札商品',package_quantity:500,package_unit:'mL',
  household_item_id:itemForPrice.household_item_id},
  'op-record-product-price-abcdef12345').data.entity;
-const shelfLine={raw_name:'値札商品',auto_match_product_id:productForPrice.product_id,quantity:2,
+const shelfLine={raw_name:'値札商品',linked_product_id:productForPrice.product_id,quantity:2,
  line_total_tax_included:300};
 const shelfSaved=recordFixture.call('record.create',{record_type:'price_tag',
  chain_id:newChainId,record_date:'2026-10-14',items:[shelfLine]},
@@ -994,7 +994,7 @@ assert.equal(recordFixture.call('bootstrap').data.record_items.length,3);
  * remove the replaced rows from the active catalogue, including price data. */
 const editPayload={record_id:receiptSaved.data.record.record_id,version:1,
  chain_id:newChainId,record_date:'2026-10-15',
- items:[{raw_name:'修正した商品',auto_match_product_id:productForPrice.product_id,
+ items:[{raw_name:'修正した商品',linked_product_id:productForPrice.product_id,
    quantity:2,line_total_tax_included:440}]};
 recordFixture.failRecordItemWriteAfter(0);
 const partialUpdate=recordFixture.call('record.update',editPayload,
@@ -1554,7 +1554,7 @@ console.log('v59: record editing, offline restart, deletion, alias training, she
 const unnamedFixture=fixture(api);
 const unnamedChain=unnamedFixture.call('store.create',{name:'名前任意テスト店舗'},
  'op-unnamed-chain-create-abcdef12345').data.entity.chain_id;
-const unnamedLine={raw_name:'',auto_match_product_id:null,quantity:1,line_total_tax_included:250};
+const unnamedLine={raw_name:'',linked_product_id:null,quantity:1,line_total_tax_included:250};
 const unnamedPayload={record_type:'receipt',chain_id:unnamedChain,record_date:'2026-11-08',
  items:[unnamedLine]};
 const unnamedSaved=unnamedFixture.call('record.create',unnamedPayload,'op-unnamed-create-abcdef12345');
@@ -1685,7 +1685,7 @@ const bulkSaved=temp.call('record.create',{
   {non_ocr_name:'一括紐付済 E',quantity:1,line_total_tax_included:105,
    product_id:bulkExistingId,
    product_name_candidate:'一括別新規商品テスト',candidate_match_type:'new'}
- ].map(line=>({raw_name:'',auto_match_product_id:null,...line}))
+ ].map(line=>({raw_name:'',linked_product_id:null,...line}))
 },'op-bulk-new-receipt-abcdefghijklmn');
 assert.equal(bulkSaved.ok,true);
 const bulkRecordId=bulkSaved.data.record.record_id;
@@ -2173,7 +2173,7 @@ assert.equal(historyProduct.ok,true);
 const historyId=historyProduct.data.entity.product_id;
 assert.equal(temp.call('record.create',{
  record_type:'receipt',chain_id:kitStore.chain_id,record_date:'2026-11-01',
- items:[{raw_name:historyRaw,auto_match_product_id:historyId,quantity:1,
+ items:[{raw_name:historyRaw,linked_product_id:historyId,quantity:1,
   line_total_tax_included:221}]
 },'op-v64-history-receipt-abcdefghijk').ok,true);
 assert.equal(temp.call('bootstrap').data.receipt_name_mappings.filter(a=>
@@ -2234,7 +2234,7 @@ historySession.window.close();
 const shelfRaw='値札から再照合する印字名';
 assert.equal(temp.call('record.create',{
  record_type:'price_tag',chain_id:kitStore.chain_id,record_date:'2026-11-02',
- items:[{raw_name:shelfRaw,auto_match_product_id:historyId,quantity:1,
+ items:[{raw_name:shelfRaw,linked_product_id:historyId,quantity:1,
   line_total_tax_included:215}]
 },'op-v64-shelf-record-abcdefghijk').ok,true);
 let shelfSession=appSession();
@@ -2271,7 +2271,7 @@ assert.notEqual(conflictChainId,kitStore.chain_id);
 assert.notEqual(conflictChainId,standaloneChainId);
 assert.equal(temp.call('record.create',{
  record_type:'receipt',chain_id:conflictChainId,record_date:'2026-11-01',
- items:[{raw_name:historyRaw,auto_match_product_id:conflict.data.entity.product_id,
+ items:[{raw_name:historyRaw,linked_product_id:conflict.data.entity.product_id,
   quantity:1,line_total_tax_included:222}]
 },'op-v64-conflict-record-abcdefghijk').ok,true);
 const competingAliases=temp.call('bootstrap').data.receipt_name_mappings.filter(a=>
@@ -2620,7 +2620,7 @@ assert.ok(schema.record_items.includes('product_name_candidate'),'product candid
 assert.equal(recordFixture.call('bootstrap').ok,true,'compact sheet headers pass bootstrap');
 const rejectedLegacy=recordFixture.call('record.create',{
  record_type:'receipt',chain_id:newChainId,record_date:'2026-11-08',
- items:[{raw_name:'旧項目拒否',auto_match_product_id:null,quantity:1,line_total_tax_included:120,
+ items:[{raw_name:'旧項目拒否',linked_product_id:null,quantity:1,line_total_tax_included:120,
   inferred_name:'不必要な別名'}]
 },'op-schema-reject-legacy-abcdef12345');
 assert.equal(rejectedLegacy.error.code,'BAD_REQUEST','unused persistence fields are not accepted');
@@ -2711,7 +2711,7 @@ console.log('v69: five-photo-item UNIQLO receipt saved exactly without OCR alias
 
 
 const v70Ocr=recordFixture.call('record.create',{record_type:'receipt',chain_id:newChainId,record_date:'2026-11-04',items:[
- {raw_name:'リント・ール',product_name_candidate:'リンドール',candidate_match_type:'',auto_match_product_id:null,quantity:2,line_total_tax_included:598}
+ {raw_name:'リント・ール',product_name_candidate:'リンドール',candidate_match_type:'',linked_product_id:null,quantity:2,line_total_tax_included:598}
 ]},'op-v70-ocr-inference-abcdef');
 assert.equal(v70Ocr.ok,true);
 const v70OcrLine=recordFixture.call('bootstrap').data.record_items.find(x=>x.record_id===v70Ocr.data.record.record_id);
@@ -3027,7 +3027,7 @@ await waitFor(()=>[editOne,editTwo].every(phone=>
 const receiptInput={
  record_id:editTarget.record_id,record_type:'receipt',chain_id:editTarget.chain_id,
  record_date:editTarget.record_date,
- items:[{raw_name:'端末Aで確定した明細',auto_match_product_id:null,quantity:1,
+ items:[{raw_name:'端末Aで確定した明細',linked_product_id:null,quantity:1,
   line_total_tax_included:551}]
 };
 online=false;
@@ -3155,7 +3155,7 @@ await repairedPhone.window.KurashiLive.learnAliases({chain_id:repairChain,items:
 ]});
 await repairedPhone.window.KurashiLive.saveRecord({
  record_type:'receipt',chain_id:repairChain,record_date:'2026-11-11',
- items:[{raw_name:'同期復旧検証OCR',auto_match_product_id:pendingProduct.product_id,
+ items:[{raw_name:'同期復旧検証OCR',linked_product_id:pendingProduct.product_id,
   quantity:1,line_total_tax_included:127}]
 });
 assert.equal(repairedPhone.window.KurashiLive.state().queued,3,
@@ -3214,7 +3214,7 @@ await oldPhone.window.KurashiLive.learnAliases({chain_id:repairChain,items:[
 ]});
 await oldPhone.window.KurashiLive.saveRecord({
  record_type:'receipt',record_date:'2026-11-11',chain_id:repairChain,
- items:[{raw_name:'復旧_孤立OCR名',auto_match_product_id:orphanProduct.product_id,
+ items:[{raw_name:'復旧_孤立OCR名',linked_product_id:orphanProduct.product_id,
   quantity:1,line_total_tax_included:89}]
 });
 assert.equal(oldPhone.window.KurashiLive.state().queued,3);
@@ -3283,7 +3283,7 @@ await purgePhone.window.KurashiLive.learnAliases({chain_id:repairChain,items:[
 ]});
 await purgePhone.window.KurashiLive.saveRecord({
  record_type:'receipt',record_date:'2026-11-11',chain_id:repairChain,
- items:[{raw_name:'破棄確認OCR名',auto_match_product_id:purgeProduct.product_id,
+ items:[{raw_name:'破棄確認OCR名',linked_product_id:purgeProduct.product_id,
   quantity:2,line_total_tax_included:638}]
 });
 assert.equal(purgePhone.window.KurashiLive.state().queued,3,
@@ -3357,7 +3357,7 @@ await heldPurgePhone.window.KurashiLive.learnAliases({chain_id:repairChain,items
 ]});
 await heldPurgePhone.window.KurashiLive.saveRecord({
  record_type:'receipt',record_date:'2026-11-11',chain_id:repairChain,
- items:[{raw_name:'破棄対象のOCR名',auto_match_product_id:heldPurgeProduct.product_id,
+ items:[{raw_name:'破棄対象のOCR名',linked_product_id:heldPurgeProduct.product_id,
   quantity:1,line_total_tax_included:239}]
 });
 assert.equal(temp.call('product.create',{
@@ -3488,7 +3488,7 @@ const suggestionProduct=suggestionFixture.call('product.create',{
 },'op-suggestion-product-abcdef12345').data.entity.product_id;
 const suggestionReceipt=suggestionFixture.call('record.create',{
  record_type:'receipt',chain_id:suggestionChain,record_date:'2026-11-14',
- items:[{raw_name:'レシート印字名',auto_match_product_id:null,quantity:2,line_total_tax_included:340,
+ items:[{raw_name:'レシート印字名',linked_product_id:null,quantity:2,line_total_tax_included:340,
   product_name_candidate:'登録候補の正式商品名',candidate_match_type:'new'}]
 },'op-suggestion-record-abcdef12345');
 assert.equal(suggestionReceipt.ok,true,'receipt with ChatGPT product suggestion is saved');
