@@ -535,15 +535,15 @@ assert.ok(source.includes('function detailHomeView(')&&
 // Saved OCR names are dereferenced via receipt_name_mappings, never record_items.raw_name.
 const originalPreviewAliases=ui.catalogue().receiptNameMappings;
 ui.catalogue().receiptNameMappings=[...(originalPreviewAliases||[]),{receiptNameId:'test-ocr-name',ocrName:'OCR原文'}];
-assert.equal(ui.detailLineName({product_id:'p-milk-1',non_ocr_name:'確定した別名',receipt_name_id:'test-ocr-name'}),
+assert.equal(ui.detailLineName({linked_product_id:'p-milk-1',non_ocr_name:'確定した別名',receipt_name_id:'test-ocr-name'}),
  'おいしい牛乳','Linked product title takes precedence');
-assert.equal(ui.detailLineName({product_id:null,non_ocr_name:'確認した商品名',receipt_name_id:'test-ocr-name'}),
+assert.equal(ui.detailLineName({linked_product_id:null,non_ocr_name:'確認した商品名',receipt_name_id:'test-ocr-name'}),
  '確認した商品名','Unlinked confirmed line title takes precedence');
-assert.equal(ui.detailLineName({product_id:null,receipt_name_id:'test-ocr-name',product_name_candidate:'推定候補'}),
+assert.equal(ui.detailLineName({linked_product_id:null,receipt_name_id:'test-ocr-name',product_name_candidate:'推定候補'}),
  'OCR原文','OCR title is the fallback when not confirmed');
-assert.equal(ui.detailLineName({product_id:null,product_name_candidate:'未確定の生成AI候補'}),
+assert.equal(ui.detailLineName({linked_product_id:null,product_name_candidate:'未確定の生成AI候補'}),
  '明細名なし','An undecided candidate is never silently promoted to a saved title');
-assert.equal(ui.detailLineName({product_id:'p-milk-2',receipt_name_id:''}),
+assert.equal(ui.detailLineName({linked_product_id:'p-milk-2',receipt_name_id:''}),
  '北海道牛乳','A linked item without a printed name still shows its master name');
 ui.catalogue().receiptNameMappings=originalPreviewAliases;
 ui.setRecordDetailId(ui.demoRecords.find(r=>r.record_type==='receipt').record_id);
