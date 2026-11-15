@@ -163,7 +163,7 @@ const KURASHI_PRENAME_SCHEMA={
  records:{old:'records',headers:['record_id','household_id','record_type','chain_id','branch_name','record_date','created_at','updated_at','version','deleted_at']},
  record_items:{old:'record_items',headers:['record_item_id','record_id','line_order','product_id','quantity','amount_tax_included','created_at','updated_at','version','deleted_at','alias_id','confirmed_name','suggested_product_name','suggestion_kind']}
 };
-function kurashiEnsureTrialNaming_(book){
+function kurashiEnsureTrialNaming_(book,options={}){
  const keys=Object.keys(KURASHI_PRENAME_SCHEMA),jobs=[];
  const same=(a,b)=>JSON.stringify(a)===JSON.stringify(b);
  for(const name of keys){
@@ -188,7 +188,7 @@ function kurashiEnsureTrialNaming_(book){
   }
   jobs.push({sheet,name,renameOnly:false});
  }
- if(!jobs.length)return false;
+ if(!jobs.length)return options.dryRun?[]:false;
  // Never alter a workbook with a half-prepared durable operation.
  const journal=book.getSheetByName('processed_operations');
  if(!journal)kurashiFail_('SCHEMA_ERROR','操作履歴シートがありません');
@@ -202,6 +202,7 @@ function kurashiEnsureTrialNaming_(book){
     kurashiFail_('RECOVERY_REQUIRED','保存途中の操作があるため移行を保留しました');
   }
  }
+ if(options.dryRun)return jobs.map(job=>({table:job.name,rename:KURASHI_PRENAME_SCHEMA[job.name].old!==job.name,headers:!job.renameOnly}));
  for(const job of jobs){
   const old=KURASHI_PRENAME_SCHEMA[job.name];
   if(old.old!==job.name)job.sheet.setName(job.name);
@@ -212,6 +213,47 @@ function kurashiEnsureTrialNaming_(book){
  }
  return true;
 }
+// Run these functions explicitly in the verified TRIAL Apps Script editor.
+// The public API never invokes a migration. Approval and workbook ID must be
+// set manually after stopping clients and checking all local queues are empty.
+function kurashiTrialNamingBook_(){
+ const props=PropertiesService.getScriptProperties();
+ const id=props.getProperty('SPREADSHEET_ID');
+ if(!id||id!==props.getProperty('KURASHI_NEW_WORKBOOK_ID')||
+    props.getProperty('KURASHI_SCHEMA_VERSION')!=='1'||
+    id!==props.getProperty('KURASHI_TRIAL_NAMING_TARGET_ID'))
+   throw Error('試作シートIDを確認してください。命名切替は実行しません');
+ return SpreadsheetApp.openById(id);
+}
+function kurashiTrialNamingPreflight(){
+ const book=kurashiTrialNamingBook_();
+ const plan=kurashiEnsureTrialNaming_(book,{dryRun:true});
+ const report={status:plan.length?'READY_AFTER_USER_CHECK':'ALREADY_COMPLETE',changes:plan};
+ console.log(JSON.stringify(report));
+ return report;
+}
+function kurashiApplyTrialNamingCutover(){
+ const props=PropertiesService.getScriptProperties();
+ if(props.getProperty('KURASHI_TRIAL_NAMING_APPROVAL')!=='APPLY_TRIAL_SCHEMA')
+   throw Error('明示的な試作スキーマ切替承認がありません。変更しません');
+ const lock=LockService.getScriptLock();
+ lock.waitLock(30000);
+ try{
+  const book=kurashiTrialNamingBook_();
+  const plan=kurashiEnsureTrialNaming_(book,{dryRun:true});
+  if(!plan.length)return {status:'ALREADY_COMPLETE'};
+  const backupName='くらしストック_試作_命名変更前_'+Utilities.formatDate(new Date(),'Asia/Tokyo','yyyyMMdd_HHmmss');
+  const backup=DriveApp.getFileById(book.getId()).makeCopy(backupName);
+  if(!backup||!backup.getId())throw Error('バックアップの作成を確認できません。変更しません');
+  if(!kurashiEnsureTrialNaming_(book))
+    throw Error('命名変更が実行されませんでした。バックアップを確認してください');
+  if(kurashiEnsureTrialNaming_(book,{dryRun:true}).length)
+    throw Error('命名変更が未完了です。バックアップを確認してください');
+  const result={status:'SCHEMA_NAMING_UPDATED_11_TABLES',backupUrl:backup.getUrl()};
+  console.log(JSON.stringify(result));
+  return result;
+ }finally{lock.releaseLock()}
+}
 function kurashiBook_() {
   const props = PropertiesService.getScriptProperties();
   const id = props.getProperty('SPREADSHEET_ID');
@@ -219,7 +261,9 @@ function kurashiBook_() {
       props.getProperty('KURASHI_SCHEMA_VERSION') !== '1')
     kurashiFail_('CONFIG_REQUIRED','新しいSheetの初期設定が未完了です');
   const book=SpreadsheetApp.openById(id);
-  kurashiEnsureTrialNaming_(book);
+  // Never alter persistent Sheets as a side effect of an API read or save.
+  if(['retail_chains','household_items','receipt_name_mappings'].some(name=>!book.getSheetByName(name)))
+    kurashiFail_('SCHEMA_CUTOVER_REQUIRED','試作Sheetsの命名切替が未完了です。切替中は利用を停止してください');
   return book;
 }
 function kurashiSheet_(name,book) {
