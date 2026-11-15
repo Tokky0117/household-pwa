@@ -3533,3 +3533,73 @@ assert.equal(suggestionFixture.call('bootstrap').data.record_items.find(x=>
  x.record_item_id===suggestionLine.record_item_id).candidate_match_type,'',
  'confirmed AI candidate stays cleared after an unlink');
 console.log('stage1: persisted ChatGPT suggestions, versioned item link, replay and unlink OK');
+
+// Sync optimization regression: one record operation journals all lines,
+// creates new OCR names, updates an existing name's match, and can recover a
+// partial multi-row Sheets write without duplicating either lines or aliases.
+const batchFixture=fixture(api);
+const batchChain=batchFixture.call('store.create',{name:'一括保存テスト店'},
+ 'op-batch-store-abcdefghijklmnop').data.entity.chain_id;
+const batchProduct=batchFixture.call('product.create',{
+ name:'一括照合対象商品',household_item_id:null,package_quantity:null,package_unit:null
+},'op-batch-product-abcdefghijklmnop').data.entity.product_id;
+const oldName=batchFixture.call('alias.upsert',{
+ chain_id:batchChain,raw_alias:'既存のOCR名',auto_match_product_id:null
+},'op-batch-alias-abcdefghijklmnop').data.entity;
+const makeBatch=(name,extras=[])=>({
+ record_type:'receipt',chain_id:batchChain,record_date:'2026-11-16',
+ items:[
+  {raw_name:'既存のOCR名',linked_product_id:batchProduct,quantity:1,
+   line_total_tax_included:123},
+  {raw_name:name,linked_product_id:null,quantity:2,
+   line_total_tax_included:300},
+  ...extras
+ ]
+});
+const receiptBatch=makeBatch('新しいOCR名');
+const pendingBefore=batchFixture.db.processed_operations.length;
+const savedBatch=batchFixture.call('record.create',receiptBatch,
+ 'op-batch-record-abcdefghijklmnop');
+assert.equal(savedBatch.ok,true,'batched receipt save succeeded');
+assert.equal(savedBatch.data.items.length,2,'two separate purchase lines kept');
+assert.equal(batchFixture.db.processed_operations.length,pendingBefore+1,
+ 'receipt and OCR dictionary update share a single operation ID');
+const changedAlias=batchFixture.call('bootstrap').data.receipt_name_mappings.find(x=>
+ x.receipt_name_id===oldName.receipt_name_id);
+assert.equal(changedAlias.auto_match_product_id,batchProduct,
+ 'existing OCR name learns confirmed product inside the receipt transaction');
+assert.equal(Number(changedAlias.version),Number(oldName.version)+1,
+ 'OCR name mapping version changes exactly once');
+assert.ok(savedBatch.data.aliases.some(x=>
+ x.receipt_name_id===oldName.receipt_name_id&&x.auto_match_product_id===batchProduct),
+ 'acknowledgement includes updated OCR dictionary rows');
+const batchItemsBefore=batchFixture.db.record_items.length;
+const batchRepeat=batchFixture.call('record.create',receiptBatch,
+ 'op-batch-record-abcdefghijklmnop');
+assert.equal(batchRepeat.ok,true,'replay of batch returns original result');
+assert.equal(batchFixture.db.record_items.length,batchItemsBefore,
+ 'same operation ID never duplicates receipt lines');
+assert.equal(Number(batchFixture.call('bootstrap').data.receipt_name_mappings.find(x=>
+ x.receipt_name_id===oldName.receipt_name_id).version),Number(changedAlias.version),
+ 'replay does not remap OCR names twice');
+
+const partialBatch=makeBatch('復旧時OCR名',[
+ {raw_name:'復旧時別名2',linked_product_id:null,quantity:1,line_total_tax_included:50}
+]);
+batchFixture.failRecordItemWriteAfter(1);
+const partialResult=batchFixture.call('record.create',partialBatch,
+ 'op-batch-partial-abcdefghijklmnop');
+assert.equal(partialResult.ok,false,'partial multi-row Sheets failure is surfaced');
+const recoveredBatch=batchFixture.call('record.create',partialBatch,
+ 'op-batch-partial-abcdefghijklmnop');
+assert.equal(recoveredBatch.ok,true,'retry reconciles the partial batch');
+assert.equal(recoveredBatch.data.items.length,3,'retry retains every original line');
+const persistedIds=new Set(batchFixture.db.record_items.slice(1)
+ .map(row=>row[batchFixture.db.record_items[0].indexOf('record_item_id')]));
+assert.equal(persistedIds.size,batchFixture.db.record_items.length-1,
+ 'partial retry adds no duplicate purchase row IDs');
+const loggedIds=batchFixture.db.processed_operations.slice(1)
+ .map(row=>row[batchFixture.db.processed_operations[0].indexOf('operation_id')]);
+assert.equal(new Set(loggedIds).size,loggedIds.length,
+ 'partial retry adds no duplicate operation journal entries');
+console.log('sync optimization: batch receipt, alias mapping and partial replay OK');
