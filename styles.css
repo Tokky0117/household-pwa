@@ -2823,25 +2823,27 @@ html,body{touch-action:pan-x pan-y}
 .record-detail-guidance{margin:8px 0 14px;color:var(--muted);font-size:13px;line-height:1.55}
 .detail-record-line-meta.detail-product-proposal{color:var(--ink)}
 
-/* AI imports: color and tiny source tag instead of repeated before/after text. */
-.scan-review-item .scan-ai-updated,.scan-receipt-meta .scan-ai-updated{
- --ai-green-bg:#edf8f1;--ai-green-border:#6dbb8c;--ai-green-text:#216d43;
-}
-.scan-ai-updated{border-radius:8px;padding:4px 6px!important;background:var(--ai-green-bg);
- box-shadow:inset 0 0 0 1px var(--ai-green-border)}
-.scan-ai-updated .ui-static-field-value,.scan-ai-updated input,
-.scan-ai-updated .ui-picker-value{color:var(--ai-green-text)!important}
+
+/* A shared sparkle/green language for AI assistance. Never obscure input outlines. */
+.scan-ai-entry{color:#26814b!important;display:inline-flex;align-items:center;gap:6px}
+.scan-ai-entry svg{width:17px;height:17px;flex:none}
+.scan-ai-updated{color:#267b4a!important}
+.scan-ai-updated input,.scan-ai-updated .ui-static-field-value,
+.scan-ai-updated .ui-picker-value{color:#267b4a!important}
 .scan-ai-updated .ui-static-field-label::after,.scan-ai-updated label::after{
- content:"AI";display:inline-block;margin-left:6px;font-size:10px;
- font-weight:700;color:var(--ai-green-text);vertical-align:baseline}
-@media (prefers-color-scheme:dark) {
- .scan-review-item .scan-ai-updated,.scan-receipt-meta .scan-ai-updated{
-  --ai-green-bg:#173d29;--ai-green-border:#488966;--ai-green-text:#9fe4b4}
+ content:"✦";color:#267b4a;display:inline-block;font-size:12px;margin-left:6px
 }
-/* Deletion is a review draft state, not an immediate irreversible removal. */
+@media (prefers-color-scheme:dark){
+ .scan-ai-entry,.scan-ai-updated,.scan-ai-updated input,
+ .scan-ai-updated .ui-static-field-value,.scan-ai-updated .ui-picker-value{
+  color:#8edbad!important}
+ .scan-ai-updated .ui-static-field-label::after,.scan-ai-updated label::after{color:#8edbad}
+}
+.record-detail-benefit{margin:2px 0 12px;color:var(--muted);font-size:13px;line-height:1.55}
+/* Grey out the content, but keep the same-sized original card and action slot. */
 .scan-review-item.is-pending-delete{background:var(--card);border-color:var(--line)}
-.scan-review-item.is-pending-delete .scan-item-content{
- filter:grayscale(1);opacity:.38;user-select:none;pointer-events:none}
-.scan-delete-undo{display:flex;align-items:center;justify-content:space-between;
- border-top:1px solid var(--line);margin-top:8px;padding:6px 0 0;color:var(--muted);font-size:13px}
-.scan-delete-undo .ui-text-action{min-height:36px}
+.scan-review-item.is-pending-delete .scan-item-content > :not(.scan-item-head){
+ filter:grayscale(1);opacity:.40;pointer-events:none;user-select:none
+}
+.scan-review-item.is-pending-delete .scan-item-head>strong{color:var(--muted);opacity:.55}
+.scan-item-restore{font-weight:600}
