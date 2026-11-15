@@ -56,6 +56,11 @@ for(const selector of ['.iconbtn','.headrow .iconbtn','.sheet-close','.cathead',
 }
 assert.ok(css.includes('.tertiary{')&&css.includes('color:var(--accent)'),'Shared tertiary button style exists');
 assert.ok(!source.includes('priceCells(){'),'Obsolete normal/discount UI component removed');
+assert.ok(source.includes('class="detail-candidate-origin" role="img" aria-label="生成AIによる候補"')&&
+ source.includes("<span>商品名候補：${esc(line.product_name_candidate)}")&&
+ !source.includes('<span>生成AIの商品名候補：'),'Saved receipt AI attribution uses an icon, not a text label');
+assert.ok(source.includes("label:'候補をまとめて登録（'")&&source.includes("icon:'sparkles'"),
+ 'Bulk product candidate registration uses the shared sparkle icon');
 assert.ok(!css.includes('grid-template-areas:"name value" "name date"'),'Obsolete two-row price CSS removed');
 assert.ok(ui.listView().includes('data-stock=')&&ui.listView().includes('data-list-edit='),'Stock and swipe list preserved');
 // v0.89.7: OCR-only rule-based normalization. No word/product dictionary,
