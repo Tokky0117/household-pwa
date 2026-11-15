@@ -24,6 +24,11 @@ let scanned=0,withOcr=0;
 for(const base of [site,...readdirSync(previewDir,{withFileTypes:true})
  .filter(e=>e.isDirectory()).map(e=>join(previewDir,e.name))]){
  if(!existsSync(join(base,'index.html')))continue;
+ // Historical prototype branches may reference auth.js or other files that
+ // the current preview builder intentionally does not package. Validate the
+ // deployed production app and every branch that uses the shared OCR engine.
+ const app=readFileSync(requireAsset(base,'app.js'),'utf8');
+ if(base!==site&&!app.includes('ocr-engine/engine.js'))continue;
  scanned++;
  const html=readFileSync(requireAsset(base,'index.html'),'utf8');
  for(const tag of html.matchAll(/<(?:script|link)\b[^>]*?>/gi)){
@@ -37,7 +42,6 @@ for(const base of [site,...readdirSync(previewDir,{withFileTypes:true})
  const assets=sw.match(/const ASSETS=\[([^\]]+)\]/)?.[1];
  assert.ok(assets,'Service Worker pre-cache list missing: '+base);
  for(const m of assets.matchAll(/'([^']+)'/g))requireAsset(base,m[1]);
- const app=readFileSync(requireAsset(base,'app.js'),'utf8');
  if(!app.includes('ocr-engine/engine.js'))continue;
  withOcr++;
  for(const path of ['ocr-engine/engine.js','ocr-engine/build-info.json',
