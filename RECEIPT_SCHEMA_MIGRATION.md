@@ -1,77 +1,76 @@
-# くらしストック｜試作環境のレシートDB簡素化反映手順
+# くらしストック｜試作Sheetsのスキーマ切替（v46 → v94）
 
-更新日：2026-11-14
+更新日：2026-11-15
 
-## 状態と対象
+> **未実施の手順です。** GitHub上のv94コードとCIが成功しても、試作Google Sheetsの実データは切り替わりません。利用者が対象を確認して実行するまで、試作GAS・Sheetsには変更を加えません。**本番 `main`・本番GAS・本番Sheetsは変更しません。**
 
-- 対象：`preview-v46-clean-base` が接続する **試作Google Sheets / 試作GASのみ**。
-- GitHubの試作コードは簡素化スキーマに対応。**試作Sheetsの実列変更・GASの公開版更新は未実施**。完了したと扱わない。
-- `main`、本番GAS、本番Google Sheetsは変更禁止。
-- 試作GASデプロイは `.github/workflows/gas-deploy-new.yml` の **手動実行（workflow_dispatch）のみ**。変更前には稼働先とスキーマを確認する。
-- レシート関連の過去の明細移行は不要。一方、日用品 `household_items`、`products`、`retail_chains`、`receipt_name_mappings`、`categories`、`households`、`users`、`change_log`、`processed_operations` のデータは破棄しない。
+## 1. 対象と前提
 
-## 作業前の安全確認（必須）
+- 旧コード：`preview-v46-clean-base`（アプリ表示 v0.93.0）
+- 新コード：`preview-v94-schema-names`（アプリ表示 v0.93.0）
+- 対象：**v46が接続する試作用**GASとGoogle Sheetsのみ
+- 旧Sheetsの前提：すでに11シート化済みで、`stores`・`item_groups`・`product_aliases` が存在すること。12シート・`receipt_rules`・旧レシート列が残っている場合、まず既存の [12→11整理用スクリプト](./scripts/trial-sheet-schema-cutover.gs) の別手順が必要です。直接v94へ移行しません。
+- `records.branch_name` に値が残っている場合は**削除せず中止**します。
+- 日用品、商品、店舗、OCR読み取り名辞書、購入履歴、同期履歴などのデータ行は移行中に初期化・消去しません。
+- 列定義の正本は `gas/Setup.gs` の `KURASHI_NEW_SCHEMA`。特に `record_items` の購入商品 `linked_product_id` と OCR辞書の照合先 `auto_match_product_id` は別の役割です。
 
-1. GitHub試作ブランチの最新プレビューCIが成功していることを確認する。
-2. 試作アプリを利用する端末の **未送信操作キューが0件** であることを確認する。未送信の旧レシート操作をこのタイミングで再送しない。
-3. **対象のスプレッドシートが試作環境のものであること**、既存の試作GASの接続先と一致することを確認する。名称のみで判別せず、GASの `SPREADSHEET_ID` と一致させる。**本番のシートに触れない。**
-4. 念のため対象試作シートをコピーし、日用品・商品・店舗・別名・同期履歴を含む全行を退避してから、列削除を実行する。退避先を本番接続に設定しない。
-5. 切替中の書込を止める。試作GASデプロイとSheets列変更の間に保存・同期のリクエストを流さない。
+## 2. v46 → v94で変わる保存名
 
-## 推奨：確認付きスクリプトによる列削除（1回のみ）
+| v46 | v94 |
+| --- | --- |
+| `stores` | `retail_chains` |
+| `item_groups` | `household_items` |
+| `product_aliases` | `receipt_name_mappings` |
+| `item_groups.item_group_id` | `household_items.household_item_id` |
+| `products.item_group_id` | `products.household_item_id` |
+| `products.item_group_order` | `products.household_item_order` |
+| `product_aliases.alias_id` | `receipt_name_mappings.receipt_name_id` |
+| `product_aliases.product_id` | `receipt_name_mappings.auto_match_product_id` |
+| `product_aliases.normalized_alias` | `receipt_name_mappings.normalized_receipt_name` |
+| `record_items.product_id` | `record_items.linked_product_id` |
+| `record_items.amount_tax_included` | `record_items.line_total_tax_included` |
+| `record_items.alias_id` | `record_items.receipt_name_id` |
+| `record_items.confirmed_name` | `record_items.non_ocr_name` |
+| `record_items.suggested_product_name` | `record_items.product_name_candidate` |
+| `record_items.suggestion_kind` | `record_items.candidate_match_type` |
+| `records.branch_name` | 削除（全行空欄の場合だけ） |
 
-[試作Sheets切替スクリプト](./scripts/trial-sheet-schema-cutover.gs) を利用する。スクリプトは **試作Google Sheetsの「拡張機能 → Apps Script」から開いた、対象シートに紐づくスクリプト** に貼り付けて実行する（公開GAS `Api.gs` / `Setup.gs` へ追加しない）。本番シートのApps Scriptでは実行しない。
+**実データ値は変更せず、シート名・ヘッダー名の変更と空の支店名列の削除**だけを行います。11シートを維持します。
 
-1. 試作GAS側のスクリプトプロパティ `SPREADSHEET_ID` と、開いた試作SheetsのURL内のIDが一致することを所有者が確認する。これらのIDをチャットやGitHubへ公開しない。
-2. すべての試作端末で未送信キュー **0件** を確認し、試作アプリの使用を停止する。切替中に旧GASへ保存・同期しない。
-3. スクリプトをコピーし、`KURASHI_CUTOVER_TRIAL_SPREADSHEET_ID` に**検証済み試作Sheets ID**を設定する。`KURASHI_CUTOVER_APPROVAL` は `CHECK_ONLY` のまま保存する。
-4. `kurashiTrialSchemaPreflight` を実行し、ログが `READY_AFTER_USER_CHECK`（未変更）または `ALREADY_COMPLETE`（変更済み）となるか確認する。対象不一致・未完了GAS操作・不明なヘッダー・データのある`receipt_rules`はエラーで停止する。
-5. `READY_AFTER_USER_CHECK` の場合のみ `KURASHI_CUTOVER_APPROVAL` を `APPLY_TRIAL_SCHEMA` に変更し、`kurashiApplyTrialReceiptSchemaCutover` を実行する。**まず同じ試作ブックの全シートをDriveにバックアップ**し、対象の5列と空の `receipt_rules` シートだけを削除する。正常結果は `SCHEMA_UPDATED_11_TABLES`。
-6. 再度 `kurashiTrialSchemaPreflight` を実行して `ALREADY_COMPLETE` を確認する。保存対象の9テーブルの列見出しと行数が維持されていることも確認する。
-7. **その後はじめて**試作GASの手動Actionsデプロイを実行する。途中で失敗したら旧GASのまま試作アプリを再開せず、バックアップを確認する。
+## 3. 実行前の確認（利用者が行う）
 
-このスクリプトは保存済みレシートの**データ移行をしない**。既存のデータ行は列位置の変換でそのまま保持する。これは将来のAPIや移行互換機能として常設しない、試作シート用の一度限りの補助コードである。モックによる安全確認は [trial-sheet-schema-cutover.mjs](./tests/trial-sheet-schema-cutover.mjs) で自動テストする。
+1. v94の最新CIが成功していることを確認する。
+2. 試作を利用する**すべての端末**で未送信操作キューが0件であることを確認し、試作アプリの使用を停止する。本番アプリは対象外。
+3. 試作用GASのスクリプトプロパティ `SPREADSHEET_ID` と実際の試作用SheetsのIDを照合する。**名前だけで判断しない。** IDを公開リポジトリやチャットへ貼らない。
+4. Sheetsがv46の11シート構成であること、`branch_name` の列に値がないこと、各マスタ・OCR辞書・履歴の行数を確認する。
+5. 試作用Sheets全体の**別コピーを作成**する。切替処理も書き込み前にもう一度コピーを自動作成する。
+6. 切替中はv46もv94も開いて同期しない。途中で異常終了したら、原因を解消するまで書込を再開しない。
 
-## 手作業で削除する場合の参考（推奨は上記スクリプト）
+## 4. 試作GASでの事前確認と命名切替
 
-## 試作Sheets変更内容
+以下の処理は**試作GASのApps Scriptエディタで手動実行するもの**です。公開中のWebアプリへの通常リクエストからは実行されません。
 
-以下の列は、実際にSheets側で**列ごと削除**する（セルの値だけ消さない）。すべてレシート関連の列である。
+1. 11シートの安全確認が完了したら、試作GASエディタの `Api.gs` と `Setup.gs` をv94ブランチと同じコードに更新する。**この時点では公開デプロイを更新しない**。既存コードを保存・退避しておく。
+2. 試作GASのスクリプトプロパティ `KURASHI_TRIAL_NAMING_TARGET_ID` に、確認済みの**試作用Sheets ID**を指定する。設定済み `SPREADSHEET_ID` および `KURASHI_NEW_WORKBOOK_ID` と一致しなければ停止する。
+3. `KURASHI_TRIAL_NAMING_APPROVAL` を未設定または `CHECK_ONLY` として、エディタで `kurashiTrialNamingPreflight()` を実行する。これは**読み取り専用**。ログの `READY_AFTER_USER_CHECK` と対象変更6件、または `ALREADY_COMPLETE` を確認する。不明な列・未完了の操作履歴・値のある `branch_name` を検出したら、切替せず中止。
+4. 結果を確認した場合に限り `KURASHI_TRIAL_NAMING_APPROVAL` を `APPLY_TRIAL_SCHEMA` とし、`kurashiApplyTrialNamingCutover()` を**1回だけ**実行する。全シートをDriveへ自動バックアップし、スキーマを変更する。正常結果は `SCHEMA_NAMING_UPDATED_11_TABLES`。
+5. 直ちに承認プロパティを `CHECK_ONLY` に戻す。再度 `kurashiTrialNamingPreflight()` を実行し、`ALREADY_COMPLETE` を確認する。11シート・新ヘッダー・データ行数・OCR辞書の商品ID参照を照合する。
+6. バックアップ、検証結果、切替対象が確定した後にはじめて、GitHub Actions **Deploy only the NEW Kurashi GAS** を **`preview-v94-schema-names` から手動実行**する。ワークフローは新GASの既存デプロイだけを更新し、更新後に11シートを使った読込を検証する。
+7. 正常デプロイ後、v94試作アプリを再読み込みし、日用品・商品・店舗・OCR名と価格情報、レシート保存・編集・削除、商品リンク、オフライン再送、2端末同期を実機で確認する。
 
-| シート | 削除列 | 旧位置 |
-| --- | --- | --- |
-| `record_items` | `inferred_name` | P（16列目） |
-| `record_items` | `price_eligible` | I（9列目） |
-| `record_items` | `category_id` | H（8列目） |
-| `record_items` | `raw_name` | D（4列目） |
-| `records` | `raw_store_name` | F（6列目） |
+## 5. 禁止事項と障害時の停止条件
 
-`record_items` の削除は **P → I → H → D** の順序で行う。列ずれを防ぐため、毎回ヘッダー名を目視で確認する。最後に **`receipt_rules` シートのみ削除**し、残りは11シートとなる。旧レシート行は移行不要なので、必要なら試作の `records` と `record_items` のデータ行だけを先に削除してよい。**日用品・商品・店舗・OCR別名のシートは消さない。**
+- `main`、本番GAS、または本番Sheetsへこの操作を行わない。
+- `setupNewWorkbook()` を既存試作Sheetsの列変更目的で実行しない。
+- 旧GASと新スキーマ、または新GASと旧スキーマを組み合わせたまま試作アプリを使用しない。
+- v94のGASで使われる `kurashiBook_()` は**シートを自動改名しない**。スキーマが未切替の場合はエラーで停止する。
+- スキーマ変更途中で例外が出た場合は**操作・同期を停止**し、保存したバックアップから状態を確認する。手動で列名だけ直して使用再開しない。
+- 手順を完了しても本番リリースにはならない。正式リリースには別途ユーザーの指示が必要。
 
-期待するヘッダー（順番も一致させる）：
+## 6. 検証ファイル
 
-`records`:
-```text
-record_id, household_id, record_type, chain_id, branch_name, record_date, created_at, updated_at, version, deleted_at
-```
-
-`record_items`:
-```text
-record_item_id, record_id, line_order, product_id, quantity, line_total_tax_included, created_at, updated_at, version, deleted_at, receipt_name_id, non_ocr_name, product_name_candidate, candidate_match_type
-```
-
-`receipt_name_mappings` は変更しない。OCR原文は `ocr_name`、正規化文字列は `normalized_receipt_name` に置く。OCR名の入力API `raw_name` は残るが、`record_items` の保存列としては存在しない。
-
-## 試作GASデプロイと動作確認
-
-1. Sheetsの11シートとヘッダーを照合する。残すテーブルの既存行数を確認し、マスタの消失がないことを確認する。
-2. GitHub Actions の **Deploy only the NEW Kurashi GAS** を `preview-v46-clean-base` から手動実行する。接続先が試作GASであることを再確認する。これはユーザーの承認・操作を要する工程。
-3. ActionsでGASデプロイが完了したことを確認する。失敗時はデプロイ完了と扱わない。手動実行を行わずに `setupNewWorkbook()` を試作既存環境で再実行してはいけない。
-4. 試作アプリを再読込し、`bootstrap` の11シート取得、日用品・商品・店舗の既存データ、レシート作成・編集・削除、OCR原文→別名辞書、未判定候補の一括登録除外、商品紐付け、オフライン再送、価格比較を確認する。
-5. 正常確認後、プレビューCIと実機でそれぞれ結果を記録する。本番移行は別途ユーザーの明示的承認が必要。
-
-## 破損・不一致時の扱い
-
-GASの旧版が新列定義のSheetsにアクセスすると、誤読・保存エラーの恐れがある。**デプロイが失敗したら操作を続けない**。旧版に戻す場合は対応した旧スキーマの試作シートとコードの組合せへ戻す。旧版GASと新スキーマのまま運用再開しない。
-
-既存レシートデータ移行の必要がないことは、日用品・商品・店舗等の登録データを初期化してよいという意味ではない。
+- GASの切替・事前検証・バックアップ：`gas/Api.gs` の `kurashiTrialNamingPreflight` / `kurashiApplyTrialNamingCutover`
+- モック移行テスト：`tests/trial-sheet-schema-cutover.mjs`
+- アプリ・操作キュー・同期テスト：`tests/no-login-household.mjs`
+- UI回帰テスト：`tests/ui-smoke.mjs`
+- 以前の12→11切替専用（v46への事前準備であり、**v94命名切替には使わない**）：`scripts/trial-sheet-schema-cutover.gs`
