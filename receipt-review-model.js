@@ -109,12 +109,8 @@ function fromOcrItem(item,{rowId,taxBasis}={}){
   }
   const next={...draft,items:draft.items.map(x=>({...x})),
    matchedCount:0,unmatchedCount:0};
-  // Recognize only one already-registered chain; never create a store from AI.
-  const matchedStore=result.storeName&&findChain?.(result.storeName);
-  if(matchedStore&&!draft.storeManuallySelected){
-   next.chainId=matchedStore.id;
-   next.chainName='';
-  }
+  // Store identity must come from app OCR or explicit user choice,
+  // never from AI's interpretation of a photographic retailer logo.
   for(const {i} of rows){
    const item=next.items[i],rowId=item.ocrRowId||'row-'+(i+1);
    if(!proposed.has(rowId))throw Error('OCR行IDが不足しています');
@@ -157,9 +153,8 @@ function fromOcrItem(item,{rowId,taxBasis}={}){
      result?.version!=='kurashi-receipt-rebuild-1'||
      !Array.isArray(result.items)||!result.items.length)
    throw Error('写真からの明細再解析データを確認してください');
-  const match=result.storeName?findChain(result.storeName):null;
   return {source:'chatgpt-rebuild',date:result.receiptDate||'',
-   chainId:match?.id||null,chainName:match?'':result.storeName||'',
+   chainId:previous.chainId||null,chainName:previous.chainName||'',
    branchName:previous.branchName||'',total:result.receiptTotal??null,
    printedCount:result.printedCount??null,ocrReplacedCount:previous.items.length,
    // Do not carry old row IDs, OCR names, product associations or
