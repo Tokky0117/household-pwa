@@ -53,7 +53,7 @@ function idbTxn(db,mode,key,val){
   tx.oncomplete=()=>{if(mode==='readwrite')resolve(true)};
   tx.onerror=()=>reject(tx.error);tx.onabort=()=>reject(tx.error)});
 }
-async function makeEnvironment({pending=false,localOnly=false}={}){
+async function makeEnvironment({pending=false,localOnly=false,serverOld=false,serverBroken=false}={}){
  const dom=new JSDOM('<!doctype html><html><body></body></html>',{
   url:'https://tokky0117.github.io/household-pwa/previews/preview-v94-schema-names/',
   runScripts:'outside-only'
@@ -72,7 +72,8 @@ async function makeEnvironment({pending=false,localOnly=false}={}){
   assert.match(url,/script\.google\.com\/macros\/s\//);
   assert.equal(JSON.parse(params.body).action,'bootstrap');
   fetches++;
-  return {ok:true,text:async()=>JSON.stringify({ok:true,data:converted})};
+  return {ok:true,text:async()=>JSON.stringify({ok:true,data:serverOld?oldBase:
+    serverBroken?{...converted,household_items:[{...converted.household_items[0],version:''}]}:converted})};
  };
  w.eval(client);
  return {w,db,source,fetches:()=>fetches,close:()=>{db.close();w.close()}};
@@ -112,4 +113,28 @@ async function makeEnvironment({pending=false,localOnly=false}={}){
    'old localStorage backup is not overwritten');
  }finally{e.close()}
 }
-console.log('v46 to v94 local IndexedDB snapshot: preserves backup, pending queue and sync OK');
+{
+ const e=await makeEnvironment({serverOld:true});
+ try{
+  assert.equal(await e.w.KurashiLive.load(),false,'old GAS should be rejected safely');
+  assert.match(e.w.KurashiLive.state().error,/GASの公開版が旧データ形式です/);
+  const saved=await idbTxn(e.db,'readonly','primary');
+  assert.equal(saved.base.household_items[0].household_item_id,'item1',
+   'local snapshot migration succeeds even when GAS publication is old');
+  assert.equal(saved.queue.length,0,'the old server is not given a write');
+ }finally{e.close()}
+}
+{
+ const e=await makeEnvironment({serverBroken:true});
+ try{
+  assert.equal(await e.w.KurashiLive.load(),false,'a malformed v94 server row fails safely');
+  assert.equal(e.w.KurashiLive.state().error,'SERVER_DATA_INVALID:household_items.rows');
+  assert.equal(e.w.KurashiLive.state().queued,0);
+ }finally{e.close()}
+}
+const index=readFileSync(new URL('../index.html',import.meta.url),'utf8');
+const app=readFileSync(new URL('../app.js',import.meta.url),'utf8');
+assert.match(app,/^const APP_VERSION='0\.94\.0';/);
+assert.match(index,/live-client\.js\?v=94-schema-names/);
+assert.match(index,/app\.js\?v=94-schema-names/);
+console.log('v46 to v94 local cache, legacy server detection, browser asset versions OK');
