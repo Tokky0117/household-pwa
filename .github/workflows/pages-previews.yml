@@ -111,9 +111,19 @@ jobs:
                 revision="$(git rev-parse --short=12 "refs/remotes/$remote_ref")"
                 sed -i "s/^const CACHE=[^;]*;/const CACHE='household-preview-$slug-$revision';/" "$dest/sw.js"
               fi
-              if [[ "$branch" == "preview-v46-clean-base" ]]; then
+              # Any preview whose app imports the OCR engine must publish its
+              # engine, ONNX runtime and model assets in that preview's own scope.
+              # Avoid v94 or future branch regressions from v46-only copying.
+              if grep -Fq 'ocr-engine/engine.js' "$dest/app.js"; then
                 mkdir -p "$dest/ocr-engine"
                 cp -a ocr-lab/dist-app/. "$dest/ocr-engine/"
+                for required in engine.js models/det.tar models/rec.tar runtime/ort-wasm-simd-threaded.wasm; do
+                  test -s "$dest/ocr-engine/$required" || {
+                    echo "::error::Missing OCR asset for $branch: $required"
+                    exit 1
+                  }
+                done
+                echo "OCR assets included: /previews/$slug/ocr-engine/"
               fi
               echo "Preview: /previews/$slug/"
             else
