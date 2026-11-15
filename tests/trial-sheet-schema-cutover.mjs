@@ -54,6 +54,18 @@ function fixture({hasBranchData=false,prepared=false,corrupt=false,mixed=false}=
   stats:()=>({writes,renames,deletions})};
 }
 const clean=fixture();
+const beforePlan=JSON.parse(JSON.stringify(context.kurashiEnsureTrialNaming_(clean.book,{dryRun:true})));
+assert.equal(beforePlan.length,6,'dry-run reports exactly the six schema naming changes');
+assert.deepEqual(clean.stats(),{writes:0,renames:0,deletions:0},
+ 'preflight must not modify the workbook');
+const gasBookSource=api.match(/function kurashiBook_\(\)\s*\{[\s\S]*?\n\}/)?.[0]||'';
+assert.ok(!gasBookSource.includes('kurashiEnsureTrialNaming_('),
+ 'bootstrap and API saves must never run schema migration automatically');
+assert.ok(api.includes('function kurashiApplyTrialNamingCutover()')&&
+ api.includes("KURASHI_TRIAL_NAMING_APPROVAL")&&
+ api.includes("KURASHI_TRIAL_NAMING_TARGET_ID")&&
+ api.includes('DriveApp.getFileById'),
+ 'cutover needs explicit approval, verified target and backup');
 assert.equal(run(clean.book),true);
 assert.equal(clean.db.size,11);
 for(const [name,headers] of Object.entries(current))
