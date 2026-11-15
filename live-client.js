@@ -159,7 +159,7 @@
    if(op.kind==='record-create'){
     snap.records.push({record_id:op.clientId,household_id:snap.household_id,
      record_type:op.recordType,chain_id:op.chainId,record_date:op.date,
-     branch_name:op.branchName||'',version:1,deleted_at:''});
+     version:1,deleted_at:''});
     op.items.forEach((line,i)=>snap.record_items.push({
      record_item_id:op.itemIds[i],record_id:op.clientId,line_order:i+1,
      receipt_name_id:receiptAlias(op.chainId,line.raw_name,op.itemIds[i]),non_ocr_name:line.non_ocr_name||'',
@@ -173,7 +173,7 @@
     const record=snap.records.find(r=>r.record_id===op.targetId);
     if(!record)continue;
     record.chain_id=op.chainId;record.record_date=op.date;
-    record.branch_name=op.branchName||'';record.version=Number(record.version)+1;
+    record.version=Number(record.version)+1;
     snap.record_items=snap.record_items.filter(i=>i.record_id!==op.targetId);
     op.items.forEach((line,i)=>snap.record_items.push({
      record_item_id:op.itemIds[i],record_id:op.targetId,line_order:i+1,
