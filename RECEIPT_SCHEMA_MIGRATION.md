@@ -8,7 +8,7 @@
 - GitHubの試作コードは簡素化スキーマに対応。**試作Sheetsの実列変更・GASの公開版更新は未実施**。完了したと扱わない。
 - `main`、本番GAS、本番Google Sheetsは変更禁止。
 - 試作GASデプロイは `.github/workflows/gas-deploy-new.yml` の **手動実行（workflow_dispatch）のみ**。変更前には稼働先とスキーマを確認する。
-- レシート関連の過去の明細移行は不要。一方、日用品 `item_groups`、`products`、`stores`、`product_aliases`、`categories`、`households`、`users`、`change_log`、`processed_operations` のデータは破棄しない。
+- レシート関連の過去の明細移行は不要。一方、日用品 `household_items`、`products`、`retail_chains`、`receipt_name_mappings`、`categories`、`households`、`users`、`change_log`、`processed_operations` のデータは破棄しない。
 
 ## 作業前の安全確認（必須）
 
@@ -57,10 +57,10 @@ record_id, household_id, record_type, chain_id, branch_name, record_date, create
 
 `record_items`:
 ```text
-record_item_id, record_id, line_order, product_id, quantity, amount_tax_included, created_at, updated_at, version, deleted_at, alias_id, confirmed_name, suggested_product_name, suggestion_kind
+record_item_id, record_id, line_order, product_id, quantity, line_total_tax_included, created_at, updated_at, version, deleted_at, receipt_name_id, non_ocr_name, product_name_candidate, candidate_match_type
 ```
 
-`product_aliases` は変更しない。OCR原文は `ocr_name`、正規化文字列は `normalized_alias` に置く。OCR名の入力API `raw_name` は残るが、`record_items` の保存列としては存在しない。
+`receipt_name_mappings` は変更しない。OCR原文は `ocr_name`、正規化文字列は `normalized_receipt_name` に置く。OCR名の入力API `raw_name` は残るが、`record_items` の保存列としては存在しない。
 
 ## 試作GASデプロイと動作確認
 

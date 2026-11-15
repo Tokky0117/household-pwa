@@ -8,10 +8,10 @@
 | --- | --- |
 | `households`, `users` | 家庭識別、認証（現在は一時ログイン停止中）。現在のIDを削除しない |
 | `categories` | 日用品の固定カテゴリ |
-| `stores` | 店舗チェーンと別表記 |
-| `item_groups` | 日用品リスト・サブ情報・在庫・順序 |
+| `retail_chains` | 店舗チェーンと別表記 |
+| `household_items` | 日用品リスト・サブ情報・在庫・順序 |
 | `products` | 登録商品と日用品への任意紐付け・内容量 |
-| `product_aliases` | OCR原文 `ocr_name`、検索正規化 `normalized_alias`、店舗、商品参照 |
+| `receipt_name_mappings` | OCR原文 `ocr_name`、検索正規化 `normalized_receipt_name`、店舗、商品参照 |
 | `records` | レシート・値札の共通ヘッダー |
 | `record_items` | レシート・値札の購入／販売明細 |
 | `change_log` | 端末間同期の変更番号 |
@@ -28,25 +28,25 @@ record_id, household_id, record_type, chain_id, branch_name, record_date, create
 **record_items の保存列（順序固定）：**
 
 ```text
-record_item_id, record_id, line_order, product_id, quantity, amount_tax_included, created_at, updated_at, version, deleted_at, alias_id, confirmed_name, suggested_product_name, suggestion_kind
+record_item_id, record_id, line_order, product_id, quantity, line_total_tax_included, created_at, updated_at, version, deleted_at, receipt_name_id, non_ocr_name, product_name_candidate, candidate_match_type
 ```
 
 ## 明細の名前と商品リンク
 
-- `product_aliases.ocr_name`：印字／OCRの原文。読み取り名を推測で置き換えない。明細側は `record_items.alias_id` で参照する。
-- `record_items.confirmed_name`：OCR原文を持たない写真再解析・手入力の明細名。手入力では空欄も許可する。
-- `record_items.suggested_product_name`：生成AIの提案を保存する**唯一の商品名候補列**。既存の `inferred_name` と併存しない。
-- `record_items.suggestion_kind`：`existing` / `new` / `''`（未判定）。未判定は一括商品登録の対象にしない。
-- `record_items.product_id`：その購入明細に紐付けられた登録商品。別名辞書の `product_aliases.product_id` を変更しても履歴の確定商品IDは書き換えない。
+- `receipt_name_mappings.ocr_name`：印字／OCRの原文。読み取り名を推測で置き換えない。明細側は `record_items.receipt_name_id` で参照する。
+- `record_items.non_ocr_name`：OCR原文を持たない写真再解析・手入力の明細名。手入力では空欄も許可する。
+- `record_items.product_name_candidate`：生成AIの提案を保存する**唯一の商品名候補列**。既存の `inferred_name` と併存しない。
+- `record_items.candidate_match_type`：`existing` / `new` / `''`（未判定）。未判定は一括商品登録の対象にしない。
+- `record_items.product_id`：その購入明細に紐付けられた登録商品。別名辞書の `receipt_name_mappings.product_id` を変更しても履歴の確定商品IDは書き換えない。
 - 商品名候補だけで商品マスタを自動作成・自動紐付けしない。OCRの読み取り補助 `nameCandidate` は解析・下書き段階の情報であり、GASに `inferred_name` を送信しない。
 
 ## API入力と保存列の区別
 
-`record.create` / `record.update` の明細入力には、**OCR辞書を作るため** `raw_name` を残す。入力キーは `raw_name`, `product_id`, `quantity`, `amount_tax_included`、任意の `confirmed_name`, `suggested_product_name`, `suggestion_kind`。同時にOCR原文と写真確認名を混ぜず、OCR原文から別名行 `product_aliases` を作る。保存済み明細に `raw_name` 列は作らない。
+`record.create` / `record.update` の明細入力には、**OCR辞書を作るため** `raw_name` を残す。入力キーは `raw_name`, `product_id`, `quantity`, `line_total_tax_included`、任意の `non_ocr_name`, `product_name_candidate`, `candidate_match_type`。同時にOCR原文と写真確認名を混ぜず、OCR原文から別名行 `receipt_name_mappings` を作る。保存済み明細に `raw_name` 列は作らない。
 
-税込金額 `amount_tax_included` は明細全数量の合計。比較価格は `amount_tax_included / quantity` とし、`product_id` のある有効な明細に限って比較する。別表の価格対象フラグは保存しない。
+税込金額 `line_total_tax_included` は明細全数量の合計。比較価格は `line_total_tax_included / quantity` とし、`product_id` のある有効な明細に限って比較する。別表の価格対象フラグは保存しない。
 
-IndexedDBの操作キューは未送信API入力の `raw_name` を保持する。一方、端末内のレシート明細投影は `alias_id` でOCR原文を参照する。操作ID、`version`、`deleted_at` とその他マスタ列は同期・競合管理上維持する。
+IndexedDBの操作キューは未送信API入力の `raw_name` を保持する。一方、端末内のレシート明細投影は `receipt_name_id` でOCR原文を参照する。操作ID、`version`、`deleted_at` とその他マスタ列は同期・競合管理上維持する。
 
 ## 反映状態と注意
 
@@ -60,7 +60,7 @@ IndexedDBの操作キューは未送信API入力の `raw_name` を保持する�
 
 ## 現行データモデル：v0.70.0（2026-11-04／推測名・税込明細金額の補完）
 
-- 明細名はOCR原文（`product_aliases.ocr_name`／旧`raw_name`）、ChatGPT推測名（`record_items.inferred_name`）、OCR名がない場合のみ使う確定名（`record_items.confirmed_name`）の3種。OCR原文と確定名の一方があればよく、商品IDは任意。
+- 明細名はOCR原文（`receipt_name_mappings.ocr_name`／旧`raw_name`）、ChatGPT推測名（`record_items.inferred_name`）、OCR名がない場合のみ使う確定名（`record_items.non_ocr_name`）の3種。OCR原文と確定名の一方があればよく、商品IDは任意。
 - ChatGPT推測名は正式な商品名ではなく商品登録画面の初期値に用いる。OCR名は変更せず、1対1で対応できる行は既存のOCR辞書へ登録・参照する。
 - `kurashi-receipt-assist-1`の従来3キーのJSONも受け取り、追加の`quantity`と`amount`（税込明細**合計**）を任意で取り込む。写真で判別できない金額はnullとし、元OCR値もなければ空欄のまま利用者に入力を求める。印字合計からの推定配賦はしない。
 - ユニクロのような全面再解析はOCR原文がないため、推測名と確定名を保存しOCR辞書へ登録しない。ChatGPT修正候補の採用・OCR解除の二つの旧ボタンは廃止する。
@@ -71,44 +71,44 @@ IndexedDBの操作キューは未送信API入力の `raw_name` を保持する�
 - OCRの写真商品行との対応が成立している場合は、`kurashi-receipt-assist-1`の`nameCandidate`だけ取り込み、元のOCR行のID・原文・行数を保持する。
 - OCRの構造が崩れた場合は、別形式`kurashi-receipt-rebuild-1`で、写真から再解析した`items[{name,quantity,amount}]`、`receiptDate`、`storeName`、`receiptTotal`、`printedCount`を取り込む。元のOCR行は**下書き内で一括置き換え**し、元の`rowId`を使い回さない。置き換えはユーザー確認ダイアログで明示的に承認する。
 - 再解析は**未検証の候補**。確認画面で全行の品名・数量・金額を修正でき、保存前に原写真との照合チェックを要求する。印字合計・印字点数と明細合計の不一致は従来どおり警告表示する。ChatGPTが商品形状や点数を誤る可能性があるため、AIの診断を正本とはしない。
-- 再解析の品名はOCRで検出されていないため、虚偽の`ocr_name`を作成しない。確認後に既存の`record_items.confirmed_name`へ記録し、`alias_id`と`raw_name`は空欄とする。商品マスタ`product_id`は利用者が任意で紐付ける。OCR辞書には学習せず、新しいGAS・シート・列も作らない。
+- 再解析の品名はOCRで検出されていないため、虚偽の`ocr_name`を作成しない。確認後に既存の`record_items.non_ocr_name`へ記録し、`receipt_name_id`と`raw_name`は空欄とする。商品マスタ`product_id`は利用者が任意で紐付ける。OCR辞書には学習せず、新しいGAS・シート・列も作らない。
 - `OCR診断`はJSONと区別し、今回のレシート領域・印字行数と明細抽出誤りを、後日のOCR改善議論で評価する。診断テキスト・画像・OCR全文はSheetsへ記録しない。
 
 ## 現行データモデル：v0.68.0（2026-11-04／写真確認名の追加）
 
 ### 写真から確認した購入明細とOCR名辞書の分離
 
-- `record_items.confirmed_name` を末尾に1列追加する。OCRの明細構造が正しくない場合、ユーザーが写真で確認した商品名をここに保存する。 `alias_id` と `raw_name` は空にして、商品コード等の誤認識をOCR辞書へ学習させない。
+- `record_items.non_ocr_name` を末尾に1列追加する。OCRの明細構造が正しくない場合、ユーザーが写真で確認した商品名をここに保存する。 `receipt_name_id` と `raw_name` は空にして、商品コード等の誤認識をOCR辞書へ学習させない。
 - 写真確認名・数量・税込明細合計・購入日・店舗をレシートとして保存できる。商品マスタへの紐付けは任意。商品マスタを選択すれば価格比較の対象にもなる。
-- OCRの行対応が正しい場合は従来の`product_aliases`参照を維持する。ChatGPTの`nameCandidate`は自動保存せず、ユーザーが写真と照合して明示的に採用した場合のみ写真確認済み明細名になる。
-- GASの従来5項目の保存契約は維持する。`confirmed_name`を使用する行だけ6項目とし、OCR原表記`raw_name`との同時指定を拒否する。既存レシート・OCR辞書・操作ジャーナル・シートは初期化しない。
+- OCRの行対応が正しい場合は従来の`receipt_name_mappings`参照を維持する。ChatGPTの`nameCandidate`は自動保存せず、ユーザーが写真と照合して明示的に採用した場合のみ写真確認済み明細名になる。
+- GASの従来5項目の保存契約は維持する。`non_ocr_name`を使用する行だけ6項目とし、OCR原表記`raw_name`との同時指定を拒否する。既存レシート・OCR辞書・操作ジャーナル・シートは初期化しない。
 
 
 > この節が現行の実装契約です。以下のv1.8定義・接続前のステータス・家計簿要件は**旧設計履歴**であり、本節や `OPERATION_QUEUE.md` と矛盾する場合は採用しません。本番環境は未構築です。試作GASと試作Google Sheetsの接続は維持し、v0.65ではスキーマを変更しません。
 
 | テーブル | 現行の責務 |
 | --- | --- |
-| `products` | 正式商品名・内容量・日用品リストへの任意参照 `item_group_id`。商品自体は削除しない |
-| `product_aliases` | `alias_id`、`chain_id`、`normalized_alias`、元のOCR表記 `ocr_name`、任意の `product_id`。OCR表記文字列は登録後不変で、`alias.link` により商品参照を変更・解除可能 |
+| `products` | 正式商品名・内容量・日用品リストへの任意参照 `household_item_id`。商品自体は削除しない |
+| `receipt_name_mappings` | `receipt_name_id`、`chain_id`、`normalized_receipt_name`、元のOCR表記 `ocr_name`、任意の `product_id`。OCR表記文字列は登録後不変で、`alias.link` により商品参照を変更・解除可能 |
 | `records` | レシート／値札共通ヘッダーとチェーン・日付 |
-| `record_items` | `record_id`、`alias_id`、購入時に確定した `product_id`、`quantity`、`amount_tax_included`、従来互換の `raw_name`／`category_id` |
+| `record_items` | `record_id`、`receipt_name_id`、購入時に確定した `product_id`、`quantity`、`line_total_tax_included`、従来互換の `raw_name`／`category_id` |
 | `processed_operations`・`change_log` | GAS保存ジャーナル、重複防止・復旧・同期順序の管理。現状の家庭ID参照を維持 |
 
-- `record_items.amount_tax_included` は**購入数量すべての税込明細合計**。価格比較は `amount_tax_included / quantity` を端数丸め前に比較し、内容量換算とは区別します。
-- 新規明細は `record_items.alias_id` を指し、`raw_name` は空欄。既存明細の `raw_name` は変更せず、追加列 `alias_id` のみ補完。旧レシート表示は各行の元の `raw_name` を優先し、履歴上の金額・数量・商品IDは不変とします。
-- `product_aliases.product_id` が空欄でもOCR名を登録可能です。過去の `record_items.product_id` は辞書の新しい紐付けに連動させません。
+- `record_items.line_total_tax_included` は**購入数量すべての税込明細合計**。価格比較は `line_total_tax_included / quantity` を端数丸め前に比較し、内容量換算とは区別します。
+- 新規明細は `record_items.receipt_name_id` を指し、`raw_name` は空欄。既存明細の `raw_name` は変更せず、追加列 `receipt_name_id` のみ補完。旧レシート表示は各行の元の `raw_name` を優先し、履歴上の金額・数量・商品IDは不変とします。
+- `receipt_name_mappings.product_id` が空欄でもOCR名を登録可能です。過去の `record_items.product_id` は辞書の新しい紐付けに連動させません。
 - ChatGPTの `nameCandidate` は**端末のレシート下書きに限る任意フィールド**。Sheetsには新たな列を設けません。類似表記は候補のみ、店舗内の正確な確定名は競合なしに限り自動選択します。
 - `record_items.category_id` と固定5カテゴリは旧データ互換目的で残し、家計簿の入力・集計・タブは廃止します。日用品分類の5カテゴリは引き続き現行です。
-- 既存Sheetsは **`product_aliases.ocr_name` と `record_items.alias_id` を末尾に1列ずつ追加**します。旧レシートの移行は非破壊・途中失敗の再実行を想定します。
+- 既存Sheetsは **`receipt_name_mappings.ocr_name` と `record_items.receipt_name_id` を末尾に1列ずつ追加**します。旧レシートの移行は非破壊・途中失敗の再実行を想定します。
 - 家庭は1件ですが、`household_id` は認可・操作ID履歴・同期に依存するため、今回削除しません。将来、依存箇所をまとめて移行する宿題です。
 
 
 ## レシートv0.65.0データ契約（実装済み・実機未確認／2026-11-04）
 
-- **保存対象の名称は二層のみ**：(1) 読み取り原表記 `product_aliases.ocr_name`（既存行は `record_items.raw_name`）、(2) ユーザーが確定した正式商品名 `products.name`。新たな「補正済み明細名」マスタ／シート／保存列は追加しない。OCR原表記は登録後不変で、商品IDへのリンクだけ `alias.link` で変更できる。
-- レシート明細 `record_items.alias_id` はOCR名辞書を指し、`record_items.product_id` は購入確定時の商品IDを固定する。商品未照合なら `product_id` は空欄可。OCR原表記に誤認識があっても、その文字列を直接修正しない。利用者が新規追加した手入力行は元OCRがないものとして現行の明細保存契約を使用する。
-- ChatGPTの `nameCandidate` は**正式商品名の提案に限る一時値**。OCR結果の行ID／原表記との照合を経てから下書き（IndexedDB）に保持できるが、`products`、`product_aliases`、`records`、`record_items` に保存しない。商品ID自動照合は**OCR原表記と確定済み辞書・商品マスタに対して先行**し、AI候補のみを根拠に自動紐付けしない。
-- 数量が不明・不確定な行の `quantity=1` は**画面下書きの仮値**であり、黄色の注意状態は一時的なUIメタデータ。ユーザーが値を入力し直せば注意状態を解除し、変更しない場合はレシート保存操作をもって1個と確認したものとする。確定した数値だけ既存 `record_items.quantity` に保存し、黄色・確信度用のSheets列は追加しない。 `amount_tax_included` は数量全体の税込明細合計で、単価は `amount_tax_included / quantity`。
+- **保存対象の名称は二層のみ**：(1) 読み取り原表記 `receipt_name_mappings.ocr_name`（既存行は `record_items.raw_name`）、(2) ユーザーが確定した正式商品名 `products.name`。新たな「補正済み明細名」マスタ／シート／保存列は追加しない。OCR原表記は登録後不変で、商品IDへのリンクだけ `alias.link` で変更できる。
+- レシート明細 `record_items.receipt_name_id` はOCR名辞書を指し、`record_items.product_id` は購入確定時の商品IDを固定する。商品未照合なら `product_id` は空欄可。OCR原表記に誤認識があっても、その文字列を直接修正しない。利用者が新規追加した手入力行は元OCRがないものとして現行の明細保存契約を使用する。
+- ChatGPTの `nameCandidate` は**正式商品名の提案に限る一時値**。OCR結果の行ID／原表記との照合を経てから下書き（IndexedDB）に保持できるが、`products`、`receipt_name_mappings`、`records`、`record_items` に保存しない。商品ID自動照合は**OCR原表記と確定済み辞書・商品マスタに対して先行**し、AI候補のみを根拠に自動紐付けしない。
+- 数量が不明・不確定な行の `quantity=1` は**画面下書きの仮値**であり、黄色の注意状態は一時的なUIメタデータ。ユーザーが値を入力し直せば注意状態を解除し、変更しない場合はレシート保存操作をもって1個と確認したものとする。確定した数値だけ既存 `record_items.quantity` に保存し、黄色・確信度用のSheets列は追加しない。 `line_total_tax_included` は数量全体の税込明細合計で、単価は `line_total_tax_included / quantity`。
 - 既存12シートの構成、レシート・値札の共通データ構造、非破壊移行、IndexedDB操作キューとGASの操作ID冪等性を維持する。OCRモデルやChatGPT補助の改善で保存スキーマを増やさない。
 
 ---
@@ -136,19 +136,19 @@ IndexedDBの操作キューは未送信API入力の `raw_name` を保持する�
 | households | household_id | display_name、管理情報、version、updated_at |
 | users | user_id | household_id→households、display_name、auth_subject等の認証連携情報 |
 | categories | category_id | name、fixed_order。固定5カテゴリのみ |
-| stores | chain_id | household_idの扱いは認可設計で確定、canonical_name、normalized_name、aliases（確定済み別表記）。チェーン正本、支店行は置かない |
-| item_groups | item_group_id | household_id、category_id、name、normalized_name、in_stock、sort_order、is_hidden、version、updated_at |
-| products | product_id | household_id、item_group_id(nullable)、name、normalized_name、package_quantity(nullable)、package_unit(nullable)、item_group_order(nullable)、version、updated_at |
-| product_aliases | alias_id | product_id→products、chain_id(nullable)→stores、normalized_alias、version、updated_at |
+| retail_chains | chain_id | household_idの扱いは認可設計で確定、canonical_name、normalized_name、aliases（確定済み別表記）。チェーン正本、支店行は置かない |
+| household_items | household_item_id | household_id、category_id、name、normalized_name、in_stock、sort_order、is_hidden、version、updated_at |
+| products | product_id | household_id、household_item_id(nullable)、name、normalized_name、package_quantity(nullable)、package_unit(nullable)、household_item_order(nullable)、version、updated_at |
+| receipt_name_mappings | receipt_name_id | product_id→products、chain_id(nullable)→retail_chains、normalized_receipt_name、version、updated_at |
 | records | record_id | household_id、record_type、chain_id、branch_name、raw_store_name、record_date、created_at、updated_at、version、deleted_at |
-| record_items | record_item_id | record_id→records、line_order、raw_name、product_id(nullable)、quantity、amount_tax_included、category_id(nullable)、price_eligible、created_at、updated_at、version、deleted_at |
+| record_items | record_item_id | record_id→records、line_order、raw_name、product_id(nullable)、quantity、line_total_tax_included、category_id(nullable)、price_eligible、created_at、updated_at、version、deleted_at |
 | change_log | change_id／sequence_no | household_id、entity_type、entity_id、action、sequence_no、occurred_at |
 | processed_operations | household_id＋operation_id | result、processed_at、要求の整合性を検証する識別情報（詳細はAPI設計） |
 | receipt_rules | rule_id | chain_id(nullable)、pattern、priority、enabled、version、updated_at。OCR試験後に残すか判断 |
 
 - `item_favorites`／`price_observations`／`receipts`／`receipt_items`／`shelf_prices` はv1.8正本として作らない。
 - `memo`／favorites／商品の無効化状態／永続比較数量／割引区分は追加しない。
-- `products.item_group_id=null` なら `item_group_order=null`。登録中は家庭と日用品の組み合わせ単位で順序1,2,3,…、重複無し。先頭登録商品だけが日用品一覧の代表となる。
+- `products.household_item_id=null` なら `household_item_order=null`。登録中は家庭と日用品の組み合わせ単位で順序1,2,3,…、重複無し。先頭登録商品だけが日用品一覧の代表となる。
 - `package_quantity` と `package_unit` は両方nullか両方設定。内容量不明でも販売単位価格の集計は可能だが、容量換算は不可。
 - 表示中の日用品名の正規化重複を家庭内で防止。同名の非表示日用品からの再表示／新規作成は別途既存仕様どおり確認する。
 - 可変シートに必要なversion、created_at、updated_at、deleted_atの統一範囲、チェーンマスタの家庭別／共有スコープは、実GAS APIの権限設計で確定する。
@@ -159,7 +159,7 @@ IndexedDBの操作キューは未送信API入力の `raw_name` を保持する�
 | record_id | 必須 | 一意な不変ID（UUID等）。画像識別子ではない |
 | household_id | 必須 | 認証された家庭との一致をサーバーで検証 |
 | record_type | 必須 | `receipt` または `shelf`。保存後の変更は原則不可 |
-| chain_id | 必須 | 確定済み `stores.chain_id` を参照 |
+| chain_id | 必須 | 確定済み `retail_chains.chain_id` を参照 |
 | branch_name | 任意 | 読み取った支店名。不明ならnull、別支店マスタ不要 |
 | raw_store_name | 任意 | OCR記載の店舗原表記 |
 | record_date | 必須 | `YYYY-MM-DD` の日本現地日付。receiptは購入日、shelfは値札確認日 |
@@ -178,7 +178,7 @@ IndexedDBの操作キューは未送信API入力の `raw_name` を保持する�
 | raw_name | 任意 | OCR／手入力の原表記。履歴スナップショット |
 | product_id | 任意 | 同家庭の商品ID。receipt未照合ならnull、shelfの価格集計前に確定 |
 | quantity | 必須 | 正数の購入／販売個数。量り売りや重量の場合は対応確定まで自動価格集計に用いない |
-| amount_tax_included | 正式保存では必須 | 明細全体の**値引き後税込金額**。不確実な場合は下書きへ |
+| line_total_tax_included | 正式保存では必須 | 明細全体の**値引き後税込金額**。不確実な場合は下書きへ |
 | category_id | receiptはnull可 | 固定5カテゴリIDかnull（未分類）。shelfは必ずnull |
 | price_eligible | 必須 | 価格に使える確定税込額・数量・商品・販売条件を満たす場合true |
 | created_at / updated_at | 必須 | 変更日時 |
@@ -192,8 +192,8 @@ IndexedDBの操作キューは未送信API入力の `raw_name` を保持する�
 
 ## 5. 価格集計・家計簿
 - 有効な親と明細を `record_id` で結合し、両方の `deleted_at` がnullであることを確認。
-- **価格候補**：record_typeはreceipt/shelf両方、product_id確定、chain_id確定、price_eligible=true、quantity>0、amount_tax_included確定、対象期間内のrecord_date。
-- **税込1販売単位価格** = amount_tax_included / quantity。最安判定の途中で丸めない。最安元行の店舗・日付を同じ行から取る。
+- **価格候補**：record_typeはreceipt/shelf両方、product_id確定、chain_id確定、price_eligible=true、quantity>0、line_total_tax_included確定、対象期間内のrecord_date。
+- **税込1販売単位価格** = line_total_tax_included / quantity。最安判定の途中で丸めない。最安元行の店舗・日付を同じ行から取る。
 - **集計キー**：商品×チェーン×期間。期間は3か月／1年、初期値1年。過去記録は削除せず、期間外への無断フォールバックもしない。
 - 日用品一覧は先頭登録商品の**直近1年の全チェーン中の最安値＋チェーン名**を表示。比較画面の期間とは独立。
 - **換算**：商品内容量に基づき入力した数量・単位あたりへ換算。mL↔L、g↔kgと同一単位のみ。個数や容量を自動推測しない。
@@ -219,7 +219,7 @@ IndexedDBの操作キューは未送信API入力の `raw_name` を保持する�
 - `receipt_rules` の存続はOCR試験後に判断。`store_aliases` 専用シートは現時点では作らない。
 
 ## v0.84.0 任意の明細名（既存列のみ）
-- レシートの手入力明細は **`confirmed_name`（画面の「明細名（任意）」）を空欄にできる**。新しいメモ列や名称マスタは設けない。空欄時は `raw_name=''`、`confirmed_name` 未指定、`product_id=null` でも、数量が正の整数で税込小計が0以上の整数ならレシート行として保存可能。
-- 登録商品を選んだ場合、名称が空欄でも `product_id` と金額で価格比較の対象になり得る。未照合かつ名称空欄の場合は `price_eligible=false` で購入記録に残し、商品マスタ・`product_aliases` には自動登録しない。
+- レシートの手入力明細は **`non_ocr_name`（画面の「明細名（任意）」）を空欄にできる**。新しいメモ列や名称マスタは設けない。空欄時は `raw_name=''`、`non_ocr_name` 未指定、`product_id=null` でも、数量が正の整数で税込小計が0以上の整数ならレシート行として保存可能。
+- 登録商品を選んだ場合、名称が空欄でも `product_id` と金額で価格比較の対象になり得る。未照合かつ名称空欄の場合は `price_eligible=false` で購入記録に残し、商品マスタ・`receipt_name_mappings` には自動登録しない。
 - 写真からの読み取り行（`ocr_name`/旧`raw_name`）と、写真再解析の確認前提名称は引き続き別の出所として扱う。OCR原文の上書きや読み取り名辞書への空文字登録は行わない。
 - `record_items` シートの追加・変更、既存レシートの移行は不要。既存GASとオフラインキューの保存契約で空欄のレシート明細を受け付けることを回帰テストで保証する。
