@@ -645,10 +645,20 @@ function scanStoreHeaderMatch(raw){
   const jpLast=line.match(latinThenJapanese);
   return compact(jpFirst?.[1]||jpLast?.[2]||'');
  }).filter(Boolean);
+ // Recognizable Latin receipt logos of already-registered chains only.
+ // These are confirmed retail brand spellings, never inferred new stores.
+ const logoAliases=new Map([
+  ['コーナン',['KOHNAN']],['コノミヤ',['KONOMIYA']]
+ ]);
  const matches=new Map();
  for(const chain of catalogue.chains){
   if(!chain?.id)continue;
-  const aliases=[chain.name,...(chain.aliases||[])].filter(Boolean);
+  const registered=[chain.name,...(chain.aliases||[])].filter(Boolean);
+  const aliases=[...registered];
+  for(const [japanese,latin] of logoAliases){
+   if(registered.some(name=>compact(name)===compact(japanese)))
+    aliases.push(...latin);
+  }
   for(const name of aliases){
    const alias=compact(name);
    if(!alias)continue;
@@ -658,7 +668,9 @@ function scanStoreHeaderMatch(raw){
     const suffix=key.slice(alias.length);
     // A branch name follows the registered chain name. Arbitrary
     // product words or OCR text after the name are not store evidence.
-    return suffix.length<=40&&/^(?:.{1,35}(?:店|支店|営業所)|(?:本店|支店|営業所|店))$/u.test(suffix);
+    return suffix.length<=40&&
+     (/^(?:.{1,35}(?:店|支店|営業所)|(?:本店|支店|営業所|店))$/u.test(suffix)||
+      /^(?:商事)?(?:株式会社|㈱)$|^商事株式会社$/u.test(suffix));
    })||paired.some(key=>key===alias)||bilingualKeys.some(key=>key===alias);
    if(match){matches.set(chain.id,chain);break;}
   }
