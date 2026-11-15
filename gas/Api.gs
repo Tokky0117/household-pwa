@@ -1200,6 +1200,37 @@ function kurashiCompleteOperation_(book,hid,id,hash,plan,result,entityType,entit
 function kurashiSameSchemaRow_(name,a,b){
   return KURASHI_NEW_SCHEMA[name].every(k=>String(a[k]??'')===String(b[k]??''));
 }
+// Write adjacent new rows as one Sheets call. Verify already-written rows
+// before retrying a partially completed journaled operation; never duplicate
+// a receipt line or replace a row belonging to a different operation.
+function kurashiEnsureNewRows_(name,idField,entries,hid,book){
+ if(!entries.length)return;
+ const rows=kurashiRows_(name,book),byId=new Map();
+ for(const row of rows){
+  const key=String(row.value[idField]);
+  if(byId.has(key))kurashiFail_('RECOVERY_CONFLICT','保存行IDが重複しています');
+  byId.set(key,row);
+ }
+ const seen=new Set(),missing=[];
+ for(const entity of entries){
+  const key=String(entity[idField]);
+  if(!key||seen.has(key))kurashiFail_('RECOVERY_CONFLICT','保存行IDが重複しています');
+  seen.add(key);
+  const existing=byId.get(key);
+  if(existing){
+   if(name!=='record_items'&&name!=='receipt_name_mappings'&&
+      String(existing.value.household_id)!==hid)
+    kurashiFail_('RECOVERY_CONFLICT','保存先が一致しません');
+   if(!kurashiSameSchemaRow_(name,existing.value,entity))
+    kurashiFail_('RECOVERY_CONFLICT','保存途中の行内容が一致しません');
+  }else missing.push(entity);
+ }
+ if(!missing.length)return;
+ const sheet=kurashiSheet_(name,book),headers=KURASHI_NEW_SCHEMA[name];
+ const values=missing.map(entry=>headers.map(k=>
+  entry[k]===undefined||entry[k]===null?'':entry[k]));
+ sheet.getRange(sheet.getLastRow()+1,1,values.length,headers.length).setValues(values);
+}
 function kurashiEnsureNewRow_(name,idField,entity,hid,book){
   const id=String(entity[idField]);
   const matches=kurashiRows_(name,book).filter(x=>String(x.value[idField])===id);
@@ -1353,11 +1384,9 @@ function kurashiCreateRecord_(user,payload,id){
        !Array.isArray(plan.items)||!plan.items.length||
        plan.items.some(x=>String(x.record_id)!==String(plan.record.record_id)))
       kurashiFail_('RECOVERY_CONFLICT','記録保存の履歴が不正です');
-    for(const alias of plan.aliases||[])
-      kurashiEnsureNewRow_('receipt_name_mappings','receipt_name_id',alias,hid,book);
+    kurashiEnsureNewRows_('receipt_name_mappings','receipt_name_id',plan.aliases||[],hid,book);
     kurashiEnsureNewRow_('records','record_id',plan.record,hid,book);
-    for(const item of plan.items)
-      kurashiEnsureNewRow_('record_items','record_item_id',item,hid,book);
+    kurashiEnsureNewRows_('record_items','record_item_id',plan.items,hid,book);
     return kurashiCompleteOperation_(book,hid,id,check.hash,plan,{
       status:'completed',action,record:plan.record,
       items:plan.items,aliases:plan.aliases||[],sequence_no:plan.sequence_no
@@ -1462,10 +1491,8 @@ function kurashiMutateRecord_(user,action,payload,id){
   for(let i=0;i<plan.beforeItems.length;i++)
    kurashiRecordTransition_('record_items','record_item_id',
     plan.beforeItems[i],plan.expiredItems[i],book);
-  for(const alias of plan.aliases||[])
-   kurashiEnsureNewRow_('receipt_name_mappings','receipt_name_id',alias,hid,book);
-  for(const row of plan.items)
-   kurashiEnsureNewRow_('record_items','record_item_id',row,hid,book);
+  kurashiEnsureNewRows_('receipt_name_mappings','receipt_name_id',plan.aliases||[],hid,book);
+  kurashiEnsureNewRows_('record_items','record_item_id',plan.items,hid,book);
   return kurashiCompleteOperation_(book,hid,id,check.hash,plan,{
    status:'completed',action,record:plan.record,items:plan.items,aliases:plan.aliases||[],
    sequence_no:plan.sequence_no
