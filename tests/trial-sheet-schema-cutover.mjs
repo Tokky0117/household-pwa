@@ -2,68 +2,74 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
 
-const source = fs.readFileSync(new URL('../scripts/trial-sheet-schema-cutover.gs',import.meta.url),'utf8');
-const legacy={
- records:['record_id','household_id','record_type','chain_id','branch_name','raw_store_name','record_date','created_at','updated_at','version','deleted_at'],
- record_items:['record_item_id','record_id','line_order','raw_name','product_id','quantity','amount_tax_included','category_id','price_eligible','created_at','updated_at','version','deleted_at','alias_id','confirmed_name','inferred_name','suggested_product_name','suggestion_kind'],
- receipt_rules:['rule_id','chain_id','pattern','priority','enabled','version','updated_at']
-};
-const masters=['households','users','categories','stores','item_groups','products','product_aliases','change_log','processed_operations'];
-function fixture({approval='CHECK_ONLY',id='trial-only',prepared=false,ruleData=false}={}) {
- const rows=new Map();
- for(const name of masters)rows.set(name,[name==='processed_operations'?['household_id','operation_id','request_hash','result','processed_at']:[name+'_id','value'],name==='processed_operations'?['home','op','hash',JSON.stringify({status:'completed'}),'date']:[name+'-row','master-data']]);
- if(prepared)rows.get('processed_operations').push(['home','op','hash',JSON.stringify({status:'prepared'}),'date']);
- rows.set('records',[legacy.records.slice(),legacy.records.map((_,i)=>'record-value-'+i)]);
- rows.set('record_items',[legacy.record_items.slice(),legacy.record_items.map((_,i)=>'detail-value-'+i)]);
- rows.set('receipt_rules',[legacy.receipt_rules.slice(),...(ruleData?[['1','2','3','4','5','6','7']]:[])]);
- let copies=0, deletes=0;
- const sheetFor=name=>({
-  getName:()=>name,getLastRow:()=>rows.get(name).length,
-  getLastColumn:()=>rows.get(name)[0].length,
-  getRange:(r,c,n,w)=>({getValues:()=>Array.from({length:n},(_,i)=>rows.get(name)[r-1+i].slice(c-1,c-1+w))}),
-  deleteColumn:col=>{deletes++;rows.set(name,rows.get(name).map(r=>r.filter((_,i)=>i!==col-1)));}
- });
- const book={getId:()=>id,getSheets:()=>[...rows.keys()].map(sheetFor),getSheetByName:n=>rows.has(n)?sheetFor(n):null,
-  deleteSheet:sheet=>{deletes++;rows.delete(sheet.getName());}};
- const ss={SpreadsheetApp:{getActiveSpreadsheet:()=>book},
-  DriveApp:{getFileById:foundId=>{assert.equal(foundId,id);return {makeCopy:()=>{
-    copies++;return {getId:()=>('backup-'+copies),getUrl:()=>('https://example.test/backup-'+copies)};}}}},
-  LockService:{getDocumentLock:()=>({tryLock:()=>true,releaseLock:()=>{}})},
-  Utilities:{formatDate:()=> '20261114_220000'},console:{log:()=>{}}};
- const text=source.replace("'PASTE_VERIFIED_TRIAL_SPREADSHEET_ID'","'"+id+"'").replace("'CHECK_ONLY'; // manually","'"+approval+"'; // manually");
- vm.runInNewContext(text,ss);
- return {rows,apply:ss.kurashiApplyTrialReceiptSchemaCutover,preflight:ss.kurashiTrialSchemaPreflight,
-  get copies(){return copies},get deletes(){return deletes}};
+// Validate automatic, guarded, idempotent transition of the already isolated trial
+// Sheets. Do not call Drive/Sheets services and do not touch production.
+const api=fs.readFileSync(new URL('../gas/Api.gs',import.meta.url),'utf8');
+const setup=fs.readFileSync(new URL('../gas/Setup.gs',import.meta.url),'utf8');
+const context=vm.createContext({console});
+vm.runInContext(setup+'\n'+api,context);
+const current=JSON.parse(JSON.stringify(vm.runInContext('KURASHI_NEW_SCHEMA',context)));
+const old=JSON.parse(JSON.stringify(vm.runInContext('KURASHI_PRENAME_SCHEMA',context)));
+const run=book=>context.kurashiEnsureTrialNaming_(book);
+
+function fixture({hasBranchData=false,prepared=false,corrupt=false,mixed=false}={}){
+ const db=new Map();
+ for(const [name,headers] of Object.entries(current)){
+  const spec=old[name];
+  const legacy=spec?spec.old:name;
+  const first=spec?spec.headers:headers;
+  const table=legacy==='records'&&hasBranchData?
+   [first.slice(),first.map(h=>h==='branch_name'?'枚方店':'')]:
+   [first.slice()];
+  db.set(legacy,table);
+ }
+ if(mixed){
+  const oldItems=db.get('item_groups');db.delete('item_groups');
+  oldItems[0]=current.household_items.slice();
+  db.set('household_items',oldItems);
+ }
+ if(prepared)db.get('processed_operations').push([
+  'home','op','hash',JSON.stringify({status:'prepared'}),'date'
+ ]);
+ if(corrupt)db.get('products')[0][2]='unexpected_header';
+ let writes=0,renames=0,deletions=0;
+ const getSheetByName=name=>!db.has(name)?null:{
+  getLastRow:()=>db.get(name).length,
+  getRange:(r,c,rows,cols)=>({
+   getValues:()=>Array.from({length:rows},(_,i)=>Array.from({length:cols},(_,j)=>
+    db.get(name)[r-1+i]?.[c-1+j]??'')),
+   setValues:matrix=>{writes++;matrix.forEach((row,i)=>{
+    const record=db.get(name)[r-1+i]||[];
+    row.forEach((v,j)=>{record[c-1+j]=v});
+    db.get(name)[r-1+i]=record;
+   })}
+  }),
+  setName:newName=>{renames++;const data=db.get(name);db.delete(name);db.set(newName,data)},
+  deleteColumn:column=>{deletions++;db.set(name,db.get(name).map(row=>
+   row.filter((_,i)=>i!==column-1)))}
+ };
+ return {book:{getSheetByName},db,
+  stats:()=>({writes,renames,deletions})};
 }
-const f=fixture();
-const before=[...f.rows].filter(([n])=>masters.includes(n)).map(([n,r])=>[n,JSON.stringify(r)]);
-assert.equal(f.preflight().status,'READY_AFTER_USER_CHECK');
-assert.equal(f.deletes,0);
-assert.throws(()=>f.apply(),/CHECK_ONLY/);
-assert.equal(f.copies,0);
-const a=fixture({approval:'APPLY_TRIAL_SCHEMA'});
-assert.equal(a.apply().status,'SCHEMA_UPDATED_11_TABLES');
-assert.equal(a.copies,1);
-assert.equal(a.deletes,6);
-assert.equal(a.rows.size,11);
-assert.deepEqual(a.rows.get('record_items')[0],legacy.record_items.filter(x=>!['raw_name','category_id','price_eligible','inferred_name'].includes(x)));
-assert.deepEqual(a.rows.get('records')[0],legacy.records.filter(x=>x!=='raw_store_name'));
-assert.deepEqual(a.rows.get('record_items')[1],legacy.record_items.map((_,i)=>({h:legacy.record_items[i],v:'detail-value-'+i})).filter(x=>!['raw_name','category_id','price_eligible','inferred_name'].includes(x.h)).map(x=>x.v));
-for(const [name,raw] of before) assert.equal(JSON.stringify(a.rows.get(name)),raw,('preserve '+name));
-assert.equal(a.apply().status,'ALREADY_COMPLETE');
-assert.equal(a.copies,1,'a repeat never creates new backup');
-const p=fixture({approval:'APPLY_TRIAL_SCHEMA',prepared:true});
-assert.throws(()=>p.apply(),/未完了のGAS/);assert.equal(p.copies,0);assert.equal(p.deletes,0);
-const rule=fixture({approval:'APPLY_TRIAL_SCHEMA',ruleData:true});
-assert.throws(()=>rule.apply(),/データ行/);assert.equal(rule.copies,0);
-const mismatch=fixture({approval:'APPLY_TRIAL_SCHEMA'});
-mismatch.rows.get('record_items')[0][3]='dangerous';
-assert.throws(()=>mismatch.apply(),/見出し/);assert.equal(mismatch.copies,0);
-const unexpected=fixture({approval:'APPLY_TRIAL_SCHEMA'});
-unexpected.rows.set('unknown',[['x']]);assert.throws(()=>unexpected.apply(),/追加・欠落/);
-const resumed=fixture({approval:'APPLY_TRIAL_SCHEMA'});
-resumed.rows.set('record_items',resumed.rows.get('record_items').map(r=>r.filter((_,i)=>i!==15)));
-assert.equal(resumed.preflight().status,'READY_AFTER_USER_CHECK');
-assert.equal(resumed.apply().status,'SCHEMA_UPDATED_11_TABLES');
-assert.equal(resumed.rows.size,11);
-console.log('trial cutover: dry-run, guards, backup, protected masters, 11 sheets, idempotence, partial restart, malformed/pending/rule-data rejection OK');
+const clean=fixture();
+assert.equal(run(clean.book),true);
+assert.equal(clean.db.size,11);
+for(const [name,headers] of Object.entries(current))
+ assert.deepEqual(clean.db.get(name)?.[0],headers,name);
+assert.deepEqual(clean.stats(),{writes:6,renames:3,deletions:1});
+assert.equal(run(clean.book),false,'repeat migration is idempotent');
+assert.deepEqual(clean.stats(),{writes:6,renames:3,deletions:1});
+const mixed=fixture({mixed:true});
+assert.equal(run(mixed.book),true,'partially renamed naming can resume safely');
+for(const [name,headers] of Object.entries(current))
+ assert.deepEqual(mixed.db.get(name)?.[0],headers,name);
+for(const [caseName,args] of Object.entries({
+ existingBranch:{hasBranchData:true},preparedJournal:{prepared:true},
+ corruptHeader:{corrupt:true}
+})){
+ const f=fixture(args);
+ assert.throws(()=>run(f.book),undefined,caseName);
+ assert.deepEqual(f.stats(),{writes:0,renames:0,deletions:0},
+  'No partial schema changes after failed preflight: '+caseName);
+}
+console.log('Trial schema naming cutover: guarded, idempotent, no data loss OK');
