@@ -163,6 +163,87 @@ const KURASHI_PRENAME_SCHEMA={
  records:{old:'records',headers:['record_id','household_id','record_type','chain_id','branch_name','record_date','created_at','updated_at','version','deleted_at']},
  record_items:{old:'record_items',headers:['record_item_id','record_id','line_order','product_id','quantity','amount_tax_included','created_at','updated_at','version','deleted_at','alias_id','confirmed_name','suggested_product_name','suggestion_kind']}
 };
+// Earlier trial workbooks still have 12 sheets / obsolete receipt columns.
+// This stage must finish before the v94 naming transition. Never called by doPost.
+const KURASHI_PRE_SIMPLIFICATION_SCHEMA={
+ records:['record_id','household_id','record_type','chain_id','branch_name','raw_store_name','record_date','created_at','updated_at','version','deleted_at'],
+ record_items:['record_item_id','record_id','line_order','raw_name','product_id','quantity','amount_tax_included','category_id','price_eligible','created_at','updated_at','version','deleted_at','alias_id','confirmed_name','inferred_name','suggested_product_name','suggestion_kind'],
+ receipt_rules:['rule_id','chain_id','pattern','priority','enabled','version','updated_at']
+};
+const KURASHI_TRIAL_REMOVE_COLUMNS={
+ records:['raw_store_name'],
+ record_items:['raw_name','category_id','price_eligible','inferred_name']
+};
+function kurashiTrialLegacyReceiptCutover_(book,options={}){
+ const oldTables=['households','users','categories','stores','item_groups',
+  'products','product_aliases','records','record_items','change_log','processed_operations'];
+ const actual=book.getSheets().map(x=>x.getName()).sort();
+ const expected=oldTables.slice().sort();
+ const withRules=oldTables.concat('receipt_rules').sort();
+ const same=(a,b)=>JSON.stringify(a)===JSON.stringify(b);
+ // A fully/partially renamed 11-sheet workbook is checked by the next phase.
+ if(!same(actual,expected)&&!same(actual,withRules)){
+  if(!book.getSheetByName('receipt_rules')&&actual.length===11)return options.dryRun?[]:false;
+  kurashiFail_('SCHEMA_ERROR','試作の12→11整理対象とシート構成が一致しません');
+ }
+ const jobs=[];
+ for(const name of ['records','record_items']){
+  const sheet=book.getSheetByName(name);
+  const heads=sheet.getRange(1,1,1,sheet.getLastColumn()).getValues()[0];
+  const original=KURASHI_PRE_SIMPLIFICATION_SCHEMA[name];
+  const removable=KURASHI_TRIAL_REMOVE_COLUMNS[name];
+  const missing=removable.filter(k=>!heads.includes(k));
+  const expectedHeads=original.filter(k=>!missing.includes(k));
+  if(!same(heads,expectedHeads))
+   kurashiFail_('SCHEMA_ERROR',name+'に予期しない列・見出しがあります');
+  const pending=removable.filter(k=>heads.includes(k));
+  if(pending.length)jobs.push({name,columns:pending});
+ }
+ const rules=book.getSheetByName('receipt_rules');
+ if(rules){
+  const heads=rules.getRange(1,1,1,rules.getLastColumn()).getValues()[0];
+  if(!same(heads,KURASHI_PRE_SIMPLIFICATION_SCHEMA.receipt_rules)||rules.getLastRow()>1)
+   kurashiFail_('SCHEMA_ERROR','削除前のreceipt_rulesには予期しない見出しまたはデータがあります');
+  jobs.push({name:'receipt_rules',deleteSheet:true});
+ }
+ if(jobs.length){
+  const journal=book.getSheetByName('processed_operations');
+  const head=journal.getRange(1,1,1,journal.getLastColumn()).getValues()[0];
+  if(!same(head,KURASHI_NEW_SCHEMA.processed_operations))
+   kurashiFail_('SCHEMA_ERROR','操作履歴の見出しが一致しません');
+  const count=journal.getLastRow()-1;
+  if(count>0)for(const row of journal.getRange(2,4,count,1).getValues()){
+   let state;
+   try{state=JSON.parse(String(row[0]||''))}
+   catch(_){kurashiFail_('RECOVERY_CONFLICT','操作履歴を確認できません')}
+   if(state?.status==='prepared')kurashiFail_('RECOVERY_REQUIRED','保存途中の操作があります');
+  }
+  const masters=['households','users','categories','stores','item_groups','products','product_aliases','change_log'];
+  for(const name of masters){
+   const sheet=book.getSheetByName(name);
+   const expected=KURASHI_PRENAME_SCHEMA[name==='stores'?'retail_chains':
+    name==='item_groups'?'household_items':name==='product_aliases'?'receipt_name_mappings':name]?.headers||
+    KURASHI_NEW_SCHEMA[name];
+   const heads=sheet.getRange(1,1,1,sheet.getLastColumn()).getValues()[0];
+   if(!same(heads,expected))kurashiFail_('SCHEMA_ERROR',name+'の見出しを確認できません');
+  }
+  const recordSheet=book.getSheetByName('records');
+  const branchCol=recordSheet.getRange(1,1,1,recordSheet.getLastColumn()).getValues()[0].indexOf('branch_name')+1;
+  const rows=recordSheet.getLastRow()-1;
+  if(rows>0&&recordSheet.getRange(2,branchCol,rows,1).getValues().some(x=>String(x[0]||'').trim()))
+   kurashiFail_('SCHEMA_ERROR','保存済み支店名があるため削除を保留しました');
+ }
+ if(options.dryRun)return jobs.map(job=>({table:job.name,columns:job.columns||[],deleteSheet:!!job.deleteSheet}));
+ for(const job of jobs){
+  if(job.deleteSheet){book.deleteSheet(book.getSheetByName(job.name));continue}
+  const sheet=book.getSheetByName(job.name);
+  const heads=sheet.getRange(1,1,1,sheet.getLastColumn()).getValues()[0];
+  const indexes=job.columns.map(x=>heads.indexOf(x)+1).sort((a,b)=>b-a);
+  for(const c of indexes)sheet.deleteColumn(c);
+ }
+ return !!jobs.length;
+}
+
 function kurashiEnsureTrialNaming_(book,options={}){
  // Fail closed before any write unless the entire workbook has exactly the
  // expected eleven v46/v94 tables. The legacy 12-table cleanup is separate.
@@ -244,36 +325,54 @@ function kurashiTrialNamingBook_(){
  const props=PropertiesService.getScriptProperties();
  const id=props.getProperty('SPREADSHEET_ID');
  if(!id||id!==props.getProperty('KURASHI_NEW_WORKBOOK_ID')||
-    props.getProperty('KURASHI_SCHEMA_VERSION')!=='1'||
-    id!==props.getProperty('KURASHI_TRIAL_NAMING_TARGET_ID'))
+    props.getProperty('KURASHI_SCHEMA_VERSION')!=='1')
    throw Error('試作シートIDを確認してください。命名切替は実行しません');
  return SpreadsheetApp.openById(id);
 }
 function kurashiTrialNamingPreflight(){
  const book=kurashiTrialNamingBook_();
- const plan=kurashiEnsureTrialNaming_(book,{dryRun:true});
- const report={status:plan.length?'READY_AFTER_USER_CHECK':'ALREADY_COMPLETE',changes:plan};
+ const legacy=kurashiTrialLegacyReceiptCutover_(book,{dryRun:true});
+ const plan=legacy.length?[]:kurashiEnsureTrialNaming_(book,{dryRun:true});
+ const report={status:legacy.length?'READY_AFTER_USER_CHECK':plan.length?'READY_AFTER_USER_CHECK':'ALREADY_COMPLETE',
+  stage:legacy.length?'legacy_12_to_11':plan.length?'v94_names':'complete',
+  changes:legacy.length?legacy:plan};
  console.log(JSON.stringify(report));
  return report;
 }
 function kurashiApplyTrialNamingCutover(){
  const props=PropertiesService.getScriptProperties();
  if(props.getProperty('KURASHI_TRIAL_NAMING_APPROVAL')!=='APPLY_TRIAL_SCHEMA')
-   throw Error('明示的な試作スキーマ切替承認がありません。変更しません');
+  throw Error('明示的な試作スキーマ切替承認がありません。変更しません');
+ return kurashiTrialNamingCutoverCore_();
+}
+// Only an authenticated Apps Script API execution in the verified NEW script
+// may run these CI entrypoints. The public web-app dispatch never exposes them.
+function kurashiTrialNamingPreflightForCi(){
+ return JSON.stringify(kurashiTrialNamingPreflight());
+}
+function kurashiApplyTrialNamingCutoverForCi(approval){
+ if(approval!=='APPLY_TRIAL_SCHEMA')
+  throw Error('明示的な移行承認がありません');
+ return JSON.stringify(kurashiTrialNamingCutoverCore_());
+}
+function kurashiTrialNamingCutoverCore_(){
  const lock=LockService.getScriptLock();
  lock.waitLock(30000);
  try{
   const book=kurashiTrialNamingBook_();
-  const plan=kurashiEnsureTrialNaming_(book,{dryRun:true});
-  if(!plan.length)return {status:'ALREADY_COMPLETE'};
-  const backupName='くらしストック_試作_命名変更前_'+Utilities.formatDate(new Date(),'Asia/Tokyo','yyyyMMdd_HHmmss');
+  const legacy=kurashiTrialLegacyReceiptCutover_(book,{dryRun:true});
+  const plan=legacy.length?[]:kurashiEnsureTrialNaming_(book,{dryRun:true});
+  if(!legacy.length&&!plan.length)return {status:'ALREADY_COMPLETE'};
+  const backupName='くらしストック_試作_スキーマ変更前_'+Utilities.formatDate(new Date(),'Asia/Tokyo','yyyyMMdd_HHmmss');
   const backup=DriveApp.getFileById(book.getId()).makeCopy(backupName);
   if(!backup||!backup.getId())throw Error('バックアップの作成を確認できません。変更しません');
-  if(!kurashiEnsureTrialNaming_(book))
-    throw Error('命名変更が実行されませんでした。バックアップを確認してください');
-  if(kurashiEnsureTrialNaming_(book,{dryRun:true}).length)
-    throw Error('命名変更が未完了です。バックアップを確認してください');
-  const result={status:'SCHEMA_NAMING_UPDATED_11_TABLES',backupUrl:backup.getUrl()};
+  // Every stage revalidates the sheet headers before writing.
+  if(legacy.length)kurashiTrialLegacyReceiptCutover_(book);
+  kurashiEnsureTrialNaming_(book);
+  if(kurashiTrialLegacyReceiptCutover_(book,{dryRun:true}).length||
+     kurashiEnsureTrialNaming_(book,{dryRun:true}).length)
+   throw Error('スキーマ移行が未完了です。バックアップを確認してください');
+  const result={status:'SCHEMA_NAMING_UPDATED_11_TABLES',backupCreated:true};
   console.log(JSON.stringify(result));
   return result;
  }finally{lock.releaseLock()}
