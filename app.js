@@ -64,7 +64,7 @@ const demoRecords=priceFixtures.map((r,n)=>({
 }));
 const demoRecordItems=priceFixtures.map((r,n)=>({
  record_item_id:'preview-i'+(n+1),record_id:'preview-r'+(n+1),line_order:1,
- receipt_name_id:'',non_ocr_name:'',product_id:r[0],quantity:r[3],line_total_tax_included:r[2],
+ receipt_name_id:'',non_ocr_name:'',linked_product_id:r[0],quantity:r[3],line_total_tax_included:r[2],
  created_at:null,updated_at:null,version:1,deleted_at:null
 }));
 // Manual preview records remain only on this browser; never sent to a server.
@@ -98,7 +98,7 @@ function savePreviewRecord(input){
  const idValue=id(),now=new Date().toISOString();
  const header={record_id:idValue,household_id:'preview-only',record_type:input.type,chain_id:input.chainId,record_date:input.date,created_at:now,updated_at:now,version:1,deleted_at:null};
  const detail={record_item_id:id(),record_id:idValue,line_order:1,receipt_name_id:'',non_ocr_name:input.rawName||'',
- product_id:input.productId||null,quantity,line_total_tax_included:amount,
+ linked_product_id:input.productId||null,quantity,line_total_tax_included:amount,
  created_at:now,updated_at:now,version:1,deleted_at:null};
  previewRecords.records.push(header);previewRecords.record_items.push(detail);
  localStorage.setItem(previewRecordsKey,JSON.stringify(previewRecords));return true;
@@ -119,7 +119,7 @@ function priceCandidates(records,details,periodValue,today=new Date()){
  return recordJoin(records,details).filter(r=>
   !r.deleted_at&&!r.record.deleted_at &&
   ['receipt','price_tag'].includes(r.record.record_type) &&
-  !!r.product_id && !!r.record.chain_id &&
+  !!r.linked_product_id && !!r.record.chain_id &&
   typeof r.line_total_tax_included==='number'&&Number.isFinite(r.line_total_tax_included)&&r.line_total_tax_included>=0 &&
   typeof r.quantity==='number'&&Number.isFinite(r.quantity)&&r.quantity>0 &&
   /^\d{4}-\d{2}-\d{2}$/.test(r.record.record_date)&&
@@ -128,7 +128,7 @@ function priceCandidates(records,details,periodValue,today=new Date()){
 }
 const daysFromDate=d=>[d.getFullYear(),String(d.getMonth()+1).padStart(2,'0'),String(d.getDate()).padStart(2,'0')].join('-');
 function chainMinima(productId,periodValue,records=allPreviewRecords(),details=allPreviewItems(),today=new Date()){
- const candidates=priceCandidates(records,details,periodValue,today).filter(r=>r.product_id===productId);
+ const candidates=priceCandidates(records,details,periodValue,today).filter(r=>r.linked_product_id===productId);
  const winners=new Map();
  for(const r of candidates){
   const prev=winners.get(r.record.chain_id);
@@ -258,7 +258,7 @@ function openRecordEntry(kind,recordId=null){
      ...(r.record_type==='price_tag'||!aliasNameFor(x)||x.non_ocr_name?
       {inputOrigin:'manual'}:{ocrRawName:aliasNameFor(x),savedOcrName:true}),
      quantity:r.record_type==='price_tag'?1:x.quantity,amount:x.line_total_tax_included,
-     productId:x.product_id||'',manuallyLinked:!!x.product_id,issues:[],
+     productId:x.linked_product_id||'',manuallyLinked:!!x.linked_product_id,issues:[],
      ...(x.product_name_candidate?{productSuggestion:{
       existingName:x.candidate_match_type==='existing'?x.product_name_candidate:null,
       newName:x.candidate_match_type==='new'?x.product_name_candidate:null
@@ -330,7 +330,7 @@ function makeChatGptReceiptRebuildDraft(previous,result){
 }
 // Saved detail uses master, confirmed or OCR names; unconfirmed inferences are not titles.
 function detailLineName(line){
- return catalogue.products.find(p=>p.id===line.product_id)?.name||
+ return catalogue.products.find(p=>p.id===line.linked_product_id)?.name||
   aliasNameFor(line)||'明細名なし';
 }
 // The same product picker serves every saved receipt line, regardless of ChatGPT.
@@ -346,7 +346,7 @@ function recordProductChoices(){
   .sort((a,b)=>a.name.localeCompare(b.name,'ja'));
  return products.map(p=>UI.choiceRow({title:productTitle(p),
   subtitle:p.householdItemId?'日用品：'+linkedItemName(p):'',
-  action:'recordProductChoose',productId:p.id,selected:line.product_id===p.id
+  action:'recordProductChoose',productId:p.id,selected:line.linked_product_id===p.id
  })).join('')||'<p class="hint">該当する商品はありません。</p>';
 }
 function recordProductView(){
@@ -367,7 +367,7 @@ function recordProductView(){
      placeholder:'商品名で検索',value:recordProductQuery})+
     '<div class="scan-picker-actions">'+
      UI.textAction({label:'新しい商品を登録',action:'recordProductShowNew'})+
-     (line.product_id?UI.textAction({label:'紐付けを解除',action:'recordProductUnlink',arrow:false}):'')+
+     (line.linked_product_id?UI.textAction({label:'紐付けを解除',action:'recordProductUnlink',arrow:false}):'')+
     '</div><div id="record-product-results" class="scan-existing-results">'+recordProductChoices()+
     '</div></div>';
  return UI.sheet({title:isNew?'新しい商品を登録':'登録商品を選択',
@@ -404,7 +404,7 @@ function learnSavedReceiptAlias(line,productId){
  const record=allPreviewRecords().find(r=>r.record_id===resolvedRecordId&&!r.deleted_at);
  if(!record?.chain_id)return;
  void window.KurashiLive.learnAliases({
-  chain_id:record.chain_id,items:[{raw_name:ocrName,product_id:productId}]
+  chain_id:record.chain_id,items:[{raw_name:ocrName,auto_match_product_id:productId}]
  }).catch(err=>console.warn('確認した商品のOCR名を記録できませんでした',err));
 }
 function linkSavedRecordProduct(productId){
@@ -444,7 +444,7 @@ function recordDetailView(){
  ${bulkCandidates.length?'<div class="record-detail-bulk">'+UI.button({label:'生成AI候補をまとめて登録（'+bulkCandidates.length+'件）',variant:'secondary',action:'recordBulkPreview',disabled:recordBulkSaving})+'</div>':''}
   <section class="detail-record-lines" aria-label="${isShelf?'価格情報':'購入明細'}">
    ${UI.sectionHeading({title:isShelf?'価格情報':'購入明細',subtitle:detail.length+'件'})}
-   ${!isShelf&&detail.some(line=>!line.product_id)?'<p class="record-detail-benefit">商品を紐付けると、購入履歴を価格比較に活用できます。</p>':''}
+   ${!isShelf&&detail.some(line=>!line.linked_product_id)?'<p class="record-detail-benefit">商品を紐付けると、購入履歴を価格比較に活用できます。</p>':''}
    ${detail.map(line=>`<div class="panel detail-record-line">
     <div class="detail-record-line-main">
      <strong class="detail-record-line-name">${esc(isShelf?detailLineName(line):aliasNameFor(line)||"明細名なし")}</strong>
@@ -452,9 +452,9 @@ function recordDetailView(){
     </div>
     ${!isShelf&&line.non_ocr_name&&rawReceiptName(line)&&rawReceiptName(line)!==line.non_ocr_name?`<div class="detail-record-line-meta"><span>読み取り名：${esc(rawReceiptName(line))}</span></div>`:''}
     <div class="detail-record-line-meta"><span>${isShelf?'販売個数':'数量'} ${esc(line.quantity)}</span>
-     ${line.product_id?`<span>登録商品：${esc(catalogue.products.find(p=>p.id===line.product_id)?.name||'商品を確認')}</span>`:
+     ${line.linked_product_id?`<span>登録商品：${esc(catalogue.products.find(p=>p.id===line.linked_product_id)?.name||'商品を確認')}</span>`:
       '<span>商品未紐付け</span>'}</div>
-    ${!isShelf&&!line.product_id&&line.product_name_candidate?`<div class="detail-record-line-meta detail-product-proposal"><span>生成AIの商品名候補：${esc(line.product_name_candidate)}${line.candidate_match_type==='new'?'（新規）':line.candidate_match_type==='existing'?'（既存）':'（未判定）'}</span></div>`:''}
+    ${!isShelf&&!line.linked_product_id&&line.product_name_candidate?`<div class="detail-record-line-meta detail-product-proposal"><span>生成AIの商品名候補：${esc(line.product_name_candidate)}${line.candidate_match_type==='new'?'（新規）':line.candidate_match_type==='existing'?'（既存）':'（未判定）'}</span></div>`:''}
     ${!isShelf&&liveMode?`<div class="scan-picker-actions">${UI.button({label:'商品を設定',variant:'tertiary',action:'recordProductOpen',recordItemId:line.record_item_id})}</div>`:''}
    </div>`).join('')}
   </section>
@@ -697,7 +697,7 @@ function learnConfirmedReceiptLine(item,chainId){
  if(['manual','photo'].includes(item?.inputOrigin)||isUnconfirmedBarcodeLine(item))return;
  if(!liveMode||!chainId||!item?.productId||!item.name||
     !window.KurashiLive?.learnAliases)return;
- const lines=[{raw_name:String(item.name).trim(),product_id:item.productId}];
+ const lines=[{raw_name:String(item.name).trim(),auto_match_product_id:item.productId}];
  // AI suggestions are never learned as printed-name aliases.
  void window.KurashiLive.learnAliases({chain_id:chainId,items:lines})
    .catch(err=>console.warn('確認済みのレシート商品別名を保存できません',err));
@@ -2474,7 +2474,7 @@ app.addEventListener('submit',e=>{e.preventDefault();const form=e.target;const d
     raw_name:verified?'':String(item.ocrRawName||'').trim(),
     ...(verified&&confirmedName?{non_ocr_name:confirmedName}:{}),
     ...(suggestedName?{product_name_candidate:suggestedName,candidate_match_type:suggestionKind}:{}),
-    product_id:scanDraft.recordType==='receipt'?
+    linked_product_id:scanDraft.recordType==='receipt'?
      (scanResolvedProductId(item)||null):
      String(d.get('product-'+i)||'')||null,
     quantity:scanDraft.recordType==='price_tag'?1:Number(d.get('qty-'+i)),
@@ -2530,7 +2530,7 @@ app.addEventListener('submit',e=>{e.preventDefault();const form=e.target;const d
    // alias can become available during synchronization, so do a second exact-only
    // lookup for still-unmatched lines after local commit (never fuzzy/AI matching).
    if(savedId&&!scanDraft.recordId&&values.record_type==='receipt'){
-    const rows=allPreviewItems().filter(x=>x.record_id===savedId&&!x.deleted_at&&!x.product_id);
+    const rows=allPreviewItems().filter(x=>x.record_id===savedId&&!x.deleted_at&&!x.linked_product_id);
     for(const line of rows){
      const matched=scanMatchProduct(aliasNameFor(line),learnedChain);
      if(matched)void window.KurashiLive.linkRecordItem(line.record_item_id,matched)
