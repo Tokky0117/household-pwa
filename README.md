@@ -6,7 +6,7 @@
 | --- | --- | --- | --- |
 | 本番 | `main` | v0.88.10 | 2026-11-10から運用 |
 | 試作（命名整理前） | `preview-v46-clean-base` | v0.93.0 | 11テーブル・旧命名スキーマ |
-| 試作（今後の開発基準） | `preview-v94-schema-names` | v0.93.0 | 新命名コードと自動テストを検証中、実試作Sheets/GAS切替は未完了 |
+| 試作（今後の開発基準） | `preview-v94-schema-names` | v0.94.0 | 新命名コードと自動テストを検証中、実試作Sheets/GAS切替は未完了 |
 
 **現行の実装スキーマは [DATA_MODEL.md](DATA_MODEL.md)、実際の列順は [gas/Setup.gs](gas/Setup.gs)、試作環境の切替条件は [RECEIPT_SCHEMA_MIGRATION.md](RECEIPT_SCHEMA_MIGRATION.md) を参照してください。** 古い設計・試作バージョンの記録は下部の履歴として残しています。
 
