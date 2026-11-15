@@ -54,6 +54,7 @@ jobs:
           node --check "$RUNNER_TEMP/Setup.js"
           node tests/no-login-household.mjs
           node tests/trial-sheet-schema-cutover.mjs
+          node tests/gas-execution-result.mjs
       - name: Prepare temporary credentials and target
         env:
           CLASPRC_JSON: ${{ secrets.CLASPRC_JSON }}
@@ -130,7 +131,12 @@ jobs:
           const manifest=JSON.parse(fs.readFileSync(path.join(remote,'appsscript.json'),'utf8'));
           if(manifest.runtimeVersion&&manifest.runtimeVersion!=='V8')
             throw Error('Unexpected GAS runtime');
-          fs.copyFileSync(path.join(remote,'appsscript.json'),path.join(stage,'appsscript.json'));
+          // The migration functions are never exposed to ANYONE through the
+          // Apps Script Execution API. This project is controlled by its owner.
+          if(manifest.executionApi&&manifest.executionApi.access!=='MYSELF')
+            throw Error('API executable must be restricted to MYSELF. No push permitted.');
+          manifest.executionApi={access:'MYSELF'};
+          fs.writeFileSync(path.join(stage,'appsscript.json'),JSON.stringify(manifest));
           NODE
       - name: Back up existing NEW script before updating
         uses: actions/upload-artifact@v4
