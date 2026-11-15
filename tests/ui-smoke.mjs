@@ -1727,7 +1727,7 @@ assert.equal(replacement.items[1].inferredName,'メリノクルーネックカ�
 assert.equal(replacement.items.reduce((acc,row)=>acc+Number(row.amount),0),11550);
 assert.equal(replacement.ocrReplacedCount,9);
 assert.equal(replacement.date,'2026-10-12');
-assert.equal(replacement.chainName,'ユニクロ');
+assert.equal(replacement.chainName,'','full AI photo rebuild cannot infer or overwrite a retailer');
 assert.equal(replacement.items.reduce((sum,x)=>sum+x.amount,0),11550);
 assert.ok(replacement.items.every(x=>x.inputOrigin==='photo'&&x.productId===''&&
  !Object.prototype.hasOwnProperty.call(x,'ocrRawName')),
