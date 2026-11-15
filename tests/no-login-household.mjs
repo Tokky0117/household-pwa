@@ -3470,7 +3470,7 @@ const recoveredClient=appSession(blockedFixFactory);
 await waitFor(()=>recoveredClient.window.KurashiLive.state().queued===0&&
  temp.call('bootstrap').data.receipt_name_mappings.some(x=>
   x.receipt_name_id===blockedFixAlias.data.entity.receipt_name_id&&
-  x.auto_match_product_id===serverProduct.data.entity.auto_match_product_id)&&
+  x.auto_match_product_id===serverProduct.data.entity.product_id)&&
  temp.call('bootstrap').data.retail_chains.some(x=>
   x.chain_id===aliasRecoveryChain&&String(x.aliases).includes('店舗名_保留操作復旧後の追加')),
  'legacy blocked alias-link auto-recovers, then the following operation drains');
