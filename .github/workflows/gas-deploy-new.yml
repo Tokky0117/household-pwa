@@ -1,9 +1,25 @@
 name: Deploy only the NEW Kurashi GAS
 
-# Schema changes require a coordinated trial Sheets update before deploying GAS.
-# Deploy manually only AFTER the verified trial workbook has the renamed v94 schema.
+# Only the verified NEW trial GAS project can be changed.
+# The schema migration runs via authenticated Apps Script API execution,
+# never via the publicly accessible household Web App endpoint.
 on:
   workflow_dispatch:
+    inputs:
+      schema_operation:
+        description: 'Trial schema: check only / migrate and deploy / deploy already-migrated GAS'
+        required: true
+        type: choice
+        default: check
+        options:
+          - check
+          - migrate_and_deploy
+          - deploy_only
+      trial_queues_empty_and_clients_stopped:
+        description: 'For migration: all trial-device queues are empty and trial clients are stopped'
+        required: true
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -141,7 +157,89 @@ jobs:
               throw Error('GAS push verification failed');
           }
           NODE
+      - name: Check trial schema through authenticated GAS execution (read-only)
+        id: schema
+        shell: bash
+        env:
+          OPERATION: ${{ inputs.schema_operation }}
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP/new-gas/stage"
+          # An absent API executable/OAuth permission fails closed before writes.
+          npx --yes @google/clasp@3 run-function kurashiTrialNamingPreflightForCi \
+            > "$RUNNER_TEMP/trial-schema-before.txt"
+          node - <<'NODE'
+          const fs=require('node:fs');
+          const data=fs.readFileSync(process.env.RUNNER_TEMP+'/trial-schema-before.txt','utf8');
+          const lines=data.split(/\r?\n/).map(x=>x.trim()).filter(Boolean);
+          let report=null;
+          for(const line of lines.reverse()){
+            try{const o=JSON.parse(line);if(o?.status&&o?.stage){report=o;break}}
+            catch(_){}
+          }
+          if(!report||!['READY_AFTER_USER_CHECK','ALREADY_COMPLETE'].includes(report.status)||
+              !['legacy_12_to_11','v94_names','complete'].includes(report.stage))
+            throw Error('SCHEMA_PREFLIGHT_NO_VERIFIED_RESULT: stop before any change');
+          if(process.env.OPERATION==='deploy_only'&&report.status!=='ALREADY_COMPLETE')
+            throw Error('SCHEMA_CUTOVER_REQUIRED: deploy refused');
+          fs.appendFileSync(process.env.GITHUB_OUTPUT,'schema_status='+report.status+'\n');
+          console.log('Trial workbook preflight: '+report.status+', stage='+report.stage+
+            ', changes='+report.changes.length+' (no row content printed)');
+          fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY,
+            'Trial schema preflight: '+report.status+' / '+report.stage+'\n');
+          NODE
+      - name: Apply guarded trial schema migration only with explicit approval
+        if: inputs.schema_operation == 'migrate_and_deploy'
+        shell: bash
+        env:
+          TRIAL_CLIENTS_STOPPED: ${{ inputs.trial_queues_empty_and_clients_stopped }}
+        run: |
+          set -euo pipefail
+          if [ "$TRIAL_CLIENTS_STOPPED" != "true" ]; then
+            echo "Stop all trial clients and confirm zero queued operations before migration." >&2
+            exit 1
+          fi
+          cd "$RUNNER_TEMP/new-gas/stage"
+          npx --yes @google/clasp@3 run-function kurashiApplyTrialNamingCutoverForCi \
+            --params '["APPLY_TRIAL_SCHEMA"]' > "$RUNNER_TEMP/trial-schema-apply.txt"
+          node - <<'NODE'
+          const fs=require('node:fs');
+          const lines=fs.readFileSync(process.env.RUNNER_TEMP+'/trial-schema-apply.txt','utf8')
+            .split(/\r?\n/).map(x=>x.trim()).filter(Boolean);
+          const accepted=['SCHEMA_NAMING_UPDATED_11_TABLES','ALREADY_COMPLETE'];
+          let report=null;
+          for(const line of lines.reverse()){
+            try{const obj=JSON.parse(line);if(accepted.includes(obj?.status)){report=obj;break}}
+            catch(_){}
+          }
+          if(!report)throw Error('SCHEMA_APPLY_NOT_VERIFIED: do not deploy');
+          console.log('Authenticated schema migration: '+report.status);
+          NODE
+          npx --yes @google/clasp@3 run-function kurashiTrialNamingPreflightForCi \
+            > "$RUNNER_TEMP/trial-schema-after.txt"
+          node - <<'NODE'
+          const fs=require('node:fs');
+          const lines=fs.readFileSync(process.env.RUNNER_TEMP+'/trial-schema-after.txt','utf8')
+            .split(/\r?\n/).map(x=>x.trim()).filter(Boolean);
+          if(!lines.some(line=>{
+            try{const x=JSON.parse(line);return x?.status==='ALREADY_COMPLETE'&&x.stage==='complete'}
+            catch(_){return false}
+          }))throw Error('SCHEMA_POST_MIGRATION_CHECK_FAILED: do not deploy');
+          console.log('Trial schema post-check: ALREADY_COMPLETE');
+          NODE
+      - name: Confirm manual deployment operation is eligible
+        if: inputs.schema_operation != 'check'
+        shell: bash
+        env:
+          OPERATION: ${{ inputs.schema_operation }}
+        run: |
+          set -euo pipefail
+          case "$OPERATION" in
+            migrate_and_deploy|deploy_only) ;;
+            *) echo 'Unsupported schema operation';exit 1;;
+          esac
       - name: Update existing NEW web app deployment, never create a second
+        if: inputs.schema_operation != 'check'
         shell: bash
         run: |
           set -euo pipefail
@@ -149,8 +247,9 @@ jobs:
           npx --yes @google/clasp@3 update-deployment "$TARGET_DEPLOYMENT_ID"
           npx --yes @google/clasp@3 list-deployments "$GAS_SCRIPT_ID_NEW" > "$RUNNER_TEMP/deployments-after.txt"
           grep -Fq "$TARGET_DEPLOYMENT_ID" "$RUNNER_TEMP/deployments-after.txt"
-          echo "New GAS /exec updated. Old GAS and Sheets were not touched." >> "$GITHUB_STEP_SUMMARY"
+          echo "Verified NEW GAS /exec updated. Main and production environments were not touched." >> "$GITHUB_STEP_SUMMARY"
       - name: Verify new GAS anonymously returns only the household schema (read-only)
+        if: inputs.schema_operation != 'check'
         shell: bash
         run: |
           set -euo pipefail
