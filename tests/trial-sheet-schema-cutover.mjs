@@ -79,11 +79,11 @@ assert.deepEqual(clean.stats(),{writes:0,renames:0,deletions:0},
 const gasBookSource=api.match(/function kurashiBook_\(\)\s*\{[\s\S]*?\n\}/)?.[0]||'';
 assert.ok(!gasBookSource.includes('kurashiEnsureTrialNaming_('),
  'bootstrap and API saves must never run schema migration automatically');
-assert.ok(api.includes('function kurashiApplyTrialNamingCutover()')&&
- api.includes("KURASHI_TRIAL_NAMING_APPROVAL")&&
- api.includes("KURASHI_TRIAL_NAMING_TARGET_ID")&&
+assert.ok(api.includes('function kurashiApplyTrialNamingCutoverForCi(approval)')&&
+ api.includes("approval!=='APPLY_TRIAL_SCHEMA'")&&
+ api.includes("KURASHI_NEW_WORKBOOK_ID")&&
  api.includes('DriveApp.getFileById'),
- 'cutover needs explicit approval, verified target and backup');
+ 'CI cutover needs explicit approval, verified workbook properties and backup');
 assert.equal(run(clean.book),true);
 assert.equal(clean.db.size,11);
 assert.deepEqual(clean.db.get('products')[1],originalProduct,'product values remain unchanged');
