@@ -328,7 +328,8 @@ function parseChatGptOcrAssistJson(source){
  if(typeof source!=='string'||source.length>30000||!source.trim())
   throw Error('JSON_SIZE_OR_EMPTY');
  const raw=extractOcrAssistJson(source);
- if(!isObject(raw)||Object.keys(raw).sort().join(',')!=='items,version'||
+ if(!isObject(raw)||!['items,version','items,storeName,version']
+  .includes(Object.keys(raw).sort().join(','))||
   raw.version!==ASSIST_VERSION||!Array.isArray(raw.items)||
   !raw.items.length||raw.items.length>100)
   throw Error('INVALID_OCR_ASSIST_FORMAT');
@@ -359,7 +360,9 @@ function parseChatGptOcrAssistJson(source){
    productSuggestion:parseProductSuggestion(entry.productSuggestion)
   };
  });
- return {version:ASSIST_VERSION,items};
+ return {version:ASSIST_VERSION,
+  storeName:raw.storeName===undefined?null:cleanText(raw.storeName,80,{optional:true}),
+  items};
 }
 // Compact photo-first instruction, with exact OCR row identity for the importer.
 function makeChatGptOcrAssistPrompt(ocrReference,registeredNames=[]){
@@ -396,7 +399,7 @@ function makeChatGptOcrAssistPrompt(ocrReference,registeredNames=[]){
  const diagnostics=(r.nameLinkDiagnostics||[]).map(x=>x.rowId+'：'+
   show(x.status)+'（近傍文字行'+show(x.nearbyTextRows)+
   '、名前候補'+show(x.eligibleNameRows)+'）');
- const assist={version:ASSIST_VERSION,items:[{rowId:'OCR行IDをそのまま',
+ const assist={version:ASSIST_VERSION,storeName:null,items:[{rowId:'OCR行IDをそのまま',
   ocrName:'OCR名をそのまま',quantity:null,amount:null,
   productSuggestion:{existingName:null,newName:null}}]};
  const rebuild={version:REBUILD_VERSION,receiptDate:null,storeName:null,
@@ -415,14 +418,14 @@ function makeChatGptOcrAssistPrompt(ocrReference,registeredNames=[]){
   '商品別税込額が印字されない外税レシートで、値引き後税抜明細額と税率別印字税額が確定していれば、税率ごとに税抜金額比で配賦し、端数は最大剰余法（同点は印字順）で割り当てる。全額を検算した商品別税込額は計算値として使用可。印字額と偽らず、根拠が不足する額はnull。',
   '',
   '【2種類のJSONのどちらか1つだけを選ぶ】',
-  'A：写真とOCRの商品行が1対1対応 → kurashi-receipt-assist-1。rowId・ocrName・行順・行数を変えない。商品名の自然な補正・登録候補はproductSuggestionだけに記す。quantityは購入数量、amountは値引き後の税込明細合計（行の全購入数量分）。不明ならnull。数量だけの誤読は行を再構築せず、この形式で補正する。',
+  'A：写真とOCRの商品行が1対1対応 → kurashi-receipt-assist-1。rowId・ocrName・行順・行数を変えない。写真で確認した店舗名をstoreNameに記載（読めなければnull）。商品名の自然な補正・登録候補はproductSuggestionだけに記す。quantityは購入数量、amountは値引き後の税込明細合計（行の全購入数量分）。不明ならnull。数量だけの誤読は行を再構築せず、この形式で補正する。',
   'B：別レシートの混入・商品行の欠落や余分・行の分割や結合・コードだけの商品名・金額対応の破綻 → kurashi-receipt-rebuild-1。写真で確認した購入商品だけを印字順に記載し、元OCR行IDを使わない。クルーネックとVネック等の異なる形状や、同じ商品の別印字行を統合しない。分からないname・quantity・amount・日付・店舗・合計・点数はnull。',
   '不明な文字や税込明細合計はnullで表し、アプリ確認画面に残す。対象レシートが確定できない、または重大な矛盾が未解決のときだけJSONを停止し、何番目の商品のどの値を確認する必要があるか質問する。ユーザー確認後は確定内容を維持して再検算。',
   '',
   '【登録商品との照合（レシート写真と数量・金額の解析後に実施）】',
   '以下の登録商品名一覧はアプリが作成した商品マスタの名前だけであり、商品ID・容量・日用品等は含まない。既に登録されている商品と同一と判断できる場合だけ、productSuggestion.existingNameに一覧中の名称を文字どおり正確に記す。曖昧な場合はnull。',
   '既存の商品名に該当しない場合のみ、productSuggestion.newNameに適切な新規登録候補名を推測する。可能ならウェブ検索を利用して商品名を確認する。検索できない場合やメーカー・規格を確定できない場合は捏造せず、商品種別までの自然な名称かnullにする。検索した根拠がないのに実在商品を特定できたと主張しない。existingNameとnewNameを同時に指定しない。',
-  '商品名候補はproductSuggestionの1種類だけにし、推定名を別項目で出力しない。既存商品名に確信がなければexistingNameはnull。OCR原文・行ID・数量を商品候補のために書き換えない。候補は未確認で、登録と紐付けはアプリ上で利用者が選ぶ。',
+  '商品名候補はproductSuggestionの1種類だけにし、推定名を別項目で出力しない。写真で確認した店舗名は出力のstoreNameに記載し、読めなければnull。既存商品名に確信がなければexistingNameはnull。OCR原文・行ID・数量を商品候補のために書き換えない。候補は未確認で、登録と紐付けはアプリ上で利用者が選ぶ。',
   '登録商品名一覧（各要素は登録商品名のみ。空配列なら照合候補なし）：'+JSON.stringify(registeredNames),
   '',
   '【出力】',
