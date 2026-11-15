@@ -2,8 +2,8 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
 
-// Validate automatic, guarded, idempotent transition of the already isolated trial
-// Sheets. Do not call Drive/Sheets services and do not touch production.
+// Validate explicit guarded transition of the trial Sheets, including the former
+// 12-sheet format. Uses local in-memory mocks; never contacts Google services.
 const api=fs.readFileSync(new URL('../gas/Api.gs',import.meta.url),'utf8');
 const setup=fs.readFileSync(new URL('../gas/Setup.gs',import.meta.url),'utf8');
 const context=vm.createContext({console});
@@ -12,12 +12,14 @@ const current=JSON.parse(JSON.stringify(vm.runInContext('KURASHI_NEW_SCHEMA',con
 const old=JSON.parse(JSON.stringify(vm.runInContext('KURASHI_PRENAME_SCHEMA',context)));
 const run=book=>context.kurashiEnsureTrialNaming_(book);
 
-function fixture({hasBranchData=false,prepared=false,corrupt=false,mixed=false,extraTable=false,extraColumn=false,sampleData=false}={}){
+function fixture({hasBranchData=false,prepared=false,corrupt=false,mixed=false,extraTable=false,extraColumn=false,sampleData=false,legacyReceipt=false,rulesData=false}={}){
  const db=new Map();
  for(const [name,headers] of Object.entries(current)){
   const spec=old[name];
   const legacy=spec?spec.old:name;
-  const first=spec?spec.headers:headers;
+  const first=legacyReceipt&&['records','record_items'].includes(legacy)?
+   JSON.parse(JSON.stringify(vm.runInContext('KURASHI_PRE_SIMPLIFICATION_SCHEMA',context)[legacy])):
+   spec?spec.headers:headers;
   const table=legacy==='records'&&hasBranchData?
    [first.slice(),first.map(h=>h==='branch_name'?'枚方店':'')]:
    [first.slice()];
@@ -28,6 +30,8 @@ function fixture({hasBranchData=false,prepared=false,corrupt=false,mixed=false,e
   db.get('product_aliases').push(['alias-1','product-1','chain-1','foo',1,'date','OCR品名']);
   db.get('record_items').push(['line-1','receipt-1',1,'product-1',2,300,'now','now',1,'','alias-1','','商品A','existing']);
  }
+ if(legacyReceipt)db.set('receipt_rules',[['rule_id','chain_id','pattern','priority','enabled','version','updated_at'],
+  ...(rulesData?[['rule-1','store-1','x',1,true,1,'now']]:[])]);
  if(extraTable)db.set('receipt_rules',[['rule_id']]);
  if(extraColumn)db.get('products')[0].push('unreviewed_custom_column');
  if(mixed){
@@ -39,7 +43,7 @@ function fixture({hasBranchData=false,prepared=false,corrupt=false,mixed=false,e
   'home','op','hash',JSON.stringify({status:'prepared'}),'date'
  ]);
  if(corrupt)db.get('products')[0][2]='unexpected_header';
- let writes=0,renames=0,deletions=0;
+ let writes=0,renames=0,deletions=0,sheetDeletions=0;
  const getSheetByName=name=>{if(!db.has(name))return null;
   let key=name;
   return {
@@ -59,8 +63,10 @@ function fixture({hasBranchData=false,prepared=false,corrupt=false,mixed=false,e
   deleteColumn:column=>{deletions++;db.set(key,db.get(key).map(row=>
    row.filter((_,i)=>i!==column-1)))}
  }};
- return {book:{getSheetByName,getSheets:()=>Array.from(db.keys()).map(name=>getSheetByName(name))},db,
-  stats:()=>({writes,renames,deletions})};
+ return {book:{getId:()=> 'trial-book',getSheetByName,
+  getSheets:()=>Array.from(db.keys()).map(name=>getSheetByName(name)),
+  deleteSheet:s=>{sheetDeletions++;db.delete(s.getName())}},db,
+  stats:()=>({writes,renames,deletions}),sheetDeletions:()=>sheetDeletions};
 }
 const clean=fixture({sampleData:true});
 const originalProduct=clean.db.get('products')[1].slice();
@@ -102,4 +108,51 @@ for(const [caseName,args] of Object.entries({
  assert.deepEqual(f.stats(),{writes:0,renames:0,deletions:0},
   'No partial schema changes after failed preflight: '+caseName);
 }
-console.log('Trial schema naming cutover: guarded, idempotent, no data loss OK');
+const old12=fixture({legacyReceipt:true});
+assert.equal(old12.db.size,12);
+const legacyPlan=JSON.parse(JSON.stringify(context.kurashiTrialLegacyReceiptCutover_(old12.book,{dryRun:true})));
+assert.deepEqual(legacyPlan.map(x=>x.table),['records','record_items','receipt_rules']);
+assert.deepEqual(old12.stats(),{writes:0,renames:0,deletions:0});
+assert.equal(old12.sheetDeletions(),0,'legacy dry run never deletes a sheet');
+assert.equal(context.kurashiTrialLegacyReceiptCutover_(old12.book),true);
+assert.equal(old12.db.size,11);
+assert.deepEqual(old12.stats(),{writes:0,renames:0,deletions:5});
+assert.equal(old12.sheetDeletions(),1);
+assert.equal(run(old12.book),true,'legacy 12-sheet format upgrades to v94');
+for(const [name,headers] of Object.entries(current))
+ assert.deepEqual(old12.db.get(name)?.[0],headers,'12-sheet '+name);
+assert.equal(context.kurashiTrialLegacyReceiptCutover_(old12.book),false);
+
+for(const [caseName,args] of Object.entries({
+  nonemptyReceiptRules:{legacyReceipt:true,rulesData:true},
+  unknownReceiptSheet:{legacyReceipt:true,extraColumn:true},
+  olderPreparedJournal:{legacyReceipt:true,prepared:true}
+})){
+ const bad=fixture(args);
+ assert.throws(()=>context.kurashiTrialLegacyReceiptCutover_(bad.book),undefined,caseName);
+ assert.deepEqual(bad.stats(),{writes:0,renames:0,deletions:0},'No partial legacy changes: '+caseName);
+ assert.equal(bad.sheetDeletions(),0,'No legacy sheet removed: '+caseName);
+}
+let copyCount=0;
+const ci=fixture({legacyReceipt:true,sampleData:false});
+context.PropertiesService={getScriptProperties:()=>({getProperty:k=>({
+ SPREADSHEET_ID:'trial-book',KURASHI_NEW_WORKBOOK_ID:'trial-book',KURASHI_SCHEMA_VERSION:'1'
+})[k]||''})};
+context.SpreadsheetApp={openById:id=>{assert.equal(id,'trial-book');return ci.book}};
+context.LockService={getScriptLock:()=>({waitLock(){},releaseLock(){}})};
+context.DriveApp={getFileById:id=>{assert.equal(id,'trial-book');return {makeCopy:()=>{
+ copyCount++;return {getId:()=> 'backup-id',getUrl:()=> 'https://example.test/backup'}
+}}}};
+context.Utilities={formatDate:()=> '20261115_000000'};
+const ciStatus=JSON.parse(context.kurashiTrialNamingPreflightForCi());
+assert.equal(ciStatus.stage,'legacy_12_to_11');
+assert.equal(copyCount,0);
+assert.throws(()=>context.kurashiApplyTrialNamingCutoverForCi('wrong'));
+assert.equal(copyCount,0,'bad approval cannot trigger a backup or write');
+const applied=JSON.parse(context.kurashiApplyTrialNamingCutoverForCi('APPLY_TRIAL_SCHEMA'));
+assert.equal(applied.status,'SCHEMA_NAMING_UPDATED_11_TABLES');
+assert.equal(copyCount,1,'a backup precedes one combined migration');
+assert.equal(JSON.parse(context.kurashiTrialNamingPreflightForCi()).status,'ALREADY_COMPLETE');
+assert.equal(JSON.parse(context.kurashiApplyTrialNamingCutoverForCi('APPLY_TRIAL_SCHEMA')).status,'ALREADY_COMPLETE');
+assert.equal(copyCount,1,'re-running does not copy or write again');
+console.log('Trial 12-to-11 and v94 naming migration: guarded, idempotent, CI-invoked OK');
