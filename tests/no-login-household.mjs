@@ -971,6 +971,7 @@ const unlinkShelfEdit=unlinkedShelfFixture.call('record.update',{
  chain_id:unlinkedShelfStore,record_date:'2026-11-09',
  items:[{raw_name:'',product_id:null,quantity:1,line_total_tax_included:230}]
 },'op-update-shelf-no-product-abcdef12345');
+if(!unlinkShelfEdit.ok)console.error('SCHEMA_NAME_DEBUG_SHELF',JSON.stringify(unlinkShelfEdit));
 assert.equal(unlinkShelfEdit.ok,true,'Unlinked shelf remains editable');
 const itemForPrice=recordFixture.call('item.create',{name:'値札グループ',category_id:0},
  'op-record-item-price-abcdef12345').data.entity;
