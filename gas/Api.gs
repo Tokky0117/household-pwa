@@ -153,13 +153,74 @@ function kurashiAuthenticate_(idToken) {
   return {book:book, householdId:String(member.household_id),userId:String(member.user_id)};
 }
 
+// Idempotent trial-only transition from the validated 11-sheet v0.93 schema.
+// No rows are cleared. The old branch_name column is dropped only when empty.
+const KURASHI_PRENAME_SCHEMA={
+ retail_chains:{old:'stores',headers:['chain_id','household_id','canonical_name','normalized_name','aliases','version','updated_at']},
+ household_items:{old:'item_groups',headers:['item_group_id','household_id','category_id','name','normalized_name','in_stock','sort_order','is_hidden','version','created_at','updated_at','deleted_at','sub_name']},
+ products:{old:'products',headers:['product_id','household_id','item_group_id','name','normalized_name','package_quantity','package_unit','item_group_order','version','created_at','updated_at','deleted_at']},
+ receipt_name_mappings:{old:'product_aliases',headers:['alias_id','product_id','chain_id','normalized_alias','version','updated_at','ocr_name']},
+ records:{old:'records',headers:['record_id','household_id','record_type','chain_id','branch_name','record_date','created_at','updated_at','version','deleted_at']},
+ record_items:{old:'record_items',headers:['record_item_id','record_id','line_order','product_id','quantity','amount_tax_included','created_at','updated_at','version','deleted_at','alias_id','confirmed_name','suggested_product_name','suggestion_kind']}
+};
+function kurashiEnsureTrialNaming_(book){
+ const keys=Object.keys(KURASHI_PRENAME_SCHEMA),jobs=[];
+ const same=(a,b)=>JSON.stringify(a)===JSON.stringify(b);
+ for(const name of keys){
+  const old=KURASHI_PRENAME_SCHEMA[name],oldSheet=old.old!==name?book.getSheetByName(old.old):null;
+  const newSheet=book.getSheetByName(name);
+  if(oldSheet&&newSheet||!oldSheet&&!newSheet)
+   kurashiFail_('SCHEMA_ERROR','名前変更前のシート構成を特定できません');
+  const sheet=oldSheet||newSheet,target=KURASHI_NEW_SCHEMA[name];
+  const current=sheet.getRange(1,1,1,Math.max(old.headers.length,target.length)).getValues()[0];
+  const oldHeaders=current.slice(0,old.headers.length);
+  const newHeaders=current.slice(0,target.length);
+  if(same(newHeaders,target)&&current.slice(target.length).every(x=>x==='')){
+   if(oldSheet)jobs.push({sheet,name,renameOnly:true});
+   continue;
+  }
+  if(!same(oldHeaders,old.headers)||current.slice(old.headers.length).some(x=>x!==''))
+   kurashiFail_('SCHEMA_ERROR',name+'に未知の列構成があります');
+  if(name==='records'){
+   const count=sheet.getLastRow()-1;
+   if(count>0&&sheet.getRange(2,5,count,1).getValues().some(row=>String(row[0]||'').trim()))
+    kurashiFail_('SCHEMA_ERROR','保存済み支店名があるため削除せず停止しました');
+  }
+  jobs.push({sheet,name,renameOnly:false});
+ }
+ if(!jobs.length)return false;
+ // Never alter a workbook with a half-prepared durable operation.
+ const journal=book.getSheetByName('processed_operations');
+ if(!journal)kurashiFail_('SCHEMA_ERROR','操作履歴シートがありません');
+ const count=journal.getLastRow()-1;
+ if(count>0){
+  for(const row of journal.getRange(2,4,count,1).getValues()){
+   let state;
+   try{state=JSON.parse(String(row[0]||''))}
+   catch(_){kurashiFail_('RECOVERY_CONFLICT','操作履歴を確認できません')}
+   if(state?.status==='prepared')
+    kurashiFail_('RECOVERY_REQUIRED','保存途中の操作があるため移行を保留しました');
+  }
+ }
+ for(const job of jobs){
+  const old=KURASHI_PRENAME_SCHEMA[job.name];
+  if(old.old!==job.name)job.sheet.setName(job.name);
+  if(job.renameOnly)continue;
+  if(job.name==='records')job.sheet.deleteColumn(5);
+  const target=KURASHI_NEW_SCHEMA[job.name];
+  job.sheet.getRange(1,1,1,target.length).setValues([target]);
+ }
+ return true;
+}
 function kurashiBook_() {
   const props = PropertiesService.getScriptProperties();
   const id = props.getProperty('SPREADSHEET_ID');
   if (!id || id !== props.getProperty('KURASHI_NEW_WORKBOOK_ID') ||
       props.getProperty('KURASHI_SCHEMA_VERSION') !== '1')
     kurashiFail_('CONFIG_REQUIRED','新しいSheetの初期設定が未完了です');
-  return SpreadsheetApp.openById(id);
+  const book=SpreadsheetApp.openById(id);
+  kurashiEnsureTrialNaming_(book);
+  return book;
 }
 function kurashiSheet_(name,book) {
   const headers = KURASHI_NEW_SCHEMA[name], sheet = book.getSheetByName(name);
