@@ -12,9 +12,9 @@ const KURASHI_NEW_SCHEMA = {
   retail_chains: ['chain_id', 'household_id', 'canonical_name', 'normalized_name', 'aliases', 'version', 'updated_at'],
   household_items: ['household_item_id', 'household_id', 'category_id', 'name', 'normalized_name', 'in_stock', 'sort_order', 'is_hidden', 'version', 'created_at', 'updated_at', 'deleted_at', 'sub_name'],
   products: ['product_id', 'household_id', 'household_item_id', 'name', 'normalized_name', 'package_quantity', 'package_unit', 'household_item_order', 'version', 'created_at', 'updated_at', 'deleted_at'],
-  receipt_name_mappings: ['receipt_name_id', 'product_id', 'chain_id', 'normalized_receipt_name', 'version', 'updated_at', 'ocr_name'],
+  receipt_name_mappings: ['receipt_name_id', 'auto_match_product_id', 'chain_id', 'normalized_receipt_name', 'version', 'updated_at', 'ocr_name'],
   records: ['record_id', 'household_id', 'record_type', 'chain_id', 'record_date', 'created_at', 'updated_at', 'version', 'deleted_at'],
-  record_items: ['record_item_id', 'record_id', 'line_order', 'product_id', 'quantity', 'line_total_tax_included', 'created_at', 'updated_at', 'version', 'deleted_at', 'receipt_name_id', 'non_ocr_name', 'product_name_candidate', 'candidate_match_type'],
+  record_items: ['record_item_id', 'record_id', 'line_order', 'linked_product_id', 'quantity', 'line_total_tax_included', 'created_at', 'updated_at', 'version', 'deleted_at', 'receipt_name_id', 'non_ocr_name', 'product_name_candidate', 'candidate_match_type'],
   change_log: ['change_id', 'sequence_no', 'household_id', 'entity_type', 'entity_id', 'action', 'occurred_at'],
   processed_operations: ['household_id', 'operation_id', 'request_hash', 'result', 'processed_at']
 };
