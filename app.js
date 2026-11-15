@@ -183,6 +183,7 @@ let scanExistingQuery='',scanGroupQuery='',scanProductGroupId='',recordDetailOri
 const scanAiProductSavingRows=new Set();
 let storePickerTarget=null,storePickerQuery='',storePickerNewMode=false;
 let recordProductItemId=null,recordProductMode='select',recordProductQuery='',recordProductSaving=false,recordBulkSaving=false;
+let recordJustSavedId=null;
 function saveScanDraft(){
  if(!liveMode||!window.KurashiLive?.saveReceiptDraft)return;
  const snapshot=scanDraft?JSON.parse(JSON.stringify(scanDraft)):null;
@@ -439,7 +440,13 @@ function recordDetailView(){
     ${UI.formField({id:'detail-record-date',control:'static',label:isShelf?'値札確認日':'購入日',value:String(record.record_date||'').replaceAll('-','/')})}
    </div>
   </section>
-  ${bulkCandidates.length?'<div class="record-detail-bulk">'+UI.button({label:'生成AI候補をまとめて登録（'+bulkCandidates.length+'件）',variant:'secondary',action:'recordBulkPreview',disabled:recordBulkSaving})+'</div>':''}
+  ${recordJustSavedId===recordDetailId?'<section class="record-detail-saved" role="status">'+
+   '<strong>レシートを保存しました</strong>'+
+   (window.KurashiLive?.state()?.queued?'<p>Google Sheetsへ同期中です。</p>':'')+
+   '</section>':''}
+ ${!isShelf&&detail.some(line=>!line.product_id)?'<p class="record-detail-guidance">商品未紐付けの明細は、各明細の「商品を設定」から登録・紐付けできます。'+
+   (bulkCandidates.length?' 生成AIの商品候補はまとめて登録できます。':'')+'</p>':''}
+ ${bulkCandidates.length?'<div class="record-detail-bulk">'+UI.button({label:'生成AI候補をまとめて登録（'+bulkCandidates.length+'件）',variant:'secondary',action:'recordBulkPreview',disabled:recordBulkSaving})+'</div>':''}
   <section class="detail-record-lines" aria-label="${isShelf?'価格情報':'購入明細'}">
    ${UI.sectionHeading({title:isShelf?'価格情報':'購入明細',subtitle:detail.length+'件'})}
    ${detail.map(line=>`<div class="panel detail-record-line">
@@ -451,9 +458,8 @@ function recordDetailView(){
     <div class="detail-record-line-meta"><span>${isShelf?'販売個数':'数量'} ${esc(line.quantity)}</span>
      ${line.product_id?`<span>登録商品：${esc(catalogue.products.find(p=>p.id===line.product_id)?.name||'商品を確認')}</span>`:
       '<span>商品未紐付け</span>'}</div>
-    ${!isShelf&&!line.product_id&&line.suggested_product_name&&
-      norm(line.suggested_product_name)!==norm(aliasNameFor(line))?`<div class="detail-record-line-meta"><span>生成AI商品候補（参考）：${esc(line.suggested_product_name)}</span></div>`:''}
-    ${!isShelf&&liveMode?`<div class="scan-picker-actions">${UI.button({label:line.product_id?'商品を変更':'登録商品を選択',variant:'tertiary',action:'recordProductOpen',recordItemId:line.record_item_id})}${line.product_id?'':UI.button({label:'新しい商品を登録',variant:'tertiary',action:'recordProductNew',recordItemId:line.record_item_id})}</div>`:''}
+    ${!isShelf&&!line.product_id&&line.suggested_product_name?`<div class="detail-record-line-meta detail-product-proposal"><span>生成AIの商品名候補：${esc(line.suggested_product_name)}${line.suggestion_kind==='new'?'（新規）':line.suggestion_kind==='existing'?'（既存）':'（未判定）'}</span></div>`:''}
+    ${!isShelf&&liveMode?`<div class="scan-picker-actions">${UI.button({label:'商品を設定',variant:'tertiary',action:'recordProductOpen',recordItemId:line.record_item_id})}</div>`:''}
    </div>`).join('')}
   </section>
   <section class="detail-record-total" aria-label="${isShelf?'価格合計':'合計'}">
@@ -938,27 +944,33 @@ function scanAiDiff(before,after){
   add(i+1,'読み取り名',a.name,b.name);
   add(i+1,'数量',a.quantity,b.quantity);
   add(i+1,'金額',a.amount,b.amount);
-  add(i+1,'推定商品名',a.inferredName||a.nameCandidate,b.inferredName||b.nameCandidate);
-  const candidate=x=>x.productSuggestion?.existingName||x.productSuggestion?.newName||'';
-  add(i+1,'登録商品名候補',candidate(a),candidate(b));
+  const candidate=x=>x.productSuggestion?.existingName||x.productSuggestion?.newName||
+   x.nameCandidate||x.inferredName||'';
+  add(i+1,'商品名候補',candidate(a),candidate(b));
  }
  return changes;
 }
 function scanAiChangesView(){
- if(!scanAiChanges.length)return '';
- return '<section class="scan-ai-changes" aria-label="生成AIの解析による変更内容">'+
+ const summary=scanAiChanges.filter(x=>!x.row);
+ if(!summary.length)return '';
+ return '<section class="scan-ai-changes" aria-label="生成AIの解析結果">'+
   UI.sectionHeading({title:'生成AIの解析結果'})+
-  '<p class="hint">変更された項目を確認してください。商品名候補は商品マスタに自動登録されません。</p>'+
-  '<ul class="scan-ai-change-list">'+scanAiChanges.map(x=>
-   '<li><strong>'+(x.row?'明細 '+x.row+'：':'')+esc(x.label)+'</strong>　'+
-   esc(x.before)+' → '+esc(x.after)+'</li>').join('')+'</ul></section>';
+  '<p class="hint">'+summary.map(x=>esc(x.label)+'：'+esc(x.before)+' → '+esc(x.after)).join('、')+'</p></section>';
+}
+function scanAiLineChangesView(row){
+ const changes=scanAiChanges.filter(x=>x.row===row);
+ if(!changes.length)return '';
+ return '<div class="scan-ai-line-changes" aria-label="生成AIで変更した項目">'+
+  '<strong>生成AIで変更</strong>'+
+  changes.map(x=>'<p>'+esc(x.label)+'：'+esc(x.before)+' → '+esc(x.after)+'</p>').join('')+
+  '</div>';
 }
 function scanAssistView(){
  if(!scanDraft)return '';
  const canAssist=scanDraft.source==='ocr'&&receiptOcrRows(scanDraft).length>0;
  if(!canAssist&&!scanAssistMessage)return '';
  return `<div class="scan-assist-area">
-  ${canAssist?'<p class="hint">商品名や金額が正しく読めていない場合は、生成AIで写真を再確認できます。利用は任意です。</p>'+UI.textAction({label:'生成AIで再確認',action:'chatGptAssist'}):''}
+  ${canAssist?'<p class="hint">生成AIで読み取り結果の修正・補完ができます。</p>'+UI.textAction({label:'生成AIを使用',action:'chatGptAssist'}):''}
   ${scanAssistMessage?UI.statusMessage({text:scanAssistMessage,kind:'success'}):''}
  </div>`;
 }
@@ -1003,10 +1015,15 @@ function scanFormView(){
      UI.formField({id:'scan-ocr-name-'+i,control:'static',label:'読み取り名',
        value:reviewModel.items[i].originalOcrName||'読み取り不可',valueVariant:'supporting',
        valueClass:'scan-ocr-name',extra:'data-ocr-row="'+i+'"',fieldClass:'scan-read-name'})}
-    ${reviewModel.items[i].proposedName&&!['manual','photo'].includes(item.inputOrigin)&&
-       reviewModel.items[i].proposedName!==reviewModel.items[i].originalOcrName?
-       UI.formField({id:'scan-proposed-'+i,control:'static',label:'推定商品名',
-        value:reviewModel.items[i].proposedName,valueVariant:'supporting',fieldClass:'scan-proposed-name'}):''}
+    ${scanResolvedProductId(item)&&catalogue.products.some(p=>p.id===scanResolvedProductId(item))?
+       UI.formField({id:'scan-matched-'+i,control:'static',label:'登録商品と一致',
+        value:scanSelectedProductLabel(item),fieldClass:'scan-matched-product'}):
+       (item.productSuggestion?.existingName||item.productSuggestion?.newName||
+        reviewModel.items[i].proposedName)?
+       UI.formField({id:'scan-proposed-'+i,control:'static',label:'商品名候補',
+        value:item.productSuggestion?.existingName||item.productSuggestion?.newName||
+         reviewModel.items[i].proposedName,fieldClass:'scan-proposed-name'}):''}
+    ${scanAiLineChangesView(i+1)}
     ${(item.issues||[]).some(reason=>/商品名|商品コード|名称|名前/.test(String(reason)))?'<p class="scan-name-warning">読み取り名を確認</p>':''}
     ${isShelf?UI.formField({id:'scan-product-'+i,name:'product-'+i,label:'登録商品',
       control:'picker',pickerLayout:'inline',value:scanResolvedProductId(item),
@@ -2328,8 +2345,13 @@ function syncScanReview(){
   // Retailer/printed-name corrections invalidate automatic links only;
   // explicit user choices must not be overwritten.
   if(scanDraft.recordType==='receipt'){
-   // Receipt editing must keep existing product associations without a picker.
-   if(!scanDraft.recordId){it.productId='';it.autoLinked=false;}
+   // Keep unique confirmed OCR/master matches on the pre-save draft.
+   // Switching stores rechecks auto matches without overriding manual choice.
+   if(needsMatch&&!it.manuallyLinked&&(wasAutomatic||!previousId)){
+    it.productId=scanMatchProduct(nextName,nextChainId);
+    it.autoLinked=!!it.productId;
+    relinked=relinked||it.productId!==previousId;
+   }
   }else if(needsMatch&&!it.manuallyLinked&&(wasAutomatic||!previousId)){
    it.productId=scanMatchProduct(nextName,nextChainId);
    it.autoLinked=!!it.productId;
@@ -2423,15 +2445,17 @@ app.addEventListener('submit',e=>{e.preventDefault();const form=e.target;const d
    const verified=['manual','photo'].includes(item.inputOrigin)||item.ocrRawName===undefined;
    const confirmedName=verified?String(d.get('name-'+i)||'').trim():'';
    const candidate=item.productSuggestion;
-   // OCR/photo reading hints stay in the draft; only product suggestions are persisted.
-   const suggestedName=String(candidate?.newName||candidate?.existingName||item.savedUnknownSuggestion||'').trim();
+   // One product-name candidate is shown. An unclassified AI name stays
+   // suggestion_kind='' and cannot be bulk-registered automatically.
+   const suggestedName=String(candidate?.newName||candidate?.existingName||
+    item.nameCandidate||item.inferredName||item.savedUnknownSuggestion||'').trim();
    const suggestionKind=candidate?.newName?'new':candidate?.existingName?'existing':'';
    return {
     raw_name:verified?'':String(item.ocrRawName||'').trim(),
     ...(verified&&confirmedName?{confirmed_name:confirmedName}:{}),
     ...(suggestedName?{suggested_product_name:suggestedName,suggestion_kind:suggestionKind}:{}),
     product_id:scanDraft.recordType==='receipt'?
-     (scanDraft.recordId?scanResolvedProductId(item)||null:null):
+     (scanResolvedProductId(item)||null):
      String(d.get('product-'+i)||'')||null,
     quantity:scanDraft.recordType==='shelf'?1:Number(d.get('qty-'+i)),
     amount_tax_included:String(d.get('amount-'+i)||'').trim()===''?NaN:Number(d.get('amount-'+i)),
@@ -2484,19 +2508,12 @@ app.addEventListener('submit',e=>{e.preventDefault();const form=e.target;const d
     void window.KurashiLive.learnAliases({chain_id:learnedChain,items:aliasLines})
      .catch(e=>console.warn('別名学習を保存できませんでした',e));
    const savedId=record?.record_id||scanDraft?.recordId;
-   // A unique exact registered name or OCR alias may be linked only after
-   // the receipt is durably saved. Fuzzy / AI suggestions cannot auto-link.
-   if(savedId&&!scanDraft.recordId&&values.record_type==='receipt'){
-    const rows=allPreviewItems().filter(x=>x.record_id===savedId&&!x.deleted_at);
-    for(const item of rows){
-     const matched=scanMatchProduct(aliasNameFor(item),learnedChain);
-     if(matched)void window.KurashiLive.linkRecordItem(item.record_item_id,matched)
-      .catch(err=>console.warn('保存後の商品照合を保留しました',err));
-    }
-   }
+   // Exact OCR/master matches were already included atomically in record.create.
+   // No second asynchronous record.item.link pass is needed.
    const cleared=resetScan();
    void Promise.resolve(cleared).catch(err=>console.warn('下書きを破棄できませんでした',err)).finally(()=>{
     recordDetailId=savedId||null;recordDetailOrigin='list';
+    recordJustSavedId=recordDetailId;
     page=recordDetailId?'recordDetail':'list';tab='receipt';render();
    });
   }).catch(err=>{
@@ -2971,11 +2988,10 @@ if(action==='recordBulkPreview'&&page==='recordDetail'&&!recordBulkSaving){
  const receiptId=window.KurashiLive.resolveRecordId(recordDetailId);
  const candidates=window.KurashiLive.previewBulkReceiptProducts(receiptId);
  if(!candidates.length)return;
- const names=candidates.map((row,i)=>(i+1)+'．'+row.proposed_name+' ／ '+
-  (row.action==='new'?'新しく商品登録':row.action==='reuse'?'同じ新商品に紐付け':'登録済みの商品に紐付け'));
- dialog={title:'生成AIの商品候補を登録しますか？',
-  message:'以下の明細に商品を登録・紐付けます。\n'+names.join('\n')+
-   '\n既に紐付けた明細と曖昧な候補は対象に含めません。',
+ const names=candidates.map(row=>row.proposed_name+
+  '（'+(row.action==='existing'?'既存':'新規')+'）');
+ dialog={title:'生成AIの商品候補をまとめて登録しますか？',
+  message:names.join('\n'),
   buttons:[{id:'cancel',label:'キャンセル'},{id:'confirmRecordBulk',label:'まとめて登録'}],
   pending:{bulkReceiptId:receiptId,itemIds:candidates.map(x=>x.record_item_id)}};
  renderDialogOnly();return;
@@ -2988,7 +3004,8 @@ if(action==='recordProductShowList'){changeRecordProductMode('select');return;}
 if(action==='recordProductChoose'){linkSavedRecordProduct(el.dataset.productId);return;}
 if(action==='recordProductUnlink'){linkSavedRecordProduct(null);return;}
 if(action==='recordDetail'){
- recordDetailOrigin=page==='detailAll'?'detailAll':'list';recordDetailId=el.dataset.recordId;page='recordDetail';render();return;
+ recordDetailOrigin=page==='detailAll'?'detailAll':'list';recordDetailId=el.dataset.recordId;
+ recordJustSavedId=null;page='recordDetail';render();return;
 }
 if(action==='recordEdit'){
  const r=allPreviewRecords().find(x=>x.record_id===recordDetailId);
