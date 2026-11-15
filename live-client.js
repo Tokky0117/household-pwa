@@ -96,10 +96,57 @@
   }
   return data;
  }
+ // v46 and v94 are served from the same origin and share IndexedDB.
+ // Keep all historical values while changing only the field names read by v94.
+ // A separate byte-for-byte v46 workspace copy is saved in the same transaction.
+ function legacyV46Snapshot(base){
+  return !!base&&!Array.isArray(base.household_items)&&
+   !Array.isArray(base.retail_chains)&&Array.isArray(base.item_groups)&&
+   Array.isArray(base.stores)&&Array.isArray(base.products);
+ }
+ function upgradeV46Snapshot(base){
+  if(!legacyV46Snapshot(base))return validateSnapshot(base);
+  const rename=(row,oldName,newName)=>{
+   const next={...row};
+   if(Object.prototype.hasOwnProperty.call(next,oldName)){
+    next[newName]=next[oldName];delete next[oldName];
+   }
+   return next;
+  };
+  const items=base.item_groups.map(x=>rename(x,'item_group_id','household_item_id'));
+  const products=base.products.map(x=>{
+   let next=rename(x,'item_group_id','household_item_id');
+   return rename(next,'item_group_order','household_item_order');
+  });
+  const mappings=(base.product_aliases||[]).map(x=>{
+   let next=rename(x,'alias_id','receipt_name_id');
+   next=rename(next,'product_id','auto_match_product_id');
+   return rename(next,'normalized_alias','normalized_receipt_name');
+  });
+  const records=(base.records||[]).map(x=>{
+   const next={...x};delete next.branch_name;return next;
+  });
+  const details=(base.record_items||[]).map(x=>{
+   let next={...x};
+   for(const [oldName,newName] of [
+    ['product_id','linked_product_id'],['amount_tax_included','line_total_tax_included'],
+    ['alias_id','receipt_name_id'],['confirmed_name','non_ocr_name'],
+    ['suggested_product_name','product_name_candidate'],
+    ['suggestion_kind','candidate_match_type']
+   ])next=rename(next,oldName,newName);
+   return next;
+  });
+  const upgraded={...base,household_items:items,retail_chains:base.stores.map(x=>({...x})),
+   receipt_name_mappings:mappings,products,records,record_items:details};
+  delete upgraded.item_groups;delete upgraded.stores;delete upgraded.product_aliases;
+  return validateSnapshot(upgraded);
+ }
  const normalizeWorkspace=doc=>{
   if(!doc||!Array.isArray(doc.queue))return blank();
-  if(doc.base)validateSnapshot(doc.base);
-  return {base:doc.base||null,queue:doc.queue,blocked:doc.blocked||null,
+  if(doc.base&&legacyV46Snapshot(doc.base)&&doc.queue.length)
+   throw Error('旧試作版の未送信操作が残っています。操作データを削除せず、移行を停止しました。');
+  const base=doc.base?upgradeV46Snapshot(doc.base):null;
+  return {base,queue:doc.queue,blocked:doc.blocked||null,
    productIdMap:doc.productIdMap&&typeof doc.productIdMap==='object'?doc.productIdMap:{},
    recordIdMap:doc.recordIdMap&&typeof doc.recordIdMap==='object'?doc.recordIdMap:{},
    recordItemIdMap:doc.recordItemIdMap&&typeof doc.recordItemIdMap==='object'?doc.recordItemIdMap:{}};
@@ -380,7 +427,14 @@
    const read=store.get(KEY);
    read.onsuccess=()=>{
     try{
-     next=change(normalizeWorkspace(read.result));
+     const prior=read.result;
+     if(legacyV46Snapshot(prior?.base)){
+      if(prior.queue?.length)throw Error('旧試作版の未送信操作が残っています。データを削除せず、移行を停止しました。');
+      // Preserve the unmodified local snapshot and IDs before converting.
+      // Both writes belong to one IndexedDB transaction.
+      store.put(prior,'workspace-v46-backup-before-v94');
+     }
+     next=change(normalizeWorkspace(prior));
      if(!next||!Array.isArray(next.queue))throw Error('QUEUE_STATE_INVALID');
      store.put(next,KEY);
     }catch(e){reason=e;tx.abort()}
@@ -397,7 +451,7 @@
     if(!ws.base){
      try{
       const cached=localStorage.getItem(OLD_SNAPSHOT);
-      if(cached)ws.base=validateSnapshot(JSON.parse(cached));
+      if(cached)ws.base=upgradeV46Snapshot(JSON.parse(cached));
      }catch(_){}
     }
     // Existing one-operation journal: copy the unchanged ID and payload to
