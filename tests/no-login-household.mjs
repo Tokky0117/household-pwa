@@ -2876,27 +2876,25 @@ optionalUI.window.document.querySelector('#chatgpt-input').value=JSON.stringify(
  }]
 });
 await completeOcrImport(optionalUI);
-// Undo reverts draft operations without deleting anything from Sheets.
-let undoReview=optionalUI.window.document.querySelector('#scanConfirmForm');
-assert.ok(undoReview.querySelector('[data-act="scanUndo"]'),
- 'Undo is available for the just-imported AI draft as well as later manual edits');
-undoReview.querySelector('[data-act="scanAddItem"]').click();
-assert.equal(optionalUI.window.document.querySelectorAll('.scan-review-item').length,2,
- 'Adding a line is applied locally');
-optionalUI.window.document.querySelector('[data-act="scanUndo"]').click();
-undoReview=optionalUI.window.document.querySelector('#scanConfirmForm');
-assert.equal(undoReview.querySelectorAll('.scan-review-item').length,1,
- 'Undo restores the draft before an added row');
-const editableQuantity=undoReview.querySelector('[name="qty-0"]');
-editableQuantity.dispatchEvent(new optionalUI.window.Event('focusin',{bubbles:true}));
-editableQuantity.value='2';
-editableQuantity.dispatchEvent(new optionalUI.window.Event('input',{bubbles:true}));
-editableQuantity.dispatchEvent(new optionalUI.window.Event('change',{bubbles:true}));
-assert.equal(undoReview.querySelector('[data-act="scanUndo"]')?.disabled,false,
- 'Finishing an edit enables undo');
-undoReview.querySelector('[data-act="scanUndo"]').click();
-assert.equal(optionalUI.window.document.querySelector('[name="qty-0"]')?.value,'1',
- 'Undo restores the previously entered quantity');
+// Removing a receipt card is reversible until the receipt is saved.
+let deleteReview=optionalUI.window.document.querySelector('#scanConfirmForm');
+assert.equal(deleteReview.querySelector('[data-act="scanUndo"]'),null,
+ 'The ineffective global undo bar is no longer shown');
+const firstDelete=deleteReview.querySelector('[data-act="scanRemoveItem"]');
+firstDelete.click();
+deleteReview=optionalUI.window.document.querySelector('#scanConfirmForm');
+assert.equal(deleteReview.querySelectorAll('.scan-review-item.is-pending-delete').length,1,
+ 'A removed card remains visible and greyed out');
+assert.match(deleteReview.textContent,/削除予定/,
+ 'The card explains that its deletion is pending');
+assert.ok(deleteReview.querySelector('[data-act="scanRestoreItem"][data-scan-row="0"]'),
+ 'The restore action is shown immediately below the removed card');
+deleteReview.querySelector('[data-act="scanRestoreItem"][data-scan-row="0"]').click();
+deleteReview=optionalUI.window.document.querySelector('#scanConfirmForm');
+assert.equal(deleteReview.querySelectorAll('.scan-review-item.is-pending-delete').length,0,
+ 'Restoring an item keeps its original entry');
+assert.equal(deleteReview.querySelector('[name="qty-0"]').value,'1',
+ 'Restored item retains its quantity');
 // No stored photograph accompanies an imported/resumed OCR draft.
 assert.equal(optionalUI.window.document.querySelector('[data-act="scanOpenCurrentPhoto"]'),null,
  'An OCR draft without in-memory photos has no photo/reselection control');
@@ -2929,6 +2927,14 @@ assert.ok(optionalName&&!optionalName.required&&optionalName.value==='',
 assert.equal(optionalName.closest('.formfield').querySelector('label').textContent,'明細名（任意）');
 optionalForm.querySelector('[name="qty-1"]').value='1';
 optionalForm.querySelector('[name="amount-1"]').value='200';
+// A third line is deliberately deleted. Only the first two go to Sheets.
+optionalForm.querySelector('[data-act="scanAddItem"]').click();
+optionalForm=optionalUI.window.document.querySelector('#scanConfirmForm');
+optionalForm.querySelector('[name="qty-2"]').value='1';
+optionalForm.querySelector('[name="amount-2"]').value='999';
+optionalForm.querySelector('[data-act="scanRemoveItem"][data-scan-row="2"]').click();
+optionalForm=optionalUI.window.document.querySelector('#scanConfirmForm');
+assert.equal(optionalForm.querySelectorAll('.scan-review-item.is-pending-delete').length,1);
 optionalForm.dispatchEvent(new optionalUI.window.Event('submit',{bubbles:true,cancelable:true}));
 await waitFor(()=>temp.call('bootstrap').data.records.length===receiptBeforeOptional+1,
  'receipt with nameless manual amount is saved to Sheets through the operation queue');
