@@ -334,7 +334,8 @@ function parseChatGptOcrAssistJson(source){
   throw Error('INVALID_OCR_ASSIST_FORMAT');
  const seen=new Set();
  const items=raw.items.map(entry=>{
-  if(!isObject(entry)||!['nameCandidate,ocrName,rowId','amount,nameCandidate,ocrName,quantity,rowId']
+  if(!isObject(entry)||!['ocrName,rowId','amount,ocrName,quantity,rowId',
+   'nameCandidate,ocrName,rowId','amount,nameCandidate,ocrName,quantity,rowId']
    .includes(Object.keys(entry).filter(k=>k!=='productSuggestion').sort().join(','))||
    (Object.prototype.hasOwnProperty.call(entry,'productSuggestion')&&
     !isObject(entry.productSuggestion)&&entry.productSuggestion!==null)||
@@ -342,7 +343,8 @@ function parseChatGptOcrAssistJson(source){
    typeof entry.ocrName!=='string'||entry.ocrName.length>120||
    /[\r\n\t<>]/.test(entry.ocrName)||privatePattern.test(entry.ocrName)||
    cardPattern.test(entry.ocrName)||
-   (entry.nameCandidate!==null&&typeof entry.nameCandidate!=='string')||
+   (entry.nameCandidate!==undefined&&entry.nameCandidate!==null&&
+    typeof entry.nameCandidate!=='string')||
    (entry.amount!==undefined&&!optionalInteger(entry.amount))||
    (entry.quantity!==undefined&&(!optionalInteger(entry.quantity,999)||entry.quantity===0)))
    throw Error('INVALID_OCR_ASSIST_ITEM');
@@ -351,7 +353,7 @@ function parseChatGptOcrAssistJson(source){
   return {
    rowId:entry.rowId,
    ocrName:entry.ocrName,
-   nameCandidate:entry.nameCandidate===null?null:
+   nameCandidate:entry.nameCandidate==null?null:
     cleanText(entry.nameCandidate,80,{optional:true}),
    quantity:entry.quantity??null,amount:entry.amount??null,
    productSuggestion:parseProductSuggestion(entry.productSuggestion)
@@ -395,7 +397,7 @@ function makeChatGptOcrAssistPrompt(ocrReference,registeredNames=[]){
   show(x.status)+'（近傍文字行'+show(x.nearbyTextRows)+
   '、名前候補'+show(x.eligibleNameRows)+'）');
  const assist={version:ASSIST_VERSION,items:[{rowId:'OCR行IDをそのまま',
-  ocrName:'OCR名をそのまま',nameCandidate:null,quantity:null,amount:null,
+  ocrName:'OCR名をそのまま',quantity:null,amount:null,
   productSuggestion:{existingName:null,newName:null}}]};
  const rebuild={version:REBUILD_VERSION,receiptDate:null,storeName:null,
   receiptTotal:null,printedCount:null,items:[{name:'写真に印字された商品名',quantity:null,amount:null,
@@ -413,19 +415,19 @@ function makeChatGptOcrAssistPrompt(ocrReference,registeredNames=[]){
   '商品別税込額が印字されない外税レシートで、値引き後税抜明細額と税率別印字税額が確定していれば、税率ごとに税抜金額比で配賦し、端数は最大剰余法（同点は印字順）で割り当てる。全額を検算した商品別税込額は計算値として使用可。印字額と偽らず、根拠が不足する額はnull。',
   '',
   '【2種類のJSONのどちらか1つだけを選ぶ】',
-  'A：写真とOCRの商品行が1対1対応 → kurashi-receipt-assist-1。rowId・ocrName・行順・行数を変えない。OCR名の誤字は写真に基づくnameCandidate（正しければnull）。quantityは購入数量、amountは値引き後の税込明細合計（行の全購入数量分）。不明ならnull。数量だけの誤読は行を再構築せず、この形式で補正する。',
+  'A：写真とOCRの商品行が1対1対応 → kurashi-receipt-assist-1。rowId・ocrName・行順・行数を変えない。商品名の自然な補正・登録候補はproductSuggestionだけに記す。quantityは購入数量、amountは値引き後の税込明細合計（行の全購入数量分）。不明ならnull。数量だけの誤読は行を再構築せず、この形式で補正する。',
   'B：別レシートの混入・商品行の欠落や余分・行の分割や結合・コードだけの商品名・金額対応の破綻 → kurashi-receipt-rebuild-1。写真で確認した購入商品だけを印字順に記載し、元OCR行IDを使わない。クルーネックとVネック等の異なる形状や、同じ商品の別印字行を統合しない。分からないname・quantity・amount・日付・店舗・合計・点数はnull。',
   '不明な文字や税込明細合計はnullで表し、アプリ確認画面に残す。対象レシートが確定できない、または重大な矛盾が未解決のときだけJSONを停止し、何番目の商品のどの値を確認する必要があるか質問する。ユーザー確認後は確定内容を維持して再検算。',
   '',
   '【登録商品との照合（レシート写真と数量・金額の解析後に実施）】',
   '以下の登録商品名一覧はアプリが作成した商品マスタの名前だけであり、商品ID・容量・日用品等は含まない。既に登録されている商品と同一と判断できる場合だけ、productSuggestion.existingNameに一覧中の名称を文字どおり正確に記す。曖昧な場合はnull。',
   '既存の商品名に該当しない場合のみ、productSuggestion.newNameに適切な新規登録候補名を推測する。可能ならウェブ検索を利用して商品名を確認する。検索できない場合やメーカー・規格を確定できない場合は捏造せず、商品種別までの自然な名称かnullにする。検索した根拠がないのに実在商品を特定できたと主張しない。existingNameとnewNameを同時に指定しない。',
-  'nameCandidateは写真によるOCR誤読の補正候補であり、商品マスタ用の商品推測名（productSuggestion）とは別。OCR原文・行ID・数量を商品候補のために書き換えない。候補は未確認で、登録と紐付けはアプリ上で利用者が選ぶ。',
+  '商品名候補はproductSuggestionの1種類だけにし、推定名を別項目で出力しない。既存商品名に確信がなければexistingNameはnull。OCR原文・行ID・数量を商品候補のために書き換えない。候補は未確認で、登録と紐付けはアプリ上で利用者が選ぶ。',
   '登録商品名一覧（各要素は登録商品名のみ。空配列なら照合候補なし）：'+JSON.stringify(registeredNames),
   '',
   '【出力】',
   '最初のjsonコードブロックに1つだけJSON。その後に短い「OCR診断」（商品行数・誤読・構造問題・未確定事項・写真から確認できた店舗名）を書く。両形式同時出力、余分なキー、カード・決済・会員番号・電話番号・住所の出力は禁止。',
-  '形式Aの形（雛形。itemsは実際のOCR全行分。productSuggestionは新追加の任意項目）：'+JSON.stringify(assist),
+  '形式Aの形（雛形。itemsは実際のOCR全行分。productSuggestionは商品名候補）：'+JSON.stringify(assist),
   '形式Bの形（雛形。写真の全購入行分。productSuggestionは新追加の任意項目）：'+JSON.stringify(rebuild),
   '',
   '【参考OCR結果（写真より優先しない候補）】',
