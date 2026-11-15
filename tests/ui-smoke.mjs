@@ -1965,7 +1965,7 @@ console.log('P4 common review adapter, provenance, row identity and P2 validatio
 assert.ok(versionParts.length===3&&Number.isInteger(versionParts[2]), 'UI review revision version is current');
 assert.ok(source.includes("UI.sectionHeading({title:'読み取り状況'})"), 'OCR and ChatGPT appear under one section');
 assert.ok(source.includes("UI.sectionHeading({title:isShelf?'値札情報':'購入情報'})"), 'Receipt OCR review groups store and purchase date');
-assert.ok(source.includes("UI.sectionHeading({title:isShelf?'価格情報':'購入明細',subtitle:scanDraft.items.length+'件'+"), 'Receipt OCR review identifies item list and unmatched count');
+assert.ok(source.includes("UI.sectionHeading({title:isShelf?'価格情報':'購入明細',subtitle:remainingCount+'件'+"), 'Receipt OCR review identifies item list and unmatched count');
 assert.ok(source.includes("UI.sectionHeading({title:isShelf?'価格の確認':'合計の確認'})"), 'Receipt OCR review makes reconciliation distinct');
 assert.ok(!source.includes('photoReviewOk'), 'Photo reconstruction no longer requires a formal checkbox');
 assert.ok(source.includes('scan-total-warning')&&source.includes('scan-count-warning'),
