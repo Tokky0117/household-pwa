@@ -1684,7 +1684,10 @@ assert.ok(source.includes('item.nameCandidate||item.inferredName||item.savedUnkn
  'legacy OCR corrections are unified as undecided names and never bulk registered');
 assert.ok(source.includes("savedUnknownSuggestion:!x.candidate_match_type?x.product_name_candidate||'':''"),
  'previously saved undecided product suggestions survive an edit');
-assert.ok(source.includes('const aliasLines=lines.filter'));
+assert.ok(source.includes('const matchedBeforeSave=')&&
+ !source.includes('const aliasLines=lines.filter')&&
+ !source.includes('保存後の商品照合を保留しました'),
+ 'exact product links and OCR names are saved in one journaled receipt operation');
 assert.match(imports.makeChatGptOcrAssistPrompt(ocrRef),/構造問題/);
 console.log('v70: obsolete OCR adoption/detachment buttons removed OK');
 const codeOnly={source:'ocr',date:'2026-10-12',chainId:'c-a',items:[
