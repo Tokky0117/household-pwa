@@ -1659,7 +1659,7 @@ const ownProduct=temp.call('bootstrap').data.products.find(p=>p.name==='レシ�
 bulkUI.window.document.querySelector('[data-act="recordProductChoose"][data-product-id="'+ownProduct.product_id+'"]').click();
 await waitFor(()=>bulkUI.window.KurashiLive.state().queued===0&&
  temp.call('bootstrap').data.record_items.some(x=>
-  aliasText(temp,x)==='レシート個別登録テスト固有'&&x.linked_product_id===ownProduct.linked_product_id),
+  aliasText(temp,x)==='レシート個別登録テスト固有'&&x.linked_product_id===ownProduct.product_id),
  'same master is selected again without creating a duplicate');
 bulkUI.window.close();
 console.log('stage3: save-first receipt registration, unlink and re-selection OK');
@@ -1790,7 +1790,7 @@ await waitFor(()=>kitSession.window.KurashiLive.state().queued===0&&
 const kitSavedProduct=temp.call('bootstrap').data.products.find(x=>x.name===kitCanonical);
 assert.ok(kitSavedProduct&&!kitSavedProduct.household_item_id);
 const kitSavedLine=temp.call('bootstrap').data.record_items.find(x=>
- aliasText(temp,x)===kitRaw&&x.linked_product_id===kitSavedProduct.linked_product_id);
+ aliasText(temp,x)===kitRaw&&x.linked_product_id===kitSavedProduct.product_id);
 assert.ok(kitSavedLine,'the receipt item keeps its own confirmed product ID');
 try{
  await waitFor(()=>temp.call('bootstrap').data.receipt_name_mappings.some(x=>
@@ -1834,7 +1834,7 @@ await waitFor(()=>!otherPhone.window.KurashiLive.state().cached,
  'other iPhone finished remote bootstrap');
 otherPhone.window.document.querySelector('[data-tab="receipt"]').click();
 const syncedKitLine=kitBaseline.record_items.find(x=>
- aliasText(temp,x)===kitRaw&&x.linked_product_id===kitSavedProduct.linked_product_id);
+ aliasText(temp,x)===kitRaw&&x.linked_product_id===kitSavedProduct.product_id);
 assert.ok(syncedKitLine&&otherPhone.window.document.querySelector(
  '[data-record-id="'+syncedKitLine.record_id+'"]'),
  'second iPhone displays the first iPhone purchase record without product-name summary');
@@ -1861,7 +1861,7 @@ await waitFor(()=>temp.call('bootstrap').data.records.length===kitRecordCount+1,
 await waitFor(()=>otherPhone.window.KurashiLive.state().queued===0&&
  temp.call('bootstrap').data.record_items.some(x=>
   x.record_id===temp.call('bootstrap').data.records.at(-1).record_id&&
-  x.linked_product_id===kitSavedProduct.linked_product_id),
+  x.linked_product_id===kitSavedProduct.product_id),
  'The intentional second receipt auto-links its known OCR alias only after save');
 assert.equal(temp.call('bootstrap').data.receipt_name_mappings.length,kitAliasCount,
  'Rereading the same name does not duplicate OCR alias data');
@@ -1892,7 +1892,7 @@ repeatedKitReview.dispatchEvent(new newPurchasePhone.window.Event('submit',{
  bubbles:true,cancelable:true
 }));
 await waitFor(()=>temp.call('bootstrap').data.record_items.some(x=>
- x.linked_product_id===kitSavedProduct.linked_product_id&&Number(x.quantity)===2&&
+ x.linked_product_id===kitSavedProduct.product_id&&Number(x.quantity)===2&&
  Number(x.line_total_tax_included)===340),
  'second device saved exact tax-inclusive line total without multiplying by quantity');
 await waitFor(()=>newPurchasePhone.window.KurashiLive.state().queued===0,
@@ -1919,7 +1919,7 @@ assert.match(thirdPhone.window.document.body.textContent,/340円/,
 // Saved OCR names must remain immutable, but a newly appended line must be
 // editable and must survive the same durable record.update journal.
 const purchasedLine=kitAfterSecondPurchase.record_items.find(x=>
- x.linked_product_id===kitSavedProduct.linked_product_id&&Number(x.quantity)===2&&
+ x.linked_product_id===kitSavedProduct.product_id&&Number(x.quantity)===2&&
  Number(x.line_total_tax_included)===340);
 assert.ok(purchasedLine,'locate the actual 2x KitKat receipt');
 const purchasedReceiptId=purchasedLine.record_id;
@@ -2008,7 +2008,7 @@ assert.ok(existingChoice,'canonical master can be selected without a duplicate')
 existingChoice.click();
 await waitFor(()=>existingSession.window.KurashiLive.state().queued===0&&
  temp.call('bootstrap').data.record_items.some(x=>aliasText(temp,x)==='キットカット別レシート表記'&&
-  x.linked_product_id===kitSavedProduct.linked_product_id),
+  x.linked_product_id===kitSavedProduct.product_id),
  'printed spelling and selected product persist after saved receipt linking');
 existingSession.window.close();
 console.log('v61: KitKat canonical master, chocolate item link, original receipt name, alias and no-pinch gestures: OK');
@@ -2101,7 +2101,7 @@ matchedReview.dispatchEvent(new readAgain.window.Event('submit',{
 }));
 await waitFor(()=>readAgain.window.KurashiLive.state().queued===0&&
  temp.call('bootstrap').data.record_items.some(x=>
- x.linked_product_id===standaloneProduct.linked_product_id&&aliasText(temp,x)===standaloneRaw),
+ x.linked_product_id===standaloneProduct.product_id&&aliasText(temp,x)===standaloneRaw),
  'exact OCR alias is linked automatically only after purchase is saved');
 readAgain.window.close();
 const dupStoreAlias=temp.call('store.alias.upsert',{
@@ -2158,7 +2158,7 @@ assert.ok(manualChoice,'previously saved product is available for explicit selec
 manualChoice.click();
 await waitFor(()=>relinkSession.window.KurashiLive.state().queued===0&&
  temp.call('bootstrap').data.record_items.some(x=>
-  aliasText(temp,x)===standaloneRaw&&x.linked_product_id===standaloneProduct.linked_product_id),
+  aliasText(temp,x)===standaloneRaw&&x.linked_product_id===standaloneProduct.product_id),
  'manual saved-receipt product choice persists after retailer edit');
 relinkSession.window.close();
 console.log('v63: retailer change and saved-receipt manual product association OK');
@@ -2311,7 +2311,7 @@ assert.equal(temp.call('product.update',{
 assert.ok(temp.call('bootstrap').data.products.some(p=>
  p.product_id===kitSavedProduct.product_id&&!p.household_item_id));
 assert.ok(temp.call('bootstrap').data.record_items.some(x=>
- aliasText(temp,x)===kitRaw&&x.linked_product_id===kitSavedProduct.linked_product_id));
+ aliasText(temp,x)===kitRaw&&x.linked_product_id===kitSavedProduct.product_id));
 console.log('v64: OCR history, shelf OCR training, ambiguous names, master unlink after save OK');
 
 /* v65: manage independent product masters without linking to a daily item. */
