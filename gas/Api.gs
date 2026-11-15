@@ -1265,6 +1265,7 @@ function kurashiLinkRecordItem_(user,payload,id){
      sequence_no:kurashiSequence_(hid,book)};
    const now=new Date().toISOString();
    const entity={...before,linked_product_id:productId,
+    ...(productId?{product_name_candidate:'',candidate_match_type:''}:{}),
     version:Number(before.version)+1,updated_at:now};
    plan={status:'prepared',action,before,entity,
     sequence_no:kurashiSequence_(hid,book)+1,updated_at:now};
