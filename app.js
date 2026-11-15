@@ -1065,7 +1065,7 @@ function scanFormView(){
       placeholder:'例：みかん',value:item.name,maxlength:120,
       hint:true,fieldClass:'scan-manual-name'}):''}
     </div>
-    ${item.pendingDeletion?`<div class="scan-delete-undo"><span>削除予定</span>${UI.button({label:'戻す',variant:'tertiary',action:'scanRestoreItem',scanRow:i})}</div>`:''}
+    ${item.pendingDeletion?`<div class="scan-delete-undo"><span>削除予定</span>${UI.textAction({label:'戻す',action:'scanRestoreItem',row:i,arrow:false})}</div>`:''}
     </div>`).join('')}
   <div class="scan-add-action">${UI.button({label:'明細を追加',variant:'tertiary',action:'scanAddItem',icon:'plus'})}</div>
   ${UI.sectionHeading({title:isShelf?'価格の確認':'合計の確認'})}
