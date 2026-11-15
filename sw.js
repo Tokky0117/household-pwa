@@ -1,4 +1,4 @@
-const CACHE='household-ui-v89-7-ocr-name-rules';
+const CACHE='household-ui-v94-schema-names';
 const ASSETS=['./','./index.html','./styles.css','./app.js','./live-client.js','./receipt-validation.js','./receipt-review-model.js','./receipt-chatgpt-import.js','./manifest.webmanifest','./icon.svg'];
 // CacheStorage is shared by all Pages paths on the same origin.
 // Never let a production SW update delete preview caches, or vice versa.
