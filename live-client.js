@@ -14,7 +14,7 @@
  const listeners=new Set();
  const blank=()=>({base:null,queue:[],blocked:null,productIdMap:{},recordIdMap:{},recordItemIdMap:{}});
  let dbPromise=null,bootPromise=null,workspace=blank();
- let refreshPromise=null,flushPromise=null,retryTimer=null,retryMs=3000;
+ let refreshPromise=null,flushPromise=null,retryTimer=null,retryMs=3000,stockFlushTimer=null;
  let error='',lastSync=0,authRequired=false,token=null,subject='temporary-household',expiry=0,gisReady=false;
  let loginSerial=0;
  // Pause new sends while the user reviews the pending queue.
@@ -1056,14 +1056,41 @@
   });
  }
  async function toggleStock(itemId){
-  return enqueue(doc=>{
+  await boot();if(!workspace.base)await load();
+  await modify(doc=>{
    const item=project(doc)?.household_items.find(i=>i.household_item_id===itemId&&!i.deleted_at);
    if(!item)throw Error('日用品が見つかりません');
-   // Persist desired state, not an unbounded "flip" instruction: the user's
-   // intent survives retries, concurrent-device version rebases and restart.
-   return {id:operationId(),kind:'toggle',targetId:itemId,
-    stock:!toBoolean(item.in_stock),retries:0};
+   const stock=!toBoolean(item.in_stock);
+   // Do not mutate an operation that may already have been sent to GAS:
+   // its persisted ID and request are required for recovery/idempotency.
+   let candidate=-1;
+   for(let i=doc.queue.length-1;i>=0;i--){
+    const previous=doc.queue[i];
+    if(previous.targetId!==itemId)continue;
+    if(!['toggle','set-stock'].includes(previous.kind)||
+       previous.request||(i===0&&flushPromise))break;
+    candidate=i;break;
+   }
+   if(candidate>=0){
+    const prior=project({...doc,queue:doc.queue.slice(0,candidate)})
+     ?.household_items.find(i=>i.household_item_id===itemId);
+    if(prior&&toBoolean(prior.in_stock)===stock)
+     doc.queue.splice(candidate,1);
+    else doc.queue[candidate].stock=stock;
+   }else{
+    doc.queue.push({id:operationId(),kind:'toggle',targetId:itemId,
+     stock,retries:0});
+   }
+   return doc;
   });
+  // Debounce only stock taps. IndexedDB already holds every final state;
+  // unrelated operations and an app restart can flush immediately.
+  if(stockFlushTimer)clearTimeout(stockFlushTimer);
+  stockFlushTimer=setTimeout(()=>{
+   stockFlushTimer=null;
+   if(workspace.queue.length)void flush();
+  },350);
+  return project()?.household_items.find(i=>i.household_item_id===itemId)||null;
  }
  function resolveOperation(op,base){
   if(op.request)return op.request; // preserve exact payload for interrupted requests.
