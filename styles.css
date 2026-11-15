@@ -2807,3 +2807,25 @@ html,body{touch-action:pan-x pan-y}
 .dialog-receipt-bulk .dialog-line{display:block;padding:3px 0}
 .record-detail-bulk{margin:14px 0 4px}
 .record-detail-bulk>button{width:100%}
+
+/* Receipt review: a resolved product is visually distinct from the original OCR. */
+.scan-review-item .scan-matched-product{margin:2px 0 var(--ui-field-group-gap)}
+.scan-review-item .scan-matched-product .ui-static-field-value{
+ color:var(--ink);font-weight:700;overflow-wrap:anywhere
+}
+.scan-review-item .scan-proposed-name .ui-static-field-value{
+ color:var(--ink);font-weight:600;overflow-wrap:anywhere
+}
+.scan-ai-line-changes{margin:8px 0;padding:8px 10px;background:var(--ui-surface-muted,var(--bg));
+ border-left:2px solid var(--line);border-radius:6px;font-size:12px;line-height:1.55}
+.scan-ai-line-changes strong{font-size:12px}
+.scan-ai-line-changes p{margin:3px 0;color:var(--muted);overflow-wrap:anywhere}
+.scan-undo-action{display:flex;justify-content:flex-end;align-items:center;margin:0 0 4px}
+.scan-undo-action button{min-height:38px;width:auto}
+.scan-undo-action button:disabled{opacity:.45}
+.record-detail-saved{margin:10px 0 14px;padding:10px 12px;border:1px solid var(--line);
+ border-radius:var(--ui-radius-card);background:var(--card);line-height:1.5}
+.record-detail-saved strong{display:block;font-size:14px}
+.record-detail-saved p{margin:4px 0 0;color:var(--muted);font-size:12px}
+.record-detail-guidance{margin:8px 0 14px;color:var(--muted);font-size:13px;line-height:1.55}
+.detail-record-line-meta.detail-product-proposal{color:var(--ink)}
