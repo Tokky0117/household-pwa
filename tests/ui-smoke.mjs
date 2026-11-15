@@ -896,8 +896,8 @@ assert.ok(!photoReview.includes('内容を確認して保存してください�
  !photoReview.includes('scan-tax-excluded')&&
  !photoReview.includes('写真で確認'),
  'Review omits redundant guidance, tax breakdown and duplicate photo trigger');
-assert.ok(photoReview.indexOf('読み取り状況')<photoReview.indexOf('生成AIで再確認')&&
- photoReview.indexOf('生成AIで再確認')<photoReview.indexOf('購入情報'),
+assert.ok(photoReview.indexOf('読み取り状況')<photoReview.indexOf('生成AIを使用')&&
+ photoReview.indexOf('生成AIを使用')<photoReview.indexOf('購入情報'),
  'Read status groups OCR and ChatGPT before purchase details');
 ui.setScanDraft(null);
 const beforeScan=ui.receiptScanView();
@@ -1030,6 +1030,9 @@ assert.ok(!aiReviewHtml.includes('data-act="scanAiCreateProduct"')&&
  'receipt review does not register or link products before saving');
 assert.ok(!ui.getScanDraft().items[0].productId,
  'rendering a ChatGPT candidate never auto-links a product');
+assert.ok(aiReviewHtml.includes('商品名候補')&&aiReviewHtml.includes('例示商品')&&
+ !aiReviewHtml.includes('推定商品名'),
+ 'OCR review presents a single AI product-name candidate');
 ui.setScanDraft(beforeAiDraft);
 const listingHtml=ui.receiptScanView();
 assert.ok(listingHtml.includes('ui-static-field-label">読み取り名</span>')&&
@@ -1181,6 +1184,18 @@ assert.equal(ui.scanChainForStore('スーパー青空 商品A ¥123'),null,
 assert.equal(ui.scanChainForStore('架空衣料店\nコノミヤ'),null,
  'two matched store headers are ambiguous; never auto-select one');
 assert.equal(ui.scanStoreHeaderMatch('架空衣料店\nコノミヤ').status,'ambiguous');
+const sampleKohnan={id:'c-photo-kohnan',name:'コーナン',aliases:[]};
+const sampleKonomiya={id:'c-photo-konomiya',name:'コノミヤ',aliases:[]};
+catalog.chains.push(sampleKohnan,sampleKonomiya);
+assert.equal(ui.scanChainForStore('領収証\nコーナン商事株式会社\n枚方大橋店\n2026年10月31日')?.id,
+ sampleKohnan.id,'a photographed Kohnan header matches the registered chain via company name');
+assert.equal(ui.scanChainForStore('KOHNAN\n枚方大橋店')?.id,
+ sampleKohnan.id,'Latin logo spelling maps only to a registered Kohnan chain');
+assert.equal(ui.scanChainForStore('⚙コノミヤ 枚方店\n2026年10月12日')?.id,
+ sampleKonomiya.id,'floral logo and branch suffix match registered Konomiya');
+assert.equal(ui.scanChainForStore('KONOMIYA 枚方店')?.id,
+ sampleKonomiya.id,'Latin Konomiya logo maps only to a registered Japanese chain');
+catalog.chains.pop();catalog.chains.pop();
 const secondMatch={id:'c-synthetic-duplicate',name:'架空衣料店'};
 catalog.chains.push(secondMatch);
 assert.equal(ui.scanChainForStore('架空衣料店'),null,
@@ -1621,12 +1636,13 @@ const photoDraft={source:'ocr',date:'2026-10-12',chainId:'c-a',total:11550,items
 ui.setScanDraft(photoDraft);
 assert.ok(!ui.receiptScanView().includes('scanDetachOcr'));
 assert.ok(!ui.receiptScanView().includes('scanUsePhotoCandidate'));
-assert.ok(ui.receiptScanView().includes('ui-static-field-label">推定商品名</span>')&&
- ui.receiptScanView().includes('ui-value-supporting'),
- 'Proposed product name uses a shared supporting-value field, not a freeform candidate paragraph');
+assert.ok(ui.receiptScanView().includes('ui-static-field-label">商品名候補</span>')&&
+ !ui.receiptScanView().includes('ui-static-field-label">推定商品名</span>'),
+ 'One product name proposal is shown without duplicate inference labels');
 assert.ok(source.includes('suggested_product_name:suggestedName')&&!source.includes('inferred_name:inferredName'));
-assert.ok(source.includes("const suggestedName=String(candidate?.newName||candidate?.existingName||item.savedUnknownSuggestion||'').trim()"),
- 'OCR correction/nameCandidate is not persisted as a product registration candidate');
+assert.ok(source.includes('item.nameCandidate||item.inferredName||item.savedUnknownSuggestion')&&
+ source.includes("const suggestionKind=candidate?.newName?'new':candidate?.existingName?'existing':''"),
+ 'legacy OCR corrections are unified as undecided names and never bulk registered');
 assert.ok(source.includes("savedUnknownSuggestion:!x.suggestion_kind?x.suggested_product_name||'':''"),
  'previously saved undecided product suggestions survive an edit');
 assert.ok(source.includes('const aliasLines=lines.filter'));
