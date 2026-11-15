@@ -2876,8 +2876,8 @@ optionalUI.window.document.querySelector('#chatgpt-input').value=JSON.stringify(
 await completeOcrImport(optionalUI);
 // Undo reverts draft operations without deleting anything from Sheets.
 let undoReview=optionalUI.window.document.querySelector('#scanConfirmForm');
-assert.equal(undoReview.querySelector('[data-act="scanUndo"]')?.disabled,true,
- 'Undo is disabled until the user changes the review draft');
+assert.ok(undoReview.querySelector('[data-act="scanUndo"]'),
+ 'Undo is available for the just-imported AI draft as well as later manual edits');
 undoReview.querySelector('[data-act="scanAddItem"]').click();
 assert.equal(optionalUI.window.document.querySelectorAll('.scan-review-item').length,2,
  'Adding a line is applied locally');
