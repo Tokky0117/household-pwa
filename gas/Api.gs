@@ -164,6 +164,30 @@ const KURASHI_PRENAME_SCHEMA={
  record_items:{old:'record_items',headers:['record_item_id','record_id','line_order','product_id','quantity','amount_tax_included','created_at','updated_at','version','deleted_at','alias_id','confirmed_name','suggested_product_name','suggestion_kind']}
 };
 function kurashiEnsureTrialNaming_(book,options={}){
+ // Fail closed before any write unless the entire workbook has exactly the
+ // expected eleven v46/v94 tables. The legacy 12-table cleanup is separate.
+ const expectedNames=Object.keys(KURASHI_NEW_SCHEMA).map(name=>{
+  const old=KURASHI_PRENAME_SCHEMA[name];
+  return old&&old.old!==name&&book.getSheetByName(old.old)?old.old:name;
+ }).sort();
+ const actualNames=book.getSheets().map(sheet=>sheet.getName()).sort();
+ if(JSON.stringify(actualNames)!==JSON.stringify(expectedNames))
+  kurashiFail_('SCHEMA_ERROR','11シート構成が一致しません。先に旧スキーマ整理を確認してください');
+ for(const name of Object.keys(KURASHI_NEW_SCHEMA)){
+  const spec=KURASHI_PRENAME_SCHEMA[name];
+  const sheet=book.getSheetByName(spec&&book.getSheetByName(spec.old)?spec.old:name);
+  if(!sheet)kurashiFail_('SCHEMA_ERROR',name+'がありません');
+  const expected=KURASHI_NEW_SCHEMA[name],old=spec?.headers;
+  const last=sheet.getLastColumn();
+  const allowedLengths=old?[old.length,expected.length]:[expected.length];
+  if(!allowedLengths.includes(last))
+   kurashiFail_('SCHEMA_ERROR',name+'に予期しない追加列があります');
+  if(!spec){
+   const actual=sheet.getRange(1,1,1,last).getValues()[0];
+   if(JSON.stringify(actual)!==JSON.stringify(expected))
+    kurashiFail_('SCHEMA_ERROR',name+'の見出しが一致しません');
+  }
+ }
  const keys=Object.keys(KURASHI_PRENAME_SCHEMA),jobs=[];
  const same=(a,b)=>JSON.stringify(a)===JSON.stringify(b);
  for(const name of keys){
