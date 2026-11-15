@@ -1629,10 +1629,11 @@ assert.equal(bulkUI.window.document.querySelector('[data-act="scanPickExisting"]
  'receipt review has no product picker');
 const bulkReview=bulkUI.window.document.getElementById('scanConfirmForm');
 bulkReview.dispatchEvent(new bulkUI.window.Event('submit',{bubbles:true,cancelable:true}));
-await waitFor(()=>!!bulkUI.window.document.querySelector('[data-act="recordProductNew"]'),
+await waitFor(()=>!!bulkUI.window.document.querySelector('[data-act="recordProductOpen"]'),
  'saved receipt opens its detail where individual product operations live');
 assert.match(bulkUI.window.document.body.textContent,/商品未紐付け/);
-bulkUI.window.document.querySelector('[data-act="recordProductNew"]').click();
+bulkUI.window.document.querySelector('[data-act="recordProductOpen"]').click();
+bulkUI.window.document.querySelector('[data-act="recordProductShowNew"]').click();
 const individualForm=bulkUI.window.document.getElementById('recordProductCreateForm');
 assert.ok(individualForm,'product editor uses one shared half sheet');
 assert.equal(individualForm.querySelector('[name="group"]'),null);
@@ -1762,12 +1763,13 @@ assert.equal(kitReview.querySelector('.scan-ocr-name').textContent,kitRaw,
 assert.equal(kitReview.querySelector('[data-act="scanPickExisting"]'),null,
  'the receipt review has no registration route');
 kitReview.dispatchEvent(new kitSession.window.Event('submit',{bubbles:true,cancelable:true}));
-await waitFor(()=>!!kitSession.window.document.querySelector('[data-act="recordProductNew"]'),
+await waitFor(()=>!!kitSession.window.document.querySelector('[data-act="recordProductOpen"]'),
  'saved KitKat receipt opens its detail');
 assert.match(kitSession.window.document.querySelector('.detail-record-line').textContent,
  /キットカットコイマッチャ10フクロ/,
  'detail retains original OCR product spelling');
-kitSession.window.document.querySelector('[data-act="recordProductNew"]').click();
+kitSession.window.document.querySelector('[data-act="recordProductOpen"]').click();
+kitSession.window.document.querySelector('[data-act="recordProductShowNew"]').click();
 const kitForm=kitSession.window.document.getElementById('recordProductCreateForm');
 assert.ok(kitForm&&kitSession.window.document.querySelector('.record-product-overlay'),
  'new product editor is one shared half sheet');
@@ -2044,7 +2046,7 @@ assert.ok(!standaloneForm.querySelector('[name="difference"]')&&
 standaloneSession.window.document.querySelector('#scanConfirmForm').dispatchEvent(
  new standaloneSession.window.Event('submit',{bubbles:true,cancelable:true}));
 try{
- await waitFor(()=>!!standaloneSession.window.document.querySelector('[data-act="recordProductNew"]'),
+ await waitFor(()=>!!standaloneSession.window.document.querySelector('[data-act="recordProductOpen"]'),
   'saved standalone receipt detail permits product registration');
 }catch(err){
  console.log('STANDALONE_SAVE_DIAGNOSTIC',JSON.stringify({
@@ -2056,7 +2058,8 @@ try{
  }));
  throw err;
 }
-standaloneSession.window.document.querySelector('[data-act="recordProductNew"]').click();
+standaloneSession.window.document.querySelector('[data-act="recordProductOpen"]').click();
+standaloneSession.window.document.querySelector('[data-act="recordProductShowNew"]').click();
 const standaloneProductForm=standaloneSession.window.document.getElementById('recordProductCreateForm');
 assert.ok(standaloneProductForm&&!standaloneProductForm.querySelector('[name="group"]'),
  'new product in shared half sheet defers optional household group');
