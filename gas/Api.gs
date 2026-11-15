@@ -1299,11 +1299,29 @@ function kurashiAliasIndex_(book){
  }
  return index;
 }
-function kurashiPlanAlias_(raw,chainId,productId,index,newRows,now){
+function kurashiPlanAlias_(raw,chainId,productId,index,newRows,updates,now){
  const original=kurashiRawName_(raw);
  if(!original)return '';
  const normalized=kurashiNormalize_(original),key=chainId+'|'+normalized;
- if(index.has(key))return String(index.get(key).receipt_name_id);
+ if(index.has(key)){
+  const alias=index.get(key),id=String(alias.receipt_name_id);
+  // An explicitly linked receipt item can teach the OCR dictionary in the
+  // same journaled record operation. A second line with the same OCR name
+  // must not overwrite the first mapping in this receipt.
+  if(productId&&String(alias.auto_match_product_id||'')!==String(productId)){
+   const fresh=newRows.find(x=>x.receipt_name_id===id);
+   const planned=updates.find(x=>x.before.receipt_name_id===id);
+   if(fresh){
+    if(!fresh.auto_match_product_id)fresh.auto_match_product_id=productId;
+   }else if(!planned){
+    const before=kurashiPublic_(alias);
+    const after={...before,auto_match_product_id:productId,
+     version:Number(before.version)+1,updated_at:now};
+    updates.push({before,after});
+   }
+  }
+  return id;
+ }
  const entity={receipt_name_id:'alias-'+Utilities.getUuid(),auto_match_product_id:productId||'',
   chain_id:chainId,normalized_receipt_name:normalized,ocr_name:original,
   version:1,updated_at:now};
@@ -1351,7 +1369,7 @@ function kurashiCreateRecord_(user,payload,id){
         String(x.value.household_id)===hid&&!x.value.deleted_at)
         .map(x=>String(x.value.product_id)));
       const now=new Date().toISOString(),recordId='record-'+Utilities.getUuid();
-      const aliasIndex=kurashiAliasIndex_(book),newAliases=[];
+      const aliasIndex=kurashiAliasIndex_(book),newAliases=[],aliasUpdates=[];
       const lineItems=payload.items.map((line,n)=>{
         const suggestion=kurashiRecordLineFields_(line);
         const prod=line.linked_product_id;
@@ -1364,7 +1382,7 @@ function kurashiCreateRecord_(user,payload,id){
         if(line.non_ocr_name!==undefined&&(!confirmed||String(line.raw_name||'').trim()))
           kurashiFail_('BAD_REQUEST','写真確認名はOCR名と同時登録できません');
         const receiptNameId=confirmed?'':kurashiPlanAlias_(line.raw_name,payload.chain_id,prod,
-          aliasIndex,newAliases,now);
+          aliasIndex,newAliases,aliasUpdates,now);
         return {record_item_id:'recorditem-'+Utilities.getUuid(),
           record_id:recordId,line_order:n+1,receipt_name_id:receiptNameId,non_ocr_name:confirmed,
           linked_product_id:prod||'',quantity:qty,line_total_tax_included:amount,
@@ -1376,7 +1394,7 @@ function kurashiCreateRecord_(user,payload,id){
           record_type:payload.record_type,chain_id:payload.chain_id,
           record_date:date,
           created_at:now,updated_at:now,version:1,deleted_at:''},
-        items:lineItems,aliases:newAliases,
+        items:lineItems,aliases:newAliases,aliasUpdates,
         sequence_no:kurashiSequence_(hid,book)+1,updated_at:now};
       kurashiPrepareOperation_(book,hid,id,check.hash,plan);
     }
@@ -1385,11 +1403,14 @@ function kurashiCreateRecord_(user,payload,id){
        plan.items.some(x=>String(x.record_id)!==String(plan.record.record_id)))
       kurashiFail_('RECOVERY_CONFLICT','記録保存の履歴が不正です');
     kurashiEnsureNewRows_('receipt_name_mappings','receipt_name_id',plan.aliases||[],hid,book);
+    for(const change of plan.aliasUpdates||[])
+      kurashiRecordTransition_('receipt_name_mappings','receipt_name_id',
+        change.before,change.after,book);
     kurashiEnsureNewRow_('records','record_id',plan.record,hid,book);
     kurashiEnsureNewRows_('record_items','record_item_id',plan.items,hid,book);
     return kurashiCompleteOperation_(book,hid,id,check.hash,plan,{
       status:'completed',action,record:plan.record,
-      items:plan.items,aliases:plan.aliases||[],sequence_no:plan.sequence_no
+      items:plan.items,aliases:[...(plan.aliases||[]),...(plan.aliasUpdates||[]).map(x=>x.after)],sequence_no:plan.sequence_no
     },'records',plan.record.record_id);
   }finally{lock.releaseLock()}
 }
@@ -1447,7 +1468,7 @@ function kurashiMutateRecord_(user,action,payload,id){
     const known=new Set(kurashiRows_('products',book).filter(x=>
      String(x.value.household_id)===hid&&!x.value.deleted_at)
      .map(x=>String(x.value.product_id)));
-    const aliasIndex=kurashiAliasIndex_(book),newAliases=[];
+    const aliasIndex=kurashiAliasIndex_(book),newAliases=[],aliasUpdates=[];
     fresh=payload.items.map((line,n)=>{
      const suggestion=kurashiRecordLineFields_(line);
      const prod=line.linked_product_id;
@@ -1460,7 +1481,7 @@ function kurashiMutateRecord_(user,action,payload,id){
      if(line.non_ocr_name!==undefined&&(!confirmed||String(line.raw_name||'').trim()))
        kurashiFail_('BAD_REQUEST','写真確認名はOCR名と同時登録できません');
      const receiptNameId=confirmed?'':kurashiPlanAlias_(line.raw_name,payload.chain_id,prod,
-       aliasIndex,newAliases,now);
+       aliasIndex,newAliases,aliasUpdates,now);
      return {record_item_id:'recorditem-'+Utilities.getUuid(),
       record_id:recordId,line_order:n+1,receipt_name_id:receiptNameId,non_ocr_name:confirmed,
       linked_product_id:prod||'',quantity:line.quantity,
@@ -1476,7 +1497,7 @@ function kurashiMutateRecord_(user,action,payload,id){
    const aliases=next.aliasesToCreate||[];
    delete next.aliasesToCreate;
    plan={status:'prepared',action,beforeRecord:original,record:next,
-    beforeItems:originals,expiredItems:expired,items:fresh,aliases,
+    beforeItems:originals,expiredItems:expired,items:fresh,aliases,aliasUpdates,
     sequence_no:kurashiSequence_(hid,book)+1,updated_at:now};
    kurashiPrepareOperation_(book,hid,id,check.hash,plan);
   }
@@ -1492,9 +1513,13 @@ function kurashiMutateRecord_(user,action,payload,id){
    kurashiRecordTransition_('record_items','record_item_id',
     plan.beforeItems[i],plan.expiredItems[i],book);
   kurashiEnsureNewRows_('receipt_name_mappings','receipt_name_id',plan.aliases||[],hid,book);
+  for(const change of plan.aliasUpdates||[])
+   kurashiRecordTransition_('receipt_name_mappings','receipt_name_id',
+    change.before,change.after,book);
   kurashiEnsureNewRows_('record_items','record_item_id',plan.items,hid,book);
   return kurashiCompleteOperation_(book,hid,id,check.hash,plan,{
-   status:'completed',action,record:plan.record,items:plan.items,aliases:plan.aliases||[],
+   status:'completed',action,record:plan.record,items:plan.items,
+   aliases:[...(plan.aliases||[]),...(plan.aliasUpdates||[]).map(x=>x.after)],
    sequence_no:plan.sequence_no
   },'records',plan.record.record_id);
  }finally{lock.releaseLock()}
