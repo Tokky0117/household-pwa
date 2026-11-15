@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       schema_operation:
-        description: 'Trial schema: check only / migrate and deploy / deploy already-migrated GAS'
+        description: 'Trial schema check, deployment, or code push for manual GAS publication'
         required: true
         type: choice
         default: check
@@ -15,6 +15,7 @@ on:
           - check
           - migrate_and_deploy
           - deploy_only
+          - push_only
       trial_queues_empty_and_clients_stopped:
         description: 'For migration: all trial-device queues are empty and trial clients are stopped'
         required: true
@@ -166,6 +167,7 @@ jobs:
           }
           NODE
       - name: Check trial schema through authenticated GAS execution (read-only)
+        if: inputs.schema_operation != 'push_only'
         id: schema
         shell: bash
         env:
@@ -211,7 +213,7 @@ jobs:
             postflight "$RUNNER_TEMP/trial-schema-after.json" \
             "$RUNNER_TEMP/trial-schema-after.err"
       - name: Confirm manual deployment operation is eligible
-        if: inputs.schema_operation != 'check'
+        if: inputs.schema_operation != 'check' && inputs.schema_operation != 'push_only'
         shell: bash
         env:
           OPERATION: ${{ inputs.schema_operation }}
@@ -222,7 +224,7 @@ jobs:
             *) echo 'Unsupported schema operation';exit 1;;
           esac
       - name: Update existing NEW web app deployment, never create a second
-        if: inputs.schema_operation != 'check'
+        if: inputs.schema_operation != 'check' && inputs.schema_operation != 'push_only'
         shell: bash
         run: |
           set -euo pipefail
@@ -232,7 +234,7 @@ jobs:
           grep -Fq "$TARGET_DEPLOYMENT_ID" "$RUNNER_TEMP/deployments-after.txt"
           echo "Verified NEW GAS /exec updated. Main and production environments were not touched." >> "$GITHUB_STEP_SUMMARY"
       - name: Verify new GAS anonymously returns only the household schema (read-only)
-        if: inputs.schema_operation != 'check'
+        if: inputs.schema_operation != 'check' && inputs.schema_operation != 'push_only'
         shell: bash
         run: |
           set -euo pipefail
@@ -254,6 +256,12 @@ jobs:
             throw Error('NEW_GAS_BOOTSTRAP_INVALID_SCHEMA');
           console.log('New GAS /exec anonymous household bootstrap: OK (contents not logged)');
           NODE
+      - name: Manual GAS publication handoff
+        if: inputs.schema_operation == 'push_only'
+        run: |
+          echo "Trial GAS HEAD was pushed and verified; published /exec is intentionally unchanged." >> "$GITHUB_STEP_SUMMARY"
+          echo "Manually create a new version of the EXISTING trial Web App deployment in Apps Script." >> "$GITHUB_STEP_SUMMARY"
+
       - name: Remove local credentials
         if: always()
         shell: bash
