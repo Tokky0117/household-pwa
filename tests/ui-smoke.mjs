@@ -1185,8 +1185,9 @@ assert.equal(ui.scanChainForStore('架空衣料店\nコノミヤ'),null,
  'two matched store headers are ambiguous; never auto-select one');
 assert.equal(ui.scanStoreHeaderMatch('架空衣料店\nコノミヤ').status,'ambiguous');
 const sampleKohnan={id:'c-photo-kohnan',name:'コーナン',aliases:[]};
-const sampleKonomiya={id:'c-photo-konomiya',name:'コノミヤ',aliases:[]};
-catalog.chains.push(sampleKohnan,sampleKonomiya);
+const sampleKonomiya=catalog.chains.find(c=>c.name==='コノミヤ');
+assert.ok(sampleKonomiya,'sample catalogue has registered Konomiya chain');
+catalog.chains.push(sampleKohnan);
 assert.equal(ui.scanChainForStore('領収証\nコーナン商事株式会社\n枚方大橋店\n2026年10月31日')?.id,
  sampleKohnan.id,'a photographed Kohnan header matches the registered chain via company name');
 assert.equal(ui.scanChainForStore('KOHNAN\n枚方大橋店')?.id,
@@ -1195,7 +1196,7 @@ assert.equal(ui.scanChainForStore('⚙コノミヤ 枚方店\n2026年10月12日'
  sampleKonomiya.id,'floral logo and branch suffix match registered Konomiya');
 assert.equal(ui.scanChainForStore('KONOMIYA 枚方店')?.id,
  sampleKonomiya.id,'Latin Konomiya logo maps only to a registered Japanese chain');
-catalog.chains.pop();catalog.chains.pop();
+catalog.chains.pop();
 const secondMatch={id:'c-synthetic-duplicate',name:'架空衣料店'};
 catalog.chains.push(secondMatch);
 assert.equal(ui.scanChainForStore('架空衣料店'),null,
