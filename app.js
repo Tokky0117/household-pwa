@@ -1579,7 +1579,8 @@ function pickerResults(){
  return pool.map(p=>{
   const existing=p.householdItemId===selected;
   const sub=`${p.packageQuantity&&p.packageUnit?p.packageQuantity+p.packageUnit:'内容量未設定'} ・ ${p.householdItemId?'登録先：'+linkedItemName(p):'未登録'}`;
-  return `<button type="button" class="catalogue-candidate" data-pick="${esc(p.id)}" ${existing?'disabled':''} aria-label="${esc(p.name)}を選択"><span class="catalogue-row-body"><strong>${esc(p.name)}</strong><span class="hint">${esc(sub)}</span></span><span class="catalogue-candidate-end" aria-hidden="true">${existing?'登録済み':chevron('right')}</span></button>`;
+  return UI.catalogueRow({title:p.name,lines:[sub],data:{'data-pick':p.id},disabled:existing,
+   ariaLabel:p.name+'を選択',endLabel:existing?'登録済み':''});
  }).join('')||'<div class="panel empty">該当する候補はありません</div>';
 }
 function pickerView(){
@@ -1602,11 +1603,10 @@ function masterProductRows(){
  const q=norm(masterQuery);
  const found=catalogue.products.filter(p=>!q||productMatches(p,q)||
   norm(linkedItemName(p)).includes(q)).sort((a,b)=>a.name.localeCompare(b.name,'ja'));
- return found.map(p=>'<button type="button" class="panel catalogue-candidate" data-act="masterProductEdit" data-product-id="'+esc(p.id)+'">'+
-  '<span class="catalogue-row-body"><strong>'+esc(productTitle(p))+'</strong>'+
-  '<span class="hint">日用品：'+esc(linkedItemName(p))+'</span></span>'+
-  '<span class="catalogue-candidate-end" aria-hidden="true">'+chevron('right')+
-  '</span></button>').join('')||'<div class="panel empty">該当する商品はありません</div>';
+ return found.map(p=>UI.catalogueRow({title:productTitle(p),
+  lines:['日用品：'+linkedItemName(p)],action:'masterProductEdit',
+  data:{'data-product-id':p.id},className:'panel'
+ })).join('')||'<div class="panel empty">該当する商品はありません</div>';
 }
 function masterGroupLabel(groupId){
  return itemLabel(items.find(item=>item.id===groupId))||
@@ -1688,15 +1688,12 @@ function aliasManageRows(){
  const rows=visible.map(a=>{
   const name=a.ocrName||a.normalizedReceiptName,product=catalogue.products.find(p=>p.id===a.productId);
   const syncing=String(a.receiptNameId).startsWith('local-');
-  return '<button type="button" class="panel catalogue-candidate alias-manage-row"'+
-   ' data-act="aliasPickerOpen" data-alias-id="'+esc(a.receiptNameId)+'"'+
-   ' aria-label="'+esc(name+'の登録商品を変更')+'"'+(syncing?' disabled':'')+'>'+
-   '<span class="catalogue-row-body"><strong>'+esc(name)+'</strong>'+
-   '<span class="hint">店舗：'+esc(chainLabel(a.chainId))+'</span>'+
-   '<span class="hint">'+esc(product?'登録商品：'+productTitle(product):'商品未紐付け')+'</span>'+
-   (syncing?'<span class="hint">同期後に変更できます</span>':'')+'</span>'+
-   '<span class="catalogue-candidate-end" aria-hidden="true">'+
-   (syncing?'':chevron('right'))+'</span></button>';
+  return UI.catalogueRow({title:name,action:'aliasPickerOpen',
+   data:{'data-alias-id':a.receiptNameId},className:'panel alias-manage-row',
+   ariaLabel:name+'の登録商品を変更',disabled:syncing,
+   lines:['店舗：'+chainLabel(a.chainId),
+    product?'登録商品：'+productTitle(product):'商品未紐付け',
+    ...(syncing?['同期後に変更できます']:[])],endLabel:syncing?' ':''});
  }).join('');
  const more=all.length>aliasVisibleLimit?
   '<div class="alias-more-action">'+UI.button({label:'さらに表示（残り'+(all.length-aliasVisibleLimit)+'件）',
