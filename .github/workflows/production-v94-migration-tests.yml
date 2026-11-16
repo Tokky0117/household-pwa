@@ -23,5 +23,7 @@ jobs:
         run: node tests/production-gas-bundle.mjs
       - name: Verify read-only production remote audit
         run: node tests/production-gas-readonly-audit.mjs
+      - name: Test owner-only GAS cutover shim
+        run: node tests/production-v94-admin-shim.mjs
       - name: Production release structure checks
         run: node tests/production-release-guards.mjs
