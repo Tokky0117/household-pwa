@@ -31,6 +31,36 @@ const ds=await get('/deployments?pageSize=200');
 if(!ds)process.exit(0);
 let entries=ds.deployments||[];
 const types=entries.flatMap(d=>(d.entryPoints||[]).map(e=>e.entryPointType));
+// Call a pure, existing normalizer with no read/write access to user data.
+// This isolates scripts.run authorization, deployment and OAuth scopes.
+let invocation={httpStatus:0,apiStatus:'unavailable',resultMatches:false};
+try{
+ const run=await fetch('https://script.googleapis.com/v1/scripts/'+encodeURIComponent(id)+':run',{
+  method:'POST',headers:{Authorization:'Bearer '+token,'content-type':'application/json'},
+  body:JSON.stringify({function:'kurashiNormalize_',parameters:['Ｉ'],devMode:true}),
+  redirect:'error'
+ });
+ invocation.httpStatus=run.status;
+ const data=await run.json();
+ if(run.ok){
+  invocation.apiStatus=data.error?'EXECUTION_ERROR':'OK';
+  invocation.resultMatches=data.response?.result==='i';
+  if(data.error){
+   invocation.errorType=String(data.error.details?.[0]?.errorType||'unknown').slice(0,70);
+  }
+ }else{
+  invocation.apiStatus=String(data.error?.status||'unknown').slice(0,70);
+  const msg=String(data.error?.message||'');
+  invocation.errorHints={
+   apiExecutable:/executable|published|deploy/i.test(msg),
+   cloudProject:/cloud project|project id/i.test(msg),
+   scope:/scope|insufficient/i.test(msg),
+   permission:/permission|authorized|forbidden|credential/i.test(msg),
+   function:/function|script not found/i.test(msg)
+  };
+ }
+}catch(_){invocation.apiStatus='NETWORK_ERROR';}
+console.log('PRODUCTION_SCRIPT_RUN_READONLY '+JSON.stringify(invocation));
 console.log('PRODUCTION_API_EXECUTABLE_CHECK '+JSON.stringify({
  projectAccessible:true,deployments:entries.length,
  apiExecutablePresent:types.includes('EXECUTION_API'),
