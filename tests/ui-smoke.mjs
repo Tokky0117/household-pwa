@@ -791,6 +791,19 @@ assert.ok(source.includes("import('./ocr-engine/engine.js')"),
 
 const importer=readFileSync(new URL('../receipt-chatgpt-import.js',import.meta.url),'utf8');
 const imports=vm.runInNewContext(importer+';KurashiReceiptImport');
+const aiPackageJson=JSON.stringify({version:'kurashi-receipt-assist-1',
+ items:[{rowId:'photo-line-1',ocrName:'ワカメ80g×3袋',quantity:1,amount:580,
+  productSuggestion:{existingName:null,newName:'ワカメ80g×3袋',
+   packageQuantity:240,packageUnit:'g'}}]});
+const aiPackage=imports.parseChatGptOcrAssistJson(aiPackageJson);
+assert.equal(aiPackage.items[0].quantity,1,'purchase quantity stays separate from pack content');
+assert.equal(aiPackage.items[0].productSuggestion.packageQuantity,240);
+assert.equal(aiPackage.items[0].productSuggestion.packageUnit,'g');
+assert.throws(()=>imports.parseChatGptOcrAssistJson(aiPackageJson.replace('"packageUnit":"g"','"packageUnit":"袋"')),
+ /INVALID_PRODUCT_PACKAGE/,'unsupported AI capacity units are rejected');
+assert.ok(imports.makeChatGptOcrAssistPrompt(JSON.stringify({
+ items:[{rowId:'r1',ocrName:'80g×3袋'}]})).includes('packageQuantity'),
+ 'current JSON prompt asks AI for optional package capacity');
 // COSTCO excerpt: typographic quotation marks and missing items array brackets.
 const malformed=`{ “version”: “kurashi-receipt-import-1”, “purchaseDate”: null,
  “storeName”: “COSTCO WHOLESALE”, “taxBasis”: “included”, “taxTotal”: 1138,
