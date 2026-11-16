@@ -27,7 +27,14 @@ if(refresh&&clientId&&clientSecret){
 if(!access){console.log('PROD_GOOGLE_CAPABILITY auth=token_unavailable');process.exit(0);}
 async function probe(url){
  try{const res=await fetch(url,{headers:{Authorization:'Bearer '+access},redirect:'error'});
-  if(!res.ok)return {ok:false,status:res.status};
+  if(!res.ok){
+   let reason='unknown';
+   try{
+    const error=(await res.json()).error;
+    reason=String(error?.errors?.[0]?.reason||error?.status||'unknown').slice(0,100);
+   }catch{}
+   return {ok:false,status:res.status,reason};
+  }
   const data=await res.json();
   return {ok:true,data};
  }catch{return {ok:false,status:'network_error'};}
@@ -48,13 +55,13 @@ const oldSheetNames=['households','users','categories','stores','item_groups',
 const newSheetNames=['households','users','categories','retail_chains','household_items',
  'products','receipt_name_mappings','records','record_items','change_log',
  'processed_operations'].sort();
-let old12=0,new11=0,metadataFailures={},backupNameOld=0,sourceNameOld=0;
+let old12=0,new11=0,metadataFailures={},backupNameOld=0,sourceNameOld=0;let sheetsErrorReason='';
 for(const candidate of items){
  const meta=await probe('https://sheets.googleapis.com/v4/spreadsheets/'+
   encodeURIComponent(candidate.id)+'?'+new URLSearchParams({
   fields:'spreadsheetId,properties(title),sheets(properties(title))'
  }));
- if(!meta.ok){const key=String(meta.status);metadataFailures[key]=(metadataFailures[key]||0)+1;continue;}
+ if(!meta.ok){const key=String(meta.status);metadataFailures[key]=(metadataFailures[key]||0)+1;if(!sheetsErrorReason)sheetsErrorReason=meta.reason;continue;}
  const names=(meta.data.sheets||[]).map(x=>x.properties?.title).sort();
  const same=(a,b)=>JSON.stringify(a)===JSON.stringify(b);
  if(same(names,oldSheetNames)){
@@ -64,9 +71,20 @@ for(const candidate of items){
  }
  if(same(names,newSheetNames))new11++;
 }
+// Test Google Drive export capability without reading file contents or IDs.
+let driveExportStatus='not-tested';
+if(drive.ok&&items.length){
+ try{
+  const url='https://www.googleapis.com/drive/v3/files/'+encodeURIComponent(items[0].id)+
+   '/export?'+new URLSearchParams({mimeType:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+  const res=await fetch(url,{headers:{Authorization:'Bearer '+access},redirect:'error'});
+  driveExportStatus=res.ok?'available':String(res.status);
+  await res.body?.cancel();
+ }catch{driveExportStatus='network-error'}
+}
 console.log('PROD_GOOGLE_CAPABILITY '+JSON.stringify({
  scriptApi:scripts.ok?'accessible':scripts.status,
  driveApi:drive.ok?'accessible':drive.status,
  visibleSpreadsheets:items.length,appNameMatches:named,
- hasMorePages:!!drive.data?.nextPageToken,oldSchema12:old12,newSchema11:new11,backupNamed12:backupNameOld,unmarkedOld12:sourceNameOld,sheetsApiFailures:metadataFailures
+ hasMorePages:!!drive.data?.nextPageToken,oldSchema12:old12,newSchema11:new11,backupNamed12:backupNameOld,unmarkedOld12:sourceNameOld,sheetsApiFailures:metadataFailures,sheetsApiReason:sheetsErrorReason,driveExport:driveExportStatus
 }));
