@@ -237,12 +237,20 @@ const REBUILD_VERSION='kurashi-receipt-rebuild-1';
 // created when the ChatGPT response is imported.
 function parseProductSuggestion(value){
  if(value===undefined||value===null)return null; // old JSON remains valid
- if(!isObject(value)||Object.keys(value).sort().join(',')!=='existingName,newName')
+ if(!isObject(value)||!Object.prototype.hasOwnProperty.call(value,'existingName')||
+    !Object.prototype.hasOwnProperty.call(value,'newName')||
+    Object.keys(value).some(k=>!['existingName','newName','packageQuantity','packageUnit'].includes(k)))
   throw Error('INVALID_PRODUCT_SUGGESTION');
  const existingName=value.existingName===null?null:cleanText(value.existingName,80,{optional:true});
  const newName=value.newName===null?null:cleanText(value.newName,80,{optional:true});
  if(existingName&&newName)throw Error('INVALID_PRODUCT_SUGGESTION');
- return existingName||newName?{existingName,newName}:null;
+ const qty=value.packageQuantity??null,unit=value.packageUnit??null;
+ if((qty===null)!==(unit===null)||(qty!==null&&
+    (!Number.isFinite(qty)||typeof qty!=='number'||qty<=0||qty>100000||
+     !['個','本','枚','g','kg','mL','L'].includes(unit))))
+  throw Error('INVALID_PRODUCT_PACKAGE');
+ return existingName||newName||qty!==null?
+   {existingName,newName,packageQuantity:qty,packageUnit:unit}:null;
 }
 function parseChatGptOcrRebuildJson(source){
  if(typeof source!=='string'||source.length>30000||!source.trim())
@@ -402,10 +410,10 @@ function makeChatGptOcrAssistPrompt(ocrReference,registeredNames=[]){
   '、名前候補'+show(x.eligibleNameRows)+'）');
  const assist={version:ASSIST_VERSION,items:[{rowId:'OCR行IDをそのまま',
   ocrName:'OCR名をそのまま',quantity:null,amount:null,
-  productSuggestion:{existingName:null,newName:null}}]};
+  productSuggestion:{existingName:null,newName:null,packageQuantity:null,packageUnit:null}}]};
  const rebuild={version:REBUILD_VERSION,receiptDate:null,
   receiptTotal:null,printedCount:null,items:[{name:'写真に印字された商品名',quantity:null,amount:null,
-  productSuggestion:{existingName:null,newName:null}}]};
+  productSuggestion:{existingName:null,newName:null,packageQuantity:null,packageUnit:null}}]};
  return [
   'くらしストック｜レシート写真の確認',
   '',
@@ -427,6 +435,7 @@ function makeChatGptOcrAssistPrompt(ocrReference,registeredNames=[]){
   '以下の登録商品名一覧はアプリが作成した商品マスタの名前だけであり、商品ID・容量・日用品等は含まない。既に登録されている商品と同一と判断できる場合だけ、productSuggestion.existingNameに一覧中の名称を文字どおり正確に記す。曖昧な場合はnull。',
   '既存の商品名に該当しない場合のみ、productSuggestion.newNameに適切な新規登録候補名を推測する。可能ならウェブ検索を利用して商品名を確認する。検索できない場合やメーカー・規格を確定できない場合は捏造せず、商品種別までの自然な名称かnullにする。検索した根拠がないのに実在商品を特定できたと主張しない。existingNameとnewNameを同時に指定しない。',
   '商品名候補はproductSuggestionの1種類だけにし、推定名を別項目で出力しない。店舗名は生成AIでは判定しない。既存商品名に確信がなければexistingNameはnull。OCR原文・行ID・数量を商品候補のために書き換えない。候補は未確認で、登録と紐付けはアプリ上で利用者が選ぶ。',
+  '商品名候補の内容量はproductSuggestion.packageQuantity（数値）とpackageUnit（個・本・枚・g・kg・mL・L）に記す。包装全体の内容量を示し、80g×3袋なら240g。購入数量quantityとは区別する。写真や印字から根拠がない場合は両方null。複数容量で合計の意味が曖昧なら推測せずnull。商品名・内容量とも候補であり登録時に利用者が確認する。',
   '登録商品名一覧（各要素は登録商品名のみ。空配列なら照合候補なし）：'+JSON.stringify(registeredNames),
   '',
   '【出力】',
