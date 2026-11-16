@@ -1,0 +1,24 @@
+name: Diagnose production GAS execution capability (read-only)
+
+on:
+  push:
+    branches:
+      - release-v94-production-preflight
+    paths:
+      - scripts/check-production-api-deployment.mjs
+      - .github/workflows/production-api-diagnosis.yml
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    env:
+      PROD_GAS_SCRIPT_ID: 1jwI1-JXga74JntHGKfqCm0luDYJueEPDCfQBrbF1SIcE3EHdrlC67bBn
+      CLASPRC_JSON: ${{ secrets.CLASPRC_JSON }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Inspect deployed GAS execution types without modifying project
+        run: node scripts/check-production-api-deployment.mjs
