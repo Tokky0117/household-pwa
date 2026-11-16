@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import vm from 'node:vm';
 const source=readFileSync(new URL('../app.js',import.meta.url),'utf8');
+const packageScript=readFileSync(new URL('../product-package.js',import.meta.url),'utf8');
 const css=readFileSync(new URL('../styles.css',import.meta.url),'utf8');
 const validatorScript=readFileSync(new URL('../receipt-validation.js',import.meta.url),'utf8');
 const validator=vm.runInNewContext(validatorScript+';KurashiReceiptValidation');
@@ -24,6 +25,8 @@ const doc={
 };
 const ctx={document:doc,localStorage:{getItem:k=>storage.get(k)??null,setItem:(k,v)=>storage.set(k,v),removeItem:k=>storage.delete(k)},
  navigator:{},window:{scrollTo(){},scrollY:0,KurashiReceiptValidation:validator,KurashiReceiptReview:review},crypto:{randomUUID:()=> 'test-id'},setTimeout:()=>0};
+vm.runInNewContext(packageScript,ctx);
+const packageAPI=ctx.window.KurashiProductPackage;
 const ui=vm.runInNewContext(source+`
 ({UI,listView,priceCompareView,pickerView,pickerResults,masterProductsView,masterProductRows,masterProductEditorView,masterGroupPickerView,masterGroupPickerRows,aliasManageView,aliasManageRows,aliasProductPickerView,aliasProductPickerRows,detailHomeView,detailAllView,receiptScanView,receiptChatGptView,recordDetailView,scanStoreNameIssue,scanValidPurchaseDate,scanReadableError,floatingActionPlacement,applyChatGptOcrAssistance,receiptOcrReference,receiptOcrRows,isUnconfirmedBarcodeLine,makeChatGptReceiptRebuildDraft,scanProductView,scanProductGroupChoices,scanExistingProductView,scanExistingProductResults,scanChainForStore,scanStoreHeaderMatch,scanAutolinkUnmatched,scanMatchProduct,scanSimilarProducts,normalizeOcrProductName,normalizedOcrItemName,render,initializeCompare,
  setProductGroup,reorderProducts,registeredProducts,convertQuantity,setOpenSwipe,storePickerChoices,scrollNewItemIfOffscreen,
@@ -55,6 +58,24 @@ for(const selector of ['.iconbtn','.headrow .iconbtn','.sheet-close','.cathead',
  assert.ok(values.length>0&&values.every(x=>x>=44),'Touch area min-height >= 44px: '+selector);
 }
 assert.ok(css.includes('.tertiary{')&&css.includes('color:var(--accent)'),'Shared tertiary button style exists');
+
+assert.equal(packageAPI.infer('三陸カットワカメ80g×3袋')?.quantity,240);
+assert.equal(packageAPI.infer('三陸カットワカメ80g×3袋')?.unit,'g');
+assert.equal(packageAPI.infer('3袋×80g')?.quantity,240);
+assert.equal(packageAPI.infer('牛乳1000ml')?.quantity,1000);
+assert.equal(packageAPI.infer('洗濯洗剤1.2L')?.unit,'L');
+assert.equal(packageAPI.infer('ティッシュ200枚')?.quantity,200);
+assert.equal(packageAPI.infer('キットカット10袋'),null,
+ 'unknown bag unit is not mapped to purchased quantity');
+assert.equal(packageAPI.infer('ワカメ80g×3袋 500g'),null,
+ 'conflicting package sizes must remain unconfirmed');
+assert.equal(packageAPI.infer('R-1'),null);
+assert.equal(packageAPI.candidate('名称だけ',{packageQuantity:240,packageUnit:'g'})?.quantity,240);
+assert.equal(packageAPI.candidate('名称だけ',{packageQuantity:3,packageUnit:'袋'}),null);
+assert.ok(css.includes('.scan-photo-sticky-action{')&&
+ css.includes('.detail-record-product-row{'),
+ 'receipt photo action and inline association use dedicated layout rules');
+
 assert.ok(!source.includes('priceCells(){'),'Obsolete normal/discount UI component removed');
 // Every new action uses one shared markup builder; delegated data IDs must
 // be preserved and escaped instead of hardcoding screen-specific buttons.
@@ -709,7 +730,7 @@ assert.ok(indexHtml.includes('src="receipt-validation.js?v=71-p2"'),
  'P2 validator is loaded before app entry on the iPhone preview');
 assert.ok(indexHtml.indexOf('src="receipt-validation.js')<indexHtml.indexOf('src="app.js'),
  'P2 validator initializes before app.js');
-assert.ok(previewWorkflow.includes('receipt-chatgpt-import.js receipt-validation.js receipt-review-model.js)'),
+assert.ok(previewWorkflow.includes('receipt-chatgpt-import.js product-package.js receipt-validation.js receipt-review-model.js)'),
  'P2 validator and P4 review adapter are copied into each static preview');
 assert.ok(indexHtml.indexOf('src="receipt-review-model.js')<indexHtml.indexOf('src="app.js'),
  'P4 review adapter loads before app.js');
@@ -740,7 +761,14 @@ assert.ok(source.includes("resetScan();page='recordScan';render();return;"),
  'Removing the last image stays on the empty OCR screen');
 assert.ok(ui.receiptScanView().includes('data-act="scanAddPhotos"'),
  'Empty OCR screen has a direct photo picker button');
-assert.ok(ui.receiptScanView().includes('class="primary scan-photo-add"')&&
+ui.setScanPhotos([{}]);
+const scanWithPhoto=ui.receiptScanView();
+assert.ok(scanWithPhoto.includes('scan-photo-sticky-action')&&
+ scanWithPhoto.includes('data-act="scanStart"')&&
+ !scanWithPhoto.includes('class="primary scan-photo-add"'),
+ 'selected photo does not relocate the main OCR action into the photo list');
+ui.setScanPhotos([]);
+assert.ok(ui.receiptScanView().includes('class="primary scan-photo-primary-action"')&&
  !ui.receiptScanView().includes('写真を選択してください。'),
  'Empty OCR screen uses one common primary photo picker and no redundant instruction');
 assert.equal((indexHtml.match(/type="file" accept="image\/\*"/g)||[]).length,2,
