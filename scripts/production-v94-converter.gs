@@ -1,8 +1,7 @@
 /**
  * Production v0.88.11 (12 tables) -> v0.94.5 (11 tables) PURE converter.
  * NOT a GAS endpoint, NOT an Apps Script installer, NOT an executor.
- * Input/output are data-only objects. No SpreadsheetApp, DriveApp,
- * PropertiesService or writable API is called.
+ * Input/output are data-only objects. No external side effects or writes.
  *
  * A separate cutover runner must verify workbook identity, backup equality,
  * offline/quiesced clients, operation journal and all postconditions before
