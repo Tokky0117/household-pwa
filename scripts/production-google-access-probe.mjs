@@ -22,7 +22,7 @@ if(refresh&&settings.clientId&&settings.clientSecret){
  if(res.ok){access=(await res.json()).access_token;}
  else {console.log('PROD_GOOGLE_CAPABILITY auth=refresh_failed status='+res.status);process.exit(0);}
 }
-if(!access){console.log('PROD_GOOGLE_CAPABILITY auth=token_unavailable');process.exit(0);}
+if(!access){const shape=(obj,depth=0)=>!obj||typeof obj!=='object'||depth>=3?null:Object.fromEntries(Object.entries(obj).map(([key,val])=>[key,typeof val==='object'&&val!==null?shape(val,depth+1):'<redacted>']));console.log('PROD_GOOGLE_CAPABILITY auth=token_unavailable shape='+JSON.stringify(shape(cfg)));process.exit(0);}
 async function probe(url){
  try{const res=await fetch(url,{headers:{Authorization:'Bearer '+access},redirect:'error'});
   if(!res.ok)return {ok:false,status:res.status};
