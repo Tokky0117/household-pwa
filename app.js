@@ -610,12 +610,12 @@ function receiptChatGptView(){
  '<main class="preview-record-page receipt-chatgpt-page">'+
  '<p class="hint">指示文をコピーし、生成AIに必ず元のレシート写真も添付してください。商品行・数量・金額の対応が正しい場合は文字の修正、行の対応が崩れている場合は写真から明細を再解析する指示です。</p>'+
  '<p class="hint">最初のJSONを取り込みます。明細を置き換える場合は確認画面を表示します。生成AIによる分析の説明文は保存しません。</p>'+
- '<button type="button" class="secondary" data-act="chatGptCopyPrompt">読み取り結果と指示文をコピー</button>'+
+ UI.button({label:'読み取り結果と指示文をコピー',variant:'secondary',action:'chatGptCopyPrompt'})+
  UI.formField({id:'chatgpt-input',name:'chatgpt-json',label:'生成AIの解析結果（JSON）',
   control:'textarea',placeholder:'最初のJSONコードブロックを貼り付け',
   extra:'rows="9" maxlength="30000"'})+
  '<p id="chatgpt-error" class="scan-warning" role="status">'+esc(chatGptError)+'</p>'+
- '<button type="button" class="primary" data-act="chatGptImport">解析結果を取り込む</button></main>';
+ UI.button({label:'解析結果を取り込む',variant:'primary',action:'chatGptImport'})+'</main>';
 }
 function scanStoreHeaderMatch(raw){
  // Match confirmed store masters/aliases against separate OCR header lines,
@@ -801,8 +801,8 @@ function scanAiCandidateView(item,row){
  const candidate=scanAiProductCandidates(item);
  if(!candidate)return '';
  const buttons=products=>products.slice(0,4).map(p=>
-  '<button type="button" class="secondary" data-act="scanAiLinkProduct" data-scan-row="'+row+
-  '" data-product-id="'+esc(p.id)+'">'+esc(productTitle(p))+' に紐付ける</button>').join('');
+  UI.button({label:productTitle(p)+' に紐付ける',variant:'secondary',
+   action:'scanAiLinkProduct',data:{'data-scan-row':row,'data-product-id':p.id}})).join('');
  const isNew=!candidate.existing&&!candidate.exact.length;
  return '<div class="scan-ai-candidate" aria-label="生成AIの商品候補">'+
   '<p class="scan-ai-candidate-title">'+(candidate.existing||candidate.exact.length?'登録済みの商品候補':'新規商品候補')+'</p>'+
@@ -814,8 +814,8 @@ function scanAiCandidateView(item,row){
    '<div class="scan-ai-candidate-actions">'+
     (candidate.similar.length?'<p class="scan-ai-candidate-note">類似する登録商品があります。先に確認してください。</p>'+
       buttons(candidate.similar):'')+
-    (candidate.name.length<=80?'<button type="button" class="secondary" data-act="scanAiCreateProduct" data-scan-row="'+
-      row+'">この商品を登録</button>':'')+'</div>')+
+    (candidate.name.length<=80?UI.button({label:'この商品を登録',variant:'secondary',
+       action:'scanAiCreateProduct',data:{'data-scan-row':row}}):'')+'</div>')+
   '</div>';
 }
 function createScanAiProduct(row,name){
@@ -856,9 +856,10 @@ function scanSuggestionButtons(item,row){
  const found=scanSimilarProducts(item.name,scanDraft?.chainId);
  if(!found.length)return '';
  return '<p class="hint">表記が近い登録商品（確認して選択）</p><div class="scan-product-actions">'+
-  found.map(p=>'<button type="button" class="secondary" data-act="scanChooseSuggested" data-scan-row="'+
-   row+'" data-product-id="'+esc(p.id)+'">'+esc(productTitle(p))+
-   (linkedItemLabel(p)?' （日用品リスト：'+esc(linkedItemLabel(p))+'）':'')+'</button>').join('')+'</div>';
+  found.map(p=>UI.button({label:productTitle(p)+
+   (linkedItemLabel(p)?' （日用品リスト：'+linkedItemLabel(p)+'）':''),
+   variant:'secondary',action:'scanChooseSuggested',
+   data:{'data-scan-row':row,'data-product-id':p.id}})).join('')+'</div>';
 }
 const scanDate=text=>{
  // Only explicit printed dates are evidence; no current-date fallback.
@@ -1333,8 +1334,21 @@ const UI={
   iconButton({label,action,iconHtml,title=''}) {
     return `<button class="iconbtn" type="button" data-act="${esc(action)}" aria-label="${esc(label)}"${title?' title="'+esc(title)+'"':''}>${iconHtml}</button>`;
   },
-  button({label,variant='secondary',action='',type='button',icon='',className='',disabled=false,recordItemId=''}) {
-    return `<button type="${esc(type)}" class="${esc(variant)}${className?' '+esc(className):''}" ${action?'data-act="'+esc(action)+'"':''}${recordItemId?' data-record-item-id="'+esc(recordItemId)+'"':''}${disabled?' disabled':''}>${icon?miniIcon(icon):''}<span>${esc(label)}</span></button>`;
+  // Shared action button: screen-specific delegated identifiers are data-* only.
+  // Never accept arbitrary attribute names or unescaped HTML from callers.
+  button({label,variant='secondary',action='',type='button',icon='',className='',
+    disabled=false,recordItemId='',data={},ariaLabel=''}) {
+    const attrs=Object.entries(data).filter(([name])=>/^data-[a-z][a-z0-9-]*$/.test(name))
+     .map(([name,value])=>' '+name+'="'+esc(String(value))+'"').join('');
+    return `<button type="${esc(type)}" class="${esc(variant)}${className?' '+esc(className):''}" ${action?'data-act="'+esc(action)+'"':''}${recordItemId?' data-record-item-id="'+esc(recordItemId)+'"':''}${attrs}${ariaLabel?' aria-label="'+esc(ariaLabel)+'"':''}${disabled?' disabled':''}>${icon?miniIcon(icon):''}<span>${esc(label)}</span></button>`;
+  },
+  // Common navigation/management row. Different from UI.choiceRow: it opens
+  // a destination and never claims to represent a selected option.
+  catalogueRow({title,lines=[],action='',data={},className='',disabled=false,
+    ariaLabel='',endLabel=''}) {
+    const attrs=Object.entries(data).filter(([name])=>/^data-[a-z][a-z0-9-]*$/.test(name))
+     .map(([name,value])=>' '+name+'="'+esc(String(value))+'"').join('');
+    return `<button type="button" class="catalogue-candidate${className?' '+esc(className):''}"${action?' data-act="'+esc(action)+'"':''}${attrs}${ariaLabel?' aria-label="'+esc(ariaLabel)+'"':''}${disabled?' disabled':''}><span class="catalogue-row-body"><strong>${esc(title)}</strong>${lines.map(line=>'<span class="hint">'+esc(line)+'</span>').join('')}</span><span class="catalogue-candidate-end" aria-hidden="true">${endLabel?esc(endLabel):chevron('right')}</span></button>`;
   },
   floatingAction({label,action,icon='',avoidSelector=''}) {
     return `<div class="ui-floating-action" data-ui-floating-action data-ui-floating-avoid="${esc(avoidSelector)}">${UI.button({label,action,icon,variant:'secondary',className:'ui-floating-action-button'})}</div>`;
