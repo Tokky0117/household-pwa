@@ -521,7 +521,7 @@ function scanExistingProductView(){
    value:scanExistingQuery,placeholder:'商品名で検索'})}
   <div class="scan-picker-actions">
    ${UI.textAction({label:'新しい商品を登録',action:'scanExistingToNew'})}
-   ${scanResolvedProductId(item)?'<button class="scan-unlink-action" type="button" data-act="scanUnlinkProduct">商品未照合にする</button>':''}
+   ${scanResolvedProductId(item)?UI.button({label:'商品未照合にする',variant:'tertiary',action:'scanUnlinkProduct',className:'scan-unlink-action'}):''}
   </div>
     ${scanSuggestionButtons(item,scanProductRow)}
   <div id="scan-existing-results" class="scan-existing-results">${scanExistingProductResults()}</div>
@@ -978,7 +978,7 @@ function scanAssistView(){
  const canAssist=scanDraft.source==='ocr'&&receiptOcrRows(scanDraft).length>0;
  if(!canAssist&&!scanAssistMessage)return '';
  return `<div class="scan-assist-area">
-  ${canAssist?'<p class="hint">生成AIで読み取り結果の修正・補完ができます。</p>'+'<button type="button" class="ui-text-action scan-ai-entry" data-act="chatGptAssist">'+miniIcon('sparkles')+'<span>生成AIを使用</span></button>':''}
+  ${canAssist?'<p class="hint">生成AIで読み取り結果の修正・補完ができます。</p>'+UI.button({label:'生成AIを使用',variant:'tertiary',action:'chatGptAssist',icon:'sparkles',className:'ui-text-action scan-ai-entry'}):''}
   ${scanAssistMessage?UI.statusMessage({text:scanAssistMessage,kind:'success'}):''}
  </div>`;
 }
@@ -1018,8 +1018,10 @@ function scanFormView(){
     <div class="scan-item-content">
     <div class="scan-item-head"><strong>明細 ${i+1}</strong><div class="scan-item-tools">
      ${item.pendingDeletion?
-      `<button type="button" class="scan-item-tool scan-item-restore" data-act="scanRestoreItem" data-scan-row="${i}">${miniIcon('undo')}<span>戻す</span></button>`:
-      `<button type="button" class="scan-item-tool" data-act="scanRemoveItem" data-scan-row="${i}">${miniIcon('trash')}<span>削除</span></button>`}
+      UI.button({label:'戻す',variant:'tertiary',action:'scanRestoreItem',icon:'undo',
+       className:'scan-item-tool scan-item-restore',data:{'data-scan-row':i}}):
+      UI.button({label:'削除',variant:'tertiary',action:'scanRemoveItem',icon:'trash',
+       className:'scan-item-tool',data:{'data-scan-row':i}})}
     </div></div>
     ${isUnconfirmedBarcodeLine(item)?'<p class="scan-name-warning">商品コードだけの明細を確認</p>':''}
     ${item.inputOrigin==='manual'?'':item.inputOrigin==='photo'||item.ocrRawName===undefined?
@@ -1545,7 +1547,7 @@ function priceCompareView(){
 <button type="button" class="shop-compare-toggle" data-act="shopToggle" aria-expanded="${shopExpanded}" aria-controls="shop-compare-fields">
 <span class="shop-compare-heading"><strong>店頭の商品と比較</strong><small>目の前の商品と同じ内容量で価格を比較</small></span>${chevron(shopExpanded?'down':'up')}</button>
 <div id="shop-compare-fields" ${shopExpanded?'':'hidden'}><p class="shop-compare-instruction">店頭商品の内容量を入力</p>${UI.quantityUnitFields({quantityId:"compare-quantity",unitId:"compare-unit",quantity:compareQuantity??"",unit:compareUnit||UNIT_OPTIONS[0],placeholder:"例：1100",extra:'inputmode="decimal"'})}</div></section>`;
- return `${head('価格情報',itemLabel(i),true)}<main class="detail-main comparison-main"><p class="price-purpose">登録した商品の、お店ごとの最安値を確認</p>${UI.sectionHeading({title:"登録商品",subtitle:priceScope==='unit'&&unitLabel?unitLabel+"の換算価格":"税込・安い順",className:"detail-section-heading price-heading",trailing:UI.dropdown({id:"price-period",value:period,label:"期間",compact:true,open:periodMenu,options:[{value:"3m",label:"直近3か月"},{value:"1y",label:"直近1年"}]})})}<div class="normalized-price-slot">${normalizedPriceSummary(products,period)}</div><div class="comparison-list">${productRows}</div><button type="button" class="tertiary manage-add product-register-action" data-act="productPick">${miniIcon('plus')}<span>商品を登録</span></button></main>${unitControls}`;
+ return `${head('価格情報',itemLabel(i),true)}<main class="detail-main comparison-main"><p class="price-purpose">登録した商品の、お店ごとの最安値を確認</p>${UI.sectionHeading({title:"登録商品",subtitle:priceScope==='unit'&&unitLabel?unitLabel+"の換算価格":"税込・安い順",className:"detail-section-heading price-heading",trailing:UI.dropdown({id:"price-period",value:period,label:"期間",compact:true,open:periodMenu,options:[{value:"3m",label:"直近3か月"},{value:"1y",label:"直近1年"}]})})}<div class="normalized-price-slot">${normalizedPriceSummary(products,period)}</div><div class="comparison-list">${productRows}</div>${UI.button({label:'商品を登録',variant:'tertiary',action:'productPick',icon:'plus',className:'manage-add product-register-action'})}</main>${unitControls}`;
 }
 function formView(){
  const editing=page==='edit',i=editing?current():null;
@@ -1568,7 +1570,7 @@ function managementRow({name,sub,action,aria,details='',editId=null,productId=nu
 function productsView(){
  const i=current();if(!i)return listView();
  const rows=registeredProducts(selected).map(p=>managementRow({name:p.name,sub:p.packageQuantity&&p.packageUnit?`${p.packageQuantity} ${p.packageUnit}`:'内容量未設定',action:`data-premove="${esc(p.id)}"`,aria:`${productTitle(p)}の登録を解除`,editId:p.id,productId:p.id}));
- return `${head('登録商品の管理',i.name,true)}<main class="manage-main"><p class="hint">長押しで登録商品の表示順を変更できます。先頭の商品が日用品一覧に表示されます。</p><div class="catalogue-rows">${rows.join('')||'<div class="panel empty">登録商品はありません</div>'}</div><button class="primary manage-add" data-act="productPick">＋ 商品を登録</button></main>`;
+ return `${head('登録商品の管理',i.name,true)}<main class="manage-main"><p class="hint">長押しで登録商品の表示順を変更できます。先頭の商品が日用品一覧に表示されます。</p><div class="catalogue-rows">${rows.join('')||'<div class="panel empty">登録商品はありません</div>'}</div>${UI.button({label:'＋ 商品を登録',variant:'primary',action:'productPick',className:'manage-add'})}</main>`;
 }
 
 
@@ -1582,7 +1584,7 @@ function pickerResults(){
 }
 function pickerView(){
  const search=`<div class="formfield"><label for="catalogue-search">商品を検索</label>${UI.searchField({id:'catalogue-search',label:'商品を検索',placeholder:'名称で検索',value:pickQuery,extra:'autocomplete="off"'})}</div>`;
- return UI.sheet({title:'商品を登録',variant:'product-picker-modal',body:`<div class="product-picker-sheet"><div class="product-picker-search">${search}</div><div id="catalogue-results" class="product-picker-results">${pickerResults()}</div><button type="button" class="tertiary product-picker-create" data-act="productCreate">＋ 新しい商品を作成</button><p class="hint product-picker-create-help">まだ買っていない商品も登録できます。</p><div class="product-picker-footer">${esc(itemLabel(current())||'日用品')}に登録</div></div>`});
+ return UI.sheet({title:'商品を登録',variant:'product-picker-modal',body:`<div class="product-picker-sheet"><div class="product-picker-search">${search}</div><div id="catalogue-results" class="product-picker-results">${pickerResults()}</div>${UI.button({label:'＋ 新しい商品を作成',variant:'tertiary',action:'productCreate',className:'product-picker-create'})}<p class="hint product-picker-create-help">まだ買っていない商品も登録できます。</p><div class="product-picker-footer">${esc(itemLabel(current())||'日用品')}に登録</div></div>`});
 }
 function productCreateView(){
  const i=current();if(!i)return '';
@@ -1591,7 +1593,7 @@ function productCreateView(){
  if(editing&&!p)return '';
  const fields=UI.formField({id:'new-product-name',name:'name',label:'商品名',value:p?.name||(editing?'':pickQuery)||'',required:true,maxlength:80,placeholder:'商品名を入力'})+
  UI.quantityUnitFields({quantityId:'new-product-quantity',unitId:'new-product-unit',quantity:p?.packageQuantity??'',unit:p?.packageUnit||'mL',extra:'inputmode="decimal" pattern="[0-9]+([.,][0-9]+)?"'});
- const form=`<form id="productCreateForm">${fields}<div class="formactions"><button class="primary" type="submit">${editing?'変更を保存':'商品を登録'}</button></div></form>`;
+ const form=`<form id="productCreateForm">${fields}<div class="formactions">${UI.button({label:editing?'変更を保存':'商品を登録',variant:'primary',type:'submit'})}</div></form>`;
  return editing?UI.sheet({title:'商品を編集',variant:'product-editor-sheet',body:form}):`${head('新しい商品を作成',i.name,true)}<main class="manage-main">${form}<p class="hint">内容量が不明なら空欄でも登録できます。</p></main>`;
 }
 
