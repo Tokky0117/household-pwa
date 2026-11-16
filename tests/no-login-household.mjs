@@ -378,9 +378,18 @@ await waitFor(()=>b.window.KurashiLive.state().loaded&&
 assert.equal(getStock(),true,'rapid toggles preserve the final in-stock state');
 assert.equal(pill(b),'あり','DOM reflects the final stock state');
 const history=temp.db.processed_operations.length;
-// Simulate server commit with the HTTP response lost, then app restart.
+// A single tap is locally durable immediately, but the network send waits for
+// the 1500 ms idle window. Other operations still use immediate flush.
+await waitFor(()=>!b.window.KurashiLive.state().busy,'ready for debounce test');
 loseOneWriteResponse=true;
 clickStock(b);
+await waitFor(()=>pill(b)==='なし'&&b.window.KurashiLive.state().queued===1,
+ 'stock state changes immediately before network debounce');
+await pause(550);
+assert.equal(getVersion(),2,'stock update is not sent after only 550ms');
+assert.equal(temp.db.processed_operations.length,history,
+ 'short pause does not create an unnecessary server write');
+// Simulate server commit with the HTTP response lost, then app restart.
 await waitFor(()=>getVersion()===3&&b.window.KurashiLive.state().queued===1,
  'server committed but no response received');
 const afterCommit=temp.db.processed_operations.length;
