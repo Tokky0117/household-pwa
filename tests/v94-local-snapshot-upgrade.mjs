@@ -134,7 +134,8 @@ async function makeEnvironment({pending=false,localOnly=false,serverOld=false,se
 }
 const index=readFileSync(new URL('../index.html',import.meta.url),'utf8');
 const app=readFileSync(new URL('../app.js',import.meta.url),'utf8');
-assert.match(app,/^const APP_VERSION='0\.94\.4';/);
-assert.match(index,/live-client\.js\?v=94\.4-shared-ui/);
-assert.match(index,/app\.js\?v=94\.4-shared-ui/);
+assert.match(app,/^const APP_VERSION='0\.94\.5';/);
+assert.match(index,/live-client\.js\?v=94\.5-package/);
+assert.match(index,/app\.js\?v=94\.5-package/);
+assert.match(index,/product-package\\.js\\?v=94\\.5-package/);
 console.log('v46 to v94 local cache, legacy server detection, browser asset versions OK');
