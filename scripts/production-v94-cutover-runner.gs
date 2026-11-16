@@ -52,8 +52,8 @@ function kurashiProdV94SourceAndBackup_(){
 /** Read-only diagnosis; prints counts only, not receipt names, IDs or cells. */
 function kurashiProductionV94CutoverPreflight(){
  const plan=kurashiProdV94SourceAndBackup_();
- const report={status:'SOURCE_EQUALS_BACKUP',mode:'READ_ONLY',
-  ...plan.converted.report,writePerformed:false};
+ const report={...plan.converted.report,
+  status:'SOURCE_EQUALS_BACKUP',mode:'READ_ONLY',writePerformed:false};
  console.log('PRODUCTION_V94_CUTOVER_PREFLIGHT '+JSON.stringify(report));
  return report;
 }
