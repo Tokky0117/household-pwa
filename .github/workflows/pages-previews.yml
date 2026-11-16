@@ -44,6 +44,7 @@ jobs:
           node tests/v94-local-snapshot-upgrade.mjs
           node tests/production-release-guards.mjs
           node tests/production-v94-converter.mjs
+          node tests/production-v94-cutover-runner.mjs
 
       - name: Build verified prior PaddleOCR for the main receipt screen
         shell: bash
