@@ -1,0 +1,218 @@
+name: Production v94 migration and publish (owner approval)
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: '先にpreflightで確認。問題なければapply_and_publishで本番反映'
+        type: choice
+        required: true
+        default: preflight
+        options:
+          - preflight
+          - apply_and_publish
+      production_gas_script_id:
+        description: '確認済みの本番GAS編集URLにあるスクリプトID'
+        type: string
+        required: true
+      confirm_old_clients_stopped:
+        description: '全端末の旧アプリが停止し、未送信操作もない'
+        type: boolean
+        required: true
+        default: false
+      confirm_production_cutover:
+        description: '本番を更新するときのみ APPLY_V94 と入力（preflightでは不要）'
+        type: string
+        required: false
+
+permissions:
+  contents: write
+
+concurrency:
+  group: kurashi-production-v94-cutover
+  cancel-in-progress: false
+
+jobs:
+  migrate:
+    if: github.ref == 'refs/heads/main' && github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      PROD_GAS_SCRIPT_ID: ${{ inputs.production_gas_script_id }}
+      PROD_GAS_EXEC_URL: ${{ vars.KURASHI_PRODUCTION_GAS_EXEC }}
+      CLASPRC_JSON: ${{ secrets.CLASPRC_JSON }}
+      CUTOVER_MODE: ${{ inputs.mode }}
+      CONFIRM_CLIENTS_STOPPED: ${{ inputs.confirm_old_clients_stopped }}
+      CONFIRM_PRODUCTION_CUTOVER: ${{ inputs.confirm_production_cutover }}
+    steps:
+      - name: Verify required approvals before accessing Google
+        shell: bash
+        run: |
+          set -euo pipefail
+          node - <<'NODE'
+          const env=process.env;
+          if(!/^[A-Za-z0-9_-]{25,120}$/.test(env.PROD_GAS_SCRIPT_ID||''))
+            throw Error('INVALID_PRODUCTION_GAS_PROJECT_ID');
+          if(env.CONFIRM_CLIENTS_STOPPED!=='true')
+            throw Error('STOP_ALL_OLD_CLIENTS_AND_CLEAR_QUEUES_FIRST');
+          if(env.CUTOVER_MODE==='apply_and_publish'&&
+             env.CONFIRM_PRODUCTION_CUTOVER!=='APPLY_V94')
+            throw Error('EXPLICIT_PRODUCTION_CUTOVER_APPROVAL_REQUIRED');
+          if(!['preflight','apply_and_publish'].includes(env.CUTOVER_MODE))
+            throw Error('UNKNOWN_CUTOVER_MODE');
+          if(!env.CLASPRC_JSON)throw Error('CLASPRC_CREDENTIALS_MISSING');
+          if(!/^https:\/\/script\.google\.com\/macros\/s\/[A-Za-z0-9_-]{25,120}\/exec$/.test(env.PROD_GAS_EXEC_URL||''))
+            throw Error('EXISTING_PRODUCTION_EXEC_URL_MISSING');
+          NODE
+      - name: Checkout release candidate, not main app source
+        uses: actions/checkout@v4
+        with:
+          ref: production-v94-release-ready
+          fetch-depth: 0
+          persist-credentials: true
+      - name: Ensure production main is ancestor and release is tested
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --prune origin '+refs/heads/main:refs/remotes/origin/main'
+          git merge-base --is-ancestor refs/remotes/origin/main HEAD
+          node tests/production-v94-converter.mjs
+          node tests/production-v94-cutover-runner.mjs
+          node tests/production-v94-admin-shim.mjs
+          node tests/production-gas-bundle.mjs
+          node tests/production-release-guards.mjs
+          node --check scripts/verify-production-gas-result.mjs
+      - name: Prepare owner-only clasp authorization
+        shell: bash
+        run: |
+          set -euo pipefail
+          node - <<'NODE'
+          const fs=require('node:fs'),path=require('node:path');
+          const auth=process.env.CLASPRC_JSON;
+          JSON.parse(auth);
+          fs.writeFileSync(path.join(process.env.HOME,'.clasprc.json'),auth,{mode:0o600});
+          const root=path.join(process.env.RUNNER_TEMP,'production-gas');
+          for(const part of ['remote','admin','final']){
+            const dir=path.join(root,part);
+            fs.mkdirSync(dir,{recursive:true});
+            fs.writeFileSync(path.join(dir,'.clasp.json'),
+              JSON.stringify({scriptId:process.env.PROD_GAS_SCRIPT_ID,rootDir:'.'}));
+          }
+          NODE
+      - name: Read existing GAS and verify live deployment ownership
+        id: remote
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP/production-gas/remote"
+          npx --yes @google/clasp@3 pull
+          npx --yes @google/clasp@3 list-deployments "$PROD_GAS_SCRIPT_ID" \
+            > "$RUNNER_TEMP/production-gas-deployments.txt"
+          cd "$GITHUB_WORKSPACE"
+          node scripts/verify-production-gas-remote.mjs \
+            "$RUNNER_TEMP/production-gas/remote" \
+            "$RUNNER_TEMP/production-gas-deployments.txt"
+          echo 'checked=true' >> "$GITHUB_OUTPUT"
+      - name: Retain original production GAS source before any source push
+        uses: actions/upload-artifact@v4
+        with:
+          name: production-gas-before-v94-${{ github.run_id }}
+          path: ${{ runner.temp }}/production-gas/remote/
+          if-no-files-found: error
+          retention-days: 30
+      - name: Assemble temporary admin and final two-file production source
+        shell: bash
+        run: |
+          set -euo pipefail
+          root="$RUNNER_TEMP/production-gas"
+          cp -a "$root/remote/." "$root/admin/"
+          cp scripts/production-v94-converter.gs "$root/admin/ProductionV94Converter.gs"
+          cp scripts/production-v94-cutover-runner.gs "$root/admin/ProductionV94Runner.gs"
+          cp scripts/production-v94-admin-shim.gs "$root/admin/ProductionV94Admin.gs"
+          node scripts/build-production-gas.mjs "$root/final"
+          cp "$root/remote/appsscript.json" "$root/final/appsscript.json"
+          node - <<'NODE'
+          const fs=require('node:fs'),path=require('node:path');
+          const file=path.join(process.env.RUNNER_TEMP,'production-gas','admin','appsscript.json');
+          const manifest=JSON.parse(fs.readFileSync(file,'utf8'));
+          if(manifest.runtimeVersion&&manifest.runtimeVersion!=='V8')
+            throw Error('UNEXPECTED_PRODUCTION_GAS_RUNTIME');
+          if(manifest.executionApi&&manifest.executionApi.access!=='MYSELF')
+            throw Error('UNSAFE_EXECUTION_API_ACCESS');
+          manifest.executionApi={access:'MYSELF'};
+          fs.writeFileSync(file,JSON.stringify(manifest));
+          NODE
+      - name: Push temporary owner-only migration helpers (NOT web-app deployment)
+        id: admin_push
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP/production-gas/admin"
+          npx --yes @google/clasp@3 push --force
+      - name: Check real production schema through authenticated script execution
+        id: preflight
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP/production-gas/admin"
+          params="$(node -e 'process.stdout.write(JSON.stringify([process.env.PROD_GAS_SCRIPT_ID]))')"
+          npx --yes @google/clasp@3 run-function \
+            kurashiProductionV94AdminPreflightForCi --params "$params" --json \
+            > "$RUNNER_TEMP/prod-v94-preflight.json" \
+            2> "$RUNNER_TEMP/prod-v94-preflight.err" || true
+          node "$GITHUB_WORKSPACE/scripts/verify-production-gas-result.mjs" \
+            preflight "$RUNNER_TEMP/prod-v94-preflight.json" "$RUNNER_TEMP/prod-v94-preflight.err"
+      - name: Apply one-time production Sheets migration with verified automatic backup
+        id: cutover
+        if: inputs.mode == 'apply_and_publish'
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP/production-gas/admin"
+          params="$(node -e 'process.stdout.write(JSON.stringify([process.env.PROD_GAS_SCRIPT_ID,"APPLY_PRODUCTION_V94_WITH_VERIFIED_BACKUP"]))')"
+          npx --yes @google/clasp@3 run-function \
+            kurashiProductionV94AdminApplyForCi --params "$params" --json \
+            > "$RUNNER_TEMP/prod-v94-apply.json" \
+            2> "$RUNNER_TEMP/prod-v94-apply.err" || true
+          node "$GITHUB_WORKSPACE/scripts/verify-production-gas-result.mjs" \
+            apply "$RUNNER_TEMP/prod-v94-apply.json" "$RUNNER_TEMP/prod-v94-apply.err"
+      - name: Restore old GAS source after read-only preflight or failed preflight
+        if: always() && steps.admin_push.outcome == 'success' && (inputs.mode == 'preflight' || steps.preflight.outcome != 'success')
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP/production-gas/remote"
+          npx --yes @google/clasp@3 push --force
+          echo 'Read-only preflight complete; original GAS restored. Web deployment unchanged.' >> "$GITHUB_STEP_SUMMARY"
+      - name: Publish final GAS bundle without admin helpers or setup function
+        id: new_gas
+        if: inputs.mode == 'apply_and_publish'
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP/production-gas/final"
+          npx --yes @google/clasp@3 push --force
+          npx --yes @google/clasp@3 pull
+          node - <<'NODE'
+          const fs=require('node:fs'),path=require('node:path');
+          const root=path.join(process.env.RUNNER_TEMP,'production-gas','final');
+          const scripts=fs.readdirSync(root).filter(x=>/\.(?:js|gs)$/.test(x));
+          if(scripts.length!==2)throw Error('ADMIN_CODE_LEFT_IN_FINAL_PRODUCTION_GAS');
+          const code=scripts.map(x=>fs.readFileSync(path.join(root,x),'utf8')).join('\n');
+          if(/kurashiProductionV94Admin|kurashiProductionV94ApplyCutover|setupNewWorkbook\s*\(/.test(code))
+            throw Error('TEMPORARY_OR_SETUP_CODE_LEFT_IN_PRODUCTION');
+          NODE
+          target="$(node -e 'process.stdout.write(process.env.PROD_GAS_EXEC_URL.match(/\/s\/([A-Za-z0-9_-]+)\/exec$/)[1])')"
+          npx --yes @google/clasp@3 update-deployment "$target"
+          npx --yes @google/clasp@3 list-deployments "$PROD_GAS_SCRIPT_ID" \
+            > "$RUNNER_TEMP/production-deployments-after.txt"
+          grep -Fq "$target" "$RUNNER_TEMP/production-deployments-after.txt"
+      - name: Publish verified release branch to existing production main
+        if: inputs.mode == 'apply_and_publish'
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --prune origin '+refs/heads/main:refs/remotes/origin/main'
+          git merge-base --is-ancestor refs/remotes/origin/main HEAD
+          git push origin HEAD:refs/heads/main
+          echo 'Updated production Sheets and GAS, then fast-forwarded main to v0.94.5.' >> "$GITHUB_STEP_SUMMARY"
