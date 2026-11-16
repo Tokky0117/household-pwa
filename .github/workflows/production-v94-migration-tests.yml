@@ -19,5 +19,7 @@ jobs:
         run: node tests/production-v94-converter.mjs
       - name: Non-deployed production cutover dry-run and safety tests
         run: node tests/production-v94-cutover-runner.mjs
-      - name: Verify production-only GAS bundle\n        run: node tests/production-gas-bundle.mjs\n      - name: Production release structure checks
+      - name: Verify production-only GAS bundle
+        run: node tests/production-gas-bundle.mjs
+      - name: Production release structure checks
         run: node tests/production-release-guards.mjs
