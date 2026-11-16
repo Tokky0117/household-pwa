@@ -7,13 +7,15 @@ const raw=process.env.CLASPRC_JSON||'';
 if(!raw){console.log('PROD_GOOGLE_CAPABILITY auth=missing');process.exit(0);}
 let cfg;
 try{cfg=JSON.parse(raw);}catch{console.log('PROD_GOOGLE_CAPABILITY auth=invalid');process.exit(0);}
-const token=cfg.token||cfg.tokens||{};
-const settings=cfg.oauth2ClientSettings||cfg;
+const token=cfg.tokens?.default||cfg.token||cfg.tokens||{};
+const settings=cfg.oauth2ClientSettings||cfg.tokens?.default||cfg;
 const refresh=token.refresh_token||cfg.refresh_token;
 let access=token.access_token||cfg.access_token;
-if(refresh&&settings.clientId&&settings.clientSecret){
+const clientId=settings.clientId||settings.client_id;
+const clientSecret=settings.clientSecret||settings.client_secret;
+if(refresh&&clientId&&clientSecret){
  const params=new URLSearchParams({
-  client_id:settings.clientId,client_secret:settings.clientSecret,
+  client_id:clientId,client_secret:clientSecret,
   refresh_token:refresh,grant_type:'refresh_token'
  });
  const res=await fetch('https://oauth2.googleapis.com/token',{
@@ -22,7 +24,7 @@ if(refresh&&settings.clientId&&settings.clientSecret){
  if(res.ok){access=(await res.json()).access_token;}
  else {console.log('PROD_GOOGLE_CAPABILITY auth=refresh_failed status='+res.status);process.exit(0);}
 }
-if(!access){const shape=(obj,depth=0)=>!obj||typeof obj!=='object'||depth>=3?null:Object.fromEntries(Object.entries(obj).map(([key,val])=>[key,typeof val==='object'&&val!==null?shape(val,depth+1):'<redacted>']));console.log('PROD_GOOGLE_CAPABILITY auth=token_unavailable shape='+JSON.stringify(shape(cfg)));process.exit(0);}
+if(!access){console.log('PROD_GOOGLE_CAPABILITY auth=token_unavailable');process.exit(0);}
 async function probe(url){
  try{const res=await fetch(url,{headers:{Authorization:'Bearer '+access},redirect:'error'});
   if(!res.ok)return {ok:false,status:res.status};
