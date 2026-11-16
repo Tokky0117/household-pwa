@@ -1403,6 +1403,62 @@ const UI={
   actions({items,label,compact=false,hidden=false}){return commonMenu(items,{label,compact,hidden})}
 
 };
+// Shared product form helper. A package size is never the receipt purchase count.
+function guessedPackage(name,suggestion=null){
+ return window.KurashiProductPackage?.candidate(name,suggestion)||null;
+}
+function productPackageFields({name,quantityId,unitId,quantity=null,unit=null,
+   suggestion=null,editing=false}){
+ const suggested=editing?null:guessedPackage(name,suggestion);
+ const value=quantity??suggested?.quantity??'';
+ const unitValue=unit||suggested?.unit||'g';
+ const origin=suggested?'auto':editing||quantity!==null?'manual':'empty';
+ const hint=suggested?.source==='ai'?'生成AIによる内容量候補です。正しいか確認してください。':
+  suggested?'商品名から内容量を自動入力しました。違う場合は変更できます。':
+  '内容量を登録すると、異なる容量の商品も同じ単位で価格比較できます。';
+ return `<details class="product-package-details" data-package-mode="${origin}" ${value!==''?'open':''}>
+  <summary>内容量（任意）</summary>
+  <p class="hint product-package-hint">${esc(hint)}</p>
+  ${UI.quantityUnitFields({quantityId,unitId,quantity:value,unit:unitValue,
+    extra:'inputmode="decimal"'})}
+ </details>`;
+}
+function refreshAutoPackage(nameInput){
+ const form=nameInput.closest('form');
+ const wrapper=form?.querySelector('.product-package-details');
+ if(!wrapper||wrapper.dataset.packageMode==='manual')return;
+ const guess=guessedPackage(nameInput.value,form?._packageSuggestion);
+ const qty=wrapper.querySelector('.ui-quantity-unit input[name="quantity"]');
+ const unit=wrapper.querySelector('.ui-quantity-unit input[name="unit"]');
+ if(!qty||!unit)return;
+ qty.value=guess?.quantity??'';
+ if(guess){
+  unit.value=guess.unit;
+  const select=unit.closest('.ui-select');
+  const option=[...(select?.querySelectorAll('[data-ui-choice]')||[])]
+   .find(x=>x.dataset.uiChoice===guess.unit);
+  const label=select?.querySelector('.ui-select-label');
+  if(label&&option)label.textContent=option.querySelector('.ui-menu-label')?.textContent||guess.unit;
+  select?.querySelectorAll('[data-ui-choice]').forEach(x=>{
+   const active=x.dataset.uiChoice===guess.unit;
+   x.classList.toggle('selected',active);x.setAttribute('aria-pressed',String(active));
+   const tick=x.querySelector('.ui-menu-selected');if(tick)tick.textContent=active?'✓':'';
+  });
+  wrapper.open=true;
+ }
+ wrapper.dataset.packageMode=guess?'auto':'empty';
+ wrapper.querySelector('.product-package-hint').textContent=
+  guess?.source==='ai'?'生成AIによる内容量候補です。正しいか確認してください。':
+  guess?'商品名から内容量を自動入力しました。違う場合は変更できます。':
+  '内容量を登録すると、異なる容量の商品も同じ単位で価格比較できます。';
+}
+function productPackageValues(data){
+ const raw=String(data.get('quantity')??'').trim(),unit=String(data.get('unit')||'');
+ if(!raw)return {quantity:null,unit:null};
+ const quantity=Number(raw.replace(',','.'));
+ if(!window.KurashiProductPackage?.valid(quantity,unit))return null;
+ return {quantity,unit};
+}
 const svg=k=>`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${icons[k]}</svg>`;
 function head(title,sub='',back=false,right='',left=''){return `<header class="top"><div class="headrow"><div class="head-left">${back?`${UI.iconButton({label:'戻る',action:'back',iconHtml:chevron('left')})}`:left}</div><div class="head-title">${sub?`<p class="eyebrow">${esc(sub)}</p>`:''}<h1>${esc(title)}</h1></div><div class="head-right">${right}</div></div></header>`}
 function nav(){return `<nav class="bottom" aria-label="メインメニュー"><div class="tabs">${[['items','日用品'],['receipt','明細'],['settings','設定']].map(([k,v])=>`<button class="tab ${tab===k?'active':''}" data-tab="${k}" ${tab===k?'aria-current="page"':''}>${svg(k)}<span>${v}</span></button>`).join('')}</div></nav>`}
