@@ -42,6 +42,7 @@ jobs:
           node tests/trial-sheet-schema-cutover.mjs
           node tests/gas-execution-result.mjs
           node tests/v94-local-snapshot-upgrade.mjs
+          node tests/production-release-guards.mjs
 
       - name: Build verified prior PaddleOCR for the main receipt screen
         shell: bash
