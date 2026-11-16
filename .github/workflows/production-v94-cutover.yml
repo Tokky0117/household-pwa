@@ -1,4 +1,4 @@
-name: Production v94 migration and publish (owner approval)
+name: Retired production v94 API execution route (do not run)
 
 on:
   workflow_dispatch:
@@ -34,7 +34,7 @@ concurrency:
 
 jobs:
   migrate:
-    if: github.ref == 'refs/heads/main' && github.event_name == 'workflow_dispatch'
+    if: false # retired: owner OAuth cannot call scripts.run; use manual-owner workflow
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
