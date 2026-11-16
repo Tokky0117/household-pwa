@@ -357,7 +357,9 @@ function recordProductView(){
   '<form id="recordProductCreateForm">'+
     UI.formField({id:'record-product-name',name:'name',label:'商品名',value:proposed,
      maxlength:80,required:true,placeholder:'商品名を入力',hint:true})+
-    '<p class="hint">内容量と日用品への紐付けは商品マスタで後から設定できます。</p>'+
+    productPackageFields({name:proposed,quantityId:'record-product-quantity',
+     unitId:'record-product-unit'})+
+    '<p class="hint">日用品への紐付けは商品マスタで後から設定できます。</p>'+
     UI.button({label:'商品を登録して紐付け',variant:'primary',type:'submit',disabled:recordProductSaving})+
     UI.textAction({label:'登録済みの商品から選ぶ',action:'recordProductShowList',arrow:false})+
   '</form>':
@@ -497,9 +499,12 @@ function scanProductView(){
  if(!item)return `${head('新しい商品を登録','レシートの明細',true)}<main class="manage-main scan-product-page"><p>対象の明細が見つかりません。</p></main>`;
  const fields=[
   '<p class="scan-setting-source"><span>読み取り名</span><strong>'+esc(item.inputOrigin==='photo'?item.name:item.ocrRawName||item.name||'読み取り不可')+'</strong></p>',
-  UI.formField({id:'scan-product-name',name:'name',label:'登録商品名',value:item.canonicalName||item.productSuggestion?.newName||item.inferredName||item.nameCandidate||item.name,maxlength:80,required:true})
+  UI.formField({id:'scan-product-name',name:'name',label:'登録商品名',value:item.canonicalName||item.productSuggestion?.newName||item.inferredName||item.nameCandidate||item.name,maxlength:80,required:true}),
+  productPackageFields({name:item.canonicalName||item.productSuggestion?.newName||item.inferredName||item.nameCandidate||item.name,
+   quantityId:'scan-product-quantity',unitId:'scan-product-unit',
+   suggestion:item.productSuggestion})
  ].join('');
- return `${head('新しい商品を登録','レシートの明細',true)}<main class="manage-main scan-product-page">${scanModalPhotoLinks()}<form id="scanProductForm">${fields}<p class="hint">内容量と日用品への紐付けは、後から商品マスタで設定できます。</p><div class="formactions">${UI.button({label:'商品を登録',variant:'primary',type:'submit'})}</div></form></main>`;
+ return `${head('新しい商品を登録','レシートの明細',true)}<main class="manage-main scan-product-page">${scanModalPhotoLinks()}<form id="scanProductForm">${fields}<p class="hint">日用品への紐付けは、後から商品マスタで設定できます。</p><div class="formactions">${UI.button({label:'商品を登録',variant:'primary',type:'submit'})}</div></form></main>`;
 }
 function scanExistingProductResults(){
  const q=norm(scanExistingQuery);
@@ -1648,8 +1653,11 @@ function productCreateView(){
  const editing=page==='productEdit';
  const p=editing?catalogue.products.find(x=>x.id===editingProductId&&x.householdItemId===selected):null;
  if(editing&&!p)return '';
- const fields=UI.formField({id:'new-product-name',name:'name',label:'商品名',value:p?.name||(editing?'':pickQuery)||'',required:true,maxlength:80,placeholder:'商品名を入力'})+
- UI.quantityUnitFields({quantityId:'new-product-quantity',unitId:'new-product-unit',quantity:p?.packageQuantity??'',unit:p?.packageUnit||'mL',extra:'inputmode="decimal" pattern="[0-9]+([.,][0-9]+)?"'});
+ const productName=p?.name||(editing?'':pickQuery)||'';
+ const fields=UI.formField({id:'new-product-name',name:'name',label:'商品名',value:productName,required:true,maxlength:80,placeholder:'商品名を入力'})+
+ productPackageFields({name:productName,quantityId:'new-product-quantity',
+   unitId:'new-product-unit',quantity:p?.packageQuantity??null,unit:p?.packageUnit||null,
+   editing});
  const form=`<form id="productCreateForm">${fields}<div class="formactions">${UI.button({label:editing?'変更を保存':'商品を登録',variant:'primary',type:'submit'})}</div></form>`;
  return editing?UI.sheet({title:'商品を編集',variant:'product-editor-sheet',body:form}):`${head('新しい商品を作成',i.name,true)}<main class="manage-main">${form}<p class="hint">内容量が不明なら空欄でも登録できます。</p></main>`;
 }
@@ -1834,8 +1842,9 @@ function masterProductEditorView(){
  if(editing&&!p)return masterProductsView();
  const fields=UI.formField({id:'master-product-name',name:'name',
   label:'商品マスタの正式商品名',value:p?.name||'',required:true,maxlength:80})+
-  UI.quantityUnitFields({quantityId:'master-product-quantity',unitId:'master-product-unit',
-   quantity:p?.packageQuantity??'',unit:p?.packageUnit||'個',extra:'inputmode="decimal"'})+
+  productPackageFields({name:p?.name||'',quantityId:'master-product-quantity',
+   unitId:'master-product-unit',quantity:p?.packageQuantity??null,
+   unit:p?.packageUnit||null,editing})+
   UI.formField({id:'master-product-group',name:'group',label:'日用品との紐付け（任意）',
    control:'picker',pickerLayout:'inline',value:p?.householdItemId||'',
    display:masterGroupLabel(p?.householdItemId||''),action:'masterGroupPickerOpen',actionLabel:'変更'});
