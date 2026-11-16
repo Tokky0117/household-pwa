@@ -65,6 +65,11 @@ function kurashiProdV94ArchiveName_(name){return '__v88_archive_'+name;}
 function kurashiProdV94ReadOne_(sheet){
  return sheet.getRange(1,1,sheet.getLastRow(),sheet.getLastColumn()).getValues();
 }
+function kurashiProdV94EnsureCapacity_(sheet,rows,columns){
+ const maxRows=sheet.getMaxRows(),maxCols=sheet.getMaxColumns();
+ if(maxRows<rows)sheet.insertRowsAfter(maxRows,rows-maxRows);
+ if(maxCols<columns)sheet.insertColumnsAfter(maxCols,columns-maxCols);
+}
 function kurashiProdV94VerifyStaging_(book,tables){
  for(const [name,expected] of Object.entries(tables)){
   const sheet=book.getSheetByName(kurashiProdV94StageName_(name));
@@ -94,6 +99,7 @@ function kurashiProductionV94ApplyCutover(){
    if(book.getSheetByName(stageName))
     kurashiProdV94RunnerFail_('STAGE_ALREADY_EXISTS:'+name);
    const sh=book.insertSheet(stageName);
+   kurashiProdV94EnsureCapacity_(sh,data.length,data[0].length);
    if(name==='users')sh.getRange(2,4,Math.max(1,data.length-1),1).setNumberFormat('@');
    if(name==='records')sh.getRange(2,5,Math.max(1,data.length-1),1).setNumberFormat('@');
    sh.getRange(1,1,data.length,data[0].length).setValues(data);
