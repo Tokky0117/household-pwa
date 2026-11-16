@@ -452,11 +452,15 @@ function recordDetailView(){
      <strong class="detail-record-line-amount">${yen(Number(line.line_total_tax_included||0))}</strong>
     </div>
     ${!isShelf&&line.non_ocr_name&&rawReceiptName(line)&&rawReceiptName(line)!==line.non_ocr_name?`<div class="detail-record-line-meta"><span>読み取り名：${esc(rawReceiptName(line))}</span></div>`:''}
-    <div class="detail-record-line-meta"><span>${isShelf?'販売個数':'数量'} ${esc(line.quantity)}</span>
-     ${line.linked_product_id?`<span>登録商品：${esc(catalogue.products.find(p=>p.id===line.linked_product_id)?.name||'商品を確認')}</span>`:
-      '<span>商品未紐付け</span>'}</div>
+    <div class="detail-record-product-row">
+     <div class="detail-record-line-meta"><span>${isShelf?'販売個数':'数量'} ${esc(line.quantity)}</span>
+      ${line.linked_product_id?`<span>登録商品：${esc(catalogue.products.find(p=>p.id===line.linked_product_id)?.name||'商品を確認')}</span>`:
+       '<span>商品未紐付け</span>'}</div>
+     ${!isShelf&&liveMode?UI.button({label:line.linked_product_id?'変更':'商品を設定',
+       variant:'tertiary',action:'recordProductOpen',recordItemId:line.record_item_id,
+       className:'record-product-setting-button'}):''}
+    </div>
     ${!isShelf&&!line.linked_product_id&&line.product_name_candidate?`<div class="detail-record-line-meta detail-product-proposal"><span class="detail-candidate-origin" role="img" aria-label="生成AIによる候補">${miniIcon('sparkles')}</span><span>商品名候補：${esc(line.product_name_candidate)}${line.candidate_match_type==='new'?'（新規）':line.candidate_match_type==='existing'?'（既存）':'（未判定）'}</span></div>`:''}
-    ${!isShelf&&liveMode?`<div class="scan-picker-actions">${UI.button({label:'商品を設定',variant:'tertiary',action:'recordProductOpen',recordItemId:line.record_item_id})}</div>`:''}
    </div>`).join('')}
   </section>
   <section class="detail-record-total" aria-label="${isShelf?'価格合計':'合計'}">
@@ -1091,9 +1095,7 @@ ${['manual','edit'].includes(scanDraft.source)?'':`
 }
 function scanPhotoSection(){
  if(!scanPhotos.length){
-  return '<section class="scan-photo-section scan-photo-empty"><p class="hint">レシートの写真から、購入した商品と金額を読み取ります。</p>'+
-   UI.button({label:'写真を選択',variant:'primary',action:'scanAddPhotos',icon:'plus',className:'scan-photo-add'})+
-   '</section>';
+  return '<section class="scan-photo-section scan-photo-empty"><p class="hint">レシートの写真から、購入した商品と金額を読み取ります。</p></section>';
  }
  const editing=!scanBusy;
  return `<section class="scan-photo-section">
@@ -1117,13 +1119,18 @@ function receiptScanView(){
   reviewing&&scanDraft.source==='manual'?(shelfEdit?'値札入力':'レシート入力'):'レシート読取';
  return `${head(editTitle,'くらしストック',true)}<main class="preview-record-page receipt-scan-page">
  ${reviewing?'':scanPhotoSection()}
- ${!reviewing&&scanPhotos.length?UI.button({label:scanBusy?'読み取り中…':scanReadFailed?'もう一度読み取る':'写真を読み取る',
-   variant:'primary',action:'scanStart',icon:'receiptText',disabled:scanBusy,className:'scan-photo-start'}):''}
+ ${!reviewing&&scanPhotos.length?'<p class="hint scan-photo-ready">写真を確認したら、下のボタンから読み取ってください。</p>':''}
  ${!reviewing&&scanBusy&&scanStatus?UI.statusMessage({text:scanStatus,id:'scan-status',className:'scan-status-progress'}):''}
  ${!reviewing&&scanError?UI.statusMessage({text:scanError,kind:'error',className:'scan-status-error'}):''}
  ${reviewing?scanReadingStatusView():''}
  ${scanFormView()}
  </main>
+ ${!reviewing?'<div class="scan-photo-sticky-action">'+
+   UI.button({label:!scanPhotos.length?'写真を選択':
+    scanBusy?'読み取り中…':scanReadFailed?'もう一度読み取る':'写真を読み取る',
+    variant:'primary',action:!scanPhotos.length?'scanAddPhotos':'scanStart',
+    icon:!scanPhotos.length?'plus':'receiptText',disabled:scanBusy,
+    className:'scan-photo-primary-action'})+'</div>':''}
  ${reviewing&&!['edit','manual'].includes(scanDraft.source)&&scanPhotos.length?UI.floatingAction({label:'写真を確認',icon:'camera',action:'scanOpenCurrentPhoto',avoidSelector:'#scanConfirmForm button[type="submit"]'}):''}`;
 }
 function closeScanViewer({restore=true}={}){
