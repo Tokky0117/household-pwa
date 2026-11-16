@@ -1803,7 +1803,8 @@ const kitForm=kitSession.window.document.getElementById('recordProductCreateForm
 assert.ok(kitForm&&kitSession.window.document.querySelector('.record-product-overlay'),
  'new product editor is one shared half sheet');
 assert.equal(kitForm.querySelector('[name="group"]'),null);
-assert.equal(kitForm.querySelector('[name="quantity"]'),null);
+assert.ok(kitForm.querySelector('[name="quantity"]'),
+ 'KitKat saved-receipt registration supports optional package capacity');
 assert.equal(kitForm.querySelector('[name="name"]').value,kitRaw,
  'the OCR name pre-fills the editable master name');
 kitForm.querySelector('[name="name"]').value=kitCanonical;
