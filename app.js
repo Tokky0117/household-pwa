@@ -800,7 +800,8 @@ function scanAiProductCandidates(item){
  const name=existing||fresh;
  const exact=catalogue.products.filter(p=>norm(p.name)===norm(name));
  const similar=exact.length?[]:scanSimilarProducts(name,scanDraft?.chainId);
- return {name,existing:!!existing,exact,similar};
+ return {name,existing:!!existing,exact,similar,
+  package:guessedPackage(name,proposal)};
 }
 function scanAiCandidateView(item,row){
  const candidate=scanAiProductCandidates(item);
@@ -813,6 +814,8 @@ function scanAiCandidateView(item,row){
   '<p class="scan-ai-candidate-title">'+(candidate.existing||candidate.exact.length?'登録済みの商品候補':'新規商品候補')+'</p>'+
   '<p class="scan-ai-candidate-name">'+esc(candidate.name)+'</p>'+
   '<p class="scan-ai-candidate-note">生成AIによる推定です。登録商品との一致を確認してください。</p>'+
+  (candidate.package?'<p class="scan-ai-candidate-note">内容量候補：'+
+    esc(candidate.package.quantity+candidate.package.unit)+'（登録前に確認）</p>':'')+
   (candidate.exact.length?
     '<div class="scan-ai-candidate-actions">'+buttons(candidate.exact)+'</div>':
    candidate.existing?'<p class="scan-ai-candidate-note">既存商品名が見つかりません。商品を設定から選択してください。</p>':
@@ -836,8 +839,10 @@ function createScanAiProduct(row,name){
  scanAiProductSavingRows.add(row);
  const button=document.querySelector('[data-act="scanAiCreateProduct"][data-scan-row="'+row+'"]');
  if(button)button.disabled=true;
+ const capacity=guessedPackage(name,item.productSuggestion);
  window.KurashiLive.save('product.create',{
-  name,package_quantity:null,package_unit:null,household_item_id:null
+  name,package_quantity:capacity?.quantity??null,
+  package_unit:capacity?.unit??null,household_item_id:null
  }).then(product=>{
   if(!product)throw Error('商品を登録できませんでした');
   const current=scanDraft?.items[row];
@@ -2329,6 +2334,16 @@ function commitItem(name,category,subName=''){
 }
 // 入力欄自体は再作成しない。日本語IMEの変換中もフォーカスと入力状態を維持する。
 let composing=false;
+const productNameInputs=new Set(['new-product-name','master-product-name',
+ 'scan-product-name','record-product-name']);
+app.addEventListener('input',e=>{
+ if(productNameInputs.has(e.target.id))refreshAutoPackage(e.target);
+ if(e.target.matches?.('.product-package-details input[name="quantity"]')){
+  const details=e.target.closest('.product-package-details');
+  details.dataset.packageMode='manual';
+  details.querySelector('.product-package-hint').textContent='入力した内容量で登録します。';
+ }
+});
 function updateSearchResults(){const target=document.getElementById('item-results');if(target){target.innerHTML=listResults();if(openSwipeId)setOpenSwipe(openSwipeId)}}
 const searchBindings={'store-picker-search':{set:v=>{storePickerQuery=v},update:()=>{
  const target=document.getElementById('store-picker-results');if(target)target.innerHTML=storePickerChoices()
@@ -2697,7 +2712,13 @@ if(exposedItem&&!e.target.closest('.swipe-actions')){
  // The revealed front can be inert, so its row can receive the click instead.
  e.preventDefault();setOpenSwipe(null);return;
 }
-const clear=e.target.closest('[data-search-clear]');if(clear){const input=document.getElementById(clear.dataset.searchClear);if(input){input.value='';syncSearch(input);input.focus()}return}const el=e.target.closest('[data-tab],[data-cat],[data-group-toggle],[data-stock],[data-open],[data-act],[data-ui-toggle],[data-ui-choice],[data-dialog],[data-premove],[data-pedit],[data-pick],[data-product-menu],[data-list-edit],[data-list-hide]');if(!el)return;if(el.hasAttribute('data-ui-toggle')){
+const clear=e.target.closest('[data-search-clear]');if(clear){const input=document.getElementById(clear.dataset.searchClear);if(input){input.value='';syncSearch(input);input.focus()}return}const el=e.target.closest('[data-tab],[data-cat],[data-group-toggle],[data-stock],[data-open],[data-act],[data-ui-toggle],[data-ui-choice],[data-dialog],[data-premove],[data-pedit],[data-pick],[data-product-menu],[data-list-edit],[data-list-hide]');if(!el)return;
+if(el.dataset.uiChoice!==undefined&&el.closest('.product-package-details .ui-select')){
+ const details=el.closest('.product-package-details');
+ details.dataset.packageMode='manual';
+ details.querySelector('.product-package-hint').textContent='入力した内容量で登録します。';
+}
+if(el.hasAttribute('data-ui-toggle')){
  const wrapper=el.closest('.ui-select'),open=el.getAttribute('aria-expanded')==='true';
  closeAllDropdowns();
  if(!open&&wrapper){const popup=wrapper.querySelector('.ui-menu');if(popup)popup.hidden=false;el.setAttribute('aria-expanded','true');if(wrapper.dataset.uiSelect==='price-period')periodMenu=true}
