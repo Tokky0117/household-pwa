@@ -24,7 +24,15 @@ const sampleCatalogue=()=>({
 function loadCatalogue(){if(liveMode)return {products:[],chains:[]};try{const o=JSON.parse(localStorage.getItem(catalogueKey));if(o&&Array.isArray(o.products)&&Array.isArray(o.chains)){for(const c of sampleCatalogue().chains)if(!o.chains.some(x=>x.id===c.id))o.chains.push(c);return o}}catch{}return sampleCatalogue()}
 let catalogue=loadCatalogue(),pickQuery='',pickKind='product',pickerAll=false,editingProductId=null;
 const persistCatalogue=()=>{if(!liveMode)localStorage.setItem(catalogueKey,JSON.stringify(catalogue))};
-const productTitle=p=>p.name+(p.packageQuantity&&p.packageUnit?' '+p.packageQuantity+p.packageUnit:'');
+const productTitle=p=>{
+ const size=p.packageQuantity&&p.packageUnit?p.packageQuantity+p.packageUnit:'';
+ if(!size)return p.name;
+ const expressed=window.KurashiProductPackage?.infer(p.name);
+ // Do not show "80g×3袋 240g" or "牛乳1000mL 1000mL" twice.
+ if(expressed&&expressed.quantity===Number(p.packageQuantity)&&
+    expressed.unit===p.packageUnit)return p.name;
+ return p.name+' '+size;
+};
 const linkedItemName=p=>itemLabel(items.find(i=>i.id===p.householdItemId))||'日用品未紐付け';
 const linkedItemLabel=p=>itemLabel(items.find(i=>i.id===p.householdItemId));
 const registeredProducts=itemId=>catalogue.products.filter(p=>p.householdItemId===itemId).sort((a,b)=>(a.householdItemOrder??9999)-(b.householdItemOrder??9999));
