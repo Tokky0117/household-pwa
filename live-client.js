@@ -1089,7 +1089,7 @@
   stockFlushTimer=setTimeout(()=>{
    stockFlushTimer=null;
    if(workspace.queue.length)void flush();
-  },350);
+  },1500);
   return project()?.household_items.find(i=>i.household_item_id===itemId)||null;
  }
  function resolveOperation(op,base){
