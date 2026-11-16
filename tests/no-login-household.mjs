@@ -1663,7 +1663,10 @@ bulkUI.window.document.querySelector('[data-act="recordProductShowNew"]').click(
 const individualForm=bulkUI.window.document.getElementById('recordProductCreateForm');
 assert.ok(individualForm,'product editor uses one shared half sheet');
 assert.equal(individualForm.querySelector('[name="group"]'),null);
-assert.equal(individualForm.querySelector('[name="quantity"]'),null);
+assert.ok(individualForm.querySelector('[name="quantity"]'),
+ 'receipt product registration offers optional package capacity');
+assert.equal(individualForm.querySelector('[name="quantity"]').value,'',
+ 'unrecognized product name leaves capacity unset');
 individualForm.dispatchEvent(new bulkUI.window.Event('submit',{bubbles:true,cancelable:true}));
 await waitFor(()=>bulkUI.window.KurashiLive.state().queued===0&&
  temp.call('bootstrap').data.products.some(p=>p.name==='レシート個別登録テスト固有')&&
