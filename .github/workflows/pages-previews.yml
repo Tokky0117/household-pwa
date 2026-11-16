@@ -43,6 +43,7 @@ jobs:
           node tests/gas-execution-result.mjs
           node tests/v94-local-snapshot-upgrade.mjs
           node tests/production-release-guards.mjs
+          node tests/production-v94-converter.mjs
 
       - name: Build verified prior PaddleOCR for the main receipt screen
         shell: bash
