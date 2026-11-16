@@ -1384,11 +1384,11 @@ assert.equal(scanSession.window.document.querySelectorAll('.scan-photo-tile').le
  'no photo remains selected');
 assert.ok(!scanSession.window.document.querySelector('.receipt-scan-page').textContent.includes('写真を選択してください。'),
  'empty-state instructions are not repeated beside the action');
-assert.ok(scanSession.window.document.querySelector('.scan-photo-empty .primary[data-act="scanAddPhotos"]'),
+assert.ok(scanSession.window.document.querySelector('.scan-photo-sticky-action .primary[data-act="scanAddPhotos"]'),
  'the empty OCR screen has one primary photo selection button');
 assert.equal(scanSession.window.document.querySelector('[data-act="scanStart"]'),null,
  'analysis cannot start with zero photos');
-scanSession.window.document.querySelector('.scan-photo-empty [data-act="scanAddPhotos"]').click();
+scanSession.window.document.querySelector('.scan-photo-sticky-action [data-act="scanAddPhotos"]').click();
 assert.equal(adds,2,'photo selection can reopen directly from the empty OCR screen');
 Object.defineProperty(addPicker,'files',{configurable:true,value:[libraryFile]});
 addPicker.dispatchEvent(new scanSession.window.Event('change',{bubbles:true}));
