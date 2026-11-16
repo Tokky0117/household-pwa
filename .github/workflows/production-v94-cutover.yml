@@ -207,6 +207,16 @@ jobs:
           npx --yes @google/clasp@3 list-deployments "$PROD_GAS_SCRIPT_ID" \
             > "$RUNNER_TEMP/production-deployments-after.txt"
           grep -Fq "$target" "$RUNNER_TEMP/production-deployments-after.txt"
+      - name: Verify live production bootstrap before updating the app
+        if: inputs.mode == 'apply_and_publish'
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error --location --max-time 60 \
+            --header 'Content-Type: text/plain;charset=utf-8' \
+            --data '{"action":"bootstrap","payload":{}}' \
+            "$PROD_GAS_EXEC_URL" > "$RUNNER_TEMP/prod-v94-bootstrap.json"
+          node scripts/verify-production-bootstrap.mjs "$RUNNER_TEMP/prod-v94-bootstrap.json"
       - name: Publish verified release branch to existing production main
         if: inputs.mode == 'apply_and_publish'
         shell: bash
