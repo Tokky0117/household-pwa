@@ -2752,3 +2752,8 @@ html,body{touch-action:pan-x pan-y}
 .ui-floating-action .ui-floating-action-button svg{
  flex:none;width:19px;height:19px;color:var(--accent)
 }
+
+/* Queue recovery confirmation: keep long operation inventories scrollable. */
+.dialog-pending-ops{max-height:90dvh;display:flex;flex-direction:column}
+.dialog-pending-ops .dialog-description{max-width:100%;max-height:min(48dvh,400px);overflow-y:auto;overscroll-behavior:contain}
+.dialog-pending-ops .dialog-actions{flex-shrink:0}
