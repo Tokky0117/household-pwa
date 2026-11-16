@@ -42,9 +42,31 @@ const drive=await probe('https://www.googleapis.com/drive/v3/files?'+
 // Scope/visibility, not household data, is the only reported information.
 const items=drive.ok?drive.data.files||[]:[];
 const named=items.filter(x=>/くらしストック/.test(x.name||'')).length;
+const oldSheetNames=['households','users','categories','stores','item_groups',
+ 'products','product_aliases','records','record_items','change_log',
+ 'processed_operations','receipt_rules'].sort();
+const newSheetNames=['households','users','categories','retail_chains','household_items',
+ 'products','receipt_name_mappings','records','record_items','change_log',
+ 'processed_operations'].sort();
+let old12=0,new11=0,metadataFailures={},backupNameOld=0,sourceNameOld=0;
+for(const candidate of items){
+ const meta=await probe('https://sheets.googleapis.com/v4/spreadsheets/'+
+  encodeURIComponent(candidate.id)+'?'+new URLSearchParams({
+  fields:'spreadsheetId,properties(title),sheets(properties(title))'
+ }));
+ if(!meta.ok){const key=String(meta.status);metadataFailures[key]=(metadataFailures[key]||0)+1;continue;}
+ const names=(meta.data.sheets||[]).map(x=>x.properties?.title).sort();
+ const same=(a,b)=>JSON.stringify(a)===JSON.stringify(b);
+ if(same(names,oldSheetNames)){
+  old12++;
+  if(/コピー|バックアップ|backup|copy/i.test(candidate.name||''))backupNameOld++;
+  else sourceNameOld++;
+ }
+ if(same(names,newSheetNames))new11++;
+}
 console.log('PROD_GOOGLE_CAPABILITY '+JSON.stringify({
  scriptApi:scripts.ok?'accessible':scripts.status,
  driveApi:drive.ok?'accessible':drive.status,
  visibleSpreadsheets:items.length,appNameMatches:named,
- hasMorePages:!!drive.data?.nextPageToken
+ hasMorePages:!!drive.data?.nextPageToken,oldSchema12:old12,newSchema11:new11,backupNamed12:backupNameOld,unmarkedOld12:sourceNameOld,sheetsApiFailures:metadataFailures
 }));
