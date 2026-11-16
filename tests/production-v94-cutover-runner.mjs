@@ -31,6 +31,7 @@ class FakeSheet{
   return {
    getValues:()=>Array.from({length:height},(_,i)=>
     Array.from({length:width},(_,j)=>this.values[row+i-1]?.[col+j-1]??'')),
+   getFormulas:()=>Array.from({length:height},()=>Array.from({length:width},()=>'')),
    setValues:values=>{
     tally.write++;
     for(let i=0;i<height;i++){
