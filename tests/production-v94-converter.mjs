@@ -70,6 +70,18 @@ assert.equal(alias.length,2);
 assert.equal(alias[0].auto_match_product_id,'p1');
 assert.equal(alias[1].ocr_name,'袋 80g');
 assert.equal(alias[1].chain_id,'s1');
+// Old production rows may have an empty OCR display name (v0.64 migration); the
+// original server filled it with the normalized name without changing its ID.
+const missingOcr=scenario();
+missingOcr.product_aliases[1][oldSpec.product_aliases.indexOf('ocr_name')]='';
+const recovered=run(missingOcr);
+assert.equal(recovered.report.oldOcrNamesRecoveredFromNormalized,1);
+assert.equal(asObjects(recovered.tables,'receipt_name_mappings')[0].ocr_name,'カットワカメ');
+// For newly reconstructed aliases, preserve the unique historical product link.
+const linkedRaw=scenario();
+linkedRaw.record_items[2][oldSpec.record_items.indexOf('product_id')]='p1';
+const rebuilt=run(linkedRaw);
+assert.equal(asObjects(rebuilt.tables,'receipt_name_mappings')[1].auto_match_product_id,'p1');
 assert.equal(asObjects(out.tables,'household_items')[0].household_item_id,'g1');
 assert.equal(asObjects(out.tables,'household_items')[0].sub_name,'');
 assert.equal(asObjects(out.tables,'products')[0].household_item_order,2);
