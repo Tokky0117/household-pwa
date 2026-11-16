@@ -1347,10 +1347,10 @@ const UI={
   // Common navigation/management row. Different from UI.choiceRow: it opens
   // a destination and never claims to represent a selected option.
   catalogueRow({title,lines=[],action='',data={},className='',disabled=false,
-    ariaLabel='',endLabel=''}) {
+    ariaLabel='',endLabel='',hideEnd=false}) {
     const attrs=Object.entries(data).filter(([name])=>/^data-[a-z][a-z0-9-]*$/.test(name))
      .map(([name,value])=>' '+name+'="'+esc(String(value))+'"').join('');
-    return `<button type="button" class="catalogue-candidate${className?' '+esc(className):''}"${action?' data-act="'+esc(action)+'"':''}${attrs}${ariaLabel?' aria-label="'+esc(ariaLabel)+'"':''}${disabled?' disabled':''}><span class="catalogue-row-body"><strong>${esc(title)}</strong>${lines.map(line=>'<span class="hint">'+esc(line)+'</span>').join('')}</span><span class="catalogue-candidate-end" aria-hidden="true">${endLabel?esc(endLabel):chevron('right')}</span></button>`;
+    return `<button type="button" class="catalogue-candidate${className?' '+esc(className):''}"${action?' data-act="'+esc(action)+'"':''}${attrs}${ariaLabel?' aria-label="'+esc(ariaLabel)+'"':''}${disabled?' disabled':''}><span class="catalogue-row-body"><strong>${esc(title)}</strong>${lines.map(line=>'<span class="hint">'+esc(line)+'</span>').join('')}</span><span class="catalogue-candidate-end" aria-hidden="true">${hideEnd?'':endLabel?esc(endLabel):chevron('right')}</span></button>`;
   },
   floatingAction({label,action,icon='',avoidSelector=''}) {
     return `<div class="ui-floating-action" data-ui-floating-action data-ui-floating-avoid="${esc(avoidSelector)}">${UI.button({label,action,icon,variant:'secondary',className:'ui-floating-action-button'})}</div>`;
@@ -1693,7 +1693,7 @@ function aliasManageRows(){
    ariaLabel:name+'の登録商品を変更',disabled:syncing,
    lines:['店舗：'+chainLabel(a.chainId),
     product?'登録商品：'+productTitle(product):'商品未紐付け',
-    ...(syncing?['同期後に変更できます']:[])],endLabel:syncing?' ':''});
+    ...(syncing?['同期後に変更できます']:[])],hideEnd:syncing});
  }).join('');
  const more=all.length>aliasVisibleLimit?
   '<div class="alias-more-action">'+UI.button({label:'さらに表示（残り'+(all.length-aliasVisibleLimit)+'件）',
