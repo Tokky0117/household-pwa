@@ -89,11 +89,14 @@ function kurashiProdV94Convert(source) {
  const products=new Set(rows.products.map(x=>text(x.product_id)));
  const records=new Map(rows.records.map(x=>[text(x.record_id),x]));
  const aliasById=new Map(),aliasByKey=new Map();
+ let oldOcrNameFallbacks=0;
  for(const row of rows.product_aliases){
   const aid=text(row.alias_id),pid=text(row.product_id),chain=text(row.chain_id);
   if(!chains.has(chain)||pid&&!products.has(pid))
    kurashiProdV94Fail_('BAD_ALIAS_REFERENCE');
-  const original=text(row.ocr_name);
+  // Old GAS used the normalized name to backfill OCR names missing in legacy rows.
+  const original=text(row.ocr_name)||text(row.normalized_alias);
+  if(!text(row.ocr_name)&&original)oldOcrNameFallbacks++;
   const normalized=kurashiProdV94Norm_(original);
   if(!original||normalized!==text(row.normalized_alias))
    kurashiProdV94Fail_('ALIAS_NAME_MISMATCH');
@@ -101,7 +104,7 @@ function kurashiProdV94Convert(source) {
   if(aliasByKey.has(key))kurashiProdV94Fail_('DUPLICATE_CHAIN_OCR_NAME');
   const mapped={receipt_name_id:aid,auto_match_product_id:row.product_id,
    chain_id:row.chain_id,normalized_receipt_name:row.normalized_alias,
-   version:row.version,updated_at:row.updated_at,ocr_name:row.ocr_name};
+   version:row.version,updated_at:row.updated_at,ocr_name:original};
   aliasById.set(aid,mapped); aliasByKey.set(key,mapped);
  }
  for(const row of rows.item_groups){
@@ -139,6 +142,16 @@ function kurashiProdV94Convert(source) {
  const sequences=new Set(rows.change_log.map(x=>String(x.sequence_no)));
  if(sequences.size!==rows.change_log.length)
   kurashiProdV94Fail_('DUPLICATE_SEQUENCE');
+ // Historical raw OCR names may need new aliases. Restore an unambiguous
+ // product auto-match when all linked history for that OCR name agrees.
+ const rawEvidence=new Map();
+ for(const line of rows.record_items){
+  const parent=records.get(text(line.record_id));
+  if(!parent||text(line.alias_id)||!text(line.raw_name))continue;
+  const key=text(parent.chain_id)+'|'+kurashiProdV94Norm_(text(line.raw_name));
+  if(!rawEvidence.has(key))rawEvidence.set(key,new Set());
+  if(text(line.product_id))rawEvidence.get(key).add(text(line.product_id));
+ }
  const mappedLines=[];
  for(const row of rows.record_items){
   const parent=records.get(text(row.record_id));
@@ -164,7 +177,9 @@ function kurashiProdV94Convert(source) {
    if(!existing){
     const id='alias-migrated-'+text(row.record_item_id);
     if(aliasById.has(id))kurashiProdV94Fail_('GENERATED_ALIAS_COLLISION');
-    existing={receipt_name_id:id,auto_match_product_id:'',
+    const seenProducts=rawEvidence.get(key)||new Set();
+    existing={receipt_name_id:id,
+      auto_match_product_id:seenProducts.size===1?Array.from(seenProducts)[0]:'',
       chain_id:parent.chain_id,normalized_receipt_name:norm,version:1,
       updated_at:row.updated_at||row.created_at||parent.updated_at,
       ocr_name:raw};
@@ -218,6 +233,7 @@ function kurashiProdV94Convert(source) {
  return {tables:result,report:{
   mode:'PURE_TRANSFORM_NO_WRITES',targetTableCount:11,counts,
   legacyShelfConverted:shelfCount,ocrAliasesCreated:rawRepaired,
+  oldOcrNamesRecoveredFromNormalized:oldOcrNameFallbacks,
   inferredNamesPreservedAsUnclassifiedCandidates:inferredCount,
   removedLegacyCategoryCells:legacyCategoryCount,
   removedLegacyPriceEligibilityCells:legacyEligibilityCount,
