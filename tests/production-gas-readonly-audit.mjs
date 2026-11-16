@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-import vm from 'node:vm';
+import {execFileSync} from 'node:child_process';
 
 const script=readFileSync(new URL('../scripts/verify-production-gas-remote.mjs',import.meta.url),'utf8');
 const workflow=readFileSync(new URL('../.github/workflows/production-gas-readonly-audit.yml',import.meta.url),'utf8');
-new vm.SourceTextModule(script,{identifier:'verify-production-gas-remote.mjs'});
+execFileSync(process.execPath,['--check',new URL('../scripts/verify-production-gas-remote.mjs',import.meta.url).pathname]);
 assert.match(workflow,/workflow_dispatch:/);
 assert.match(workflow,/production_gas_script_id:/);
 assert.match(workflow,/permissions:\s*\n\s*contents: read/);
