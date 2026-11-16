@@ -8,6 +8,7 @@ const canonical={
  households:[['household_id'],['home-1']],
  categories:[['category_id','name','fixed_order'],[0,'飲食',1]]
 };
+for(let i=0;i<10;i++)canonical['stub-'+i]=[['id'],['row-'+i]];
 const copy=x=>JSON.parse(JSON.stringify(x));
 let mutatedBackup=false;
 const orig={id:'existing-production-id',tables:copy(canonical),getId(){return this.id;},
