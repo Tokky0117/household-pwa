@@ -23,9 +23,10 @@ const setupBoundary='function setupNewWorkbook()';
 const c=setup.indexOf(setupBoundary);
 if(c<0||setup.indexOf(setupBoundary,c+1)!==-1)
  throw Error('UNRECOGNIZED_SETUP_BOUNDARY');
-const productionSchema=setup.slice(0,c).replace(
- 'くらしストック: 新しいGoogle Sheetsの初期作成だけを行うスクリプト。',
- 'くらしストック: 本番APIで共有するスキーマ定義。');
+const schemaStart=setup.indexOf('const KURASHI_NEW_SCHEMA =');
+if(schemaStart<0||schemaStart>c)throw Error('SCHEMA_DECLARATION_MISSING');
+const productionSchema='/** 本番APIのシート構成（新規作成コードなし）。 */\n'+
+ setup.slice(schemaStart,c);
 if(!productionApi.includes('function doPost(')||
    !productionApi.includes('function kurashiBootstrap_(')||
    !productionApi.includes('function kurashiBook_(')||
