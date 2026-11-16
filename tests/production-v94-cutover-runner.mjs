@@ -22,11 +22,15 @@ function legacy(){
 function clone(x){return JSON.parse(JSON.stringify(x));}
 const tally={write:0};
 class FakeSheet{
- constructor(name,values=[]){this.name=name;this.values=clone(values);this.hidden=false;}
+ constructor(name,values=[]){this.name=name;this.values=clone(values);this.hidden=false;this.maxRows=Math.max(1000,values.length);this.maxCols=Math.max(26,...values.map(r=>r.length));}
  getName(){return this.name;}
  setName(name){tally.write++;this.name=name;}
  getLastRow(){return this.values.length;}
  getLastColumn(){return Math.max(0,...this.values.map(v=>v.length));}
+ getMaxRows(){return this.maxRows;}
+ getMaxColumns(){return this.maxCols;}
+ insertRowsAfter(last,amount){assert.equal(last,this.maxRows);assert.ok(amount>0);this.maxRows+=amount;tally.write++;}
+ insertColumnsAfter(last,amount){assert.equal(last,this.maxCols);assert.ok(amount>0);this.maxCols+=amount;tally.write++;}
  getRange(row,col,height=1,width=1){
   return {
    getValues:()=>Array.from({length:height},(_,i)=>
@@ -130,4 +134,22 @@ blocked.execute("KURASHI_PROD_V94_CUTOVER_CONFIG.approval='APPLY_VERIFIED_PRODUC
 blocked.execute("KURASHI_PROD_V94_CUTOVER_CONFIG.clients='CLIENTS_AND_API_WRITES_STOPPED'");
 assert.throws(()=>blocked.execute('kurashiProductionV94ApplyCutover()'),/NONEMPTY_BRANCH_OR_RAW_STORE_NAME/);
 assert.equal(tally.write,0);
+// A household can accumulate over the default 1,000 Sheets rows. Staging
+// must expand capacity rather than failing after some sheets are already added.
+const many=legacy();
+for(let i=0;i<1100;i++)many.records.push(makeRow('records',{
+ record_id:'large-record-'+i,household_id:'h1',chain_id:'s1',
+ record_type:'receipt',record_date:'2026-11-10',version:1
+}));
+const big=harness(many,clone(many));
+big.execute("KURASHI_PROD_V94_CUTOVER_CONFIG.sourceSpreadsheetId='prod'");
+big.execute("KURASHI_PROD_V94_CUTOVER_CONFIG.backupSpreadsheetId='backup'");
+big.execute("KURASHI_PROD_V94_CUTOVER_CONFIG.approval='APPLY_VERIFIED_PRODUCTION_V94'");
+big.execute("KURASHI_PROD_V94_CUTOVER_CONFIG.clients='CLIENTS_AND_API_WRITES_STOPPED'");
+assert.equal(big.execute('kurashiProductionV94ApplyCutover()').status,
+ 'CUTOVER_STAGED_ARCHIVES_RETAINED');
+const bigRecords=big.books.prod.getSheetByName('records');
+assert.ok(bigRecords.getMaxRows()>=1102);
+assert.equal(bigRecords.values.length,1102);
+assert.equal(big.books.prod.getSheetByName('__v88_archive_records').values.length,1102);
 console.log('Production v94 runner: no-op defaults, readonly preflight, backup matching, staged archive, finalize, refusal before writes OK');
