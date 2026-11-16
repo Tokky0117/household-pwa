@@ -1,0 +1,23 @@
+name: Validate production v94 migration (data-only)
+
+on:
+  push:
+    branches:
+      - release-v94-production-preflight
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Pure v88 to v94 conversion regression tests
+        run: node tests/production-v94-converter.mjs
+      - name: Non-deployed production cutover dry-run and safety tests
+        run: node tests/production-v94-cutover-runner.mjs
+      - name: Production release structure checks
+        run: node tests/production-release-guards.mjs
