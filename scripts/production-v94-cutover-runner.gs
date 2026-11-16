@@ -23,7 +23,10 @@ function kurashiProdV94ReadSheets_(book){
   const name=sheet.getName(),n=sheet.getLastRow(),width=sheet.getLastColumn();
   if(name in tables||n<1||width<1)
    kurashiProdV94RunnerFail_('EMPTY_OR_DUPLICATE_SHEET:'+name);
-  tables[name]=sheet.getRange(1,1,n,width).getValues();
+  const dataRange=sheet.getRange(1,1,n,width);
+  if(dataRange.getFormulas().some(row=>row.some(formula=>!!formula)))
+   kurashiProdV94RunnerFail_('FORMULAS_REQUIRE_MANUAL_REVIEW:'+name);
+  tables[name]=dataRange.getValues();
  }
  return tables;
 }
@@ -97,6 +100,12 @@ function kurashiProductionV94ApplyCutover(){
    sh.setFrozenRows(1);
   }
   kurashiProdV94VerifyStaging_(book,plan.converted.tables);
+  // Re-read original data immediately before switching names. A background
+  // write during staging must never be silently lost in the new worksheets.
+  const currentLegacy=Object.fromEntries(original.map(name=>[
+   name,kurashiProdV94ReadOne_(book.getSheetByName(name))]));
+  if(!kurashiProdV94Compare_(currentLegacy,plan.source))
+   kurashiProdV94RunnerFail_('SOURCE_CHANGED_DURING_STAGING');
   // Legacy sheets are archived IN the same workbook; no data is deleted now.
   // In case of interruption, STOP and restore manually from these or backup.
   for(const name of original)
