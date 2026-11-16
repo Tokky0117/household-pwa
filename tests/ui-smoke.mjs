@@ -25,7 +25,7 @@ const doc={
 const ctx={document:doc,localStorage:{getItem:k=>storage.get(k)??null,setItem:(k,v)=>storage.set(k,v),removeItem:k=>storage.delete(k)},
  navigator:{},window:{scrollTo(){},scrollY:0,KurashiReceiptValidation:validator,KurashiReceiptReview:review},crypto:{randomUUID:()=> 'test-id'},setTimeout:()=>0};
 const ui=vm.runInNewContext(source+`
-({listView,priceCompareView,pickerView,pickerResults,masterProductsView,masterProductRows,masterProductEditorView,masterGroupPickerView,masterGroupPickerRows,aliasManageView,aliasManageRows,aliasProductPickerView,aliasProductPickerRows,detailHomeView,detailAllView,receiptScanView,receiptChatGptView,recordDetailView,scanStoreNameIssue,scanValidPurchaseDate,scanReadableError,floatingActionPlacement,applyChatGptOcrAssistance,receiptOcrReference,receiptOcrRows,isUnconfirmedBarcodeLine,makeChatGptReceiptRebuildDraft,scanProductView,scanProductGroupChoices,scanExistingProductView,scanExistingProductResults,scanChainForStore,scanStoreHeaderMatch,scanAutolinkUnmatched,scanMatchProduct,scanSimilarProducts,normalizeOcrProductName,normalizedOcrItemName,render,initializeCompare,
+({UI,listView,priceCompareView,pickerView,pickerResults,masterProductsView,masterProductRows,masterProductEditorView,masterGroupPickerView,masterGroupPickerRows,aliasManageView,aliasManageRows,aliasProductPickerView,aliasProductPickerRows,detailHomeView,detailAllView,receiptScanView,receiptChatGptView,recordDetailView,scanStoreNameIssue,scanValidPurchaseDate,scanReadableError,floatingActionPlacement,applyChatGptOcrAssistance,receiptOcrReference,receiptOcrRows,isUnconfirmedBarcodeLine,makeChatGptReceiptRebuildDraft,scanProductView,scanProductGroupChoices,scanExistingProductView,scanExistingProductResults,scanChainForStore,scanStoreHeaderMatch,scanAutolinkUnmatched,scanMatchProduct,scanSimilarProducts,normalizeOcrProductName,normalizedOcrItemName,render,initializeCompare,
  setProductGroup,reorderProducts,registeredProducts,convertQuantity,setOpenSwipe,storePickerChoices,scrollNewItemIfOffscreen,
  getItems(){return items},setItems(v){items=v},orderedItemIds,expandItemGroup(k){expandedItemGroups.add(k)},collapseItemGroup(k){expandedItemGroups.delete(k)},
  chainMinima,priceCandidates,standardizedMinima,savePreviewRecord,periodStart,
@@ -56,6 +56,33 @@ for(const selector of ['.iconbtn','.headrow .iconbtn','.sheet-close','.cathead',
 }
 assert.ok(css.includes('.tertiary{')&&css.includes('color:var(--accent)'),'Shared tertiary button style exists');
 assert.ok(!source.includes('priceCells(){'),'Obsolete normal/discount UI component removed');
+// Every new action uses one shared markup builder; delegated data IDs must
+// be preserved and escaped instead of hardcoding screen-specific buttons.
+const sharedAction=ui.UI.button({label:'商品を削除',variant:'tertiary',
+ action:'scanRemoveItem',icon:'trash',className:'scan-item-tool',
+ data:{'data-scan-row':3,'data-product-id':'p-"unsafe'},
+ ariaLabel:'明細3を削除'});
+assert.match(sharedAction,/class="tertiary scan-item-tool"/);
+assert.match(sharedAction,/data-act="scanRemoveItem"/);
+assert.match(sharedAction,/data-scan-row="3"/);
+assert.match(sharedAction,/data-product-id="p-&quot;unsafe"/);
+assert.match(sharedAction,/aria-label="明細3を削除"/);
+const navigationRow=ui.UI.catalogueRow({title:'テスト商品',lines:['日用品：日用雑貨'],
+ action:'masterProductEdit',className:'panel',data:{'data-product-id':'item-1'}});
+assert.match(navigationRow,/class="catalogue-candidate panel"/);
+assert.match(navigationRow,/data-act="masterProductEdit"/);
+assert.match(navigationRow,/data-product-id="item-1"/);
+assert.ok(!navigationRow.includes('aria-pressed='),
+ 'navigation rows must not claim the selected-option state');
+const photoPageControls=ruleBody('.scan-viewer-pages button');
+assert.ok(photoPageControls.some(body=>body.includes('min-height:var(--ui-touch-size)')),
+ 'photo page controls use the shared 44px hit-area token');
+assert.ok(css.includes('--ui-touch-size: 44px'),
+ 'touch token is 44px');
+const deleteToolStyles=ruleBody('.scan-item-tool');
+assert.ok(deleteToolStyles.some(body=>body.includes('font-size:var(--ui-action-font-size)')),
+ 'receipt card edit actions inherit shared tertiary typography');
+
 assert.ok(source.includes('class="detail-candidate-origin" role="img" aria-label="生成AIによる候補"')&&
  source.includes("<span>商品名候補：${esc(line.product_name_candidate)}")&&
  !source.includes('<span>生成AIの商品名候補：'),'Saved receipt AI attribution uses an icon, not a text label');
