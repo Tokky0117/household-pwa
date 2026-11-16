@@ -772,8 +772,21 @@ assert.ok(productUI.window.document.querySelector('.shell.focus main.manage-main
  'product form remains in canonical v46 full-page layout');
 let productForm=productUI.window.document.getElementById('productCreateForm');
 assert.ok(productForm,'original new product form is reachable');
-productForm.querySelector('#new-product-name').value='UI連携商品';
-productForm.querySelector('#new-product-quantity').value='700';
+const productNameInput=productForm.querySelector('#new-product-name');
+const productQuantityInput=productForm.querySelector('#new-product-quantity');
+productNameInput.value='UI連携商品80g×3袋';
+productNameInput.dispatchEvent(new productUI.window.Event('input',{bubbles:true}));
+assert.equal(productQuantityInput.value,'240','multipack size autofills in the live form');
+assert.equal(productForm.querySelector('[name="unit"]').value,'g');
+productQuantityInput.value='250';
+productQuantityInput.dispatchEvent(new productUI.window.Event('input',{bubbles:true}));
+productNameInput.value='UI連携商品90g×3袋';
+productNameInput.dispatchEvent(new productUI.window.Event('input',{bubbles:true}));
+assert.equal(productQuantityInput.value,'250',
+ 'editing the product name never overwrites a manually corrected package size');
+productNameInput.value='UI連携商品';
+productNameInput.dispatchEvent(new productUI.window.Event('input',{bubbles:true}));
+productQuantityInput.value='700';
 productForm.dispatchEvent(new productUI.window.Event('submit',{bubbles:true,cancelable:true}));
 await waitFor(()=>productUI.window.KurashiLive.state().queued===0 &&
  temp.call('bootstrap').data.products.some(p=>p.name==='UI連携商品') &&
