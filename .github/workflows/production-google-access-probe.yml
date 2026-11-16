@@ -1,0 +1,24 @@
+name: Probe production Google access (read-only)
+
+on:
+  push:
+    branches:
+      - release-v94-production-preflight
+    paths:
+      - scripts/production-google-access-probe.mjs
+      - .github/workflows/production-google-access-probe.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    env:
+      CLASPRC_JSON: ${{ secrets.CLASPRC_JSON }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check reusable Google authorization without changing any file
+        run: node scripts/production-google-access-probe.mjs
