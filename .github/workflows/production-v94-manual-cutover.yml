@@ -1,0 +1,185 @@
+name: Production v94 manual-owner cutover
+
+on:
+  workflow_dispatch:
+    inputs:
+      stage:
+        description: 'prepare_manual → GAS画面で移行実行 → finish_manual'
+        type: choice
+        required: true
+        default: prepare_manual
+        options:
+          - prepare_manual
+          - finish_manual
+      production_gas_script_id:
+        description: '既存の本番GASスクリプトID'
+        type: string
+        required: true
+      old_clients_stopped:
+        description: '旧アプリ・他端末・未送信操作が停止している'
+        type: boolean
+        required: true
+        default: false
+      confirm_migration_finished:
+        description: 'finish_manual の場合のみ READY_FOR_NEW_API と入力'
+        type: string
+        required: false
+
+permissions:
+  contents: write
+
+concurrency:
+  group: kurashi-production-v94-cutover
+  cancel-in-progress: false
+
+jobs:
+  cutover:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      PROD_GAS_SCRIPT_ID: ${{ inputs.production_gas_script_id }}
+      PROD_GAS_EXEC_URL: ${{ vars.KURASHI_PRODUCTION_GAS_EXEC }}
+      CLASPRC_JSON: ${{ secrets.CLASPRC_JSON }}
+      MODE: ${{ inputs.stage }}
+      CLIENTS_STOPPED: ${{ inputs.old_clients_stopped }}
+      FINISHED: ${{ inputs.confirm_migration_finished }}
+    steps:
+      - name: Require matching production identity and explicit confirmation
+        shell: bash
+        run: |
+          set -euo pipefail
+          node - <<'NODE'
+          const e=process.env;
+          if(e.PROD_GAS_SCRIPT_ID!=='1jwI1-JXga74JntHGKfqCm0luDYJueEPDCfQBrbF1SIcE3EHdrlC67bBn')
+            throw Error('WRONG_PRODUCTION_GAS_ID');
+          if(!['prepare_manual','finish_manual'].includes(e.MODE))
+            throw Error('INVALID_CUTOVER_STAGE');
+          if(e.CLIENTS_STOPPED!=='true')
+            throw Error('UNSENT_OPERATIONS_OR_OLD_CLIENTS_NOT_CLEARED');
+          if(e.MODE==='finish_manual'&&e.FINISHED!=='READY_FOR_NEW_API')
+            throw Error('OWNER_GAS_MIGRATION_CONFIRMATION_REQUIRED');
+          if(!e.CLASPRC_JSON)throw Error('CLASP_AUTHENTICATION_NOT_CONFIGURED');
+          if(!/^https:\/\/script\.google\.com\/macros\/s\/[A-Za-z0-9_-]{25,120}\/exec$/.test(e.PROD_GAS_EXEC_URL||''))
+            throw Error('PRODUCTION_EXEC_URL_UNAVAILABLE');
+          NODE
+      - name: Checkout v94 candidate (not main)
+        uses: actions/checkout@v4
+        with:
+          ref: production-v94-release-ready
+          fetch-depth: 0
+      - name: Validate release ancestry and migration code
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --prune origin '+refs/heads/main:refs/remotes/origin/main'
+          git merge-base --is-ancestor refs/remotes/origin/main HEAD
+          node tests/production-v94-converter.mjs
+          node tests/production-v94-cutover-runner.mjs
+          node tests/production-v94-admin-shim.mjs
+          node tests/production-gas-bundle.mjs
+          node tests/production-release-guards.mjs
+          node --check scripts/verify-production-manual-stage.mjs
+          node --check scripts/verify-production-bootstrap.mjs
+      - name: Set up owner clasp credentials and read-only remote pull
+        shell: bash
+        run: |
+          set -euo pipefail
+          node - <<'NODE'
+          const fs=require('node:fs'),path=require('node:path');
+          const e=process.env,auth=JSON.parse(e.CLASPRC_JSON);
+          if(!auth||typeof auth!=='object')throw Error('INVALID_CLASP_AUTH');
+          fs.writeFileSync(path.join(e.HOME,'.clasprc.json'),e.CLASPRC_JSON,{mode:0o600});
+          for(const sub of ['remote','staged','final']){
+            const dir=path.join(e.RUNNER_TEMP,'prod-v94',sub);
+            fs.mkdirSync(dir,{recursive:true});
+            fs.writeFileSync(path.join(dir,'.clasp.json'),
+             JSON.stringify({scriptId:e.PROD_GAS_SCRIPT_ID,rootDir:'.'}));
+          }
+          NODE
+          cd "$RUNNER_TEMP/prod-v94/remote"
+          npx --yes @google/clasp@3 pull
+          npx --yes @google/clasp@3 list-deployments "$PROD_GAS_SCRIPT_ID" \
+            > "$RUNNER_TEMP/prod-v94-deployments.txt"
+      - name: Verify existing live deployment and exact staged code
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "$MODE" = prepare_manual ]; then
+            node scripts/verify-production-gas-remote.mjs \
+              "$RUNNER_TEMP/prod-v94/remote" "$RUNNER_TEMP/prod-v94-deployments.txt"
+          else
+            node scripts/verify-production-manual-stage.mjs "$RUNNER_TEMP/prod-v94/remote"
+          fi
+          target="$(node -e 'process.stdout.write(process.env.PROD_GAS_EXEC_URL.match(/\/s\/([A-Za-z0-9_-]+)\/exec$/)[1])')"
+          grep -Fq "$target" "$RUNNER_TEMP/prod-v94-deployments.txt"
+      - name: Back up original two-file GAS source before owner preparation
+        if: inputs.stage == 'prepare_manual'
+        uses: actions/upload-artifact@v4
+        with:
+          name: production-gas-before-owner-manual-${{ github.run_id }}
+          path: ${{ runner.temp }}/prod-v94/remote/
+          if-no-files-found: error
+          retention-days: 30
+      - name: Prepare owner-only migration functions (no Web App deployment)
+        if: inputs.stage == 'prepare_manual'
+        shell: bash
+        run: |
+          set -euo pipefail
+          root="$RUNNER_TEMP/prod-v94"
+          cp -a "$root/remote/." "$root/staged/"
+          cp scripts/production-v94-converter.gs "$root/staged/ProductionV94Converter.gs"
+          cp scripts/production-v94-cutover-runner.gs "$root/staged/ProductionV94Runner.gs"
+          cp scripts/production-v94-admin-shim.gs "$root/staged/ProductionV94Admin.gs"
+          cp scripts/production-v94-owner-oneclick.gs "$root/staged/ProductionV94Owner.gs"
+          cd "$root/staged"
+          npx --yes @google/clasp@3 push --force
+          npx --yes @google/clasp@3 pull
+          cd "$GITHUB_WORKSPACE"
+          node scripts/verify-production-manual-stage.mjs "$root/staged"
+          echo 'Owner-only migration code staged. Production Web App deployment was NOT updated.' >> "$GITHUB_STEP_SUMMARY"
+          echo 'Next: in the existing production GAS editor, select and RUN kurashiProductionV94OwnerApply. Confirm READY_FOR_NEW_API in execution log. Then run finish_manual.' >> "$GITHUB_STEP_SUMMARY"
+      - name: Build final GAS without temporary owner migration helpers
+        if: inputs.stage == 'finish_manual'
+        shell: bash
+        run: |
+          set -euo pipefail
+          root="$RUNNER_TEMP/prod-v94"
+          node scripts/build-production-gas.mjs "$root/final"
+          cp "$root/remote/appsscript.json" "$root/final/appsscript.json"
+          cd "$root/final"
+          npx --yes @google/clasp@3 push --force
+          npx --yes @google/clasp@3 pull
+          node - <<'NODE'
+          const fs=require('node:fs'),path=require('node:path');
+          const root=path.join(process.env.RUNNER_TEMP,'prod-v94','final');
+          const files=fs.readdirSync(root).filter(x=>/\.(js|gs)$/.test(x));
+          if(files.length!==2)throw Error('EXPECTED_EXACTLY_TWO_PRODUCTION_GAS_FILES');
+          const code=files.map(x=>fs.readFileSync(path.join(root,x),'utf8')).join('\n');
+          if(/kurashiProductionV94OwnerApply|kurashiProductionV94Admin|kurashiProductionV94ApplyCutover|setupNewWorkbook\s*\(/.test(code))
+            throw Error('MIGRATION_OR_SETUP_CODE_IN_FINAL_GAS');
+          NODE
+          target="$(node -e 'process.stdout.write(process.env.PROD_GAS_EXEC_URL.match(/\/s\/([A-Za-z0-9_-]+)\/exec$/)[1])')"
+          npx --yes @google/clasp@3 update-deployment "$target"
+          npx --yes @google/clasp@3 list-deployments "$PROD_GAS_SCRIPT_ID" \
+            > "$RUNNER_TEMP/prod-v94-deployments-after.txt"
+          grep -Fq "$target" "$RUNNER_TEMP/prod-v94-deployments-after.txt"
+      - name: Verify actual new /exec bootstrap before publishing PWA
+        if: inputs.stage == 'finish_manual'
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error --location --max-time 60 \
+            --header 'Content-Type: text/plain;charset=utf-8' \
+            --data '{"action":"bootstrap","payload":{}}' \
+            "$PROD_GAS_EXEC_URL" > "$RUNNER_TEMP/prod-v94-bootstrap.json"
+          node scripts/verify-production-bootstrap.mjs "$RUNNER_TEMP/prod-v94-bootstrap.json"
+      - name: Fast-forward production main only after verified new GAS
+        if: inputs.stage == 'finish_manual'
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --prune origin '+refs/heads/main:refs/remotes/origin/main'
+          git merge-base --is-ancestor refs/remotes/origin/main HEAD
+          git push origin HEAD:refs/heads/main
+          echo 'The v0.94.5 PWA is now published after owner migration and GAS bootstrap verification.' >> "$GITHUB_STEP_SUMMARY"
