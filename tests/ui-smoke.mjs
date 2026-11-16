@@ -2096,8 +2096,9 @@ assert.ok(css.includes('.ui-date-control{')&&
  'Shared native iOS date picker fills the field while its internal width remains out of flow');
 assert.ok(!css.includes('::-webkit-datetime-edit'),
  'No attempt is made to resize the system date field internals');
-assert.ok(source.includes('data-act="scanOpenPhoto"')&&source.includes('data-act="scanRemoveItem"'),
- 'Photo and deletion actions coexist on each receipt item');
+assert.ok(source.includes('data-act="scanOpenPhoto"')&&
+ source.includes("action:'scanRemoveItem'"),
+ 'Photo and deletion actions coexist on each receipt item using the shared action button');
 const previewCacheWorkflow=readFileSync(new URL('../.github/workflows/pages-previews.yml',import.meta.url),'utf8');
 assert.ok(previewCacheWorkflow.includes('household-preview-$slug-$revision')&&
  previewCacheWorkflow.includes('git rev-parse --short=12'),
