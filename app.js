@@ -2475,17 +2475,21 @@ app.addEventListener('submit',e=>{e.preventDefault();const form=e.target;const d
 
  if(form.id==='scanProductForm'){
   const name=String(d.get('name')||'').trim();
+  const packageValue=productPackageValues(d);
   if(!name||name.length>80){
    fieldNotice(form,'登録商品名を80文字以内で入力してください','scan-product-name');return;
   }
+  if(!packageValue){fieldNotice(form,'内容量と単位を確認してください','scan-product-quantity');return;}
   if(catalogue.products.some(p=>norm(p.name)===norm(name)&&
-     (p.packageQuantity??null)===null&&(p.packageUnit??null)===null)){
+     (p.packageQuantity??null)===packageValue.quantity&&
+     (p.packageUnit??null)===packageValue.unit)){
    fieldNotice(form,'同じ商品名・内容量の商品が登録済みです','scan-product-name');return;
   }
   const btn=form.querySelector('[type="submit"]');if(btn?.disabled)return;
   if(btn)btn.disabled=true;
   window.KurashiLive.save('product.create',{
-   household_item_id:null,name,package_quantity:null,package_unit:null
+   household_item_id:null,name,package_quantity:packageValue.quantity,
+   package_unit:packageValue.unit
   }).then(product=>{
    if(!product)throw Error('商品を登録できませんでした');
    if(scanDraft?.items[scanProductRow]){
@@ -2509,6 +2513,8 @@ app.addEventListener('submit',e=>{e.preventDefault();const form=e.target;const d
   if(!name||name.length>80||/^[=+@\-]/.test(name)||/[\x00-\x1f\x7f<>]/.test(name)){
    fieldNotice(form,'商品名を確認してください','record-product-name');return;
   }
+  const packageValue=productPackageValues(d);
+  if(!packageValue){fieldNotice(form,'内容量と単位を確認してください','record-product-quantity');return;}
   // A same-named master must be selected rather than duplicated in a receipt.
   if(catalogue.products.some(p=>norm(p.name)===norm(name))){
    fieldNotice(form,'同じ商品名があります。登録済みの商品から選択してください','record-product-name');return;
@@ -2516,7 +2522,7 @@ app.addEventListener('submit',e=>{e.preventDefault();const form=e.target;const d
   recordProductSaving=true;
   const button=form.querySelector('[type="submit"]');
   if(button)button.disabled=true;
-  window.KurashiLive.registerReceiptItemProduct(line.record_item_id,name)
+  window.KurashiLive.registerReceiptItemProduct(line.record_item_id,name,packageValue)
    .then(product=>{
     if(!product?.product_id)throw Error('商品を登録できませんでした');
     learnSavedReceiptAlias(line,product.product_id);
@@ -2635,12 +2641,11 @@ if(form.id==='itemForm'){const i=page==='edit'?current():null;saveItem(String(d.
 if(form.id==='masterProductForm'){
  if(masterGroupChanging){fieldNotice(form,'日用品との紐付けを保存中です','master-product-group');return;}
  const name=String(d.get('name')||'').trim(),qt=String(d.get('quantity')||'').trim();
- const quantity=qt===''?null:Number(qt.replace(',','.'));
- const unit=quantity===null?null:String(d.get('unit')||'');
+ const parsed=productPackageValues(d);
+ const quantity=parsed?.quantity,unit=parsed?.unit;
  const p=masterProductId?catalogue.products.find(x=>x.id===masterProductId):null;
  if(masterProductId&&!p){fieldNotice(form,'商品が見つかりません','master-product-name');return}
- if(!name||name.length>80||(quantity!==null&&(!Number.isFinite(quantity)||quantity<=0))||
-    (unit!==null&&!UNIT_OPTIONS.includes(unit))){
+ if(!name||name.length>80||!parsed){
   fieldNotice(form,'商品名・内容量・単位を確認してください','master-product-name');return;
  }
  if(catalogue.products.some(x=>x.id!==p?.id&&norm(x.name)===norm(name)&&
@@ -2659,11 +2664,11 @@ if(form.id==='masterProductForm'){
  return;
 }
 if(form.id==='productCreateForm'){
- const name=String(d.get('name')||'').trim(),quantity=Number(String(d.get('quantity')||'').replace(',','.')),unit=String(d.get('unit')||'');
- if(!name||(String(d.get('quantity')||'').trim()!==''&&(!Number.isFinite(quantity)||quantity<=0))||!UNIT_OPTIONS.includes(unit)){fieldNotice(form,'商品名・内容量・単位を確認してください',!name?'new-product-name':'new-product-quantity');return}
+ const name=String(d.get('name')||'').trim(),parsed=productPackageValues(d);
+ const quantity=parsed?.quantity,unit=parsed?.unit;
+ if(!name||!parsed){fieldNotice(form,'商品名・内容量・単位を確認してください',!name?'new-product-name':'new-product-quantity');return}
  if(catalogue.products.some(p=>(page!=='productEdit'||p.id!==editingProductId)&&norm(p.name)===norm(name)&&p.packageQuantity===(String(d.get('quantity')||'').trim()?quantity:null)&&p.packageUnit===(String(d.get('quantity')||'').trim()?unit:null))){fieldNotice(form,'同じ名前・内容量の商品が既にあります。検索して選んでください','new-product-name');return}
- const productQty=String(d.get('quantity')||'').trim()?quantity:null;
- const productUnit=productQty===null?null:unit;
+ const productQty=quantity,productUnit=unit;
  if(liveMode){
   const p=page==='productEdit'?catalogue.products.find(x=>x.id===editingProductId&&x.householdItemId===selected):null;
   if(page==='productEdit'&&!p){fieldNotice(form,'商品が見つかりません','new-product-name');return}
