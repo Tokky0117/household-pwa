@@ -914,7 +914,7 @@
  }
  // A single user tap durably enqueues BOTH master creation and line linking.
  // Never leave an orphan master if the app closes between separate transactions.
- async function registerReceiptItemProduct(recordItemId,name){
+ async function registerReceiptItemProduct(recordItemId,name,packageValue={quantity:null,unit:null}){
   await boot();
   if(!workspace.base)await load();
   let createdId=null;
@@ -931,8 +931,9 @@
    if(existing.some(p=>receiptProductKey(p.name)===key||
       receiptLooseKey(p.name)===receiptLooseKey(name)))
     throw Error('同じ名前または類似した商品があります。登録済みの商品から選択してください');
+   const amount=packageValue?.quantity??null,unit=packageValue?.unit??null;
    const create=makeProductOperation('product.create',{
-    household_item_id:null,name,package_quantity:null,package_unit:null
+    household_item_id:null,name,package_quantity:amount,package_unit:unit
    },doc);
    doc.queue.push(create);
    const sameOcrId=line.receipt_name_id&&!line.non_ocr_name?line.receipt_name_id:null;
@@ -969,8 +970,10 @@
     if(!productId){
      const key=receiptProductKey(row.proposed_name);
      if(!names.has(key)){
+      const capacity=window.KurashiProductPackage?.infer(row.proposed_name);
       const create=makeProductOperation('product.create',{
-       name:row.proposed_name,household_item_id:null,package_quantity:null,package_unit:null
+       name:row.proposed_name,household_item_id:null,
+       package_quantity:capacity?.quantity??null,package_unit:capacity?.unit??null
       },doc);
       doc.queue.push(create);
       names.set(key,create.clientId);
