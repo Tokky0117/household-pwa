@@ -79,24 +79,25 @@ async function scenario({bootstrapFails=false,wrongHousehold=false}={}){
  for(let i=0;i<80&&w.KurashiLive.state().syncing;i++)
   await new Promise(resolve=>setTimeout(resolve,10));
  assert.equal(w.KurashiLive.state().queued,2);
+ const original=await operate(db,'get','primary');
  const report=w.KurashiLive.beginPendingOperationReview();
  assert.equal(report.count,2);
  assert.match(report.text,/商品の追加/);
  assert.match(report.text,/レシート・値札の登録/);
  assert.ok(w.KurashiLive.pendingOperationReview().signature===report.signature);
  await assert.rejects(()=>w.KurashiLive.discardPendingOperations('wrong-signature'));
- assert.deepEqual(await operate(db,'get','primary'),pending);
- w.KurashiLive.endPendingOperationReview();
+ assert.deepEqual(await operate(db,'get','primary'),original);
+ // Still in review mode after rejected signatures; no writes can resume.
  // A new review is required for an actual discard.
  const current=w.KurashiLive.beginPendingOperationReview();
  const before=await keys(db);
  if(bootstrapFails){
   await assert.rejects(()=>w.KurashiLive.discardPendingOperations(current.signature),/TEST_NETWORK_DOWN/);
-  assert.deepEqual(await operate(db,'get','primary'),pending,'failure never destroys pending queue');
+  assert.deepEqual(await operate(db,'get','primary'),original,'failure never destroys pending queue');
   assert.deepEqual(await keys(db),before,'failure never leaves partial backup');
  }else if(wrongHousehold){
   await assert.rejects(()=>w.KurashiLive.discardPendingOperations(current.signature),/HOUSEHOLD_CHANGED/);
-  assert.deepEqual(await operate(db,'get','primary'),pending);
+  assert.deepEqual(await operate(db,'get','primary'),original);
  }else{
   await w.KurashiLive.discardPendingOperations(current.signature);
   const state=await operate(db,'get','primary');
@@ -105,7 +106,7 @@ async function scenario({bootstrapFails=false,wrongHousehold=false}={}){
   assert.equal(state.base.household_id,'h-test');
   const all=await keys(db),backups=all.filter(x=>String(x).startsWith('production-pending-queue-backup-'));
   assert.equal(backups.length,1,'one durable backup is created');
-  assert.deepEqual(await operate(db,'get',backups[0]),pending,
+  assert.deepEqual(await operate(db,'get',backups[0]),original,
    'backup preserves all original operation IDs and queued receipt data');
   assert.equal(w.KurashiLive.state().queued,0);
   assert.ok(bootstrapCalls>=1);
