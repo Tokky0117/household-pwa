@@ -232,7 +232,7 @@ assert.ok(masterListing.indexOf('id="master-product-query"')<
  masterListing.indexOf('id="master-product-results"'),
  'Master creation is above product cards, reachable without long scrolling');
 assert.ok(masterListing.includes('data-act="masterProductEdit"')&&
- masterListing.includes('class="panel catalogue-candidate"'),
+ masterListing.includes('class="catalogue-candidate panel"'),
  'Existing editable master product cards remain intact');
 assert.ok(source.includes("'master-product-query':{set:v=>{masterQuery=v}")&&
  !source.includes("if(e.target.id==='master-product-query')"),
