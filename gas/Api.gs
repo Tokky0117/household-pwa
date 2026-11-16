@@ -468,9 +468,8 @@ function kurashiBootstrap_(user) {
       });
     if (pending) kurashiFail_('RECOVERY_REQUIRED','前回の保存を先に確認してください');
     kurashiEnsureCategories_(book);
-    // Rename the exact new workbook once, preserving its ID and all rows.
-    if (typeof book.getName==='function' && book.getName()==='くらしストック')
-      book.setName('くらしストック_試作');
+    // Workbook title is owner-managed. Bootstrap must never
+    // relabel an existing production workbook as a trial workbook.
     return {
       household_id:hid,
       categories:kurashiRows_('categories',book).map(x=>kurashiPublic_(x.value)),
