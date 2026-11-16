@@ -2598,8 +2598,8 @@ html,body{touch-action:pan-x pan-y}
 .scan-item-tools{display:flex;align-items:center;gap:3px;min-width:0}
 .scan-item-tool{
  display:inline-flex;align-items:center;justify-content:center;gap:4px;
- min-height:44px;padding:7px 6px;border:0;background:transparent;
- color:var(--accent);font-size:13px;font-weight:650;white-space:nowrap
+ min-height:var(--ui-touch-size);padding:7px 6px;border:0;background:transparent;
+ color:var(--accent);font-size:var(--ui-action-font-size);font-weight:var(--ui-action-font-weight);white-space:nowrap
 }
 .scan-item-tool svg{width:17px;height:17px;flex:none}
 .scan-item-tool[data-act="scanRemoveItem"]{color:var(--muted)}
@@ -2632,11 +2632,11 @@ html,body{touch-action:pan-x pan-y}
 .scan-viewer-pages{display:flex;align-items:center;gap:4px;margin-left:auto;min-width:0}
 .scan-viewer-pages button{border:1px solid #656b73;border-radius:8px;
  background:transparent;color:#fff;font-size:12px;font-weight:650;
- min-height:36px;padding:6px 5px;white-space:nowrap}
+ min-height:var(--ui-touch-size);padding:6px 5px;white-space:nowrap}
 @media(max-width:360px){
  /* The native date text cannot widen the visible date control. */
  .scan-item-head{gap:4px}
- .scan-item-tool{padding:6px 3px;gap:3px;font-size:12px}
+ .scan-item-tool{padding:6px 3px;gap:3px}
  .scan-review-item .scan-input-pair{grid-template-columns:minmax(0,1fr) minmax(0,1.1fr)}
  .scan-viewer-head{padding:6px 9px}
  .scan-viewer-pages button{font-size:11px;padding:5px 3px}
@@ -2647,8 +2647,8 @@ html,body{touch-action:pan-x pan-y}
  min-width:0;margin:0 0 3px}
 .scan-picker-actions .ui-text-action{justify-content:flex-start;padding:4px 0;white-space:normal;text-align:left}
 .scan-picker-actions .scan-unlink-action{display:inline-flex;align-items:center;
- min-height:44px;padding:8px 4px;border:0;background:transparent;
- color:var(--accent);font-weight:650;font-size:13px;white-space:normal}
+ min-height:var(--ui-touch-size);padding:8px 4px;border:0;background:transparent;
+ color:var(--accent);font-weight:var(--ui-action-font-weight);font-size:var(--ui-action-font-size);white-space:normal}
 .scan-existing-group-advanced{min-width:0;max-width:100%;
  border:1px solid var(--line,#d5d9df);border-radius:10px;padding:0 10px}
 .scan-existing-group-advanced summary{display:flex;align-items:center;
