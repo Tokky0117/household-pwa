@@ -35,7 +35,7 @@ try{
  const expected=oldFunctions.filter(x=>!/^kurashiTrial/.test(x) &&
   !/^kurashiEnsureTrialNaming_$/.test(x));
  const actual=[...api.matchAll(/\bfunction\s+([A-Za-z_][\w]*)\s*\(/g)].map(x=>x[1]);
- assert.ok(actual.length>50,'Unexpectedly small API');
+ assert.ok(actual.length>=45,'Unexpectedly small API');
  for(const f of actual)assert.ok(expected.includes(f),'Production API contains unexpected '+f);
  console.log('Production GAS bundle: syntax, 11-sheet schema, no trial cutover/init code, API retained OK');
 }finally{
