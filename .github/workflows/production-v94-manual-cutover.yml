@@ -149,16 +149,16 @@ jobs:
           cp "$root/remote/appsscript.json" "$root/final/appsscript.json"
           cd "$root/final"
           npx --yes @google/clasp@3 push --force
+          # A pull into the same directory leaves both .gs and .js files.
+          # Use a clean folder to verify exactly what is now in GAS.
+          verify="$root/verified-pull"
+          mkdir -p "$verify"
+          cp "$root/final/.clasp.json" "$verify/.clasp.json"
+          cd "$verify"
           npx --yes @google/clasp@3 pull
-          node - <<'NODE'
-          const fs=require('node:fs'),path=require('node:path');
-          const root=path.join(process.env.RUNNER_TEMP,'prod-v94','final');
-          const files=fs.readdirSync(root).filter(x=>/\.(js|gs)$/.test(x));
-          if(files.length!==2)throw Error('EXPECTED_EXACTLY_TWO_PRODUCTION_GAS_FILES');
-          const code=files.map(x=>fs.readFileSync(path.join(root,x),'utf8')).join('\n');
-          if(/kurashiProductionV94OwnerApply|kurashiProductionV94Admin|kurashiProductionV94ApplyCutover|setupNewWorkbook\s*\(/.test(code))
-            throw Error('MIGRATION_OR_SETUP_CODE_IN_FINAL_GAS');
-          NODE
+          cd "$GITHUB_WORKSPACE"
+          node scripts/verify-final-production-gas.mjs "$root/final" "$verify"
+          cd "$root/final"
           target="$(node -e 'process.stdout.write(process.env.PROD_GAS_EXEC_URL.match(/\/s\/([A-Za-z0-9_-]+)\/exec$/)[1])')"
           npx --yes @google/clasp@3 update-deployment "$target"
           npx --yes @google/clasp@3 list-deployments "$PROD_GAS_SCRIPT_ID" \
