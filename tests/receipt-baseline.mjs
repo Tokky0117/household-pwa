@@ -1,6 +1,6 @@
 /**
  * Offline receipt baseline checks. Never imported by the PWA or its OCR runtime.
- * No actual images, raw OCR text, stores, dates or payment details in this fixture.
+ * No actual images, raw OCR text, retail_chains, dates or payment details in this fixture.
  *
  * Run: node tests/receipt-baseline.mjs
  * Optional comparison: node tests/receipt-baseline.mjs --candidate /path/to/result.json

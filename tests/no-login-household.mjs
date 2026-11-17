@@ -7,6 +7,7 @@ import {IDBFactory} from 'fake-indexeddb';
 const setup=readFileSync(new URL('../gas/Setup.gs',import.meta.url),'utf8');
 const api=readFileSync(new URL('../gas/Api.gs',import.meta.url),'utf8');
 const client=readFileSync(new URL('../live-client.js',import.meta.url),'utf8');
+const packageCode=readFileSync(new URL('../product-package.js',import.meta.url),'utf8');
 const app=readFileSync(new URL('../app.js',import.meta.url),'utf8');
 const validator=readFileSync(new URL('../receipt-validation.js',import.meta.url),'utf8');
 const html=readFileSync(new URL('../index.html',import.meta.url),'utf8');
@@ -31,7 +32,7 @@ function fixture(code) {
   const db=Object.fromEntries(Object.entries(schema).map(([name,heads])=>[name,[Array.from(heads)]]));
   db.households.push(['household-one','くらしストック',1,'']);
   db.categories.push([0,'飲食',1],[1,'キッチン',2],[2,'洗面・風呂',3],[3,'洗濯・掃除',4],[4,'その他',5]);
-  let uuid=0,locked=false,failAfterWrites=null,failAfterSheet='item_groups';
+  let uuid=0,locked=false,failAfterWrites=null,failAfterSheet='household_items';
   const sheet=name=>({
     getLastRow:()=>db[name].length,
     getRange:(start,col,count,width)=>({
@@ -80,30 +81,77 @@ function fixture(code) {
       createTextOutput:text=>({setMimeType:()=>({text})})}
   });
   vm.runInContext(setup+'\n'+code,context);
-  return {db,failItemWriteAfter(n){failAfterSheet='item_groups';failAfterWrites=n},failProductWriteAfter(n){failAfterSheet='products';failAfterWrites=n},failRecordItemWriteAfter(n){failAfterSheet='record_items';failAfterWrites=n},
-    failStoreWriteAfter(n){failAfterSheet='stores';failAfterWrites=n},call:(action,payload={},operation_id=null,id_token='')=>{
+  return {db,failItemWriteAfter(n){failAfterSheet='household_items';failAfterWrites=n},failProductWriteAfter(n){failAfterSheet='products';failAfterWrites=n},failRecordItemWriteAfter(n){failAfterSheet='record_items';failAfterWrites=n},
+    failStoreWriteAfter(n){failAfterSheet='retail_chains';failAfterWrites=n},call:(action,payload={},operation_id=null,id_token='')=>{
     const req={action,payload,id_token,...(operation_id?{operation_id}:{})};
     return JSON.parse(context.doPost({postData:{contents:JSON.stringify(req)}}).text);
   }};
 }
 
 const temp=fixture(api);
-const aliasText=(f,line)=>line.confirmed_name||line.raw_name||f.call('bootstrap').data.product_aliases.find(a=>
- a.alias_id===line.alias_id)?.ocr_name||'';
+const aliasText=(f,line)=>line.non_ocr_name||line.raw_name||f.call('bootstrap').data.receipt_name_mappings.find(a=>
+ a.receipt_name_id===line.receipt_name_id)?.ocr_name||'';
 
 assert.equal(temp.call('bootstrap').ok,true,'initial anonymous read');
 assert.equal(temp.db.users.length,1,'anonymous does not register a fake user');
 const create=temp.call('item.create',{name:'牛乳',category_id:0},'op-create-abcdefghijklmn');
 assert.equal(create.ok,true,'anonymous item create');
 assert.equal(create.data.entity.in_stock,false,'new items initially not in stock');
-const id=create.data.entity.item_group_id;
-assert.equal(temp.call('item.create',{name:'牛乳',category_id:0},'op-create-abcdefghijklmn').data.entity.item_group_id,id,'no duplicate replay');
+const id=create.data.entity.household_item_id;
+assert.equal(temp.call('item.create',{name:'牛乳',category_id:0},'op-create-abcdefghijklmn').data.entity.household_item_id,id,'no duplicate replay');
 assert.equal(temp.call('item.create',{name:'牛乳',category_id:0},'op-other-abcdefghijklmn').error.code,'DUPLICATE','same name cannot be created again');
-assert.equal(temp.call('item.update',{item_group_id:id,version:1,in_stock:true},'op-stock-abcdefghijklmn').ok,true,'anonymous stock update');
-assert.equal(temp.call('bootstrap').data.item_groups[0].in_stock,true,'shared read reflects stock');
-assert.equal(temp.call('item.update',{item_group_id:id,version:1,in_stock:false},'op-stale-abcdefghijklmn').error.code,'VERSION_CONFLICT','old version rejected');
-assert.equal(temp.db.item_groups.length,2,'one item, not two');
+const stockUpdate=temp.call('item.update',{household_item_id:id,version:1,in_stock:true},'op-stock-abcdefghijklmn');
+if(!stockUpdate.ok)console.error('SCHEMA_NAME_DEBUG_STOCK',JSON.stringify(stockUpdate));
+assert.equal(stockUpdate.ok,true,'anonymous stock update');
+assert.equal(temp.call('bootstrap').data.household_items[0].in_stock,true,'shared read reflects stock');
+assert.equal(temp.call('item.update',{household_item_id:id,version:1,in_stock:false},'op-stale-abcdefghijklmn').error.code,'VERSION_CONFLICT','old version rejected');
+assert.equal(temp.db.household_items.length,2,'one item, not two');
 assert.equal(temp.db.processed_operations.length,3,'two successful operations');
+
+
+const groupFixture=fixture(api);
+const migrated=groupFixture.call('bootstrap');
+assert.equal(migrated.ok,true,'legacy five-category workbook migrates without resetting user data');
+assert.equal(migrated.data.categories.length,6,'new seasoning category available');
+assert.equal(migrated.data.categories[0].name,'食品・飲料','existing category ID is renamed in place');
+const vegetable=groupFixture.call('item.create',{name:'袋',sub_name:'野菜用',category_id:1},
+ 'op-sub-vegetable-abcdefghijkl').data.entity;
+const garbage=groupFixture.call('item.create',{name:'袋',sub_name:'生ごみ用',category_id:1},
+ 'op-sub-garbage-abcdefghijkl').data.entity;
+assert.notEqual(vegetable.household_item_id,garbage.household_item_id,'different sub-names remain separate items');
+assert.equal(groupFixture.call('item.create',{name:'袋',sub_name:'野菜用',category_id:1},
+ 'op-sub-duplicate-abcdefghijkl').error.code,'DUPLICATE','same category, name and sub-name cannot repeat');
+assert.equal(groupFixture.call('item.update',{household_item_id:vegetable.household_item_id,
+ version:1,in_stock:true},'op-sub-stock-abcdefghijkl').ok,true,
+ 'one child stock updates separately');
+assert.equal(groupFixture.call('bootstrap').data.household_items.find(i=>
+ i.household_item_id===garbage.household_item_id).in_stock,false,'sibling remains out of stock');
+const tiedProduct=groupFixture.call('product.create',{name:'野菜用保存袋50枚',
+ package_quantity:50,package_unit:'枚',household_item_id:vegetable.household_item_id},
+ 'op-sub-product-abcdefghijkl');
+assert.equal(tiedProduct.ok,true,'product links to individual sub-name item');
+assert.equal(tiedProduct.data.entity.household_item_id,vegetable.household_item_id,
+ 'product must not link to a synthesized group');
+assert.equal(groupFixture.call('item.update',{household_item_id:vegetable.household_item_id,
+ version:2,name:'袋',sub_name:'食品保存用',category_id:1},
+ 'op-sub-edit-abcdefghijkl').ok,true,'sub-name change preserves item ID');
+assert.equal(groupFixture.call('bootstrap').data.products.find(p=>
+ p.product_id===tiedProduct.data.entity.product_id).household_item_id,vegetable.household_item_id,
+ 'editing sub-name does not rewrite product ownership');
+assert.equal(groupFixture.call('item.create',{name:'醤油',category_id:5,sub_name:''},
+ 'op-sub-seasoning-abcdefghijkl').ok,true,'seasoning category accepts items');
+const ordinary=groupFixture.call('item.create',{name:'ラップ',category_id:1,sub_name:''},
+ 'op-sub-ordinary-abcdefghijkl').data.entity;
+const groupRows=groupFixture.call('bootstrap').data.household_items;
+const mixedOrder=[ordinary.household_item_id,vegetable.household_item_id,garbage.household_item_id];
+const mixedReorder=groupFixture.call('item.reorder',{
+ category_id:1,household_item_ids:mixedOrder,
+ versions:mixedOrder.map(itemId=>Number(groupRows.find(row=>row.household_item_id===itemId).version))
+},'op-sub-mixed-reorder-abcdefghijkl');
+assert.equal(mixedReorder.ok,true,'collapsed group members can be reordered alongside an ordinary item');
+const reordered=groupFixture.call('bootstrap').data.household_items;
+assert.deepEqual(mixedOrder.map(itemId=>Number(reordered.find(x=>x.household_item_id===itemId).sort_order)),
+ [1,2,3],'reorder preserves complete child sequence including an ordinary item');
 
 const googleCode=api.replace(
   "const KURASHI_AUTH_MODE = 'temporary-household';",
@@ -117,7 +165,7 @@ assert.equal(signed.db.users.length,2,'verified account is bound to household');
 assert.ok(client.includes('authRequired=true'),'client supports auth restoration');
 assert.ok(client.includes("document.addEventListener('DOMContentLoaded'"),'automatic initial load');
 assert.ok(client.includes('kurashi-stock-operations-v1'),'durable IndexedDB queue');
-assert.ok(app.includes('Googleログイン一時停止中'),'Settings communicates temporary mode without equating cached data with a server connection');
+assert.ok(!app.includes('Googleログイン一時停止中'),'Temporary auth mode does not display obsolete login-paused guidance');
 assert.ok(!app.includes('Googleシートから読み込み'),'no manual reload button');
 
 
@@ -125,8 +173,8 @@ assert.ok(!app.includes('Googleシートから読み込み'),'no manual reload b
 const factory=new IDBFactory();
 const sent=[];
 let online=true,loseOneWriteResponse=false;
-const getVersion=()=>Number(temp.call('bootstrap').data.item_groups[0].version);
-const getStock=()=>temp.call('bootstrap').data.item_groups[0].in_stock;
+const getVersion=()=>Number(temp.call('bootstrap').data.household_items[0].version);
+const getStock=()=>temp.call('bootstrap').data.household_items[0].in_stock;
 const mockFetch=async(url,options)=>{
  assert.match(url,/^https:\/\/script\.google\.com\/macros\/s\//);
  const req=JSON.parse(options.body);sent.push(req);
@@ -147,6 +195,7 @@ function appSession(idbFactory=factory){
  dom.window.fetch=mockFetch;dom.window.scrollTo=()=>{};
  dom.window.HTMLElement.prototype.scrollIntoView=()=>{}; // supported by iOS Safari, absent in jsdom
  dom.window.console=console;
+ dom.window.eval(packageCode);
  dom.window.eval(client);
  dom.window.eval(validator);
  dom.window.eval(reviewModel);
@@ -169,9 +218,9 @@ async function completeOcrImport(session){
  const receipt=JSON.parse(staged.value);staged.remove();
  await waitFor(()=>session.window.KurashiLive.state().loaded,
   'OCR test loads the shared Sheets snapshot');
- const stores=temp.call('bootstrap').data.stores;
+ const retail_chains=temp.call('bootstrap').data.retail_chains;
  const norm=s=>String(s||'').normalize('NFKC').trim().toLocaleLowerCase('ja');
- const knownStore=stores.find(c=>{
+ const knownStore=retail_chains.find(c=>{
   let aliases=[];
   try{aliases=JSON.parse(c.aliases||'[]')}catch(_){}
   return [c.canonical_name,...aliases].some(x=>norm(x)===norm(receipt.storeName));
@@ -252,8 +301,19 @@ clickStock(a);
 await waitFor(()=>pill(a)==='なし'&&a.window.KurashiLive.state().queued===1,
  'first tap persists, updates visible stock');
 clickStock(a);
-await waitFor(()=>pill(a)==='あり'&&a.window.KurashiLive.state().queued===2,
- 'second tap accepted before previous GAS write');
+await waitFor(()=>pill(a)==='あり'&&a.window.KurashiLive.state().queued===0,
+ 'second tap cancels the unsent stock change');
+// Multiple rapid taps should retain only the final durable stock state.
+for(let i=0;i<5;i++){
+ clickStock(a);
+ await waitFor(()=>pill(a)===(i%2===0?'なし':'あり'),
+  'rapid stock tap '+(i+1)+' updates immediately');
+}
+assert.equal(a.window.KurashiLive.state().queued,1,
+ 'five rapid taps create one pending state, not five network requests');
+clickStock(a);
+await waitFor(()=>pill(a)==='あり'&&a.window.KurashiLive.state().queued===0,
+ 'last tap restores original stock without any server operation');
 // An exposed Notes-style swipe card is dimmed and must not toggle stock.
 a.window.eval('setOpenSwipe('+JSON.stringify(id)+')');
 const exposedRow=a.window.document.querySelector('[data-item-id="'+id+'"]');
@@ -270,8 +330,8 @@ assert.equal(a.window.KurashiLive.state().queued,beforeSwipeClick,
 assert.equal(pill(a),'あり','tapping exposed stock keeps current value');
 assert.equal(exposedRow.classList.contains('swipe-open'),false,
  'tapping the exposed stock area dismisses its actions');
-assert.equal(exposedFront.hasAttribute('inert'),false,'closing restores interactive front');
-assert.equal(exposedRow.querySelector('[data-stock]').tabIndex,0,'closing restores stock focusability');
+assert.equal(exposedFront.hasAttribute('inert'),false,'closing reretail_chains interactive front');
+assert.equal(exposedRow.querySelector('[data-stock]').tabIndex,0,'closing reretail_chains stock focusability');
 a.window.eval('setOpenSwipe('+JSON.stringify(id)+')');
 exposedFront.click();
 assert.equal(exposedRow.classList.contains('swipe-open'),false,'tapping blank exposed front also closes');
@@ -280,7 +340,7 @@ exposedRow.querySelector('[data-list-edit]').focus();
 exposedRow.querySelector('[data-list-edit]').dispatchEvent(new a.window.KeyboardEvent('keydown',
  {key:'Escape',bubbles:true,cancelable:true}));
 assert.equal(exposedRow.classList.contains('swipe-open'),false,'Escape closes swipe actions');
-assert.equal(exposedFront.hasAttribute('inert'),false,'Escape restores front');
+assert.equal(exposedFront.hasAttribute('inert'),false,'Escape reretail_chains front');
 assert.equal(a.window.document.querySelector('[data-stock="'+id+'"]'),sameStockButton,
  'v46 stock button retains the same DOM node across repeated taps and network status');
 assert.equal(getVersion(),2,'server unchanged during offline actions');
@@ -312,17 +372,27 @@ editAction.dispatchEvent(new a.window.MouseEvent('click',{bubbles:true,cancelabl
 assert.ok(a.window.document.querySelector('#itemForm')?.textContent.includes('変更を保存'),
  'the next physical tap immediately opens the real item editing form');
 a.window.close();online=true;
-// Fresh PWA process, same IndexedDB database. It must drain both commands.
+// Fresh PWA process, same IndexedDB database: cancelled stock taps remain absent.
 let b=appSession();
-await waitFor(()=>b.window.KurashiLive.state().queued===0&&getVersion()===4,
- 'restarted PWA replays both operations');
-assert.equal(getStock(),true,'two queued toggles round-trip back to in stock');
-assert.equal(pill(b),'あり','DOM reflects both queued toggles');
+await waitFor(()=>b.window.KurashiLive.state().loaded&&
+ b.window.KurashiLive.state().queued===0&&getVersion()===2&&pill(b)==='あり',
+ 'restarted PWA retains confirmed stock without redundant operations');
+assert.equal(getStock(),true,'rapid toggles preserve the final in-stock state');
+assert.equal(pill(b),'あり','DOM reflects the final stock state');
 const history=temp.db.processed_operations.length;
-// Simulate server commit with the HTTP response lost, then app restart.
+// A single tap is locally durable immediately, but the network send waits for
+// the 500 ms idle window. Other operations still use immediate flush.
+await waitFor(()=>!b.window.KurashiLive.state().busy,'ready for debounce test');
 loseOneWriteResponse=true;
 clickStock(b);
-await waitFor(()=>getVersion()===5&&b.window.KurashiLive.state().queued===1,
+await waitFor(()=>pill(b)==='なし'&&b.window.KurashiLive.state().queued===1,
+ 'stock state changes immediately before network debounce');
+await pause(200);
+assert.equal(getVersion(),2,'stock update is not sent after only 200ms');
+assert.equal(temp.db.processed_operations.length,history,
+ 'short pause does not create an unnecessary server write');
+// Simulate server commit with the HTTP response lost, then app restart.
+await waitFor(()=>getVersion()===3&&b.window.KurashiLive.state().queued===1,
  'server committed but no response received');
 const afterCommit=temp.db.processed_operations.length;
 assert.equal(afterCommit,history+1);
@@ -330,7 +400,7 @@ b.window.close();
 let c=appSession();
 await waitFor(()=>c.window.KurashiLive.state().queued===0&&pill(c)==='なし',
  'same operation ID safely replayed and displayed on restart');
-assert.equal(getVersion(),5,'replay did not toggle again');
+assert.equal(getVersion(),3,'replay did not toggle again');
 assert.equal(temp.db.processed_operations.length,afterCommit,
  'GAS did not create an extra processed operation');
 assert.equal(pill(c),'なし');
@@ -353,7 +423,7 @@ assert.ok(liveSettings.textContent.includes('最終同期'),
  'The last successful server contact is displayed when it exists');
 assert.ok(!liveSettings.querySelector('.tag'),
  'Old connected-state badge no longer contradicts current errors or cache');
-assert.ok(liveSettings.textContent.includes('Googleログイン一時停止中'),
+assert.ok(!liveSettings.textContent.includes('Googleログイン一時停止中'),
  'The live settings screen still communicates temporary authentication mode');
 assert.ok(liveSettings.querySelector('[data-act="masterProducts"]')&&
  liveSettings.querySelector('[data-act="aliasManage"]'),
@@ -364,45 +434,45 @@ assert.ok(liveSettings.querySelector('.settings-version-row'),
 // New item IDs can be referenced by edits/hides before the first GAS save.
 online=false;
 const draft=await c.window.KurashiLive.save('item.create',{name:'試作テスト品',category_id:1});
-assert.match(draft.item_group_id,/^local-/);
+assert.match(draft.household_item_id,/^local-/);
 await c.window.KurashiLive.save('item.update',{
- item_group_id:draft.item_group_id,name:'試作テスト品・更新',category_id:1,version:1
+ household_item_id:draft.household_item_id,name:'試作テスト品・更新',category_id:1,version:1
 });
 await c.window.KurashiLive.save('item.update',{
- item_group_id:draft.item_group_id,is_hidden:true,version:1
+ household_item_id:draft.household_item_id,is_hidden:true,version:1
 });
 assert.equal(c.window.KurashiLive.state().queued,3,'create, edit and hide persist as 3 commands');
 c.window.close();online=true;
 let d=appSession();
 try{
  await waitFor(()=>d.window.KurashiLive.state().queued===0 &&
-  temp.db.item_groups.some(row=>row.includes('試作テスト品・更新')),
+  temp.db.household_items.some(row=>row.includes('試作テスト品・更新')),
   'restarted PWA resolves temporary ID and saves create, edit, hide in order');
 }catch(e){
  console.log('RESTART_QUEUE_DIAGNOSTICS',JSON.stringify({
   state:d.window.KurashiLive.state(),
-  sheetRows:temp.db.item_groups.slice(1),
+  sheetRows:temp.db.household_items.slice(1),
   sentRequests:sent.slice(-12).map(x=>({action:x.action,payload:x.payload,operation_id:x.operation_id}))
  }));
  throw e;
 }
-const hidden=temp.call('bootstrap').data.item_groups.find(x=>x.name==='試作テスト品・更新');
+const hidden=temp.call('bootstrap').data.household_items.find(x=>x.name==='試作テスト品・更新');
 assert.ok(hidden&&hidden.is_hidden===true&&Number(hidden.version)===3,
  'queued edit and hide both reached GAS after create was acknowledged');
 // A concurrent spouse-side change triggers a version rebase. Preserve the
 // *desired* stock value, rather than applying another blind inversion.
 await waitFor(()=>!d.window.KurashiLive.state().busy,'finished post-queue refresh');
 const other=temp.call('item.update',{
- item_group_id:id,version:5,in_stock:true
+ household_item_id:id,version:3,in_stock:true
 },'op-other-device-abcdefghijklmnop');
 assert.equal(other.ok,true,'spouse simulated update');
-assert.equal(Number(other.data.entity.version),6);
+assert.equal(Number(other.data.entity.version),4);
 const accepted=await d.window.KurashiLive.toggleStock(id);
 assert.equal(accepted.in_stock,true,'optimistic value expresses the tapped intention');
-await waitFor(()=>temp.call('bootstrap').data.item_groups.find(x=>x.item_group_id===id).version===7 &&
+await waitFor(()=>temp.call('bootstrap').data.household_items.find(x=>x.household_item_id===id).version===5 &&
  d.window.KurashiLive.state().queued===0,
  'VERSION_CONFLICT triggers rebase and desired state is preserved');
-assert.equal(temp.call('bootstrap').data.item_groups.find(x=>x.item_group_id===id).in_stock,true);
+assert.equal(temp.call('bootstrap').data.household_items.find(x=>x.household_item_id===id).in_stock,true);
 d.window.close();
 
 // GAS reorder: validation, version check, canonical order, and idempotency.
@@ -410,13 +480,13 @@ const extraA=temp.call('item.create',{name:'パン',category_id:0},'op-reorder-c
 const extraB=temp.call('item.create',{name:'米',category_id:0},'op-reorder-create-b-abcdef12345');
 assert.equal(extraA.ok,true);assert.equal(extraB.ok,true);
 const all=temp.call('bootstrap').data;
-const byId=new Map(all.item_groups.map(x=>[x.item_group_id,x]));
-const order1=[extraB.data.entity.item_group_id,id,extraA.data.entity.item_group_id];
-const reorder1={category_id:0,item_group_ids:order1,
+const byId=new Map(all.household_items.map(x=>[x.household_item_id,x]));
+const order1=[extraB.data.entity.household_item_id,id,extraA.data.entity.household_item_id];
+const reorder1={category_id:0,household_item_ids:order1,
  versions:order1.map(id=>Number(byId.get(id).version))};
 const saved=temp.call('item.reorder',reorder1,'op-reorder-first-abcdef12345');
 assert.equal(saved.ok,true,'batch reorder committed');
-assert.equal(saved.data.entities.map(x=>x.item_group_id).join(','),order1.join(','));
+assert.equal(saved.data.entities.map(x=>x.household_item_id).join(','),order1.join(','));
 assert.deepEqual(saved.data.entities.map(x=>Number(x.sort_order)),[1,2,3]);
 const logCount=temp.db.change_log.length;
 const journalCount=temp.db.processed_operations.length;
@@ -426,7 +496,7 @@ assert.equal(temp.db.change_log.length,logCount,'replay does not duplicate chang
 assert.equal(temp.db.processed_operations.length,journalCount,'replay does not duplicate journal');
 assert.equal(temp.call('item.reorder',reorder1,'op-reorder-outdated-abcdef12345').error.code,
  'VERSION_CONFLICT','stale rows cannot silently overwrite spouse edits');
-assert.equal(temp.call('item.reorder',{...reorder1,item_group_ids:[id,id,id]},
+assert.equal(temp.call('item.reorder',{...reorder1,household_item_ids:[id,id,id]},
  'op-reorder-duplicate-abcdef12345').error.code,'BAD_REQUEST',
  'duplicate IDs in category reorder rejected');
 
@@ -436,7 +506,7 @@ await waitFor(()=>e.window.KurashiLive.state().loaded&&
  e.window.document.querySelectorAll('.swipe-item[data-item-id]').length>=3,
  'reorder session bootstrapped');
 online=false;
-const order2=[extraA.data.entity.item_group_id,extraB.data.entity.item_group_id,id];
+const order2=[extraA.data.entity.household_item_id,extraB.data.entity.household_item_id,id];
 // Drive v46's actual startPending -> 420ms long press -> moveDrag ->
 // endDrag pipeline; assignments from a separate eval cannot change its
 // lexical activeDrag binding.
@@ -469,15 +539,15 @@ assert.deepEqual(displayed(e),order2,'optimistic reorder matches rendered list')
 e.window.close();online=true;
 let f=appSession();
 await waitFor(()=>f.window.KurashiLive.state().queued===0 &&
- temp.call('bootstrap').data.item_groups.find(x=>x.item_group_id===order2[0]).sort_order===1,
+ temp.call('bootstrap').data.household_items.find(x=>x.household_item_id===order2[0]).sort_order===1,
  'reorder replay after PWA restart');
 assert.deepEqual(displayed(f),order2,'server reorder and PWA order agree after restart');
 // Response loss AFTER server completed the entire reorder: exact-ID replay.
 loseOneWriteResponse=true;
-const order3=[id,extraA.data.entity.item_group_id,extraB.data.entity.item_group_id];
+const order3=[id,extraA.data.entity.household_item_id,extraB.data.entity.household_item_id];
 await f.window.KurashiLive.reorderItems(0,order3);
 await waitFor(()=>f.window.KurashiLive.state().queued===1 &&
- temp.call('bootstrap').data.item_groups.find(x=>x.item_group_id===order3[0]).sort_order===1,
+ temp.call('bootstrap').data.household_items.find(x=>x.household_item_id===order3[0]).sort_order===1,
  'server committed reorder but response was dropped');
 const beforeRetry=temp.db.processed_operations.length;
 f.window.close();
@@ -497,7 +567,7 @@ const z=interrupted.call('item.create',{name:'C',category_id:0},'op-partial-crea
 assert.equal(x.ok,true);assert.equal(y.ok,true);assert.equal(z.ok,true);
 const reversed=[z.data.entity,y.data.entity,x.data.entity];
 const partialPayload={category_id:0,
- item_group_ids:reversed.map(e=>e.item_group_id),
+ household_item_ids:reversed.map(e=>e.household_item_id),
  versions:reversed.map(e=>Number(e.version))};
 interrupted.failItemWriteAfter(1);
 const broken=interrupted.call('item.reorder',partialPayload,'op-reorder-partial-abcdef12345');
@@ -556,7 +626,7 @@ await waitFor(()=>h.window.KurashiLive.state().queued===4 &&
 h.window.close();online=true;
 let afterUI=appSession();
 await waitFor(()=>afterUI.window.KurashiLive.state().queued===0 &&
- temp.call('bootstrap').data.item_groups.some(i=>
+ temp.call('bootstrap').data.household_items.some(i=>
  i.name==='実機動作テスト品・編集'&&i.is_hidden===false&&Number(i.version)===4),
  'restart syncs create/edit/hide/restore to Sheets');
 afterUI.window.close();
@@ -569,11 +639,11 @@ online=false;
 const fresh=await pendingCreate.window.KurashiLive.save('item.create',{
  name:'作成前並び替えテスト',category_id:0
 });
-assert.match(fresh.item_group_id,/^local-/);
+assert.match(fresh.household_item_id,/^local-/);
 const remaining=[...pendingCreate.window.document.querySelectorAll('.swipe-item[data-item-id]')]
- .filter(row=>row.dataset.categoryId==='0'&&row.dataset.itemId!==fresh.item_group_id)
+ .filter(row=>row.dataset.categoryId==='0'&&row.dataset.itemId!==fresh.household_item_id)
  .map(row=>row.dataset.itemId);
-const wanted=[fresh.item_group_id,...remaining];
+const wanted=[fresh.household_item_id,...remaining];
 await pendingCreate.window.KurashiLive.reorderItems(0,wanted);
 assert.equal(pendingCreate.window.KurashiLive.state().queued,2,
  'unsynced creation and reorder are two separately durable commands');
@@ -582,12 +652,12 @@ assert.deepEqual(displayed(pendingCreate),wanted,
 pendingCreate.window.close();online=true;
 let freshApp=appSession();
 await waitFor(()=>freshApp.window.KurashiLive.state().queued===0&&
- temp.call('bootstrap').data.item_groups.some(i=>
+ temp.call('bootstrap').data.household_items.some(i=>
   i.name==='作成前並び替えテスト'&&Number(i.sort_order)===1),
  'relaunch resolves temporary ID, saves item creation then its reorder');
-const itemCreated=temp.call('bootstrap').data.item_groups.find(i=>i.name==='作成前並び替えテスト');
-assert.ok(itemCreated.item_group_id.startsWith('item-'),'server generated permanent ID');
-assert.equal(displayed(freshApp)[0],itemCreated.item_group_id,'rendered list uses permanent first item ID');
+const itemCreated=temp.call('bootstrap').data.household_items.find(i=>i.name==='作成前並び替えテスト');
+assert.ok(itemCreated.household_item_id.startsWith('item-'),'server generated permanent ID');
+assert.equal(displayed(freshApp)[0],itemCreated.household_item_id,'rendered list uses permanent first item ID');
 freshApp.window.close();
 console.log('v46 UI forms + IndexedDB reorder + queued create/reorder + crash recovery: OK');
 
@@ -601,11 +671,11 @@ const itA=productFixture.call('item.create',{name:'飲料',category_id:0},
 const itB=productFixture.call('item.create',{name:'食品',category_id:0},
  'op-product-item-b-abcdefghijklmnop').data.entity;
 const createProductPayload={name:'無糖茶',package_quantity:500,
- package_unit:'mL',item_group_id:itA.item_group_id};
+ package_unit:'mL',household_item_id:itA.household_item_id};
 const productCreated=productFixture.call('product.create',createProductPayload,
  'op-product-create-abcdefghijklmnop');
 assert.equal(productCreated.ok,true,'product master create');
-assert.equal(productCreated.data.entity.item_group_id,itA.item_group_id);
+assert.equal(productCreated.data.entity.household_item_id,itA.household_item_id);
 const productId=productCreated.data.entity.product_id;
 assert.equal(productFixture.call('product.create',createProductPayload,
  'op-product-create-abcdefghijklmnop').data.entity.product_id,productId,
@@ -618,20 +688,20 @@ const updatedProduct=productFixture.call('product.update',{product_id:productId,
  'op-product-edit-abcdefghijklmnop');
 assert.equal(updatedProduct.ok,true,'product edit');
 assert.equal(productFixture.call('product.update',{product_id:productId,
- version:1,item_group_id:itB.item_group_id},
+ version:1,household_item_id:itB.household_item_id},
  'op-product-stale-abcdefghijklmnop').error.code,'VERSION_CONFLICT',
  'product version conflict');
 const movedProduct=productFixture.call('product.update',{product_id:productId,
- version:2,item_group_id:itB.item_group_id},
+ version:2,household_item_id:itB.household_item_id},
  'op-product-link-abcdefghijklmnop');
 assert.equal(movedProduct.ok,true,'product linked to different item group');
-assert.equal(movedProduct.data.entity.item_group_id,itB.item_group_id);
+assert.equal(movedProduct.data.entity.household_item_id,itB.household_item_id);
 const unlinkedProduct=productFixture.call('product.update',{product_id:productId,
- version:3,item_group_id:null},'op-product-unlink-abcdefghijklmnop');
+ version:3,household_item_id:null},'op-product-unlink-abcdefghijklmnop');
 assert.equal(unlinkedProduct.ok,true);
-assert.equal(unlinkedProduct.data.entity.item_group_id,'','unlink retains the master');
+assert.equal(unlinkedProduct.data.entity.household_item_id,'','unlink retains the master');
 assert.equal(productFixture.call('product.update',{product_id:productId,
- version:4,item_group_id:'item-unknown'},'op-product-invalid-abcdefghijklmnop')
+ version:4,household_item_id:'item-unknown'},'op-product-invalid-abcdefghijklmnop')
  .error.code,'NOT_FOUND','product cannot link to missing item');
 assert.equal(productFixture.call('bootstrap').data.products.length,1,
  'product master shared on bootstrap');
@@ -646,28 +716,28 @@ const localItem=await productSession.window.KurashiLive.save('item.create',
  {name:'仮ID商品用日用品',category_id:4});
 const localProduct=await productSession.window.KurashiLive.save('product.create',
  {name:'テスト商品',package_quantity:3,package_unit:'本',
- item_group_id:localItem.item_group_id});
+ household_item_id:localItem.household_item_id});
 assert.match(localProduct.product_id,/^local-/);
 const localEdited=await productSession.window.KurashiLive.save('product.update',
  {product_id:localProduct.product_id,name:'テスト商品改',
  package_quantity:4,package_unit:'本',version:1});
 assert.equal(localEdited.name,'テスト商品改');
 await productSession.window.KurashiLive.save('product.update',
- {product_id:localProduct.product_id,version:1,item_group_id:null});
+ {product_id:localProduct.product_id,version:1,household_item_id:null});
 await productSession.window.KurashiLive.save('product.update',
  {product_id:localProduct.product_id,version:1,
- item_group_id:localItem.item_group_id});
+ household_item_id:localItem.household_item_id});
 assert.equal(productSession.window.KurashiLive.state().queued,5);
 assert.equal(productSession.window.KurashiLive.catalogueOf(
-  {products:[],stores:[]}).products.length,0);
+  {products:[],retail_chains:[]}).products.length,0);
 productSession.window.close();online=true;
 let productRestart=appSession();
 await waitFor(()=>productRestart.window.KurashiLive.state().queued===0&&
  temp.call('bootstrap').data.products.some(x=>x.name==='テスト商品改'),
  'queued product and parent both obtain permanent IDs on restart');
 const savedProduct=temp.call('bootstrap').data.products.find(x=>x.name==='テスト商品改');
-const savedItem=temp.call('bootstrap').data.item_groups.find(x=>x.name==='仮ID商品用日用品');
-assert.equal(savedProduct.item_group_id,savedItem.item_group_id,
+const savedItem=temp.call('bootstrap').data.household_items.find(x=>x.name==='仮ID商品用日用品');
+assert.equal(savedProduct.household_item_id,savedItem.household_item_id,
  'product relink to freshly created parent succeeded');
 assert.equal(Number(savedProduct.version),4,'create, edit, unlink, relink all persisted');
 assert.equal(productRestart.window.KurashiLive.catalogueOf(
@@ -702,8 +772,21 @@ assert.ok(productUI.window.document.querySelector('.shell.focus main.manage-main
  'product form remains in canonical v46 full-page layout');
 let productForm=productUI.window.document.getElementById('productCreateForm');
 assert.ok(productForm,'original new product form is reachable');
-productForm.querySelector('#new-product-name').value='UI連携商品';
-productForm.querySelector('#new-product-quantity').value='700';
+const productNameInput=productForm.querySelector('#new-product-name');
+const productQuantityInput=productForm.querySelector('#new-product-quantity');
+productNameInput.value='UI連携商品80g×3袋';
+productNameInput.dispatchEvent(new productUI.window.Event('input',{bubbles:true}));
+assert.equal(productQuantityInput.value,'240','multipack size autofills in the live form');
+assert.equal(productForm.querySelector('[name="unit"]').value,'g');
+productQuantityInput.value='250';
+productQuantityInput.dispatchEvent(new productUI.window.Event('input',{bubbles:true}));
+productNameInput.value='UI連携商品90g×3袋';
+productNameInput.dispatchEvent(new productUI.window.Event('input',{bubbles:true}));
+assert.equal(productQuantityInput.value,'250',
+ 'editing the product name never overwrites a manually corrected package size');
+productNameInput.value='UI連携商品';
+productNameInput.dispatchEvent(new productUI.window.Event('input',{bubbles:true}));
+productQuantityInput.value='700';
 productForm.dispatchEvent(new productUI.window.Event('submit',{bubbles:true,cancelable:true}));
 await waitFor(()=>productUI.window.KurashiLive.state().queued===0 &&
  temp.call('bootstrap').data.products.some(p=>p.name==='UI連携商品') &&
@@ -724,14 +807,14 @@ assert.ok(productUI.window.document.querySelector('[data-dialog="confirmProductU
  'v46 product unlink confirmation opens');
 productUI.window.document.querySelector('[data-dialog="confirmProductUnlink"]').click();
 await waitFor(()=>productUI.window.KurashiLive.state().queued===0 &&
- !temp.call('bootstrap').data.products.find(p=>p.product_id===uiSaved.product_id).item_group_id,
+ !temp.call('bootstrap').data.products.find(p=>p.product_id===uiSaved.product_id).household_item_id,
  'v46 product unlink saved to shared master');
 productUI.window.document.querySelector('[data-act="productPick"]').click();
 assert.ok(productUI.window.document.querySelector('[data-pick="'+uiSaved.product_id+'"]'),
  'unlinked product stays searchable');
 productUI.window.document.querySelector('[data-pick="'+uiSaved.product_id+'"]').click();
 await waitFor(()=>productUI.window.KurashiLive.state().queued===0 &&
- temp.call('bootstrap').data.products.find(p=>p.product_id===uiSaved.product_id).item_group_id===id,
+ temp.call('bootstrap').data.products.find(p=>p.product_id===uiSaved.product_id).household_item_id===id,
  'v46 picker relink persists to Sheets');
 productUI.window.close();
 console.log('v54: product API + durable offline queue + actual v46 create/edit/unlink/relink UI: OK');
@@ -739,16 +822,16 @@ console.log('v54: product API + durable offline queue + actual v46 create/edit/u
 // Product ordering uses the same transaction queue and idempotent GAS journal.
 const orderServer=fixture(api);
 const orderGroup=orderServer.call('item.create',{name:'商品並び替え',category_id:0},
- 'op-product-order-group-abcdef12345').data.entity.item_group_id;
+ 'op-product-order-group-abcdef12345').data.entity.household_item_id;
 const productCreate=(label)=>orderServer.call('product.create',{
- item_group_id:orderGroup,name:label,package_quantity:null,package_unit:null},
+ household_item_id:orderGroup,name:label,package_quantity:null,package_unit:null},
  'op-product-order-create-'+label+'-abcd').data.entity;
 const ordA=productCreate('A'),ordB=productCreate('B'),ordC=productCreate('C');
 const ordIds=[ordC.product_id,ordA.product_id,ordB.product_id];
-const ordPayload={item_group_id:orderGroup,product_ids:ordIds,versions:[1,1,1]};
+const ordPayload={household_item_id:orderGroup,product_ids:ordIds,versions:[1,1,1]};
 const ordResult=orderServer.call('product.reorder',ordPayload,'op-product-order-save-abcdef12345');
 assert.equal(ordResult.ok,true,'GAS accepts whole-category product order');
-assert.deepEqual(ordResult.data.entities.map(p=>Number(p.item_group_order)),[1,2,3]);
+assert.deepEqual(ordResult.data.entities.map(p=>Number(p.household_item_order)),[1,2,3]);
 const journalBefore=orderServer.db.processed_operations.length;
 const logBefore=orderServer.db.change_log.length;
 assert.equal(orderServer.call('product.reorder',ordPayload,
@@ -763,7 +846,7 @@ assert.equal(orderServer.call('product.reorder',{...ordPayload,
 const ordSnapshot=orderServer.call('bootstrap').data.products;
 const ordLookup=new Map(ordSnapshot.map(p=>[p.product_id,p]));
 const afterReverse=[ordB.product_id,ordA.product_id,ordC.product_id];
-const secondPayload={item_group_id:orderGroup,product_ids:afterReverse,
+const secondPayload={household_item_id:orderGroup,product_ids:afterReverse,
  versions:afterReverse.map(id=>Number(ordLookup.get(id).version))};
 orderServer.failProductWriteAfter(1);
 assert.equal(orderServer.call('product.reorder',secondPayload,
@@ -777,7 +860,7 @@ assert.equal(orderServer.call('bootstrap').ok,true);
 // Browser v46 price info: actual long press, offline optimistic reordering,
 // app restart, lost HTTP response recovery, unconfirmed IDs, and version rebase.
 const newForDrag=(name,number)=>temp.call('product.create',{
- item_group_id:id,name,package_quantity:null,package_unit:null},
+ household_item_id:id,name,package_quantity:null,package_unit:null},
  'op-client-product-order-'+number+'-abcdef12345').data.entity;
 const dragA=newForDrag('順序A','a'),dragB=newForDrag('順序B','b');
 const shown=dom=>[...dom.window.document.querySelectorAll(
@@ -802,7 +885,7 @@ productTarget.getBoundingClientRect=()=>({top:100,height:100});
 prodApp.window.eval(`moveDrag({pointerId:606,clientX:15,clientY:20,preventDefault(){}});
  endDrag({pointerId:606});`);
 await waitFor(()=>prodApp.window.KurashiLive.state().queued===1,
- 'v46 product long press stores a durable reorder');
+ 'v46 product long press retail_chains a durable reorder');
 const newOrder=[...oldOrder];
 newOrder.splice(newOrder.indexOf(dragB.product_id),1);
 newOrder.splice(newOrder.indexOf(dragA.product_id),0,dragB.product_id);
@@ -811,7 +894,7 @@ prodApp.window.close();online=true;
 let restartedProd=appSession();
 await waitFor(()=>restartedProd.window.KurashiLive.state().queued===0&&
  temp.call('bootstrap').data.products.find(x=>x.product_id===dragB.product_id)
- .item_group_order===newOrder.indexOf(dragB.product_id)+1,
+ .household_item_order===newOrder.indexOf(dragB.product_id)+1,
  'product reorder reaches Sheets on PWA restart');
 restartedProd.window.document.querySelector('[data-open="'+id+'"]').click();
 assert.deepEqual(shown(restartedProd),newOrder);
@@ -820,14 +903,14 @@ const opposite=[...newOrder].reverse();
 await restartedProd.window.KurashiLive.reorderProducts(id,opposite);
 await waitFor(()=>restartedProd.window.KurashiLive.state().queued===1 &&
  temp.call('bootstrap').data.products.find(x=>x.product_id===opposite[0])
- .item_group_order===1,'server saved but reorder response lost');
+ .household_item_order===1,'server saved but reorder response lost');
 const beforeReplay=temp.db.processed_operations.length;
 restartedProd.window.close();
 let recoveredProd=appSession();
 await waitFor(()=>recoveredProd.window.KurashiLive.state().loaded&&
  recoveredProd.window.KurashiLive.state().queued===0&&
  temp.call('bootstrap').data.products.find(x=>x.product_id===opposite[0])
- .item_group_order===1,
+ .household_item_order===1,
  'product reorder response loss replayed after restart');
 assert.equal(temp.db.processed_operations.length,beforeReplay,
  'same-ID product retry avoids duplicate history');
@@ -837,7 +920,7 @@ await waitFor(()=>localProd.window.KurashiLive.state().loaded,'local product tes
 localProd.window.document.querySelector('[data-open="'+id+'"]').click();
 online=false;
 const draftProduct=await localProd.window.KurashiLive.save('product.create',{
- item_group_id:id,name:'順序未確定商品',package_quantity:1,package_unit:'個'});
+ household_item_id:id,name:'順序未確定商品',package_quantity:1,package_unit:'個'});
 assert.match(draftProduct.product_id,/^local-/);
 const localOrder=[draftProduct.product_id,...shown(localProd).filter(x=>x!==draftProduct.product_id)];
 await localProd.window.KurashiLive.reorderProducts(id,localOrder);
@@ -847,7 +930,7 @@ localProd.window.close();online=true;
 let localReplayed=appSession();
 await waitFor(()=>localReplayed.window.KurashiLive.state().queued===0 &&
  temp.call('bootstrap').data.products.some(p=>
- p.name==='順序未確定商品'&&Number(p.item_group_order)===1),
+ p.name==='順序未確定商品'&&Number(p.household_item_order)===1),
  'unconfirmed product ID replaced before reorder request');
 const permanent=temp.call('bootstrap').data.products.find(p=>p.name==='順序未確定商品');
 assert.match(permanent.product_id,/^product-/);
@@ -868,11 +951,11 @@ staleProd.window.close();online=true;
 let rebasedProd=appSession();
 await waitFor(()=>rebasedProd.window.KurashiLive.state().queued===0&&
  temp.call('bootstrap').data.products.find(p=>p.product_id===lastId)
- .item_group_order===1,'VERSION_CONFLICT rebases product reorder');
+ .household_item_order===1,'VERSION_CONFLICT rebases product reorder');
 rebasedProd.window.close();
 console.log('v55 product reorder (UI drag / offline / crash / response loss / rebase): OK');
 
-/* Records and stores are validated as a single household transaction;
+/* Records and retail_chains are validated as a single household transaction;
  * parent and children are journaled before Sheets writes. */
 const recordFixture=fixture(api);
 const newChain=recordFixture.call('store.create',{name:'テストチェーン'},
@@ -885,21 +968,21 @@ assert.equal(recordFixture.call('store.create',{name:'テストチェーン'},
 assert.equal(recordFixture.call('store.create',{name:'テストチェーン'},
  'op-record-store-duplicate-abcdef12345').error.code,'DUPLICATE',
  'a duplicate chain is not silently added');
-const receiptLine={raw_name:'未照合のお菓子',product_id:null,quantity:2,
- amount_tax_included:340,category_id:null};
+const receiptLine={raw_name:'未照合のお菓子',linked_product_id:null,quantity:2,
+ line_total_tax_included:340};
 const receiptPayload={record_type:'receipt',chain_id:newChainId,
  record_date:'2026-10-14',items:[receiptLine,{...receiptLine,
- raw_name:'日用品',quantity:1,amount_tax_included:130,category_id:1}]};
+ raw_name:'日用品',quantity:1,line_total_tax_included:130}]};
 const receiptSaved=recordFixture.call('record.create',receiptPayload,
  'op-record-receipt-create-abcdef12345');
 assert.equal(receiptSaved.ok,true,'receipt parent plus two items saved');
 assert.equal(receiptSaved.data.items.length,2);
-assert.equal(receiptSaved.data.items[0].amount_tax_included,340,
+assert.equal(receiptSaved.data.items[0].line_total_tax_included,340,
  'two units for 340 yen never multiply amount again');
-assert.equal(receiptSaved.data.items[0].price_eligible,false,
- 'unlinked receipt is stored without a product price');
-assert.equal(receiptSaved.data.items[0].category_id,'',
- 'null category is saved as uncategorized');
+assert.equal(Object.hasOwn(receiptSaved.data.items[0],'price_eligible'),false,
+ 'receipt does not store a redundant price flag');
+assert.equal(Object.hasOwn(receiptSaved.data.items[0],'category_id'),false,
+ 'receipt does not store a redundant household-budget category');
 assert.equal(recordFixture.call('record.create',receiptPayload,
  'op-record-receipt-create-abcdef12345').data.record.record_id,
  receiptSaved.data.record.record_id,'receipt retry returns same IDs');
@@ -911,33 +994,34 @@ const unlinkedShelfFixture=fixture(api);
 const unlinkedShelfStore=unlinkedShelfFixture.call('store.create',{name:'商品未紐付け値札店舗'},
  'op-shelf-unlinked-store-abcdef12345').data.entity.chain_id;
 const unlinkedShelfSaved=unlinkedShelfFixture.call('record.create',{
- record_type:'shelf',chain_id:unlinkedShelfStore,record_date:'2026-11-09',
- items:[{raw_name:'',product_id:null,quantity:1,amount_tax_included:250,category_id:null}]
+ record_type:'price_tag',chain_id:unlinkedShelfStore,record_date:'2026-11-09',
+ items:[{raw_name:'',linked_product_id:null,quantity:1,line_total_tax_included:250}]
 },'op-record-shelf-no-product-abcdef12345');
 assert.equal(unlinkedShelfSaved.ok,true,'Unlinked shelf is allowed without a product');
-assert.equal(unlinkedShelfSaved.data.record.record_type,'shelf');
-assert.equal(unlinkedShelfSaved.data.items[0].product_id,'');
-assert.equal(unlinkedShelfSaved.data.items[0].price_eligible,false,
+assert.equal(unlinkedShelfSaved.data.record.record_type,'price_tag');
+assert.equal(unlinkedShelfSaved.data.items[0].linked_product_id,'');
+assert.equal(Object.hasOwn(unlinkedShelfSaved.data.items[0],'price_eligible'),false,
  'Unlinked shelf is recorded but not eligible for product price comparison');
 const unlinkShelfEdit=unlinkedShelfFixture.call('record.update',{
  record_id:unlinkedShelfSaved.data.record.record_id,version:1,
- chain_id:unlinkedShelfStore,record_date:'2026-11-09',branch_name:'',
- items:[{raw_name:'',product_id:null,quantity:1,amount_tax_included:230,category_id:null}]
+ chain_id:unlinkedShelfStore,record_date:'2026-11-09',
+ items:[{raw_name:'',linked_product_id:null,quantity:1,line_total_tax_included:230}]
 },'op-update-shelf-no-product-abcdef12345');
+if(!unlinkShelfEdit.ok)console.error('SCHEMA_NAME_DEBUG_SHELF',JSON.stringify(unlinkShelfEdit));
 assert.equal(unlinkShelfEdit.ok,true,'Unlinked shelf remains editable');
 const itemForPrice=recordFixture.call('item.create',{name:'値札グループ',category_id:0},
  'op-record-item-price-abcdef12345').data.entity;
 const productForPrice=recordFixture.call('product.create',{
  name:'値札商品',package_quantity:500,package_unit:'mL',
- item_group_id:itemForPrice.item_group_id},
+ household_item_id:itemForPrice.household_item_id},
  'op-record-product-price-abcdef12345').data.entity;
-const shelfLine={raw_name:'値札商品',product_id:productForPrice.product_id,quantity:2,
- amount_tax_included:300,category_id:null};
-const shelfSaved=recordFixture.call('record.create',{record_type:'shelf',
+const shelfLine={raw_name:'値札商品',linked_product_id:productForPrice.product_id,quantity:2,
+ line_total_tax_included:300};
+const shelfSaved=recordFixture.call('record.create',{record_type:'price_tag',
  chain_id:newChainId,record_date:'2026-10-14',items:[shelfLine]},
  'op-record-shelf-create-abcdef12345');
 assert.equal(shelfSaved.ok,true);
-assert.equal(shelfSaved.data.items[0].price_eligible,true);
+assert.equal(Object.hasOwn(shelfSaved.data.items[0],'price_eligible'),false);
 assert.equal(recordFixture.call('bootstrap').data.records.length,2);
 assert.equal(recordFixture.call('bootstrap').data.record_items.length,3);
 
@@ -945,9 +1029,9 @@ assert.equal(recordFixture.call('bootstrap').data.record_items.length,3);
 /* Multi-line record updates/deletes must preserve journal recovery and
  * remove the replaced rows from the active catalogue, including price data. */
 const editPayload={record_id:receiptSaved.data.record.record_id,version:1,
- chain_id:newChainId,record_date:'2026-10-15',branch_name:'駅前店',
- items:[{raw_name:'修正した商品',product_id:productForPrice.product_id,
-   quantity:2,amount_tax_included:440,category_id:null}]};
+ chain_id:newChainId,record_date:'2026-10-15',
+ items:[{raw_name:'修正した商品',linked_product_id:productForPrice.product_id,
+   quantity:2,line_total_tax_included:440}]};
 recordFixture.failRecordItemWriteAfter(0);
 const partialUpdate=recordFixture.call('record.update',editPayload,
  'op-record-update-retry-abcdefghijk');
@@ -958,7 +1042,7 @@ const editRecovered=recordFixture.call('record.update',editPayload,
  'op-record-update-retry-abcdefghijk');
 assert.equal(editRecovered.ok,true,'same edit ID completes existing prepared transaction');
 assert.equal(editRecovered.data.items.length,1);
-assert.equal(editRecovered.data.record.branch_name,'駅前店');
+assert.equal(Object.prototype.hasOwnProperty.call(editRecovered.data.record,'branch_name'),false);
 assert.equal(editRecovered.data.record.version,2);
 assert.equal(recordFixture.call('record.update',editPayload,
  'op-record-update-retry-abcdefghijk').data.record.version,2,
@@ -970,20 +1054,20 @@ assert.deepEqual(afterEdit.record_items.filter(x=>x.record_id===receiptSaved.dat
 assert.equal(recordFixture.call('record.update',editPayload,
  'op-record-update-stale-abcdefghijk').error.code,'VERSION_CONFLICT',
  'stale record version cannot overwrite spouse-side edit');
-const aliasInput={chain_id:newChainId,product_id:productForPrice.product_id,
+const aliasInput={chain_id:newChainId,auto_match_product_id:productForPrice.product_id,
  raw_alias:'OCRで読み取った略称'};
 const aliasSaved=recordFixture.call('alias.upsert',aliasInput,
  'op-record-alias-create-abcdefghijk');
 assert.equal(aliasSaved.ok,true,'confirmed product alias saved to existing aliases sheet');
 assert.equal(recordFixture.call('alias.upsert',aliasInput,
- 'op-record-alias-create-abcdefghijk').data.entity.alias_id,
- aliasSaved.data.entity.alias_id,'replayed alias uses one row');
-assert.ok(recordFixture.call('bootstrap').data.product_aliases.some(x=>
- x.normalized_alias==='ocrで読み取った略称'&&x.chain_id===newChainId));
+ 'op-record-alias-create-abcdefghijk').data.entity.receipt_name_id,
+ aliasSaved.data.entity.receipt_name_id,'replayed alias uses one row');
+assert.ok(recordFixture.call('bootstrap').data.receipt_name_mappings.some(x=>
+ x.normalized_receipt_name==='ocrで読み取った略称'&&x.chain_id===newChainId));
 assert.equal(recordFixture.call('alias.upsert',aliasInput,
  'op-record-alias-second-abcdefghijk').ok,true,
  'repeat alias with a new operation ID is a safe no-op');
-assert.equal(recordFixture.db.product_aliases.filter(row=>
+assert.equal(recordFixture.db.receipt_name_mappings.filter(row=>
  row[2]===aliasInput.chain_id&&row[3]===aliasInput.raw_alias.normalize('NFKC').toLowerCase()).length,1,
  'same OCR alias is not inserted twice');
 const removePayload={record_id:receiptSaved.data.record.record_id,version:2};
@@ -1059,8 +1143,8 @@ online=false;
 recordForm.dispatchEvent(new recordUI.window.Event('submit',{bubbles:true,cancelable:true}));
 await waitFor(()=>recordUI.window.KurashiLive.state().queued===2,
  'store and multi-line receipt queued atomically while offline');
-await waitFor(()=>!!recordUI.window.document.querySelector('.ui-record-row'),
- 'New manual receipt appears immediately in the original UI');
+await waitFor(()=>!!recordUI.window.document.querySelector('.detail-record-line'),
+ 'New manual receipt opens saved detail immediately even while offline');
 await pause(70);
 recordUI.window.close();online=true;
 let recordReopened=appSession();
@@ -1072,10 +1156,10 @@ const storedReceipt=temp.call('bootstrap').data.records.find(r=>r.record_type===
 assert.ok(storedReceipt);
 const storedDetails=temp.call('bootstrap').data.record_items.filter(x=>x.record_id===storedReceipt.record_id);
 assert.equal(storedDetails.length,2,'both manual receipt lines saved under one record');
-assert.equal(Number(storedDetails[0].amount_tax_included),340);
+assert.equal(Number(storedDetails[0].line_total_tax_included),340);
 assert.equal(Number(storedDetails[0].quantity),2);
-assert.equal(Number(storedDetails[1].amount_tax_included),110);
-assert.equal(String(storedDetails[0].category_id),'','budget category is retired');
+assert.equal(Number(storedDetails[1].line_total_tax_included),110);
+assert.equal(Object.hasOwn(storedDetails[0],'category_id'),false,'budget category column is retired');
 assert.equal(recordReopened.window.document.querySelector('[data-tab="budget"]'),null,
  'budget tab has been removed');
 recordReopened.window.document.querySelector('[data-tab="receipt"]').click();
@@ -1108,7 +1192,7 @@ recordForm.querySelector('[name="amount-1"]').value='280';
 recordForm.dispatchEvent(new recordReopened.window.Event('submit',{bubbles:true,cancelable:true}));
 try{
  await waitFor(()=>recordReopened.window.KurashiLive.state().queued===0&&
-  temp.call('bootstrap').data.records.some(r=>r.record_type==='shelf'),
+  temp.call('bootstrap').data.records.some(r=>r.record_type==='price_tag'),
   'unlinked two-line shelf saves through shared record schema');
 }catch(err){
  console.log('SHELF DIAGNOSTIC',JSON.stringify({
@@ -1121,11 +1205,11 @@ try{
  }));
  throw err;
 }
-const savedShelf=temp.call('bootstrap').data.records.find(r=>r.record_type==='shelf');
+const savedShelf=temp.call('bootstrap').data.records.find(r=>r.record_type==='price_tag');
 const shelfDetails=temp.call('bootstrap').data.record_items.filter(x=>x.record_id===savedShelf.record_id);
 assert.equal(shelfDetails.length,2);
 assert.ok(shelfDetails.every(i=>Number(i.quantity)===1&&
- !i.product_id&&!i.price_eligible),'Shelf lines use fixed quantity 1 and optional product');
+ !i.linked_product_id&&!Object.hasOwn(i,'price_eligible')),'Shelf lines use fixed quantity 1 and optional product');
 assert.equal(recordReopened.window.document.querySelector('[data-tab="budget"]'),null,
  'receipt and shelf saves do not restore the budget tab');
 recordReopened.window.close();
@@ -1220,7 +1304,7 @@ console.log('v87: draft conflict, cancel, explicit save, resume and saved edit s
 // same operation_id must be resent without duplicating parent or children.
 let loseRecord=appSession();
 await waitFor(()=>loseRecord.window.KurashiLive.state().loaded,'response loss session loaded');
-const confirmedStore=temp.call('bootstrap').data.stores[0].chain_id;
+const confirmedStore=temp.call('bootstrap').data.retail_chains[0].chain_id;
 loseOneWriteResponse=true;
 await loseRecord.window.KurashiLive.saveRecord({record_type:'receipt',
  chain_id:confirmedStore,record_date:'2026-10-14',
@@ -1313,11 +1397,11 @@ assert.equal(scanSession.window.document.querySelectorAll('.scan-photo-tile').le
  'no photo remains selected');
 assert.ok(!scanSession.window.document.querySelector('.receipt-scan-page').textContent.includes('写真を選択してください。'),
  'empty-state instructions are not repeated beside the action');
-assert.ok(scanSession.window.document.querySelector('.scan-photo-empty .primary[data-act="scanAddPhotos"]'),
+assert.ok(scanSession.window.document.querySelector('.scan-photo-sticky-action .primary[data-act="scanAddPhotos"]'),
  'the empty OCR screen has one primary photo selection button');
 assert.equal(scanSession.window.document.querySelector('[data-act="scanStart"]'),null,
  'analysis cannot start with zero photos');
-scanSession.window.document.querySelector('.scan-photo-empty [data-act="scanAddPhotos"]').click();
+scanSession.window.document.querySelector('.scan-photo-sticky-action [data-act="scanAddPhotos"]').click();
 assert.equal(adds,2,'photo selection can reopen directly from the empty OCR screen');
 Object.defineProperty(addPicker,'files',{configurable:true,value:[libraryFile]});
 addPicker.dispatchEvent(new scanSession.window.Event('change',{bubbles:true}));
@@ -1436,7 +1520,7 @@ let historyRecovery=appSession();
 await waitFor(()=>historyRecovery.window.KurashiLive.state().loaded&&
  historyRecovery.window.KurashiLive.state().queued===0&&
  temp.call('bootstrap').data.record_items.some(x=>
-  x.record_id===storedReceipt.record_id&&Number(x.amount_tax_included)===345),
+  x.record_id===storedReceipt.record_id&&Number(x.line_total_tax_included)===345),
  'history edit resumes after offline iPhone restart');
 assert.equal(temp.call('bootstrap').data.record_items.filter(x=>
  x.record_id===storedReceipt.record_id).length,2,
@@ -1450,27 +1534,27 @@ historyRecovery.window.document.querySelector('[data-dialog="confirmRecordDelete
 await waitFor(()=>historyRecovery.window.KurashiLive.state().queued===0&&
  !temp.call('bootstrap').data.records.some(x=>x.record_id===storedReceipt.record_id),
  'delete removes the receipt from active history and price candidate rows');
-const chainForAlias=temp.call('bootstrap').data.stores[0].chain_id;
+const chainForAlias=temp.call('bootstrap').data.retail_chains[0].chain_id;
 const productForAlias=temp.call('bootstrap').data.products[0].product_id;
 await historyRecovery.window.KurashiLive.learnAliases({chain_id:chainForAlias,
- items:[{raw_name:'アルファベット商品略称',product_id:productForAlias}]});
+ items:[{raw_name:'アルファベット商品略称',auto_match_product_id:productForAlias}]});
 await waitFor(()=>historyRecovery.window.KurashiLive.state().queued===0&&
- temp.call('bootstrap').data.product_aliases.some(x=>
-  x.normalized_alias==='アルファベット商品略称'&&x.product_id===productForAlias),
+ temp.call('bootstrap').data.receipt_name_mappings.some(x=>
+  x.normalized_receipt_name==='アルファベット商品略称'&&x.auto_match_product_id===productForAlias),
  'chain-specific learned alias is sent through the offline-safe queue');
 // A shelf observation is not a purchase. Editing it must keep the shelf type,
 // sale conditions and labels, without showing receipt photos or OCR messages.
 const shelfEditDate='2026-10-23';
 await historyRecovery.window.KurashiLive.saveRecord({
- record_type:'shelf',chain_id:chainForAlias,record_date:shelfEditDate,
- items:[{raw_name:'',confirmed_name:'棚の値札',product_id:productForAlias,
-  quantity:2,amount_tax_included:300,category_id:null}]
+ record_type:'price_tag',chain_id:chainForAlias,record_date:shelfEditDate,
+ items:[{raw_name:'',non_ocr_name:'棚の値札',linked_product_id:productForAlias,
+  quantity:2,line_total_tax_included:300}]
 });
 await waitFor(()=>historyRecovery.window.KurashiLive.state().queued===0&&
- temp.call('bootstrap').data.records.some(r=>r.record_type==='shelf'&&r.record_date===shelfEditDate),
+ temp.call('bootstrap').data.records.some(r=>r.record_type==='price_tag'&&r.record_date===shelfEditDate),
  'shelf price observation saved and synced');
 const shelfEditRecord=temp.call('bootstrap').data.records.find(r=>
- r.record_type==='shelf'&&r.record_date===shelfEditDate);
+ r.record_type==='price_tag'&&r.record_date===shelfEditDate);
 historyRecovery.window.document.querySelector('[data-tab="receipt"]').click();
 assert.match(historyRecovery.window.document.body.textContent,/明細一覧/);
 const shelfHistoryEntry=historyRecovery.window.document.querySelector(
@@ -1495,10 +1579,10 @@ shelfEditForm.querySelector('[name="amount-0"]').value='280';
 shelfEditForm.dispatchEvent(new historyRecovery.window.Event('submit',{bubbles:true,cancelable:true}));
 await waitFor(()=>historyRecovery.window.KurashiLive.state().queued===0&&
  temp.call('bootstrap').data.record_items.some(i=>i.record_id===shelfEditRecord.record_id&&
-  Number(i.amount_tax_included)===280),
+  Number(i.line_total_tax_included)===280),
  'shelf edit updates its saved sales price');
 assert.equal(temp.call('bootstrap').data.records.find(r=>r.record_id===shelfEditRecord.record_id).record_type,
- 'shelf','shelf stays a shelf record after editing and syncing');
+ 'price_tag','shelf stays a shelf record after editing and syncing');
 historyRecovery.window.close();
 console.log('v59: record editing, offline restart, deletion, alias training, shelf edit: OK');
 // Unnamed manual receipt lines need neither OCR aliases nor new data columns.
@@ -1506,42 +1590,42 @@ console.log('v59: record editing, offline restart, deletion, alias training, she
 const unnamedFixture=fixture(api);
 const unnamedChain=unnamedFixture.call('store.create',{name:'名前任意テスト店舗'},
  'op-unnamed-chain-create-abcdef12345').data.entity.chain_id;
-const unnamedLine={raw_name:'',product_id:null,quantity:1,amount_tax_included:250,category_id:null};
+const unnamedLine={raw_name:'',linked_product_id:null,quantity:1,line_total_tax_included:250};
 const unnamedPayload={record_type:'receipt',chain_id:unnamedChain,record_date:'2026-11-08',
  items:[unnamedLine]};
 const unnamedSaved=unnamedFixture.call('record.create',unnamedPayload,'op-unnamed-create-abcdef12345');
 assert.equal(unnamedSaved.ok,true,'blank detail names can be saved without a product');
-assert.equal(unnamedSaved.data.items[0].confirmed_name,'');
-assert.equal(unnamedSaved.data.items[0].alias_id,'');
-assert.equal(unnamedSaved.data.items[0].price_eligible,false);
-assert.equal(unnamedFixture.call('bootstrap').data.product_aliases.length,0,
+assert.equal(unnamedSaved.data.items[0].non_ocr_name,'');
+assert.equal(unnamedSaved.data.items[0].receipt_name_id,'');
+assert.equal(Object.hasOwn(unnamedSaved.data.items[0],'price_eligible'),false);
+assert.equal(unnamedFixture.call('bootstrap').data.receipt_name_mappings.length,0,
  'blank detail never creates a learned OCR alias');
 const unnamedEdited=unnamedFixture.call('record.update',{
  record_id:unnamedSaved.data.record.record_id,version:1,
- chain_id:unnamedChain,branch_name:'',record_date:'2026-11-08',
- items:[{...unnamedLine,amount_tax_included:300}]
+ chain_id:unnamedChain,record_date:'2026-11-08',
+ items:[{...unnamedLine,line_total_tax_included:300}]
 },'op-unnamed-update-abcdef12345');
 assert.equal(unnamedEdited.ok,true,'blank-name receipt rows remain editable');
-assert.equal(unnamedEdited.data.items[0].amount_tax_included,300);
-assert.equal(unnamedEdited.data.items[0].confirmed_name,'');
-assert.equal(unnamedFixture.call('bootstrap').data.product_aliases.length,0);
+assert.equal(unnamedEdited.data.items[0].line_total_tax_included,300);
+assert.equal(unnamedEdited.data.items[0].non_ocr_name,'');
+assert.equal(unnamedFixture.call('bootstrap').data.receipt_name_mappings.length,0);
 
 const unnamedGroup=unnamedFixture.call('item.create',{name:'未命名価格比較テスト',category_id:0},
- 'op-unnamed-item-create-abcdef12345').data.entity.item_group_id;
+ 'op-unnamed-item-create-abcdef12345').data.entity.household_item_id;
 const unnamedProduct=unnamedFixture.call('product.create',{
- name:'金額が比較できる登録商品',item_group_id:unnamedGroup,
+ name:'金額が比較できる登録商品',household_item_id:unnamedGroup,
  package_quantity:1,package_unit:'個'
 },'op-unnamed-product-create-abcdef12345');
 assert.equal(unnamedProduct.ok,true,'optional-name fixture has a registered product');
 const unnamedLinked=unnamedFixture.call('record.create',{
- ...unnamedPayload,items:[{...unnamedLine,product_id:unnamedProduct.data.entity.product_id,
- amount_tax_included:460}]
+ ...unnamedPayload,items:[{...unnamedLine,linked_product_id:unnamedProduct.data.entity.product_id,
+ line_total_tax_included:460}]
 },'op-unnamed-linked-create-abcdef12345');
 assert.equal(unnamedLinked.ok,true,'optional name and registered product may coexist');
-assert.equal(unnamedLinked.data.items[0].price_eligible,true,
- 'a linked price can be compared without a separate manual detail name');
-assert.equal(unnamedLinked.data.items[0].confirmed_name,'');
-assert.equal(unnamedFixture.call('bootstrap').data.product_aliases.length,0,
+assert.equal(Object.hasOwn(unnamedLinked.data.items[0],'price_eligible'),false,
+ 'a linked price needs no stored eligibility flag');
+assert.equal(unnamedLinked.data.items[0].non_ocr_name,'');
+assert.equal(unnamedFixture.call('bootstrap').data.receipt_name_mappings.length,0,
  'unnamed linked product must not teach a blank alias');
 
 
@@ -1549,7 +1633,7 @@ assert.equal(unnamedFixture.call('bootstrap').data.product_aliases.length,0,
  * they are scoped per household and chain, never the source image. */
 let correctUI=appSession();
 await waitFor(()=>correctUI.window.KurashiLive.state().loaded,'correction bootstrap');
-const chainForCorrection=temp.call('bootstrap').data.stores[0].chain_id;
+const chainForCorrection=temp.call('bootstrap').data.retail_chains[0].chain_id;
 await correctUI.window.KurashiLive.saveOcrCorrections([{
  chainId:chainForCorrection,ocrName:'リンド一ル ピンク',
  correctedName:'リンドール ピンク',productId:''
@@ -1566,10 +1650,10 @@ assert.ok(learned.some(x=>x.chainId===chainForCorrection&&
 correctReopened.window.close();
 console.log('v60: persistent OCR corrections with previous offline queue: OK');
 
-/* Unmatched receipt items remain separate from product creation; individual
- * registration uses the same durable product.create queue. */
+/* Saved receipt: a product can be created, linked, unlinked and selected later.
+ * No product picker or one-tap ChatGPT registration appears before saving. */
 let bulkUI=appSession();
-await waitFor(()=>bulkUI.window.KurashiLive.state().loaded,'individual receipt registration loaded');
+await waitFor(()=>bulkUI.window.KurashiLive.state().loaded,'saved receipt registration loaded');
 bulkUI.window.document.querySelector('[data-tab="receipt"]').click();
 prepareOcrImport(bulkUI);
 bulkUI.window.eval(importer);
@@ -1579,34 +1663,120 @@ const batchJson={...chatJson,receiptTotal:410,printedCount:1,items:[{
 }]};
 bulkUI.window.document.querySelector('#chatgpt-input').value=JSON.stringify(batchJson);
 await completeOcrImport(bulkUI);
-assert.equal(bulkUI.window.document.querySelector('[data-act="scanBulkProducts"]'),null,
- 'removed batch action cannot interrupt receipt photo review');
-const unmatchedStatus=bulkUI.window.document.querySelector('.scan-product-setting');
-assert.ok(unmatchedStatus&&unmatchedStatus.querySelector('.ui-picker-value.is-unmatched')?.textContent==='未照合',
- 'an unmatched product uses the neutral shared status rather than product-name typography');
-bulkUI.window.document.querySelector('[data-act="scanPickExisting"]').click();
-bulkUI.window.document.querySelector('[data-act="scanExistingToNew"]').click();
-const individualForm=bulkUI.window.document.querySelector('#scanProductForm');
-assert.ok(individualForm,'unmatched item opens individual master creation');
-const firstGroup=temp.call('bootstrap').data.item_groups[0].item_group_id;
-individualForm.querySelector('[name="group"]').value=firstGroup;
+assert.equal(bulkUI.window.document.querySelector('[data-act="scanBulkProducts"]'),null);
+assert.equal(bulkUI.window.document.querySelector('[data-act="scanPickExisting"]'),null,
+ 'receipt review has no product picker');
+const bulkReview=bulkUI.window.document.getElementById('scanConfirmForm');
+bulkReview.dispatchEvent(new bulkUI.window.Event('submit',{bubbles:true,cancelable:true}));
+await waitFor(()=>!!bulkUI.window.document.querySelector('[data-act="recordProductOpen"]'),
+ 'saved receipt opens its detail where individual product operations live');
+assert.match(bulkUI.window.document.body.textContent,/商品未紐付け/);
+bulkUI.window.document.querySelector('[data-act="recordProductOpen"]').click();
+bulkUI.window.document.querySelector('[data-act="recordProductShowNew"]').click();
+const individualForm=bulkUI.window.document.getElementById('recordProductCreateForm');
+assert.ok(individualForm,'product editor uses one shared half sheet');
+assert.equal(individualForm.querySelector('[name="group"]'),null);
+assert.ok(individualForm.querySelector('[name="quantity"]'),
+ 'receipt product registration offers optional package capacity');
+assert.equal(individualForm.querySelector('[name="quantity"]').value,'',
+ 'unrecognized product name leaves capacity unset');
 individualForm.dispatchEvent(new bulkUI.window.Event('submit',{bubbles:true,cancelable:true}));
-await waitFor(()=>!!bulkUI.window.document.querySelector('#scanConfirmForm'),
- 'individual registration returns to receipt review');
-await waitFor(()=>temp.call('bootstrap').data.products.some(p=>
- p.name==='レシート個別登録テスト固有'),'individual product syncs to Sheets');
-await waitFor(()=>!!bulkUI.window.document.querySelector('#scanConfirmForm [name="product-0"]')?.value,
- 'individual product remains linked through local-to-Sheets ID translation');
+await waitFor(()=>bulkUI.window.KurashiLive.state().queued===0&&
+ temp.call('bootstrap').data.products.some(p=>p.name==='レシート個別登録テスト固有')&&
+ temp.call('bootstrap').data.record_items.some(x=>
+  aliasText(temp,x)==='レシート個別登録テスト固有'&&x.linked_product_id),
+ 'product creation and saved item link reach Sheets using a durable queue');
+bulkUI.window.document.querySelector('[data-act="recordProductOpen"]').click();
+bulkUI.window.document.querySelector('[data-act="recordProductUnlink"]').click();
+await waitFor(()=>bulkUI.window.KurashiLive.state().queued===0&&
+ temp.call('bootstrap').data.record_items.some(x=>aliasText(temp,x)==='レシート個別登録テスト固有'&&!x.linked_product_id),
+ 'unlink affects only the saved receipt item');
+bulkUI.window.document.querySelector('[data-act="recordProductOpen"]').click();
+const productChoice=bulkUI.window.document.querySelector('[data-act="recordProductChoose"]');
+assert.ok(productChoice,'registered products are available through the common picker');
+const ownProduct=temp.call('bootstrap').data.products.find(p=>p.name==='レシート個別登録テスト固有');
+bulkUI.window.document.querySelector('[data-act="recordProductChoose"][data-product-id="'+ownProduct.product_id+'"]').click();
+await waitFor(()=>bulkUI.window.KurashiLive.state().queued===0&&
+ temp.call('bootstrap').data.record_items.some(x=>
+  aliasText(temp,x)==='レシート個別登録テスト固有'&&x.linked_product_id===ownProduct.product_id),
+ 'same master is selected again without creating a duplicate');
 bulkUI.window.close();
-console.log('v75: unmatched receipt products register individually with durable queue OK');
+console.log('stage3: save-first receipt registration, unlink and re-selection OK');
+
+/* v0.91: ChatGPT bulk candidates are references, not instructions to auto-create.
+ * The explicit confirmation journals repeated names once and preserves linked rows. */
+const bulkOriginal=temp.call('product.create',{
+ household_item_id:null,name:'一括既存商品テスト',package_quantity:null,package_unit:null
+},'op-bulk-exist-prod-abcdefghijklmn');
+assert.equal(bulkOriginal.ok,true);
+const bulkExistingId=bulkOriginal.data.entity.product_id;
+const bulkSaved=temp.call('record.create',{
+ record_type:'receipt',chain_id:temp.call('bootstrap').data.retail_chains[0].chain_id,record_date:'2026-11-10',
+ items:[
+  {non_ocr_name:'一括候補明細 A',quantity:1,line_total_tax_included:101,
+   product_name_candidate:'一括新規商品テスト',candidate_match_type:'new'},
+  {non_ocr_name:'一括候補明細 B',quantity:1,line_total_tax_included:102,
+   product_name_candidate:'一括新規商品テスト',candidate_match_type:'new'},
+  {non_ocr_name:'一括候補明細 C',quantity:1,line_total_tax_included:103,
+   product_name_candidate:'一括既存商品テスト',candidate_match_type:'existing'},
+  {non_ocr_name:'一括除外明細 D',quantity:1,line_total_tax_included:104,
+   product_name_candidate:'一括対応先不明',candidate_match_type:'existing'},
+  {non_ocr_name:'一括紐付済 E',quantity:1,line_total_tax_included:105,
+   linked_product_id:bulkExistingId,
+   product_name_candidate:'一括別新規商品テスト',candidate_match_type:'new'}
+ ].map(line=>({raw_name:'',linked_product_id:null,...line}))
+},'op-bulk-new-receipt-abcdefghijklmn');
+assert.equal(bulkSaved.ok,true);
+const bulkRecordId=bulkSaved.data.record.record_id;
+let bulkBatchSession=appSession(new IDBFactory());
+await waitFor(()=>bulkBatchSession.window.KurashiLive.state().loaded&&
+ !bulkBatchSession.window.KurashiLive.state().cached,
+ 'ChatGPT bulk saved candidates loaded on new device');
+bulkBatchSession.window.document.querySelector('[data-tab="receipt"]').click();
+const originalPlan=bulkBatchSession.window.KurashiLive.previewBulkReceiptProducts(bulkRecordId);
+assert.equal(originalPlan.length,3,'only unlinked and unambiguous candidates are eligible');
+assert.equal(Array.from(originalPlan,x=>x.action).join(','),'new,reuse,existing',
+ 'repeated new product candidate is reused and exact master is selected');
+const receiptButton=bulkBatchSession.window.document.querySelector(
+ '[data-act="recordDetail"][data-record-id="'+bulkRecordId+'"]');
+assert.ok(receiptButton,'saved bulk receipt is listed on another device');
+receiptButton.click();
+assert.ok(bulkBatchSession.window.document.querySelector('[data-act="recordBulkPreview"]'));
+bulkBatchSession.window.document.querySelector('[data-act="recordBulkPreview"]').click();
+const bulkDialog=bulkBatchSession.window.document.querySelector('.dialog-receipt-bulk');
+assert.ok(bulkDialog&&bulkDialog.textContent.includes('一括新規商品テスト')&&
+ bulkDialog.textContent.includes('一括既存商品テスト'));
+assert.ok(!bulkDialog.textContent.includes('一括対応先不明'),
+ 'ambiguous existing-name guess is not offered for batch registration');
+bulkBatchSession.window.document.querySelector('[data-dialog="confirmRecordBulk"]').click();
+await waitFor(()=>bulkBatchSession.window.KurashiLive.state().queued===0&&
+ temp.call('bootstrap').data.record_items.filter(x=>
+  x.record_id===bulkRecordId&&x.linked_product_id).length===4,
+ 'three matching items all link through one persisted queue with linked original');
+const afterBulk=temp.call('bootstrap').data;
+assert.equal(afterBulk.products.filter(x=>x.name==='一括新規商品テスト').length,1,
+ 'two identical new ChatGPT suggestions create one product master');
+const createdBulkProduct=afterBulk.products.find(x=>x.name==='一括新規商品テスト');
+const bulkLines=afterBulk.record_items.filter(x=>x.record_id===bulkRecordId)
+ .sort((a,b)=>a.line_order-b.line_order);
+assert.equal(bulkLines[0].linked_product_id,createdBulkProduct.product_id);
+assert.equal(bulkLines[1].linked_product_id,createdBulkProduct.product_id);
+assert.equal(bulkLines[2].linked_product_id,bulkExistingId);
+assert.ok(!bulkLines[3].linked_product_id,'ambiguous candidate remains unlinked');
+assert.equal(bulkLines[4].linked_product_id,bulkExistingId,'manual association is never overwritten');
+assert.equal(bulkBatchSession.window.KurashiLive.previewBulkReceiptProducts(bulkRecordId).length,0,
+ 'once processed, bulk registration never offers duplicate operations');
+bulkBatchSession.window.close();
+console.log('stage4: explicit bulk confirmation, dedupe, ambiguous skip and multi-item linking OK');
+
 
 /* COSTCO KitKat: receipt's printed spelling remains historical raw_name,
  * while the canonical master belongs to the household's "チョコ" item. */
 const chocCreated=temp.call('item.create',{name:'チョコ',category_id:0},
  'op-v61-chocolate-group-create-abcdefghijklmn');
 assert.equal(chocCreated.ok,true);
-const chocId=chocCreated.data.entity.item_group_id;
-const kitStore=temp.call('bootstrap').data.stores[0];
+const chocId=chocCreated.data.entity.household_item_id;
+const kitStore=temp.call('bootstrap').data.retail_chains[0];
 assert.ok(kitStore,'existing chain for receipt training');
 const kitRaw='キットカットコイマッチャ10フクロ';
 const kitCanonical='キットカット濃い抹茶10袋';
@@ -1629,61 +1799,72 @@ kitSession.window.document.getElementById('chatgpt-input').value=JSON.stringify(
 await completeOcrImport(kitSession);
 assert.ok(kitSession.window.document.getElementById('scanConfirmForm'),
  'malformed name appears on receipt confirmation page');
-kitSession.window.document.querySelector('[data-act="scanPickExisting"]').click();
-kitSession.window.document.querySelector('[data-act="scanExistingToNew"]').click();
-const kitForm=kitSession.window.document.getElementById('scanProductForm');
-assert.ok(kitForm,'receipt shows explicit new master registration form');
-assert.equal(kitForm.querySelector('[name="group"]').value,'',
- 'no arbitrary item-group auto-selection');
-assert.equal(kitForm.querySelector('[name="name"]').value,kitRaw,
- 'printed raw name only pre-fills editable canonical name');
-kitForm.querySelector('[name="name"]').value=kitCanonical;
-assert.ok([...kitForm.querySelectorAll('[data-ui-select="scan-product-group"] [data-ui-choice]')]
- .some(o=>o.dataset.uiChoice===chocId),
- 'newly seeded chocolate item exists in the shared product-group selector');
-kitForm.querySelector('[name="group"]').value=chocId;
-assert.equal(kitForm.querySelector('[name="group"]').value,chocId,
- 'selected item group is present before creating canonical product');
-kitForm.dispatchEvent(new kitSession.window.Event('submit',{bubbles:true,cancelable:true}));
-await waitFor(()=>!!kitSession.window.document.getElementById('scanConfirmForm'),
- 'new product returns directly to the same receipt');
-try{
- await waitFor(()=>temp.call('bootstrap').data.products.some(x=>
- x.name===kitCanonical&&x.item_group_id===chocId),
- 'canonical KitKat master saved under existing chocolate item');
-}catch(err){
- console.log('DEBUG KitKat state',JSON.stringify(kitSession.window.KurashiLive.state()));
- console.log('DEBUG KitKat sheet',JSON.stringify(temp.call('bootstrap').data.products.slice(-5)));
- console.log('DEBUG KitKat UI',kitSession.window.document.body.textContent.slice(-900));
- throw err;
-}
-const kitSavedProduct=temp.call('bootstrap').data.products.find(x=>x.name===kitCanonical);
-await waitFor(()=>kitSession.window.document.querySelector(
- '#scanConfirmForm [name="product-0"]')?.value===kitSavedProduct.product_id,
- 'local product ID reconciles to permanent Sheets ID even with different OCR spelling');
 const kitReview=kitSession.window.document.getElementById('scanConfirmForm');
 assert.equal(kitReview.querySelector('.scan-ocr-name').textContent,kitRaw,
- 'raw receipt name is never silently replaced with canonical master name');
-assert.match(kitReview.textContent,/キットカット濃い抹茶10袋/,
- 'canonical product appears as selected master in confirmation view');
-assert.equal(kitReview.querySelector('.scan-product-setting .ui-picker-value')?.textContent,kitCanonical,
- 'receipt review shows only the chosen registered product name, without item-group metadata');
+ 'the scanned product spelling is retained before saving');
+assert.equal(kitReview.querySelector('[data-act="scanPickExisting"]'),null,
+ 'the receipt review has no registration route');
 kitReview.dispatchEvent(new kitSession.window.Event('submit',{bubbles:true,cancelable:true}));
+await waitFor(()=>!!kitSession.window.document.querySelector('[data-act="recordProductOpen"]'),
+ 'saved KitKat receipt opens its detail');
+assert.match(kitSession.window.document.querySelector('.detail-record-line').textContent,
+ /キットカットコイマッチャ10フクロ/,
+ 'detail retains original OCR product spelling');
+kitSession.window.document.querySelector('[data-act="recordProductOpen"]').click();
+kitSession.window.document.querySelector('[data-act="recordProductShowNew"]').click();
+const kitForm=kitSession.window.document.getElementById('recordProductCreateForm');
+assert.ok(kitForm&&kitSession.window.document.querySelector('.record-product-overlay'),
+ 'new product editor is one shared half sheet');
+assert.equal(kitForm.querySelector('[name="group"]'),null);
+assert.ok(kitForm.querySelector('[name="quantity"]'),
+ 'KitKat saved-receipt registration supports optional package capacity');
+assert.equal(kitForm.querySelector('[name="name"]').value,kitRaw,
+ 'the OCR name pre-fills the editable master name');
+kitForm.querySelector('[name="name"]').value=kitCanonical;
+kitForm.dispatchEvent(new kitSession.window.Event('submit',{bubbles:true,cancelable:true}));
 await waitFor(()=>kitSession.window.KurashiLive.state().queued===0&&
+ temp.call('bootstrap').data.products.some(p=>p.name===kitCanonical)&&
  temp.call('bootstrap').data.record_items.some(x=>
-  aliasText(temp,x)===kitRaw&&x.product_id===kitSavedProduct.product_id),
- 'receipt stores printed raw spelling with linked canonical product ID');
-await waitFor(()=>temp.call('bootstrap').data.product_aliases.some(x=>
- x.product_id===kitSavedProduct.product_id&&x.chain_id===kitStore.chain_id&&
- x.normalized_alias===kitRaw.toLocaleLowerCase('ja')),
- 'confirmed receipt abbreviation is learned as chain-specific alias');
+  aliasText(temp,x)===kitRaw&&x.linked_product_id),
+ 'saved product name is linked to the original printed receipt item');
+const kitSavedProduct=temp.call('bootstrap').data.products.find(x=>x.name===kitCanonical);
+assert.ok(kitSavedProduct&&!kitSavedProduct.household_item_id);
+const kitSavedLine=temp.call('bootstrap').data.record_items.find(x=>
+ aliasText(temp,x)===kitRaw&&x.linked_product_id===kitSavedProduct.product_id);
+assert.ok(kitSavedLine,'the receipt item keeps its own confirmed product ID');
+try{
+ await waitFor(()=>temp.call('bootstrap').data.receipt_name_mappings.some(x=>
+  x.auto_match_product_id===kitSavedProduct.product_id&&x.chain_id===kitStore.chain_id&&
+  x.normalized_receipt_name===kitRaw.toLocaleLowerCase('ja')),
+  'an explicit saved item link trains its printed OCR alias');
+}catch(err){
+ console.log('SAVED_ALIAS_DIAGNOSTIC',JSON.stringify({
+  state:kitSession.window.KurashiLive.state(),
+  aliases:temp.call('bootstrap').data.receipt_name_mappings.filter(x=>x.chain_id===kitStore.chain_id),
+  line:temp.call('bootstrap').data.record_items.find(x=>x.record_item_id===kitSavedLine.record_item_id),
+  canonical:kitCanonical
+ }));
+ throw err;
+}
 kitSession.window.close();
+
+// Product registration from a receipt is intentionally unlinked. Explicit
+// post-registration master editing may later attach it to a household item,
+// which reretail_chains its price comparison without adding a receipt-screen step.
+const kitForLink=temp.call('bootstrap').data.products.find(p=>
+ p.product_id===kitSavedProduct.product_id);
+assert.ok(kitForLink&&!kitForLink.household_item_id);
+assert.equal(temp.call('product.update',{
+ product_id:kitForLink.product_id,version:Number(kitForLink.version),
+ household_item_id:chocId
+},'op-kit-deferred-group-link-abcdefghijklmn').ok,true,
+ 'a later product-master edit links the registered product to chocolate');
 
 /* Real two-device receipt flow: the second iPhone uses its own IndexedDB
  * and the same Sheets-backed GAS snapshot, not the first phone's cache. */
 const kitBaseline=temp.call('bootstrap').data;
 const kitRecordCount=kitBaseline.records.length;
-const kitAliasCount=kitBaseline.product_aliases.length;
+const kitAliasCount=kitBaseline.receipt_name_mappings.length;
 let otherPhone=appSession(new IDBFactory());
 await waitFor(()=>otherPhone.window.KurashiLive.state().loaded&&
  otherPhone.window.KurashiLive.catalogueOf(
@@ -1693,7 +1874,7 @@ await waitFor(()=>!otherPhone.window.KurashiLive.state().cached,
  'other iPhone finished remote bootstrap');
 otherPhone.window.document.querySelector('[data-tab="receipt"]').click();
 const syncedKitLine=kitBaseline.record_items.find(x=>
- aliasText(temp,x)===kitRaw&&x.product_id===kitSavedProduct.product_id);
+ aliasText(temp,x)===kitRaw&&x.linked_product_id===kitSavedProduct.product_id);
 assert.ok(syncedKitLine&&otherPhone.window.document.querySelector(
  '[data-record-id="'+syncedKitLine.record_id+'"]'),
  'second iPhone displays the first iPhone purchase record without product-name summary');
@@ -1704,10 +1885,12 @@ await completeOcrImport(otherPhone);
 const duplicateKitReview=otherPhone.window.document.getElementById('scanConfirmForm');
 assert.equal(duplicateKitReview.querySelector('[name="chain"]').value,kitStore.chain_id,
  'registered retailer is recognized on another iPhone');
-assert.equal(duplicateKitReview.querySelector('[name="product-0"]').value,
- kitSavedProduct.product_id,'the exact same receipt OCR alias auto-links across devices');
+assert.equal(duplicateKitReview.querySelector('[name="product-0"]'),null,
+ 'second iPhone also defers product linking until after receipt save');
 assert.equal(duplicateKitReview.querySelector('.scan-ocr-name').textContent,kitRaw,
  'reimport does not replace original printed name');
+assert.match(duplicateKitReview.textContent,/登録商品と一致/,
+ 'second device displays its confirmed OCR-alias product before saving');
 assert.equal(duplicateKitReview.querySelector('#scan-duplicate-warning'),null,
  'An identical receipt does not display unnecessary duplicate confirmation');
 duplicateKitReview.dispatchEvent(new otherPhone.window.Event('submit',{
@@ -1715,9 +1898,12 @@ duplicateKitReview.dispatchEvent(new otherPhone.window.Event('submit',{
 }));
 await waitFor(()=>temp.call('bootstrap').data.records.length===kitRecordCount+1,
  'An intentionally reimported same-content receipt can save without extra confirmation');
-await waitFor(()=>otherPhone.window.KurashiLive.state().queued===0,
- 'The intentional second receipt uses the durable operation queue');
-assert.equal(temp.call('bootstrap').data.product_aliases.length,kitAliasCount,
+await waitFor(()=>otherPhone.window.KurashiLive.state().queued===0&&
+ temp.call('bootstrap').data.record_items.some(x=>
+  x.record_id===temp.call('bootstrap').data.records.at(-1).record_id&&
+  x.linked_product_id===kitSavedProduct.product_id),
+ 'The intentional second receipt auto-links its known OCR alias only after save');
+assert.equal(temp.call('bootstrap').data.receipt_name_mappings.length,kitAliasCount,
  'Rereading the same name does not duplicate OCR alias data');
 otherPhone.window.close();
 
@@ -1736,8 +1922,8 @@ newPurchasePhone.window.document.getElementById('chatgpt-input').value=
  JSON.stringify(newKitPurchase);
 await completeOcrImport(newPurchasePhone);
 const repeatedKitReview=newPurchasePhone.window.document.getElementById('scanConfirmForm');
-assert.equal(repeatedKitReview.querySelector('[name="product-0"]').value,
- kitSavedProduct.product_id,'new purchase same printed name automatically links without new master');
+assert.equal(repeatedKitReview.querySelector('[name="product-0"]'),null,
+ 'new purchase keeps product matching out of the input form');
 assert.equal(repeatedKitReview.querySelector('[name="qty-0"]').value,'2');
 assert.equal(repeatedKitReview.querySelector('[name="amount-0"]').value,'340');
 assert.equal(repeatedKitReview.querySelector('#scan-duplicate-warning'),null,
@@ -1746,16 +1932,16 @@ repeatedKitReview.dispatchEvent(new newPurchasePhone.window.Event('submit',{
  bubbles:true,cancelable:true
 }));
 await waitFor(()=>temp.call('bootstrap').data.record_items.some(x=>
- x.product_id===kitSavedProduct.product_id&&Number(x.quantity)===2&&
- Number(x.amount_tax_included)===340),
+ x.linked_product_id===kitSavedProduct.product_id&&Number(x.quantity)===2&&
+ Number(x.line_total_tax_included)===340),
  'second device saved exact tax-inclusive line total without multiplying by quantity');
 await waitFor(()=>newPurchasePhone.window.KurashiLive.state().queued===0,
  'new purchase queue fully drained');
 const kitAfterSecondPurchase=temp.call('bootstrap').data;
 assert.equal(kitAfterSecondPurchase.products.filter(x=>x.name===kitCanonical).length,1,
  'rereading and buying again never creates duplicate product masters');
-assert.equal(kitAfterSecondPurchase.product_aliases.filter(x=>
- x.chain_id===kitStore.chain_id&&x.normalized_alias===kitRaw.toLocaleLowerCase('ja')).length,1,
+assert.equal(kitAfterSecondPurchase.receipt_name_mappings.filter(x=>
+ x.chain_id===kitStore.chain_id&&x.normalized_receipt_name===kitRaw.toLocaleLowerCase('ja')).length,1,
  'rereading never creates duplicate OCR alias rows');
 assert.equal(kitAfterSecondPurchase.records.length,kitRecordCount+2,
  'Both the intentionally repeated receipt and the new 2-point purchase are saved');
@@ -1773,8 +1959,8 @@ assert.match(thirdPhone.window.document.body.textContent,/340円/,
 // Saved OCR names must remain immutable, but a newly appended line must be
 // editable and must survive the same durable record.update journal.
 const purchasedLine=kitAfterSecondPurchase.record_items.find(x=>
- x.product_id===kitSavedProduct.product_id&&Number(x.quantity)===2&&
- Number(x.amount_tax_included)===340);
+ x.linked_product_id===kitSavedProduct.product_id&&Number(x.quantity)===2&&
+ Number(x.line_total_tax_included)===340);
 assert.ok(purchasedLine,'locate the actual 2x KitKat receipt');
 const purchasedReceiptId=purchasedLine.record_id;
 const storedName=aliasText(temp,purchasedLine);
@@ -1808,9 +1994,12 @@ assert.equal(updatedLines.filter(x=>aliasText(temp,x)===storedName).length,1,
  'record.update retains one original immutable OCR spelling');
 assert.equal(updatedLines.filter(x=>aliasText(temp,x)==='手入力の追加明細').length,1,
  'record.update preserves the newly typed line');
-assert.equal(updatedLines.find(x=>aliasText(temp,x)===storedName).amount_tax_included,340,
+assert.equal(updatedLines.find(x=>aliasText(temp,x)===storedName).line_total_tax_included,340,
  'editing existing receipt does not alter historical 2x KitKat line total');
-thirdPhone.window.document.querySelector('[data-tab="items"]').click();
+await waitFor(()=>thirdPhone.window.KurashiLive.state().queued===0&&
+ !!thirdPhone.window.document.querySelector('[data-tab="items"]'),
+ 'saved receipt editing returns to navigable detail after synchronization');
+thirdPhone.window.document.querySelector('[data-tab="items"]')?.click();
 await waitFor(()=>thirdPhone.window.document.body.textContent.includes('170円'),
  'day-to-day stock screen uses 340/2 = 170-yen minimum for registered KitKat');
 thirdPhone.window.close();
@@ -1842,25 +2031,29 @@ const variant={...kitJson,receiptTotal:278,items:[{
 }]};
 existingSession.window.document.getElementById('chatgpt-input').value=JSON.stringify(variant);
 await completeOcrImport(existingSession);
-existingSession.window.document.querySelector('[data-act="scanPickExisting"]').click();
-assert.ok(existingSession.window.document.getElementById('scan-existing-search'));
-const existingSearch=existingSession.window.document.getElementById('scan-existing-search');
-existingSearch.value='チョコ';
+const variantReview=existingSession.window.document.getElementById('scanConfirmForm');
+assert.ok(variantReview&&!variantReview.querySelector('[data-act="scanPickExisting"]'));
+assert.equal(variantReview.querySelector('.scan-ocr-name').textContent,'キットカット別レシート表記');
+variantReview.dispatchEvent(new existingSession.window.Event('submit',{bubbles:true,cancelable:true}));
+await waitFor(()=>!!existingSession.window.document.querySelector('[data-act="recordProductOpen"]'),
+ 'saved receipt exposes the shared product chooser');
+existingSession.window.document.querySelector('[data-act="recordProductOpen"]').click();
+const existingSearch=existingSession.window.document.getElementById('record-product-search');
+assert.ok(existingSearch,'registered product search is in the saved receipt detail');
+existingSearch.value='キットカット濃い';
 existingSearch.dispatchEvent(new existingSession.window.Event('input',{bubbles:true}));
 const existingChoice=existingSession.window.document.querySelector(
- '[data-act="scanChooseExisting"][data-product-id="'+kitSavedProduct.product_id+'"]');
-assert.ok(existingChoice,'registered KitKat found using household-item name');
-assert.match(existingChoice.textContent,/日用品リスト：チョコ/);
+ '[data-act="recordProductChoose"][data-product-id="'+kitSavedProduct.product_id+'"]');
+assert.ok(existingChoice,'canonical master can be selected without a duplicate');
 existingChoice.click();
-const selectedReview=existingSession.window.document.getElementById('scanConfirmForm');
-assert.equal(selectedReview.querySelector('[name="product-0"]').value,
- kitSavedProduct.product_id,'existing product selected without creating a duplicate');
-assert.equal(selectedReview.querySelector('.scan-ocr-name').textContent,
- 'キットカット別レシート表記','printed spelling kept when choosing existing product');
+await waitFor(()=>existingSession.window.KurashiLive.state().queued===0&&
+ temp.call('bootstrap').data.record_items.some(x=>aliasText(temp,x)==='キットカット別レシート表記'&&
+  x.linked_product_id===kitSavedProduct.product_id),
+ 'printed spelling and selected product persist after saved receipt linking');
 existingSession.window.close();
 console.log('v61: KitKat canonical master, chocolate item link, original receipt name, alias and no-pinch gestures: OK');
 
-/* v62: Product masters can exist without item_groups, and a recognized
+/* v62: Product masters can exist without household_items, and a recognized
  * chain + the explicitly confirmed receipt alias links on re-import, even
  * when the initial receipt was never saved. */
 const standaloneName='キットカット濃い抹茶10袋（単独マスタ試験）';
@@ -1889,37 +2082,44 @@ assert.equal(standaloneForm.querySelector('[name="chain"]').value,'__new__',
 standaloneForm.querySelector('[name="chain"]').value=standaloneChainId;
 standaloneForm.querySelector('[name="chain"]').dispatchEvent(
  new standaloneSession.window.Event('change',{bubbles:true}));
-await waitFor(()=>temp.call('bootstrap').data.stores.some(x=>
+await waitFor(()=>temp.call('bootstrap').data.retail_chains.some(x=>
  x.chain_id===standaloneChainId&&String(x.aliases).includes('COSTCO WHOLESALE')),
- 'confirmed retailer spelling is remembered via existing stores.aliases and queue');
-standaloneSession.window.document.querySelector('[data-act="scanPickExisting"]').click();
-standaloneSession.window.document.querySelector('[data-act="scanExistingToNew"]').click();
-const standaloneProductForm=standaloneSession.window.document.getElementById('scanProductForm');
-assert.ok(standaloneProductForm,'new product form is open');
-assert.equal(standaloneProductForm.querySelector('[name="group"]').value,'',
- 'unlinked product is the default');
+ 'confirmed retailer spelling is remembered via existing retail_chains.aliases and queue');
+assert.equal(standaloneForm.querySelector('[data-act="scanPickExisting"]'),null);
+assert.ok(!standaloneForm.querySelector('[name="difference"]')&&
+ !standaloneForm.querySelector('[name="confirmed"]'));
+standaloneSession.window.document.querySelector('#scanConfirmForm').dispatchEvent(
+ new standaloneSession.window.Event('submit',{bubbles:true,cancelable:true}));
+try{
+ await waitFor(()=>!!standaloneSession.window.document.querySelector('[data-act="recordProductOpen"]'),
+  'saved standalone receipt detail permits product registration');
+}catch(err){
+ console.log('STANDALONE_SAVE_DIAGNOSTIC',JSON.stringify({
+  state:standaloneSession.window.KurashiLive.state(),
+  feedback:standaloneSession.window.document.getElementById('scan-save-feedback')?.textContent,
+  chain:standaloneSession.window.document.querySelector('[name="chain"]')?.value,
+  date:standaloneSession.window.document.querySelector('[name="date"]')?.value,
+  page:standaloneSession.window.document.body.textContent.slice(-800)
+ }));
+ throw err;
+}
+standaloneSession.window.document.querySelector('[data-act="recordProductOpen"]').click();
+standaloneSession.window.document.querySelector('[data-act="recordProductShowNew"]').click();
+const standaloneProductForm=standaloneSession.window.document.getElementById('recordProductCreateForm');
+assert.ok(standaloneProductForm&&!standaloneProductForm.querySelector('[name="group"]'),
+ 'new product in shared half sheet defers optional household group');
 standaloneProductForm.querySelector('[name="name"]').value=standaloneName;
-// No selection of an item group. This used to be rejected in both client and GAS.
 standaloneProductForm.dispatchEvent(new standaloneSession.window.Event(
  'submit',{bubbles:true,cancelable:true}));
-await waitFor(()=>temp.call('bootstrap').data.products.some(x=>
- x.name===standaloneName&&x.item_group_id===''),
- 'product.create accepts null item_group_id through durable queue and GAS');
+await waitFor(()=>standaloneSession.window.KurashiLive.state().queued===0&&
+ temp.call('bootstrap').data.products.some(x=>x.name===standaloneName&&!x.household_item_id),
+ 'product.create with null household group syncs from saved receipt');
 const standaloneProduct=temp.call('bootstrap').data.products.find(x=>x.name===standaloneName);
 assert.ok(standaloneProduct);
-await waitFor(()=>temp.call('bootstrap').data.product_aliases.some(x=>
- x.chain_id===standaloneChainId&&x.product_id===standaloneProduct.product_id&&
- x.normalized_alias===standaloneRaw.toLocaleLowerCase('ja')),
- 'user confirmed abbreviation is persisted immediately after product registration');
-const standaloneReview=standaloneSession.window.document.getElementById('scanConfirmForm');
-assert.ok(standaloneReview,'standalone creation returns to receipt review');
-assert.equal(standaloneReview.querySelector('.scan-product-setting .ui-picker-value')?.textContent,standaloneName,
- 'unlinked master is shown by registered product name without confusing item-group text');
-assert.ok(!standaloneReview.querySelector('.scan-product-setting')?.textContent.includes('日用品未紐付け'));
-assert.ok(!standaloneReview.querySelector('[name="difference"]')&&
- !standaloneReview.querySelector('[name="confirmed"]'),
- 'there is no redundant receipt-total or generic confirmation checkbox');
-// Exit without saving the receipt: the product and confirmed alias must persist.
+await waitFor(()=>temp.call('bootstrap').data.receipt_name_mappings.some(x=>
+ x.chain_id===standaloneChainId&&x.auto_match_product_id===standaloneProduct.product_id&&
+ x.normalized_receipt_name===standaloneRaw.toLocaleLowerCase('ja')),
+ 'explicit selection learns OCR name for registered chain');
 standaloneSession.window.close();
 let readAgain=appSession();
 await waitFor(()=>readAgain.window.KurashiLive.state().loaded,
@@ -1932,19 +2132,17 @@ await completeOcrImport(readAgain);
 const matchedReview=readAgain.window.document.getElementById('scanConfirmForm');
 assert.equal(matchedReview.querySelector('[name="chain"]').value,standaloneChainId,
  're-read recognizes COSTCO WHOLESALE as registered コストコ');
-assert.equal(matchedReview.querySelector('[name="product-0"]').value,
- standaloneProduct.product_id,
- 're-read automatically selects canonical product via chain-scoped abbreviation');
-assert.equal(matchedReview.querySelector('.scan-product-setting .ui-picker-value')?.textContent,standaloneName,
- 'later receipt also shows the selected master without its unrelated item-group status');
+assert.equal(matchedReview.querySelector('[name="product-0"]'),null,
+ 'automatic matching is deferred until after saving');
 const totalText=matchedReview.querySelector('#scan-sum-text').textContent;
-assert.match(totalText,/合計金額：/,'one calculated total is visible without a checkbox');
+assert.match(totalText,/合計金額：/);
 matchedReview.dispatchEvent(new readAgain.window.Event('submit',{
  bubbles:true,cancelable:true
 }));
-await waitFor(()=>temp.call('bootstrap').data.record_items.some(x=>
- x.product_id===standaloneProduct.product_id&&aliasText(temp,x)===standaloneRaw),
- 'auto-linked product stores original printed name and master ID');
+await waitFor(()=>readAgain.window.KurashiLive.state().queued===0&&
+ temp.call('bootstrap').data.record_items.some(x=>
+ x.linked_product_id===standaloneProduct.product_id&&aliasText(temp,x)===standaloneRaw),
+ 'exact OCR alias is linked automatically only after purchase is saved');
 readAgain.window.close();
 const dupStoreAlias=temp.call('store.alias.upsert',{
  chain_id:standaloneChainId,raw_alias:'COSTCO WHOLESALE'
@@ -1958,80 +2156,72 @@ assert.equal(temp.call('store.alias.upsert',{
 },'op-v62-store-alias-conflict-abcdefghijk').error.code,'DUPLICATE',
  'alias cannot be silently assigned to a different chain');
 const standaloneDirect=productFixture.call('product.create',{
- item_group_id:null,name:'日用品未紐付け単独商品の直接保存',
+ household_item_id:null,name:'日用品未紐付け単独商品の直接保存',
  package_quantity:null,package_unit:null
 },'op-v62-null-group-direct-abcdefghijk');
 assert.equal(standaloneDirect.ok,true,'GAS directly accepts an unlinked product master');
-assert.equal(standaloneDirect.data.entity.item_group_id,'');
-assert.equal(standaloneDirect.data.entity.item_group_order,'');
+assert.equal(standaloneDirect.data.entity.household_item_id,'');
+assert.equal(standaloneDirect.data.entity.household_item_order,'');
 console.log('v62: nullable master, store alias learning, next receipt auto-link and checkbox removal OK');
 
-/* v63: Cross-store exact history is reusable. Text edits still re-evaluate,
- * while a manually selected product remains selected. */
+/* v63: changing retailer leaves the printed OCR name untouched. Registered
+ * product selection is performed on the saved receipt, not before purchase. */
 let relinkSession=appSession();
 await waitFor(()=>relinkSession.window.KurashiLive.state().loaded,
- 'receipt retailer reassignment regression bootstrap');
-await waitFor(()=>relinkSession.window.KurashiLive.state().queued===0,
- 'finish earlier alias operations before chain reassignment');
+ 'saved receipt retailer reassignment bootstrap');
+await waitFor(()=>relinkSession.window.KurashiLive.state().queued===0);
 await relinkSession.window.KurashiLive.load();
 relinkSession.window.document.querySelector('[data-tab="receipt"]').click();
 prepareOcrImport(relinkSession);
 relinkSession.window.eval(importer);
 relinkSession.window.document.getElementById('chatgpt-input').value=JSON.stringify(standaloneJson);
 await completeOcrImport(relinkSession);
-const reviewField=(name)=>relinkSession.window.document
+const reviewField=name=>relinkSession.window.document
  .querySelector('#scanConfirmForm [name="'+name+'"]');
-assert.equal(reviewField('product-0').value,standaloneProduct.product_id,
- 'known Costco print alias initially identifies saved product');
+assert.equal(reviewField('product-0'),null,
+ 'product association no longer appears in receipt review');
 reviewField('chain').value=kitStore.chain_id;
 reviewField('chain').dispatchEvent(new relinkSession.window.Event('change',{bubbles:true}));
-assert.equal(reviewField('product-0').value,standaloneProduct.product_id,
- 'same uniquely confirmed print name remains linked across retailers');
 reviewField('chain').value=standaloneChainId;
 reviewField('chain').dispatchEvent(new relinkSession.window.Event('change',{bubbles:true}));
-assert.equal(reviewField('product-0').value,standaloneProduct.product_id,
- 'switching back to the original retailer re-links its known alias');
-assert.equal(relinkSession.window.document.querySelector('[name="name-0"]'),null,
- 'OCR original name cannot be modified; only product associations are editable');
+assert.equal(relinkSession.window.document.querySelector('[name="name-0"]'),null);
 assert.equal(relinkSession.window.document.querySelector('.scan-ocr-name').textContent,
- standaloneRaw,'OCR name remains unchanged when the retailer changes');
-relinkSession.window.document.querySelector('[data-act="scanPickExisting"]').click();
+ standaloneRaw,'OCR name remains immutable after retailer changes');
+relinkSession.window.document.querySelector('#scanConfirmForm').dispatchEvent(
+ new relinkSession.window.Event('submit',{bubbles:true,cancelable:true}));
+await waitFor(()=>!!relinkSession.window.document.querySelector('[data-act="recordProductOpen"]'),
+ 'saved receipt exposes common registered-product picker');
+relinkSession.window.document.querySelector('[data-act="recordProductOpen"]').click();
 const manualChoice=relinkSession.window.document.querySelector(
- '[data-act="scanChooseExisting"][data-product-id="'+standaloneProduct.product_id+'"]');
-assert.ok(manualChoice,'previously saved standalone product can be explicitly selected');
+ '[data-act="recordProductChoose"][data-product-id="'+standaloneProduct.product_id+'"]');
+assert.ok(manualChoice,'previously saved product is available for explicit selection');
 manualChoice.click();
-reviewField('chain').value=kitStore.chain_id;
-reviewField('chain').dispatchEvent(new relinkSession.window.Event('change',{bubbles:true}));
-assert.equal(reviewField('product-0').value,standaloneProduct.product_id,
- 'an explicit existing-product selection survives retailer changes');
-assert.equal(reviewField('product-0').value,standaloneProduct.product_id,
- 'explicit existing-product selection survives retailer changes');
-assert.equal(relinkSession.window.document.querySelector('.scan-ocr-name').textContent,
- standaloneRaw,'manual product selection does not rewrite the OCR name');
+await waitFor(()=>relinkSession.window.KurashiLive.state().queued===0&&
+ temp.call('bootstrap').data.record_items.some(x=>
+  aliasText(temp,x)===standaloneRaw&&x.linked_product_id===standaloneProduct.product_id),
+ 'manual saved-receipt product choice persists after retailer edit');
 relinkSession.window.close();
-console.log('v63: retailer changes, OCR-name corrections and user-confirmed master links OK');
+console.log('v63: retailer change and saved-receipt manual product association OK');
 
-
-/* v64: saved receipts register OCR names independently of the historic row text. */
+/* v64: historical OCR aliases and shelf records still resolve products, but
+ * receipt linking is deferred until the receipt is saved. */
 const historyRaw='かたかな・直売X-123',historyCanonical='履歴から再照合する商品A';
 const historyProduct=temp.call('product.create',{
- item_group_id:null,name:historyCanonical,package_quantity:null,package_unit:null
+ household_item_id:null,name:historyCanonical,package_quantity:null,package_unit:null
 },'op-v64-history-product-abcdefghijk');
 assert.equal(historyProduct.ok,true);
 const historyId=historyProduct.data.entity.product_id;
 assert.equal(temp.call('record.create',{
  record_type:'receipt',chain_id:kitStore.chain_id,record_date:'2026-11-01',
- items:[{raw_name:historyRaw,product_id:historyId,quantity:1,
-  amount_tax_included:221,category_id:null}]
+ items:[{raw_name:historyRaw,linked_product_id:historyId,quantity:1,
+  line_total_tax_included:221}]
 },'op-v64-history-receipt-abcdefghijk').ok,true);
-assert.equal(temp.call('bootstrap').data.product_aliases.filter(a=>
- a.product_id===historyId).length,1,'receipt automatically registers OCR name in dictionary');
+assert.equal(temp.call('bootstrap').data.receipt_name_mappings.filter(a=>
+ a.auto_match_product_id===historyId).length,1,'original printed OCR alias is retained');
 let historySession=appSession();
-await waitFor(()=>historySession.window.KurashiLive.state().loaded,'history on next session');
-await waitFor(()=>historySession.window.KurashiLive.state().queued===0,
- 'history prior durable operations have finished');
-assert.equal(await historySession.window.KurashiLive.load(),true,
- 'history fresh Sheets snapshot has been fetched');
+await waitFor(()=>historySession.window.KurashiLive.state().loaded);
+await waitFor(()=>historySession.window.KurashiLive.state().queued===0);
+await historySession.window.KurashiLive.load();
 historySession.window.document.querySelector('[data-tab="receipt"]').click();
 prepareOcrImport(historySession);
 historySession.window.eval(importer);
@@ -2041,45 +2231,55 @@ const historyJson={...kitJson,storeName:'コストコ',purchaseDate:'2026-11-03'
 historySession.window.document.querySelector('#chatgpt-input').value=JSON.stringify(historyJson);
 await completeOcrImport(historySession);
 const hfield=name=>historySession.window.document.querySelector('#scanConfirmForm [name="'+name+'"]');
-assert.equal(hfield('product-0').value,historyId,
- 'second receipt at a DIFFERENT chain uses a saved OCR dictionary alias');
-assert.equal(historySession.window.document.querySelector('.scan-ocr-name').textContent,
- historyRaw,'printed name remains unchanged');
-assert.equal(hfield('name-0'),null,'OCR text is not an editable input');
-historySession.window.close();
-historySession=appSession();
-await waitFor(()=>historySession.window.KurashiLive.state().loaded,'new OCR reading session loaded');
-historySession.window.document.querySelector('[data-tab="receipt"]').click();
-prepareOcrImport(historySession);
-historySession.window.document.getElementById('chatgpt-input').value=JSON.stringify({
- ...historyJson,items:[{...historyJson.items[0],name:'カタカナ 直売X123'}]
-});
-await completeOcrImport(historySession);
-assert.equal(hfield('product-0').value,'','kana/mark variation is NOT auto-confirmed');
-historySession.window.document.querySelector('[data-act="scanPickExisting"]').click();
-const hSuggestion=historySession.window.document.querySelector(
- '[data-act="scanChooseSuggested"][data-product-id="'+historyId+'"]');
-assert.ok(hSuggestion,'kana and punctuation variant appears as master candidate');
-hSuggestion.click();
-assert.equal(hfield('product-0').value,historyId,'choosing a candidate links the master');
-assert.equal(hfield('product-0').value,historyId,
- 'manually confirmed product is retained without editing the OCR name');
-await waitFor(()=>historySession.window.KurashiLive.state().queued===0,'candidate alias queue drained');
+assert.equal(hfield('product-0'),null,'known aliases do not create receipt entry product controls');
+assert.equal(historySession.window.document.querySelector('.scan-ocr-name').textContent,historyRaw);
+assert.equal(hfield('name-0'),null,'printed OCR name remains read-only');
+historySession.window.document.querySelector('#scanConfirmForm').dispatchEvent(
+ new historySession.window.Event('submit',{bubbles:true,cancelable:true}));
+await waitFor(()=>historySession.window.KurashiLive.state().queued===0&&
+ temp.call('bootstrap').data.record_items.filter(x=>
+  aliasText(temp,x)===historyRaw&&x.linked_product_id===historyId).length>=2,
+ 'historical alias identifies product only after another receipt is saved');
 historySession.window.close();
 
-/* Shelf labels already use the same record_items table, and teach the name. */
+historySession=appSession();
+await waitFor(()=>historySession.window.KurashiLive.state().loaded);
+historySession.window.document.querySelector('[data-tab="receipt"]').click();
+prepareOcrImport(historySession);
+historySession.window.eval(importer);
+const changedHistoryRaw='カタカナ 直売X123';
+historySession.window.document.getElementById('chatgpt-input').value=JSON.stringify({
+ ...historyJson,items:[{...historyJson.items[0],name:changedHistoryRaw}]
+});
+await completeOcrImport(historySession);
+assert.equal(hfield('product-0'),null);
+historySession.window.document.querySelector('#scanConfirmForm').dispatchEvent(
+ new historySession.window.Event('submit',{bubbles:true,cancelable:true}));
+await waitFor(()=>!!historySession.window.document.querySelector('[data-act="recordProductOpen"]'),
+ 'similar but unconfirmed spelling can be linked after receipt save');
+assert.match(historySession.window.document.body.textContent,/商品未紐付け/,
+ 'near-name candidates are not automatically confirmed');
+historySession.window.document.querySelector('[data-act="recordProductOpen"]').click();
+const historyOption=historySession.window.document.querySelector(
+ '[data-act="recordProductChoose"][data-product-id="'+historyId+'"]');
+assert.ok(historyOption,'manual selection can resolve a near-name spelling');
+historyOption.click();
+await waitFor(()=>historySession.window.KurashiLive.state().queued===0&&
+ temp.call('bootstrap').data.record_items.some(x=>
+  aliasText(temp,x)===changedHistoryRaw&&x.linked_product_id===historyId),
+ 'confirmed manual choice is stored without rewriting the OCR print');
+historySession.window.close();
+
+/* Value tags continue using shared records and still train OCR aliases. */
 const shelfRaw='値札から再照合する印字名';
 assert.equal(temp.call('record.create',{
- record_type:'shelf',chain_id:kitStore.chain_id,record_date:'2026-11-02',
- items:[{raw_name:shelfRaw,product_id:historyId,quantity:1,
-  amount_tax_included:215,category_id:null}]
+ record_type:'price_tag',chain_id:kitStore.chain_id,record_date:'2026-11-02',
+ items:[{raw_name:shelfRaw,linked_product_id:historyId,quantity:1,
+  line_total_tax_included:215}]
 },'op-v64-shelf-record-abcdefghijk').ok,true);
 let shelfSession=appSession();
-await waitFor(()=>shelfSession.window.KurashiLive.state().loaded,'shelf history loaded');
-await waitFor(()=>shelfSession.window.KurashiLive.state().queued===0,
- 'shelf prior durable operations have finished');
-assert.equal(await shelfSession.window.KurashiLive.load(),true,
- 'shelf fresh Sheets snapshot has been fetched');
+await waitFor(()=>shelfSession.window.KurashiLive.state().loaded);
+await shelfSession.window.KurashiLive.load();
 shelfSession.window.document.querySelector('[data-tab="receipt"]').click();
 prepareOcrImport(shelfSession);
 shelfSession.window.eval(importer);
@@ -2088,17 +2288,21 @@ shelfSession.window.document.querySelector('#chatgpt-input').value=JSON.stringif
  items:[{...historyJson.items[0],name:shelfRaw,unitPrice:215,grossAmount:215,netAmount:215}]
 });
 await completeOcrImport(shelfSession);
-assert.equal(shelfSession.window.document.querySelector('[name="product-0"]').value,historyId,
- 'shelf OCR aliases also teach next receipt');
+assert.equal(shelfSession.window.document.querySelector('[name="product-0"]'),null,
+ 'even shelf-trained products are linked only after a receipt is saved');
+shelfSession.window.document.querySelector('#scanConfirmForm').dispatchEvent(
+ new shelfSession.window.Event('submit',{bubbles:true,cancelable:true}));
+await waitFor(()=>shelfSession.window.KurashiLive.state().queued===0&&
+ temp.call('bootstrap').data.record_items.some(x=>
+  aliasText(temp,x)===shelfRaw&&x.linked_product_id===historyId),
+ 'saved receipt recognizes the shelf-trained OCR name');
 shelfSession.window.close();
 
-/* Two conflicting confirmed products for the same exact name are NOT guessed. */
+/* Two different products with the same OCR name never auto-link ambiguously. */
 const conflict=temp.call('product.create',{
- item_group_id:null,name:'別商品B（明細名の競合試験）',package_quantity:null,package_unit:null
+ household_item_id:null,name:'別商品B（明細名の競合試験）',package_quantity:null,package_unit:null
 },'op-v64-conflict-product-abcdefghijk');
 assert.equal(conflict.ok,true);
-// The previously used Costco chain has already learned this name for product A.
-// Use a fresh chain to create a REAL cross-chain conflict with product B.
 const conflictChain=temp.call('store.create',{name:'OCR名競合検証専用チェーン'},
  'op-v64-conflict-chain-abcdefghijk');
 assert.equal(conflictChain.ok,true);
@@ -2107,23 +2311,17 @@ assert.notEqual(conflictChainId,kitStore.chain_id);
 assert.notEqual(conflictChainId,standaloneChainId);
 assert.equal(temp.call('record.create',{
  record_type:'receipt',chain_id:conflictChainId,record_date:'2026-11-01',
- items:[{raw_name:historyRaw,product_id:conflict.data.entity.product_id,
-  quantity:1,amount_tax_included:222,category_id:null}]
+ items:[{raw_name:historyRaw,linked_product_id:conflict.data.entity.product_id,
+  quantity:1,line_total_tax_included:222}]
 },'op-v64-conflict-record-abcdefghijk').ok,true);
-const competingAliases=temp.call('bootstrap').data.product_aliases.filter(a=>
- a.normalized_alias===historyRaw.normalize('NFKC').toLocaleLowerCase('ja'));
-assert.ok(competingAliases.some(a=>a.chain_id===kitStore.chain_id&&
- a.product_id===historyId),'original retailer confirms product A');
+const competingAliases=temp.call('bootstrap').data.receipt_name_mappings.filter(a=>
+ a.normalized_receipt_name===historyRaw.normalize('NFKC').toLocaleLowerCase('ja'));
+assert.ok(competingAliases.some(a=>a.chain_id===kitStore.chain_id&&a.auto_match_product_id===historyId));
 assert.ok(competingAliases.some(a=>a.chain_id===conflictChainId&&
- a.product_id===conflict.data.entity.product_id),'second retailer confirms DIFFERENT product B');
-assert.notEqual(historyId,conflict.data.entity.product_id,
- 'ambiguous OCR text must genuinely identify two product masters');
+ a.auto_match_product_id===conflict.data.entity.product_id));
 let conflictSession=appSession();
-await waitFor(()=>conflictSession.window.KurashiLive.state().loaded,'conflicting history loaded');
-await waitFor(()=>conflictSession.window.KurashiLive.state().queued===0,
- 'conflict prior durable operations have finished');
-assert.equal(await conflictSession.window.KurashiLive.load(),true,
- 'conflict fresh Sheets snapshot has been fetched');
+await waitFor(()=>conflictSession.window.KurashiLive.state().loaded);
+await conflictSession.window.KurashiLive.load();
 conflictSession.window.document.querySelector('[data-tab="receipt"]').click();
 prepareOcrImport(conflictSession);
 conflictSession.window.eval(importer);
@@ -2131,28 +2329,30 @@ conflictSession.window.document.querySelector('#chatgpt-input').value=JSON.strin
  ...historyJson,storeName:'初めての不明チェーンXY'
 });
 await completeOcrImport(conflictSession);
-assert.equal(conflictSession.window.document.querySelector('[name="product-0"]').value,'',
- 'without retailer context an ambiguous confirmed name stays unlinked');
-conflictSession.window.document.querySelector('[data-act="scanPickExisting"]').click();
+assert.equal(conflictSession.window.document.querySelector('[name="product-0"]'),null);
+conflictSession.window.document.querySelector('#scanConfirmForm').dispatchEvent(
+ new conflictSession.window.Event('submit',{bubbles:true,cancelable:true}));
+await waitFor(()=>!!conflictSession.window.document.querySelector('[data-act="recordProductOpen"]'),
+ 'unknown retailer receipt can be saved without assigning an ambiguous product');
+assert.match(conflictSession.window.document.body.textContent,/商品未紐付け/);
+conflictSession.window.document.querySelector('[data-act="recordProductOpen"]').click();
 assert.ok(conflictSession.window.document.querySelectorAll(
- '[data-act="scanChooseSuggested"]').length>=2,
- 'conflicting exact matches are shown as manual candidate choices');
+ '[data-act="recordProductChoose"]').length>=2,
+ 'ambiguous OCR spellings allow explicit product selection');
 conflictSession.window.close();
 
-/* Removing a product from the item group must not delete its product master. */
+/* Removing an item-group association never deletes its product master or
+ * rewrites historical record_items.product_id values. */
 const kitCurrent=temp.call('bootstrap').data.products.find(p=>
  p.product_id===kitSavedProduct.product_id);
 assert.equal(temp.call('product.update',{
- product_id:kitCurrent.product_id,version:Number(kitCurrent.version),item_group_id:null
+ product_id:kitCurrent.product_id,version:Number(kitCurrent.version),household_item_id:null
 },'op-v64-product-unlink-abcdefghijk').ok,true);
 assert.ok(temp.call('bootstrap').data.products.some(p=>
- p.product_id===kitSavedProduct.product_id&&!p.item_group_id),
- 'product still exists after unlink');
+ p.product_id===kitSavedProduct.product_id&&!p.household_item_id));
 assert.ok(temp.call('bootstrap').data.record_items.some(x=>
- aliasText(temp,x)===kitRaw&&x.product_id===kitSavedProduct.product_id),
- 'past receipt/product ID remains stable after product is removed from daily item');
-console.log('v64: receipt/shelf exact history, cross-chain matching, safe kana suggestions, conflicts, master unlink OK');
-
+ aliasText(temp,x)===kitRaw&&x.linked_product_id===kitSavedProduct.product_id));
+console.log('v64: OCR history, shelf OCR training, ambiguous names, master unlink after save OK');
 
 /* v65: manage independent product masters without linking to a daily item. */
 let masterUI=appSession();
@@ -2195,7 +2395,7 @@ assert.ok(!masterClear.hidden,'Common clear action shows for nonempty query');
 masterClear.click();
 assert.equal(masterSearch.value,'','Common clear resets the native search field');
 assert.equal(masterResults.querySelectorAll('[data-act="masterProductEdit"]').length,
- masterOriginalCount,'Common clear restores all master product rows');
+ masterOriginalCount,'Common clear reretail_chains all master product rows');
 masterUI.window.document.querySelector('[data-act="masterProductNew"]').click();
 const masterForm=masterUI.window.document.querySelector('#masterProductForm');
 assert.ok(masterForm,'independent new product form');
@@ -2204,7 +2404,7 @@ assert.equal(masterForm.querySelector('[name="group"]').value,'',
 masterForm.querySelector('[name="name"]').value='マスタ単独登録テストC';
 masterForm.dispatchEvent(new masterUI.window.Event('submit',{bubbles:true,cancelable:true}));
 await waitFor(()=>temp.call('bootstrap').data.products.some(p=>
- p.name==='マスタ単独登録テストC'&&!p.item_group_id),
+ p.name==='マスタ単独登録テストC'&&!p.household_item_id),
  'standalone product was created through IndexedDB queue and Sheets');
 const createdMaster=temp.call('bootstrap').data.products.find(p=>
  p.name==='マスタ単独登録テストC');
@@ -2223,7 +2423,7 @@ await waitFor(()=>temp.call('bootstrap').data.products.some(p=>
 await waitFor(()=>masterUI.window.KurashiLive.state().queued===0,
  'previous product edit completed');
 // The master link editor must keep its unsaved name/size while a common sheet opens.
-const historyBeforeMasterLink=temp.call('bootstrap').data.record_items.map(x=>x.product_id).join('|');
+const historyBeforeMasterLink=temp.call('bootstrap').data.record_items.map(x=>x.linked_product_id).join('|');
 masterUI.window.document.querySelector(
  '[data-act="masterProductEdit"][data-product-id="'+createdMaster.product_id+'"]'
 ).click();
@@ -2255,7 +2455,7 @@ assert.equal(groupResults.querySelectorAll('.ui-choice-row').length,0,
  'Group candidates filter only when composition is confirmed');
 groupSheet.querySelector('[data-search-clear="master-group-search"]').click();
 assert.ok(groupResults.querySelector('[data-ui-choice="'+chocId+'"]'),
- 'Common clear restores all choices');
+ 'Common clear reretail_chains all choices');
 groupSheet.querySelector('.sheet-close').click();
 assert.equal(masterUI.window.document.querySelector('.master-group-picker-overlay'),null,
  'Close sheet without editing product');
@@ -2283,7 +2483,7 @@ assert.equal(masterNameDraft.value,'まだ保存していない名前',
  'Confirmed link keeps unsaved name in the existing DOM node');
 await waitFor(()=>masterUI.window.KurashiLive.state().queued===0&&
  temp.call('bootstrap').data.products.some(p=>
-  p.product_id===createdMaster.product_id&&p.item_group_id===chocId),
+  p.product_id===createdMaster.product_id&&p.household_item_id===chocId),
  'Linked product is reflected on Sheets with the same master ID');
 masterNameDraft.value='マスタ紐付け後に編集C';
 masterEditForm.dispatchEvent(new masterUI.window.Event('submit',{bubbles:true,cancelable:true}));
@@ -2305,11 +2505,11 @@ assert.ok(masterUI.window.document.querySelector('[data-dialog="confirmMasterGro
 masterUI.window.document.querySelector('[data-dialog="confirmMasterGroupChange"]').click();
 await waitFor(()=>masterUI.window.KurashiLive.state().queued===0&&
  temp.call('bootstrap').data.products.some(p=>
-  p.product_id===createdMaster.product_id&&!p.item_group_id),
+  p.product_id===createdMaster.product_id&&!p.household_item_id),
  'Unlink keeps master row and ID in Sheets');
 assert.equal(unlinkForm.querySelector('[name="group"]').value,'',
  'Unlink is reflected in the still-open editor');
-assert.equal(temp.call('bootstrap').data.record_items.map(x=>x.product_id).join('|'),
+assert.equal(temp.call('bootstrap').data.record_items.map(x=>x.linked_product_id).join('|'),
  historyBeforeMasterLink,'Relinking does not rewrite historical receipt product IDs');
 assert.equal(masterUI.window.document.querySelector('[data-act="masterProductUnlink"]'),null,
  'Standalone unlink action has been removed');
@@ -2326,7 +2526,7 @@ linkedNewForm.querySelector('[name="name"]').value='紐付け新規作成テス�
 linkedNewForm.dispatchEvent(new masterUI.window.Event('submit',{bubbles:true,cancelable:true}));
 await waitFor(()=>masterUI.window.KurashiLive.state().queued===0&&
  temp.call('bootstrap').data.products.some(p=>
-  p.name==='紐付け新規作成テストC'&&p.item_group_id===chocId),
+  p.name==='紐付け新規作成テストC'&&p.household_item_id===chocId),
  'New product persists optional item group in the same product.create operation');
 assert.ok(!app.includes('product.delete'),'No product-delete action is introduced');
 masterUI.window.close();
@@ -2339,14 +2539,14 @@ await waitFor(()=>aliasUI.window.KurashiLive.state().loaded,'alias manager boots
 await waitFor(()=>aliasUI.window.KurashiLive.state().queued===0,'alias manager previous queue drained');
 assert.equal(await aliasUI.window.KurashiLive.load(),true,'alias manager loads server state');
 const aliasSnapshot=temp.call('bootstrap').data;
-const chosenAlias=aliasSnapshot.product_aliases.find(a=>
- aliasSnapshot.record_items.some(line=>line.alias_id===a.alias_id)&&
- a.product_id&&aliasSnapshot.products.some(p=>p.product_id===a.product_id));
+const chosenAlias=aliasSnapshot.receipt_name_mappings.find(a=>
+ aliasSnapshot.record_items.some(line=>line.receipt_name_id===a.receipt_name_id)&&
+ a.auto_match_product_id&&aliasSnapshot.products.some(p=>p.product_id===a.auto_match_product_id));
 assert.ok(chosenAlias,'saved OCR alias has an original purchase record and linked product');
-const alternateMaster=aliasSnapshot.products.find(p=>p.product_id!==chosenAlias.product_id);
+const alternateMaster=aliasSnapshot.products.find(p=>p.product_id!==chosenAlias.auto_match_product_id);
 assert.ok(alternateMaster,'at least two registered products for linking test');
-const originalLinkedId=chosenAlias.product_id;
-const historicalLineIds=JSON.stringify(aliasSnapshot.record_items.map(line=>[line.record_item_id,line.product_id,line.alias_id]));
+const originalLinkedId=chosenAlias.auto_match_product_id;
+const historicalLineIds=JSON.stringify(aliasSnapshot.record_items.map(line=>[line.record_item_id,line.linked_product_id,line.receipt_name_id]));
 aliasUI.window.document.querySelector('[data-tab="settings"]').click();
 aliasUI.window.document.querySelector('[data-act="aliasManage"]').click();
 const aliasList=aliasUI.window.document.querySelector('#alias-results');
@@ -2370,8 +2570,8 @@ assert.equal(aliasList.querySelectorAll('[data-act="aliasPickerOpen"]').length,0
 aliasClear.click();
 assert.equal(aliasSearch.value,'','Common clear button resets alias search');
 assert.equal(aliasList.querySelectorAll('[data-act="aliasPickerOpen"]').length,aliasCount,
- 'Clearing search restores all alias cards');
-const chosenAliasRow=aliasList.querySelector('[data-alias-id="'+chosenAlias.alias_id+'"]');
+ 'Clearing search reretail_chains all alias cards');
+const chosenAliasRow=aliasList.querySelector('[data-alias-id="'+chosenAlias.receipt_name_id+'"]');
 assert.ok(chosenAliasRow,'historical OCR alias is visible for editing');
 assert.ok(chosenAliasRow.textContent.includes('店舗：'),
  'OCR card displays a familiar store label');
@@ -2394,34 +2594,34 @@ assert.equal(productResults.querySelectorAll('.ui-choice-row').length,0,
  'Product candidates filter after composition');
 aliasModal.querySelector('[data-search-clear="alias-product-search"]').click();
 assert.ok(productResults.querySelector('[data-ui-choice="'+alternateMaster.product_id+'"]'),
- 'Clear restores existing products without reopening the sheet');
+ 'Clear reretail_chains existing products without reopening the sheet');
 aliasModal.querySelector('.sheet-close').click();
 assert.equal(aliasUI.window.document.querySelector('.alias-product-picker-overlay'),null,
  'Canceling sheet does not change the OCR dictionary');
 assert.equal(aliasUI.window.document.body.style.position,'',
- 'Sheet dismissal restores background scroll');
+ 'Sheet dismissal reretail_chains background scroll');
 chosenAliasRow.click();
 aliasModal=aliasUI.window.document.querySelector('.alias-product-picker-overlay');
 aliasModal.querySelector('[data-ui-choice="'+alternateMaster.product_id+'"]').click();
 assert.ok(aliasUI.window.document.querySelector('[data-dialog="confirmAliasLink"]'),
  'Alias link requires a dedicated confirmation dialog');
-assert.equal(temp.call('bootstrap').data.product_aliases.find(a=>a.alias_id===chosenAlias.alias_id).product_id,
+assert.equal(temp.call('bootstrap').data.receipt_name_mappings.find(a=>a.receipt_name_id===chosenAlias.receipt_name_id).auto_match_product_id,
  originalLinkedId,'Selecting candidate does not write to Sheets yet');
 aliasUI.window.document.querySelector('[data-dialog="cancel"]').click();
 assert.equal(aliasUI.window.document.querySelector('.dialog-back'),null,
  'Canceling alias change closes the confirmation');
-assert.equal(temp.call('bootstrap').data.product_aliases.find(a=>a.alias_id===chosenAlias.alias_id).product_id,
+assert.equal(temp.call('bootstrap').data.receipt_name_mappings.find(a=>a.receipt_name_id===chosenAlias.receipt_name_id).auto_match_product_id,
  originalLinkedId,'Cancel does not change the OCR alias');
 chosenAliasRow.click();
 aliasModal=aliasUI.window.document.querySelector('.alias-product-picker-overlay');
 aliasModal.querySelector('[data-ui-choice="'+alternateMaster.product_id+'"]').click();
 aliasUI.window.document.querySelector('[data-dialog="confirmAliasLink"]').click();
 await waitFor(()=>aliasUI.window.KurashiLive.state().queued===0&&
- temp.call('bootstrap').data.product_aliases.find(a=>a.alias_id===chosenAlias.alias_id)?.product_id===
+ temp.call('bootstrap').data.receipt_name_mappings.find(a=>a.receipt_name_id===chosenAlias.receipt_name_id)?.auto_match_product_id===
  alternateMaster.product_id,'Alias change reaches Sheets through existing queue');
-assert.equal(JSON.stringify(temp.call('bootstrap').data.record_items.map(line=>[line.record_item_id,line.product_id,line.alias_id])),
+assert.equal(JSON.stringify(temp.call('bootstrap').data.record_items.map(line=>[line.record_item_id,line.linked_product_id,line.receipt_name_id])),
  historicalLineIds,'Relinking the OCR name never rewrites saved receipt lines');
-const relinkedRow=aliasUI.window.document.querySelector('[data-alias-id="'+chosenAlias.alias_id+'"]');
+const relinkedRow=aliasUI.window.document.querySelector('[data-alias-id="'+chosenAlias.receipt_name_id+'"]');
 assert.ok(relinkedRow,'Alias remains visible after reassignment');
 relinkedRow.click();
 aliasModal=aliasUI.window.document.querySelector('.alias-product-picker-overlay');
@@ -2430,9 +2630,9 @@ assert.ok(aliasUI.window.document.querySelector('[data-dialog="confirmAliasLink"
  'Unlinking uses the same selection and explicit confirmation');
 aliasUI.window.document.querySelector('[data-dialog="confirmAliasLink"]').click();
 await waitFor(()=>aliasUI.window.KurashiLive.state().queued===0&&
- !temp.call('bootstrap').data.product_aliases.find(a=>a.alias_id===chosenAlias.alias_id)?.product_id,
+ !temp.call('bootstrap').data.receipt_name_mappings.find(a=>a.receipt_name_id===chosenAlias.receipt_name_id)?.auto_match_product_id,
  'Alias becomes unlinked without deleting the OCR dictionary entry');
-const unlinkedRow=aliasUI.window.document.querySelector('[data-alias-id="'+chosenAlias.alias_id+'"]');
+const unlinkedRow=aliasUI.window.document.querySelector('[data-alias-id="'+chosenAlias.receipt_name_id+'"]');
 assert.ok(unlinkedRow?.textContent.includes('商品未紐付け'),
  'Unlinked OCR name is visible in the same list');
 unlinkedRow.click();
@@ -2440,102 +2640,31 @@ aliasModal=aliasUI.window.document.querySelector('.alias-product-picker-overlay'
 aliasModal.querySelector('[data-ui-choice="'+originalLinkedId+'"]').click();
 aliasUI.window.document.querySelector('[data-dialog="confirmAliasLink"]').click();
 await waitFor(()=>aliasUI.window.KurashiLive.state().queued===0&&
- temp.call('bootstrap').data.product_aliases.find(a=>a.alias_id===chosenAlias.alias_id)?.product_id===
+ temp.call('bootstrap').data.receipt_name_mappings.find(a=>a.receipt_name_id===chosenAlias.receipt_name_id)?.auto_match_product_id===
  originalLinkedId,'Original OCR mapping restored for later regression tests');
-assert.equal(JSON.stringify(temp.call('bootstrap').data.record_items.map(line=>[line.record_item_id,line.product_id,line.alias_id])),
+assert.equal(JSON.stringify(temp.call('bootstrap').data.record_items.map(line=>[line.record_item_id,line.linked_product_id,line.receipt_name_id])),
  historicalLineIds,'OCR mapping changes preserve all historical receipt item IDs');
-assert.equal(await aliasUI.window.KurashiLive.linkAlias(chosenAlias.alias_id,originalLinkedId),false,
+assert.equal(await aliasUI.window.KurashiLive.linkAlias(chosenAlias.receipt_name_id,originalLinkedId),false,
  'Selecting the already linked product is a no-op without a new queue item');
 assert.equal(aliasUI.window.KurashiLive.state().queued,0,
  'No-op alias selection keeps the IndexedDB operation queue empty');
 aliasUI.window.close();
 console.log('v86.1: OCR alias list, shared picker, IME, confirmation, unlink and history preservation OK');
-/* v64 migration: a previous schema must be upgraded in place. A failure after
- * the first historical row must allow a repeat without losing receipts or
- * adding duplicate OCR names. */
-const legacy=fixture(api);
-const legacyChain=legacy.call('store.create',{name:'旧レシート移行検証店'},
- 'op-v64-legacy-store-abcdefghijk');
-const legacyProduct=legacy.call('product.create',{
- item_group_id:null,name:'移行検証の正式商品',package_quantity:null,package_unit:null
-},'op-v64-legacy-product-abcdefghijk');
-assert.equal(legacyChain.ok,true);
-assert.equal(legacyProduct.ok,true);
-const legacyChainId=legacyChain.data.entity.chain_id;
-const legacyProductId=legacyProduct.data.entity.product_id;
-const legacyNames=['旧レシート印字・Ａ','過去印字 二号'];
-const legacyRecord=legacy.call('record.create',{
- record_type:'receipt',chain_id:legacyChainId,record_date:'2026-10-31',
- items:[
-  {raw_name:legacyNames[0],product_id:legacyProductId,quantity:2,
-    amount_tax_included:340,category_id:null},
-  {raw_name:legacyNames[1],product_id:null,quantity:1,
-    amount_tax_included:119,category_id:null}
- ]
-},'op-v64-legacy-receipt-abcdefghijk');
-assert.equal(legacyRecord.ok,true);
-const legacyOriginalItems=legacyRecord.data.items.map((row,i)=>({
- ...row,raw_name:legacyNames[i],alias_id:''
-}));
-// Restore pre-v64 sheet headers and rows to simulate an existing workbook.
-legacy.db.product_aliases.length=1;
-legacy.db.product_aliases[0].pop();
-legacy.db.record_items[0].pop();
-legacy.db.record_items[0].pop();
-legacy.db.record_items[0].pop(); // pre-v0.64 lacked alias_id; v0.68/v0.70 added confirmed_name and inferred_name
-for(let i=1;i<legacy.db.record_items.length;i++){
- const line=legacyOriginalItems[i-1];
- legacy.db.record_items[i][schema.record_items.indexOf('raw_name')]=line.raw_name;
- legacy.db.record_items[i][schema.record_items.indexOf('alias_id')]='';
-}
-legacy.failRecordItemWriteAfter(2); // new header, first linked row, then simulated failure
-assert.equal(legacy.call('bootstrap').ok,false,
- 'interrupted schema migration does not claim completion');
-assert.equal(legacy.db.record_items[0].at(-1),'confirmed_name',
- 'simulated interruption happened before the final appended column');
-assert.equal(legacy.db.record_items[0].at(-2),'alias_id',
- 'earlier append-only migration columns remain intact');
-assert.equal(legacy.db.product_aliases[0].at(-1),'ocr_name',
- 'existing OCR dictionary gains only the new trailing header');
-const resumedLegacy=legacy.call('bootstrap');
-assert.equal(resumedLegacy.ok,true,'second boot resumes and completes migration');
-assert.equal(legacy.db.record_items[0].at(-1),'inferred_name',
- 'retry appends final inferred name without rebuilding Sheets');
-const savedLegacy=resumedLegacy.data.record_items.sort((a,b)=>a.line_order-b.line_order);
-assert.equal(savedLegacy.length,2,'all old receipt lines remain');
-savedLegacy.forEach((line,i)=>{
- assert.equal(line.raw_name,legacyNames[i],
-  'migration preserves the per-purchase printed name');
- assert.ok(line.alias_id,'each historical line references its OCR dictionary row');
- assert.equal(line.product_id,legacyOriginalItems[i].product_id,
-  'past product attribution is immutable');
- assert.equal(Number(line.amount_tax_included),legacyOriginalItems[i].amount_tax_included,
-  'past tax-inclusive line total is preserved');
- assert.equal(Number(line.quantity),legacyOriginalItems[i].quantity,
-  'past purchase quantity is preserved');
-});
-assert.equal(savedLegacy[0].amount_tax_included/savedLegacy[0].quantity,170,
- 'price comparison derives a single unit from complete 2-item line total');
-assert.equal(resumedLegacy.data.product_aliases.length,2,
- 'partial first migration does not create duplicate OCR names when retried');
-assert.ok(resumedLegacy.data.product_aliases.some(x=>
- x.alias_id===savedLegacy[1].alias_id&&!x.product_id),
- 'unrecognized past OCR text stays in the dictionary without a product');
-const thirdLegacy=legacy.call('bootstrap');
-assert.equal(thirdLegacy.ok,true,'completed migration remains readable');
-assert.equal(thirdLegacy.data.product_aliases.length,2,'repeated bootstrap is idempotent');
-const originalAlias=thirdLegacy.data.product_aliases.find(x=>
- x.alias_id===savedLegacy[0].alias_id);
-const detach=legacy.call('alias.link',{
- alias_id:originalAlias.alias_id,product_id:null,version:Number(originalAlias.version)
-},'op-v64-legacy-alias-unlink-abcdefghijk');
-assert.equal(detach.ok,true,'OCR link may be removed after historical migration');
-const unchangedAfterUnlink=legacy.call('bootstrap').data.record_items.find(x=>
- x.record_item_id===savedLegacy[0].record_item_id);
-assert.equal(unchangedAfterUnlink.product_id,legacyProductId,
- 'changing OCR dictionary association never rewrites confirmed purchase history');
-assert.ok(app.includes('const aliasNameFor=line=>line?.confirmed_name||line?.raw_name||'),
- 'historical receipt display prefers original spelling over normalized dictionary');
+/* The preview receipt schema is intentionally compact. Master tables are retained. */
+assert.equal(Object.keys(schema).length,11,'unused receipt_rules sheet is absent');
+for(const column of ['raw_name','category_id','price_eligible','inferred_name'])
+ assert.ok(!schema.record_items.includes(column),'legacy receipt column removed: '+column);
+assert.ok(!schema.records.includes('raw_store_name'),'raw store name is removed');
+assert.ok(schema.record_items.includes('receipt_name_id'),'OCR alias pointer remains');
+assert.ok(schema.record_items.includes('product_name_candidate'),'product candidate is stored');
+assert.equal(recordFixture.call('bootstrap').ok,true,'compact sheet headers pass bootstrap');
+const rejectedLegacy=recordFixture.call('record.create',{
+ record_type:'receipt',chain_id:newChainId,record_date:'2026-11-08',
+ items:[{raw_name:'旧項目拒否',linked_product_id:null,quantity:1,line_total_tax_included:120,
+  inferred_name:'不必要な別名'}]
+},'op-schema-reject-legacy-abcdef12345');
+assert.equal(rejectedLegacy.error.code,'BAD_REQUEST','unused persistence fields are not accepted');
+
 // The yellow quantity warning must clear when the user re-enters even "1".
 let qtySession=appSession(new IDBFactory());
 await waitFor(()=>qtySession.window.KurashiLive.state().loaded,'uncertain quantity test bootstrap');
@@ -2560,32 +2689,32 @@ assert.equal(qtySession.window.document.querySelector('[data-field-hint="qty-0"]
 qtySession.window.close();
 console.log('v65: quantity unknown defaults to yellow one; re-entering one clears warning OK');
 
-console.log('v64: non-destructive legacy Sheets column upgrade, partial migration retry, OCR unlink and price history OK');
+console.log('schema: 11 tables, compact receipt columns, and strict API payload OK');
 
 // v68: photos with unreliable OCR can still be saved, without poisoning OCR aliases.
 const manualChain=recordFixture.call('store.create',{name:'OCR保存分離検証店'},
  'op-v68-manual-chain-abcdefghijk');
 assert.equal(manualChain.ok,true);
-const manualBefore=recordFixture.db.product_aliases.length;
+const manualBefore=recordFixture.db.receipt_name_mappings.length;
 const photographed=recordFixture.call('record.create',{
  record_type:'receipt',chain_id:manualChain.data.entity.chain_id,
  record_date:'2026-10-12',
- items:[{raw_name:'',confirmed_name:'メリノクルーネックカーディガン',
-  product_id:null,quantity:1,amount_tax_included:2990,category_id:null}]
+ items:[{raw_name:'',non_ocr_name:'メリノクルーネックカーディガン',
+  linked_product_id:null,quantity:1,line_total_tax_included:2990}]
 },'op-v68-photo-confirmed-abcdefghijk');
 assert.equal(photographed.ok,true,'photo confirmed row can be saved without product registration');
-assert.equal(photographed.data.items[0].confirmed_name,'メリノクルーネックカーディガン');
-assert.equal(photographed.data.items[0].alias_id,'','photo confirmed record has no OCR alias');
-assert.equal(recordFixture.db.product_aliases.length,manualBefore,'manual row never teaches OCR aliases');
+assert.equal(photographed.data.items[0].non_ocr_name,'メリノクルーネックカーディガン');
+assert.equal(photographed.data.items[0].receipt_name_id,'','photo confirmed record has no OCR alias');
+assert.equal(recordFixture.db.receipt_name_mappings.length,manualBefore,'manual row never teaches OCR aliases');
 assert.equal(recordFixture.call('bootstrap').data.record_items.find(
- x=>x.record_id===photographed.data.record.record_id).confirmed_name,
+ x=>x.record_id===photographed.data.record.record_id).non_ocr_name,
  'メリノクルーネックカーディガン',
  'confirmed name survives bootstrap without changing existing workbook');
 const badBoth=recordFixture.call('record.create',{
  record_type:'receipt',chain_id:manualChain.data.entity.chain_id,
  record_date:'2026-10-12',
- items:[{raw_name:'2000211787545',confirmed_name:'メリノクルーネックカーディガン',
-  product_id:null,quantity:1,amount_tax_included:2990,category_id:null}]
+ items:[{raw_name:'2000211787545',non_ocr_name:'メリノクルーネックカーディガン',
+  linked_product_id:null,quantity:1,line_total_tax_included:2990}]
 },'op-v68-mixed-name-abcdefghijk');
 assert.equal(badBoth.ok,false,'one row cannot silently learn a wrong OCR barcode');
 
@@ -2598,48 +2727,50 @@ const fullPhotoRows=[
  ['メリノVネックカーディガン',2990],
  ['エアリズムコットンクルーネックT',1290]
 ];
-const aliasesBeforeFullPhoto=recordFixture.db.product_aliases.length;
+const aliasesBeforeFullPhoto=recordFixture.db.receipt_name_mappings.length;
 const rebuildSave=recordFixture.call('record.create',{
  record_type:'receipt',chain_id:manualChain.data.entity.chain_id,
  record_date:'2026-10-12',
  items:fullPhotoRows.map(([name,amount])=>({
-  raw_name:'',confirmed_name:name,product_id:null,quantity:1,
-  amount_tax_included:amount,category_id:null
+  raw_name:'',non_ocr_name:name,linked_product_id:null,quantity:1,
+  line_total_tax_included:amount
  }))
 },'op-v69-photo-five-items-abcdefghijk');
 assert.equal(rebuildSave.ok,true,'5 photo-derived purchase items save through the existing GAS endpoint');
 const rebuiltSaved=recordFixture.call('bootstrap').data.record_items.filter(x=>
  x.record_id===rebuildSave.data.record.record_id).sort((a,b)=>a.line_order-b.line_order);
 assert.equal(rebuiltSaved.length,5,'the nine invalid OCR rows are not added to purchase history');
-assert.equal(rebuiltSaved.reduce((sum,row)=>sum+Number(row.amount_tax_included),0),11550);
-assert.equal(rebuiltSaved.filter(x=>x.confirmed_name==='メリノクルーネックカーディガン').length,2);
-assert.equal(rebuiltSaved.filter(x=>x.confirmed_name==='メリノVネックカーディガン').length,1);
-assert.ok(rebuiltSaved.every(x=>!x.alias_id&&!x.raw_name&&!x.product_id),
+assert.equal(rebuiltSaved.reduce((sum,row)=>sum+Number(row.line_total_tax_included),0),11550);
+assert.equal(rebuiltSaved.filter(x=>x.non_ocr_name==='メリノクルーネックカーディガン').length,2);
+assert.equal(rebuiltSaved.filter(x=>x.non_ocr_name==='メリノVネックカーディガン').length,1);
+assert.ok(rebuiltSaved.every(x=>!x.receipt_name_id&&!x.raw_name&&!x.linked_product_id),
  'photo parsing never creates fake OCR names or automatic master associations');
-assert.equal(recordFixture.db.product_aliases.length,aliasesBeforeFullPhoto,
+assert.equal(recordFixture.db.receipt_name_mappings.length,aliasesBeforeFullPhoto,
  'GAS saves five validated photo rows without learning five OCR aliases');
 console.log('v69: five-photo-item UNIQLO receipt saved exactly without OCR aliases OK');
 
 
 const v70Ocr=recordFixture.call('record.create',{record_type:'receipt',chain_id:newChainId,record_date:'2026-11-04',items:[
- {raw_name:'リント・ール',inferred_name:'リンドール',product_id:null,quantity:2,amount_tax_included:598,category_id:null}
+ {raw_name:'リント・ール',product_name_candidate:'リンドール',candidate_match_type:'',linked_product_id:null,quantity:2,line_total_tax_included:598}
 ]},'op-v70-ocr-inference-abcdef');
 assert.equal(v70Ocr.ok,true);
 const v70OcrLine=recordFixture.call('bootstrap').data.record_items.find(x=>x.record_id===v70Ocr.data.record.record_id);
-assert.equal(v70OcrLine.inferred_name,'リンドール');
-assert.equal(v70OcrLine.confirmed_name,'');
-assert.equal(v70OcrLine.amount_tax_included,598);
-assert.ok(v70OcrLine.alias_id);
-assert.equal(recordFixture.call('bootstrap').data.product_aliases.find(x=>x.alias_id===v70OcrLine.alias_id).ocr_name,'リント・ール');
+assert.equal(v70OcrLine.product_name_candidate,'リンドール');
+assert.equal(v70OcrLine.candidate_match_type,'');
+assert.equal(Object.hasOwn(v70OcrLine,'inferred_name'),false);
+assert.equal(v70OcrLine.non_ocr_name,'');
+assert.equal(v70OcrLine.line_total_tax_included,598);
+assert.ok(v70OcrLine.receipt_name_id);
+assert.equal(recordFixture.call('bootstrap').data.receipt_name_mappings.find(x=>x.receipt_name_id===v70OcrLine.receipt_name_id).ocr_name,'リント・ール');
 const v70Photo=recordFixture.call('record.create',{record_type:'receipt',chain_id:newChainId,record_date:'2026-11-04',items:[
- {raw_name:'',confirmed_name:'メリノクルーネックカーディガン',inferred_name:'メリノVネックカーディガン',product_id:null,quantity:1,amount_tax_included:2990,category_id:null}
+ {raw_name:'',non_ocr_name:'メリノクルーネックカーディガン',product_name_candidate:'メリノVネックカーディガン',candidate_match_type:'',linked_product_id:null,quantity:1,line_total_tax_included:2990}
 ]},'op-v70-photo-inference-abcdef');
 assert.equal(v70Photo.ok,true);
 const v70PhotoLine=recordFixture.call('bootstrap').data.record_items.find(x=>x.record_id===v70Photo.data.record.record_id);
-assert.equal(v70PhotoLine.confirmed_name,'メリノクルーネックカーディガン');
-assert.equal(v70PhotoLine.inferred_name,'メリノVネックカーディガン');
-assert.ok(!v70PhotoLine.raw_name&&!v70PhotoLine.alias_id);
-console.log('v70: separate inferred/confirmed/OCR names persist without false aliases OK');
+assert.equal(v70PhotoLine.non_ocr_name,'メリノクルーネックカーディガン');
+assert.equal(v70PhotoLine.product_name_candidate,'メリノVネックカーディガン');
+assert.ok(!v70PhotoLine.raw_name&&!v70PhotoLine.receipt_name_id);
+console.log('receipt names: OCR alias, verified name and unified undecided candidate OK');
 
 /* v0.76.1: reproduce the real receipt-confirmation interactions that static
  * checks missed: cleared dates, a wrongly linked product, return position,
@@ -2654,8 +2785,8 @@ reviewFlow.window.eval(importer);
 reviewFlow.window.document.getElementById('chatgpt-input').value=JSON.stringify(kitJson);
 await completeOcrImport(reviewFlow);
 let flowForm=reviewFlow.window.document.getElementById('scanConfirmForm');
-assert.equal(flowForm.querySelector('[name="product-0"]').value,kitSavedProduct.product_id,
- 'known OCR spelling is initially linked to the same registered product');
+assert.equal(flowForm.querySelector('[name="product-0"]'),null,
+ 'product selection belongs to saved receipt detail, not pre-save review');
 const clearedDate=flowForm.querySelector('[name="date"]');
 clearedDate.value='';
 clearedDate.dispatchEvent(new reviewFlow.window.Event('input',{bubbles:true}));
@@ -2666,31 +2797,8 @@ assert.equal(flowForm.querySelector('.ui-date-value').textContent,'日付を選�
 const preservedScroll=[];
 reviewFlow.window.scrollY=456;
 reviewFlow.window.scrollTo=(_,y)=>{preservedScroll.push(y);reviewFlow.window.scrollY=y;};
-flowForm.querySelector('[data-act="scanPickExisting"]').click();
-const flowPicker=reviewFlow.window.document.querySelector('.scan-existing-picker');
-assert.ok(flowPicker,'single product picker opens');
-assert.ok(flowPicker.querySelector('[data-act="scanExistingToNew"]'),
- 'new-product registration is visible before the long results list');
-assert.ok(flowPicker.querySelector('[data-act="scanUnlinkProduct"]'),
- 'the existing product can be explicitly unlinked without deleting the master');
-const sharedSearch=flowPicker.querySelector('#scan-existing-search');
-assert.ok(sharedSearch?.closest('.ui-search'),'product chooser uses the shared search field');
-sharedSearch.value='テスト';
-sharedSearch.dispatchEvent(new reviewFlow.window.Event('input',{bubbles:true}));
-assert.ok(flowPicker.querySelector('[data-search-clear="scan-existing-search"]:not([hidden])'),
- 'search clear action appears after typing in the shared search field');
-flowPicker.querySelector('[data-search-clear="scan-existing-search"]').click();
-assert.equal(sharedSearch.value,'','clearing search uses the shared binding');
-assert.ok(flowPicker.querySelectorAll('[data-act="scanChooseExisting"]').length>0,
- 'cleared search restores the existing product candidates');
-flowPicker.querySelector('[data-act="scanUnlinkProduct"]').click();
-flowForm=reviewFlow.window.document.getElementById('scanConfirmForm');
-assert.equal(flowForm.querySelector('[name="date"]').value,'',
- 'leaving product selection does not silently restore a cleared date');
-assert.equal(flowForm.querySelector('[name="product-0"]').value,'',
- 'explicit product unlink is retained on returning to review');
-assert.ok(preservedScroll.includes(456),
- 'closing the product sheet explicitly restores the original receipt scroll position');
+assert.equal(flowForm.querySelector('[data-act="scanPickExisting"]'),null,
+ 'receipt review no longer has product pickers, even after date editing');
 let storeField=flowForm.querySelector('#scan-chain');
 assert.equal(storeField.type,'hidden','receipt picker preserves chain FormData');
 assert.ok(flowForm.querySelector('.ui-picker-surface [data-act="storePickerOpen"]'),
@@ -2716,7 +2824,7 @@ storeSearch.dispatchEvent(new reviewFlow.window.Event('input',{bubbles:true}));
 assert.equal(storeSheet.querySelectorAll('.store-picker-results [data-ui-choice]').length,0,
  'store list can filter to no results');
 storeSheet.querySelector('[data-search-clear="store-picker-search"]').click();
-assert.equal(storeSearch.value,'','shared clear action restores all stores');
+assert.equal(storeSearch.value,'','shared clear action reretail_chains all retail_chains');
 const differentStore=[...storeSheet.querySelectorAll('.store-picker-results [data-ui-choice]')].find(option=>
  option.dataset.uiChoice&&option.dataset.uiChoice!==storeField.value);
 assert.ok(differentStore,'test requires another registered retailer');
@@ -2725,11 +2833,11 @@ flowForm=reviewFlow.window.document.getElementById('scanConfirmForm');
 assert.equal(reviewFlow.window.document.querySelector('.store-picker-overlay'),null,
  'choosing a store closes its half sheet');
 assert.equal(reviewFlow.window.document.body.style.position,'',
- 'closing store choice restores native underlying page scrolling');
+ 'closing store choice reretail_chains native underlying page scrolling');
 assert.ok(preservedScroll.includes(456),
- 'closing store sheet restores the exact review scroll position');
-assert.equal(flowForm.querySelector('[name="product-0"]').value,'',
- 'a user-unlinked product does not auto-relink when retailer changes');
+ 'closing store sheet reretail_chains the exact review scroll position');
+assert.equal(flowForm.querySelector('[name="product-0"]'),null,
+ 'retailer changes cannot make a pre-save product picker reappear');
 assert.equal(flowForm.querySelector('#scan-chain').value,differentStore.dataset.uiChoice,
  'chosen retailer remains in receipt FormData');
 flowForm.querySelector('[data-act="storePickerOpen"]').click();
@@ -2752,7 +2860,7 @@ storeSheet.querySelector('#storePickerNewForm').dispatchEvent(
 assert.match(storeSheet.querySelector('[data-field-hint="store_name"]').textContent,
  /登録済み店舗を選択/,'duplicate retailer names are rejected in the new-store sheet');
 storeSheet.querySelector('[data-act="storePickerShowList"]').click();
-assert.ok(storeSheet.querySelector('#store-picker-search'),'back to existing stores without committing new');
+assert.ok(storeSheet.querySelector('#store-picker-search'),'back to existing retail_chains without committing new');
 storeSheet.querySelector('.sheet-close').click();
 flowForm=reviewFlow.window.document.getElementById('scanConfirmForm');
 assert.equal(flowForm.querySelector('#scan-chain').value,differentStore.dataset.uiChoice,
@@ -2801,7 +2909,7 @@ const optionalUI=appSession();
 await waitFor(()=>optionalUI.window.KurashiLive.state().loaded,'optional detail session loaded');
 optionalUI.window.document.querySelector('[data-tab="receipt"]').click();
 prepareOcrImport(optionalUI);
-const knownForOptional=temp.call('bootstrap').data.stores[0].canonical_name;
+const knownForOptional=temp.call('bootstrap').data.retail_chains[0].canonical_name;
 const priorOptionalRecordIds=new Set(temp.call('bootstrap').data.records.map(r=>r.record_id));
 const receiptBeforeOptional=priorOptionalRecordIds.size;
 optionalUI.window.document.querySelector('#chatgpt-input').value=JSON.stringify({
@@ -2811,6 +2919,25 @@ optionalUI.window.document.querySelector('#chatgpt-input').value=JSON.stringify(
  }]
 });
 await completeOcrImport(optionalUI);
+// Removing a receipt card is reversible until the receipt is saved.
+let deleteReview=optionalUI.window.document.querySelector('#scanConfirmForm');
+assert.equal(deleteReview.querySelector('[data-act="scanUndo"]'),null,
+ 'The ineffective global undo bar is no longer shown');
+const firstDelete=deleteReview.querySelector('[data-act="scanRemoveItem"]');
+firstDelete.click();
+deleteReview=optionalUI.window.document.querySelector('#scanConfirmForm');
+assert.equal(deleteReview.querySelectorAll('.scan-review-item.is-pending-delete').length,1,
+ 'A removed card remains visible and greyed out');
+assert.equal(deleteReview.querySelector('.scan-review-item.is-pending-delete [data-act="scanRemoveItem"]'),null,
+ 'A pending-deleted card replaces the delete action with restore');
+assert.ok(deleteReview.querySelector('[data-act="scanRestoreItem"][data-scan-row="0"]'),
+ 'The restore action occupies the former delete button position');
+deleteReview.querySelector('[data-act="scanRestoreItem"][data-scan-row="0"]').click();
+deleteReview=optionalUI.window.document.querySelector('#scanConfirmForm');
+assert.equal(deleteReview.querySelectorAll('.scan-review-item.is-pending-delete').length,0,
+ 'Restoring an item keeps its original entry');
+assert.equal(deleteReview.querySelector('[name="qty-0"]').value,'1',
+ 'Restored item retains its quantity');
 // No stored photograph accompanies an imported/resumed OCR draft.
 assert.equal(optionalUI.window.document.querySelector('[data-act="scanOpenCurrentPhoto"]'),null,
  'An OCR draft without in-memory photos has no photo/reselection control');
@@ -2833,7 +2960,7 @@ assert.equal(invalidForm.querySelector('#scan-save-feedback')?.hidden,true,
 assert.ok(optionalUI.window.document.querySelector('.scan-assist-area [data-act="chatGptAssist"]'),
  'ChatGPT help is outside the review form near the photo area');
 assert.match(optionalUI.window.document.querySelector('.scan-assist-area .ui-status-message')?.textContent||'',
- /反映できる修正候補はありませんでした/,
+ /解析結果に変更はありませんでした/,
  'the assist result appears by the operation, without misleading item counters');
 optionalUI.window.document.querySelector('[data-act="scanAddItem"]').click();
 let optionalForm=optionalUI.window.document.querySelector('#scanConfirmForm');
@@ -2843,6 +2970,14 @@ assert.ok(optionalName&&!optionalName.required&&optionalName.value==='',
 assert.equal(optionalName.closest('.formfield').querySelector('label').textContent,'明細名（任意）');
 optionalForm.querySelector('[name="qty-1"]').value='1';
 optionalForm.querySelector('[name="amount-1"]').value='200';
+// A third line is deliberately deleted. Only the first two go to Sheets.
+optionalForm.querySelector('[data-act="scanAddItem"]').click();
+optionalForm=optionalUI.window.document.querySelector('#scanConfirmForm');
+optionalForm.querySelector('[name="qty-2"]').value='1';
+optionalForm.querySelector('[name="amount-2"]').value='999';
+optionalForm.querySelector('[data-act="scanRemoveItem"][data-scan-row="2"]').click();
+optionalForm=optionalUI.window.document.querySelector('#scanConfirmForm');
+assert.equal(optionalForm.querySelectorAll('.scan-review-item.is-pending-delete').length,1);
 optionalForm.dispatchEvent(new optionalUI.window.Event('submit',{bubbles:true,cancelable:true}));
 await waitFor(()=>temp.call('bootstrap').data.records.length===receiptBeforeOptional+1,
  'receipt with nameless manual amount is saved to Sheets through the operation queue');
@@ -2852,16 +2987,19 @@ assert.equal(optionalRecord?.record_date,'2026-11-08','the newly saved receipt h
 assert.ok(optionalRecord,'new record can be retrieved');
 const optionalDetails=afterOptional.record_items.filter(x=>x.record_id===optionalRecord.record_id);
 assert.equal(optionalDetails.length,2);
-assert.ok(optionalDetails.some(x=>x.raw_name===''&&x.confirmed_name===''&&
- x.product_id===''&&Number(x.amount_tax_included)===200&&x.price_eligible===false),
+assert.ok(optionalDetails.some(x=>!Object.hasOwn(x,'raw_name')&&x.non_ocr_name===''&&
+ x.linked_product_id===''&&Number(x.line_total_tax_included)===200&&!Object.hasOwn(x,'price_eligible')),
  'the nameless line is retained as a purchase amount, not a price-comparable registered product');
-await waitFor(()=>!!optionalUI.window.document.querySelector(
- '[data-act="recordDetail"][data-record-id="'+optionalRecord.record_id+'"]'),
- 'the saved unnamed receipt is shown in the app history');
-optionalUI.window.document.querySelector(
- '[data-act="recordDetail"][data-record-id="'+optionalRecord.record_id+'"]').click();
+await waitFor(()=>!!optionalUI.window.document.querySelector('.detail-record-line'),
+ 'saved unnamed receipt opens its detail immediately');
+assert.match(optionalUI.window.document.body.textContent,/レシートを保存しました/,
+ 'First saved-detail visit shows a clear save confirmation');
+assert.equal(optionalUI.window.document.querySelectorAll('[data-act="recordProductNew"]').length,0,
+ 'Saved receipt uses only one action per line for product selection or creation');
 assert.match(optionalUI.window.document.body.textContent,/明細名なし/,
  'receipt detail displays a neutral name fallback');
+await waitFor(()=>optionalUI.window.KurashiLive.state().queued===0,
+ 'saved receipt ID is reconciled before editing');
 optionalForm=await openSavedEdit(optionalUI,'optional-name receipt edit');
 assert.equal(optionalForm.querySelector('[name="name-1"]')?.value,'',
  'the blank manual field is editable with no generated name on receipt reopen');
@@ -2871,14 +3009,14 @@ console.log('v0.84: optional unnamed receipt detail UI -> queue -> GAS -> histor
 
 
 
-// Two truly independent client stores, one shared GAS mock: simultaneous offline
+// Two truly independent client retail_chains, one shared GAS mock: simultaneous offline
 // edits to the same stock item must serialize and rebase without lost intentions.
 const concurrentA=appSession(new IDBFactory());
 const concurrentB=appSession(new IDBFactory());
 await waitFor(()=>[concurrentA,concurrentB].every(phone=>
   phone.window.KurashiLive.state().loaded&&!phone.window.KurashiLive.state().cached),
  'both independent devices bootstrap the shared Sheets snapshot');
-const sharedBefore=temp.call('bootstrap').data.item_groups.find(x=>x.item_group_id===id);
+const sharedBefore=temp.call('bootstrap').data.household_items.find(x=>x.household_item_id===id);
 assert.ok(sharedBefore,'the same stock item exists on the server for both devices');
 const sharedStartVersion=Number(sharedBefore.version);
 const sharedDesired=!Boolean(sharedBefore.in_stock);
@@ -2889,21 +3027,21 @@ assert.equal(aIntent.in_stock,sharedDesired);
 assert.equal(bIntent.in_stock,sharedDesired);
 assert.equal(concurrentA.window.KurashiLive.state().queued,1);
 assert.equal(concurrentB.window.KurashiLive.state().queued,1);
-assert.equal(Number(temp.call('bootstrap').data.item_groups.find(x=>
- x.item_group_id===id).version),sharedStartVersion,'offline taps leave Sheets unchanged');
+assert.equal(Number(temp.call('bootstrap').data.household_items.find(x=>
+ x.household_item_id===id).version),sharedStartVersion,'offline taps leave Sheets unchanged');
 await waitFor(()=>!concurrentA.window.KurashiLive.state().syncing&&
  !concurrentB.window.KurashiLive.state().syncing,
- 'both offline requests remain committed only in their independent stores');
+ 'both offline requests remain committed only in their independent retail_chains');
 online=true;
 await concurrentA.window.KurashiLive.retry();
 await waitFor(()=>concurrentA.window.KurashiLive.state().queued===0&&
- Number(temp.call('bootstrap').data.item_groups.find(x=>
- x.item_group_id===id).version)===sharedStartVersion+1,
+ Number(temp.call('bootstrap').data.household_items.find(x=>
+ x.household_item_id===id).version)===sharedStartVersion+1,
  'first device commits while the other remains on an old version');
 await concurrentB.window.KurashiLive.retry();
 await waitFor(()=>concurrentB.window.KurashiLive.state().queued===0,
  'second device rebases after its stale version is rejected');
-const sharedAfter=temp.call('bootstrap').data.item_groups.find(x=>x.item_group_id===id);
+const sharedAfter=temp.call('bootstrap').data.household_items.find(x=>x.household_item_id===id);
 assert.equal(sharedAfter.in_stock,sharedDesired,'both device intentions converge');
 assert.equal(Number(sharedAfter.version),sharedStartVersion+2,
  'both independently queued updates are committed exactly once');
@@ -2912,13 +3050,13 @@ assert.equal(await concurrentB.window.KurashiLive.load(),true);
 assert.equal(concurrentA.window.KurashiLive.state().queued,0);
 assert.equal(concurrentB.window.KurashiLive.state().queued,0);
 concurrentA.window.close();concurrentB.window.close();
-console.log('v0.88.8: independent device IndexedDB stores, same-item conflict rebase and shared Sheets convergence OK');
+console.log('v0.88.8: independent device IndexedDB retail_chains, same-item conflict rebase and shared Sheets convergence OK');
 
 // Two independently cached iPhones must not overwrite an intervening edit
 // by automatically rebasing a whole-receipt replacement or deletion.
 const freshShared=temp.call('bootstrap').data;
 const editTarget=freshShared.records.find(x=>x.record_type==='receipt'&&!x.deleted_at &&
- freshShared.stores.some(store=>store.chain_id===x.chain_id));
+ freshShared.retail_chains.some(store=>store.chain_id===x.chain_id));
 assert.ok(editTarget,'an existing shared receipt is available for conflict tests');
 const initialReceiptVersion=Number(editTarget.version);
 const editOne=appSession(new IDBFactory());
@@ -2928,14 +3066,14 @@ await waitFor(()=>[editOne,editTwo].every(phone=>
  'independent receipt editors load the same confirmed version');
 const receiptInput={
  record_id:editTarget.record_id,record_type:'receipt',chain_id:editTarget.chain_id,
- record_date:editTarget.record_date,branch_name:editTarget.branch_name||'',
- items:[{raw_name:'端末Aで確定した明細',product_id:null,quantity:1,
-  amount_tax_included:551,category_id:null}]
+ record_date:editTarget.record_date,
+ items:[{raw_name:'端末Aで確定した明細',linked_product_id:null,quantity:1,
+  line_total_tax_included:551}]
 };
 online=false;
 await editOne.window.KurashiLive.updateRecord(receiptInput);
 await editTwo.window.KurashiLive.updateRecord({...receiptInput,items:[
- {...receiptInput.items[0],raw_name:'端末Bの競合明細',amount_tax_included:552}]});
+ {...receiptInput.items[0],raw_name:'端末Bの競合明細',line_total_tax_included:552}]});
 assert.equal(editOne.window.KurashiLive.state().queued,1);
 assert.equal(editTwo.window.KurashiLive.state().queued,1);
 online=true;
@@ -2999,7 +3137,7 @@ const beforeDeleteVersion=Number(temp.call('bootstrap').data.records.find(
  x=>x.record_id===editTarget.record_id).version);
 online=false;
 await deleteOne.window.KurashiLive.updateRecord({...receiptInput,items:[
- {...receiptInput.items[0],raw_name:'削除競合前に追加した変更',amount_tax_included:553}]});
+ {...receiptInput.items[0],raw_name:'削除競合前に追加した変更',line_total_tax_included:553}]});
 await deleteTwo.window.KurashiLive.deleteRecord(editTarget.record_id);
 online=true;
 await deleteOne.window.KurashiLive.retry();
@@ -3030,3 +3168,467 @@ assert.ok(temp.call('bootstrap').data.records.some(x=>
 deleteOne.window.close();
 deleteTwo.window.close();
 console.log('v0.88.10: two-device receipt conflicts preserve drafts, offer explicit export and safe cancellation OK');
+
+ 
+// Regression: a locally registered product may be rejected as a duplicate by
+// the server while a receipt and OCR alias already depend on its temporary ID.
+// No dependent receipt line may be silently discarded or retried forever.
+const repairedPhone=appSession(new IDBFactory());
+await waitFor(()=>repairedPhone.window.KurashiLive.state().loaded,
+ 'new-product repair client loaded');
+const repairChain=temp.call('bootstrap').data.retail_chains[0]?.chain_id;
+assert.ok(repairChain,'recovery test has a registered store');
+const duplicateName='同期復旧検証_新規商品';
+const duplicatePayload={name:duplicateName,package_quantity:null,
+ package_unit:null,household_item_id:null};
+online=false;
+const pendingProduct=await repairedPhone.window.KurashiLive.save(
+ 'product.create',duplicatePayload);
+assert.ok(pendingProduct.product_id.startsWith('local-'),
+ 'offline product creation returns a temporary ID');
+await repairedPhone.window.KurashiLive.saveReceiptDraft({
+ recordType:'receipt',source:'manual',date:'2026-11-11',
+ items:[{name:'復旧テスト品',productId:pendingProduct.product_id,quantity:1,amount:127}]
+});
+await repairedPhone.window.KurashiLive.learnAliases({chain_id:repairChain,items:[
+ {raw_name:'同期復旧検証OCR',auto_match_product_id:pendingProduct.product_id}
+]});
+await repairedPhone.window.KurashiLive.saveRecord({
+ record_type:'receipt',chain_id:repairChain,record_date:'2026-11-11',
+ items:[{raw_name:'同期復旧検証OCR',linked_product_id:pendingProduct.product_id,
+  quantity:1,line_total_tax_included:127}]
+});
+assert.equal(repairedPhone.window.KurashiLive.state().queued,3,
+ 'product create, OCR alias and receipt are durably queued');
+const duplicateSaved=temp.call('product.create',duplicatePayload,
+ 'op-recovery-existing-product-abcdefghijkl');
+assert.equal(duplicateSaved.ok,true,'another client saved same product first');
+online=true;
+await repairedPhone.window.KurashiLive.retry();
+await waitFor(()=>!!repairedPhone.window.KurashiLive.blockedProductChange(),
+ 'duplicate product is held for review rather than dropping dependent receipt');
+assert.equal(repairedPhone.window.KurashiLive.state().queued,3,
+ 'all three intents remain stored on a duplicate rejection');
+assert.equal(repairedPhone.window.KurashiLive.state().blocked,true,
+ 'non-network product rejection suspends retries');
+assert.equal(await repairedPhone.window.KurashiLive.retry(),false,
+ 'retry never bypasses held product conflict');
+repairedPhone.window.document.querySelector('[data-tab="settings"]').click();
+assert.ok(repairedPhone.window.document.querySelector('[data-act="blockedProductCopy"]')&&
+ repairedPhone.window.document.querySelector('[data-act="blockedProductResolve"]'),
+ 'settings offers copy and explicit product relinking');
+await repairedPhone.window.KurashiLive.refreshBlockedProducts();
+await repairedPhone.window.KurashiLive.resolveBlockedProduct(duplicateSaved.data.entity.product_id);
+await waitFor(()=>repairedPhone.window.KurashiLive.state().queued===0,
+ 'explicit replacement resumes alias and receipt operations');
+const fixedSnapshot=temp.call('bootstrap').data;
+assert.ok(fixedSnapshot.record_items.some(line=>
+ line.linked_product_id===duplicateSaved.data.entity.product_id&&
+ line.line_total_tax_included===127),'recovered receipt retains its amount and chosen product');
+assert.ok(fixedSnapshot.receipt_name_mappings.some(a=>
+ a.ocr_name==='同期復旧検証OCR'&&
+ a.auto_match_product_id===duplicateSaved.data.entity.product_id),
+ 'recovered OCR alias points at the confirmed product');
+assert.equal(repairedPhone.window.KurashiLive.confirmedProductId(
+ pendingProduct.product_id),duplicateSaved.data.entity.product_id,
+ 'temporary ID map was persisted during product repair');
+const repairedDraft=await repairedPhone.window.KurashiLive.loadReceiptDraft();
+assert.equal(repairedDraft.items[0].productId,duplicateSaved.data.entity.product_id,
+ 'an older receipt draft is mapped to a confirmed ID');
+repairedPhone.window.close();
+console.log('v0.89.0: rejected new product retains and safely repairs receipt/OCR dependencies OK');
+
+
+// Regression for a pre-hotfix iPhone workspace: the failed temporary product
+// has already been dropped, leaving only alias/receipt dependencies in IDB.
+const orphanFactory=new IDBFactory();
+const oldPhone=appSession(orphanFactory);
+await waitFor(()=>oldPhone.window.KurashiLive.state().loaded,
+ 'pre-hotfix orphan client initialized');
+online=false;
+const orphanProduct=await oldPhone.window.KurashiLive.save('product.create',{
+ name:'試作復旧_孤立商品',package_quantity:null,package_unit:null,household_item_id:null
+});
+await oldPhone.window.KurashiLive.learnAliases({chain_id:repairChain,items:[
+ {raw_name:'復旧_孤立OCR名',auto_match_product_id:orphanProduct.product_id}
+]});
+await oldPhone.window.KurashiLive.saveRecord({
+ record_type:'receipt',record_date:'2026-11-11',chain_id:repairChain,
+ items:[{raw_name:'復旧_孤立OCR名',linked_product_id:orphanProduct.product_id,
+  quantity:1,line_total_tax_included:89}]
+});
+assert.equal(oldPhone.window.KurashiLive.state().queued,3);
+oldPhone.window.close();
+// Simulate the old-version rejection cleanup without clearing IndexedDB.
+const orphanDb=await new Promise((resolve,reject)=>{
+ const request=orphanFactory.open('kurashi-stock-operations-v1',1);
+ request.onsuccess=()=>resolve(request.result);
+ request.onerror=()=>reject(request.error);
+});
+await new Promise((resolve,reject)=>{
+ const tx=orphanDb.transaction('workspace','readwrite'),store=tx.objectStore('workspace');
+ const request=store.get('primary');
+ request.onsuccess=()=>{
+  const ws=request.result;
+  assert.equal(ws.queue[0].kind,'product-create');
+  ws.queue.shift();
+  store.put(ws,'primary');
+ };
+ tx.oncomplete=resolve;tx.onerror=()=>reject(tx.error);tx.onabort=()=>reject(tx.error);
+});
+orphanDb.close();
+const orphanExisting=temp.call('product.create',{
+ name:'試作復旧_孤立商品',package_quantity:null,package_unit:null,household_item_id:null
+},'op-orphan-recovery-existing-abcdefghijkl');
+assert.equal(orphanExisting.ok,true);
+online=true;
+const orphanRestart=appSession(orphanFactory);
+await waitFor(()=>!!orphanRestart.window.KurashiLive.blockedProductChange(),
+ 'old orphaned queue is detected and held, not retried forever');
+assert.equal(orphanRestart.window.KurashiLive.state().queued,2,
+ 'existing orphaned alias and receipt both remain in IDB');
+assert.equal(orphanRestart.window.KurashiLive.blockedProductChange().kind,'alias-create');
+await orphanRestart.window.KurashiLive.resolveBlockedProduct(
+ orphanExisting.data.entity.product_id);
+await waitFor(()=>orphanRestart.window.KurashiLive.state().queued===0,
+ 'one selection fixes every orphaned reference to the same old product ID');
+const orphanActual=temp.call('bootstrap').data;
+assert.ok(orphanActual.record_items.some(line=>
+ line.linked_product_id===orphanExisting.data.entity.product_id&&
+ line.line_total_tax_included===89),'orphaned receipt is saved without losing amounts');
+assert.ok(orphanActual.receipt_name_mappings.some(a=>
+ a.ocr_name==='復旧_孤立OCR名'&&
+ a.auto_match_product_id===orphanExisting.data.entity.product_id),
+ 'orphaned OCR link is also recovered');
+const newPhone=appSession(orphanFactory);
+await waitFor(()=>newPhone.window.KurashiLive.state().loaded,
+ 'recovery ID mapping survives PWA restart');
+assert.equal(newPhone.window.KurashiLive.confirmedProductId(orphanProduct.product_id),
+ orphanExisting.data.entity.product_id,'orphan ID repair survives full PWA restart');
+newPhone.window.close();orphanRestart.window.close();
+console.log('v0.89.0: orphaned pre-hotfix product references repair all dependent operations OK');
+
+// Pending queue cancellation: review every dependent change, keep it on
+// cancel, reject stale confirmations, then clear only after explicit consent.
+const purgeFactory=new IDBFactory();
+const purgePhone=appSession(purgeFactory);
+await waitFor(()=>purgePhone.window.KurashiLive.state().loaded,
+ 'pending-discard phone initializes');
+online=false;
+const purgeProduct=await purgePhone.window.KurashiLive.save('product.create',{
+ name:'破棄確認テスト商品',package_quantity:null,package_unit:null,household_item_id:null
+});
+await purgePhone.window.KurashiLive.learnAliases({chain_id:repairChain,items:[
+ {raw_name:'破棄確認OCR名',auto_match_product_id:purgeProduct.product_id}
+]});
+await purgePhone.window.KurashiLive.saveRecord({
+ record_type:'receipt',record_date:'2026-11-11',chain_id:repairChain,
+ items:[{raw_name:'破棄確認OCR名',linked_product_id:purgeProduct.product_id,
+  quantity:2,line_total_tax_included:638}]
+});
+assert.equal(purgePhone.window.KurashiLive.state().queued,3,
+ 'product, alias and receipt all remain queued');
+await waitFor(()=>!purgePhone.window.KurashiLive.state().syncing,
+ 'offline outgoing request settles before discard review');
+purgePhone.window.document.querySelector('[data-tab="settings"]').click();
+assert.ok(purgePhone.window.document.querySelector('[data-act="pendingOperationsReview"]'),
+ 'pending-operation review is reachable from live settings');
+purgePhone.window.document.querySelector('[data-act="pendingOperationsReview"]').click();
+const purgeDialog=purgePhone.window.document.querySelector('.dialog-pending-ops');
+assert.ok(purgeDialog&&purgeDialog.textContent.includes('破棄確認テスト商品')&&
+ purgeDialog.textContent.includes('破棄確認OCR名')&&
+ purgeDialog.textContent.includes('638円')&&
+ purgeDialog.textContent.includes('Google Sheets'),
+ 'confirmation shows all dependent operations, amounts and remote-commit warning');
+purgeDialog.querySelector('[data-dialog="cancel"]').click();
+assert.equal(purgePhone.window.KurashiLive.state().queued,3,
+ 'cancel leaves the complete durable queue untouched');
+await waitFor(()=>!purgePhone.window.KurashiLive.state().syncing,
+ 'retry started by cancellation settles before a new review');
+purgePhone.window.document.querySelector('[data-act="pendingOperationsReview"]').click();
+const staleReview=purgePhone.window.KurashiLive.pendingOperationReview();
+await purgePhone.window.KurashiLive.save('item.create',{
+ name:'破棄前に追加された日用品',category_id:4
+});
+assert.equal(purgePhone.window.KurashiLive.state().queued,4);
+await assert.rejects(
+ purgePhone.window.KurashiLive.discardPendingOperations(staleReview.signature),
+ /未反映の操作が変わりました/,
+ 'a preview cannot authorize deleting operations added after it was shown'
+);
+assert.equal(purgePhone.window.KurashiLive.state().queued,4,
+ 'stale preview failure preserves pending changes');
+purgePhone.window.document.querySelector('[data-dialog="cancel"]').click();
+await waitFor(()=>!purgePhone.window.KurashiLive.state().syncing,
+ 'queue retry settles after cancelling stale preview');
+purgePhone.window.document.querySelector('[data-act="pendingOperationsReview"]').click();
+assert.ok(purgePhone.window.document.querySelector('[data-dialog="confirmDiscardPendingOperations"]'),
+ 'the confirmation has an explicit all-discard action');
+purgePhone.window.document.querySelector('[data-dialog="confirmDiscardPendingOperations"]').click();
+await waitFor(()=>purgePhone.window.KurashiLive.state().queued===0,
+ 'explicitly confirmed discard clears all four queued operations');
+assert.equal(purgePhone.window.KurashiLive.pendingOperationReview(),null);
+purgePhone.window.close();
+online=true;
+const purgeRestart=appSession(purgeFactory);
+await waitFor(()=>purgeRestart.window.KurashiLive.state().loaded&&
+ purgeRestart.window.KurashiLive.state().queued===0,
+ 'discard persists across a PWA restart');
+assert.ok(!temp.call('bootstrap').data.receipt_name_mappings.some(x=>x.ocr_name==='破棄確認OCR名'),
+ 'discarded OCR alias was never sent');
+assert.ok(!temp.call('bootstrap').data.receipt_name_mappings.some(x=>x.ocr_name==='破棄確認OCR名'),
+ 'discarded receipt was never sent');
+purgeRestart.window.close();
+console.log('v0.89.2: pending operations preview, cancel, stale review, discard and restart OK');
+
+// A definitively rejected product creation blocks three dependent local
+// changes. Users can choose to discard the entire group instead of relinking.
+const heldPurgeFactory=new IDBFactory();
+const heldPurgePhone=appSession(heldPurgeFactory);
+await waitFor(()=>heldPurgePhone.window.KurashiLive.state().loaded,
+ 'blocked-product discard client initialized');
+const heldPurgeName='破棄確認_重複商品';
+online=false;
+const heldPurgeProduct=await heldPurgePhone.window.KurashiLive.save('product.create',{
+ name:heldPurgeName,package_quantity:null,package_unit:null,household_item_id:null
+});
+await heldPurgePhone.window.KurashiLive.learnAliases({chain_id:repairChain,items:[
+ {raw_name:'破棄対象のOCR名',auto_match_product_id:heldPurgeProduct.product_id}
+]});
+await heldPurgePhone.window.KurashiLive.saveRecord({
+ record_type:'receipt',record_date:'2026-11-11',chain_id:repairChain,
+ items:[{raw_name:'破棄対象のOCR名',linked_product_id:heldPurgeProduct.product_id,
+  quantity:1,line_total_tax_included:239}]
+});
+assert.equal(temp.call('product.create',{
+ name:heldPurgeName,package_quantity:null,package_unit:null,household_item_id:null
+},'op-other-client-held-discard-abcdefghijkl').ok,true);
+online=true;
+await heldPurgePhone.window.KurashiLive.retry();
+await waitFor(()=>!!heldPurgePhone.window.KurashiLive.blockedProductChange()&&
+ !heldPurgePhone.window.KurashiLive.state().syncing,
+ 'duplicate new product rejects and holds all dependent changes');
+const heldPurgeReview=heldPurgePhone.window.KurashiLive.beginPendingOperationReview();
+assert.equal(heldPurgeReview.count,3);
+assert.match(heldPurgeReview.text,/破棄対象のOCR名/);
+assert.match(heldPurgeReview.warning,/Google Sheets/);
+await heldPurgePhone.window.KurashiLive.discardPendingOperations(heldPurgeReview.signature);
+assert.equal(heldPurgePhone.window.KurashiLive.state().queued,0);
+assert.equal(heldPurgePhone.window.KurashiLive.state().blocked,false);
+assert.ok(!temp.call('bootstrap').data.receipt_name_mappings.some(x=>x.ocr_name==='破棄対象のOCR名'),
+ 'discard does not apply an unsent dependent alias');
+assert.ok(!temp.call('bootstrap').data.receipt_name_mappings.some(x=>x.ocr_name==='破棄対象のOCR名'),
+ 'discard does not apply an unsent dependent receipt');
+heldPurgePhone.window.close();
+const heldPurgeRestart=appSession(heldPurgeFactory);
+await waitFor(()=>heldPurgeRestart.window.KurashiLive.state().loaded,
+ 'rejected-queue discard persists through restart');
+assert.equal(heldPurgeRestart.window.KurashiLive.state().queued,0);
+heldPurgeRestart.window.close();
+console.log('v0.89.2: blocked product, OCR alias and receipt can be discarded together OK');
+
+// v0.89.6 regression: a preexisting alias must be linked to a newly queued
+// product AFTER product.create resolves its optimistic local ID.
+const aliasRecoveryChain=temp.call('bootstrap').data.retail_chains[0].chain_id;
+const pendingLinkAlias=temp.call('alias.upsert',{
+ chain_id:aliasRecoveryChain,raw_alias:'一時商品ID_別名紐付けテスト',
+ auto_match_product_id:null
+},'op-alias-link-regression-create-aaaaaaaaaa');
+assert.equal(pendingLinkAlias.ok,true);
+const pendingAliasId=pendingLinkAlias.data.entity.receipt_name_id;
+const aliasRecoveryDb=new IDBFactory();
+const aliasRecoverySession=appSession(aliasRecoveryDb);
+await waitFor(()=>aliasRecoverySession.window.KurashiLive.state().loaded,
+ 'alias-link product-create regression bootstraps');
+online=false;
+const optimisticProduct=await aliasRecoverySession.window.KurashiLive.save('product.create',{
+ name:'一時ID別名リンク商品',household_item_id:null,package_quantity:null,package_unit:null
+});
+assert.ok(optimisticProduct.product_id.startsWith('local-'));
+await aliasRecoverySession.window.KurashiLive.linkAlias(pendingAliasId,optimisticProduct.product_id);
+assert.equal(aliasRecoverySession.window.KurashiLive.state().queued,2,
+ 'offline product.create and alias-link both persist');
+aliasRecoverySession.window.close();
+online=true;
+const aliasRecoveryReopen=appSession(aliasRecoveryDb);
+await waitFor(()=>aliasRecoveryReopen.window.KurashiLive.state().queued===0&&
+ temp.call('bootstrap').data.receipt_name_mappings.some(x=>
+  x.receipt_name_id===pendingAliasId&&x.auto_match_product_id&&x.auto_match_product_id.startsWith('product-')),
+ 'new product ID propagates through alias-link and queue drains');
+const resolvedAliasProduct=temp.call('bootstrap').data.receipt_name_mappings.find(x=>
+ x.receipt_name_id===pendingAliasId).auto_match_product_id;
+assert.equal(temp.call('bootstrap').data.products.find(x=>
+ x.name==='一時ID別名リンク商品').product_id,resolvedAliasProduct,
+ 'alias-link references the exact registered product');
+aliasRecoveryReopen.window.close();
+
+// A pre-fix installation may already have a blocked alias-link and many
+// later unsent operations. Seed the exact durable v1 IndexedDB state and
+// prove a normal restart repairs only the known local ID, preserving order.
+const blockedFixAlias=temp.call('alias.upsert',{
+ chain_id:aliasRecoveryChain,raw_alias:'以前の保留別名リンクテスト',
+ auto_match_product_id:null
+},'op-alias-link-previous-create-aaaaaaaaaa');
+assert.equal(blockedFixAlias.ok,true);
+const serverProduct=temp.call('product.create',{
+ name:'以前に登録された商品_復旧テスト',
+ household_item_id:null,package_quantity:null,package_unit:null
+},'op-alias-link-previous-product-aaaaaaaaa');
+assert.equal(serverProduct.ok,true);
+const staleId='local-stale-alias-link-previous-123';
+const blockedOperationId='op-alias-link-previous-blocked-12345';
+const followingOperationId='op-alias-link-previous-follow-123456';
+const blockedFixQueue=[
+ {id:blockedOperationId,kind:'alias-link',
+  receiptNameId:blockedFixAlias.data.entity.receipt_name_id,productId:staleId,
+  version:Number(blockedFixAlias.data.entity.version),retries:0},
+ {id:followingOperationId,kind:'store-alias',
+  chainId:aliasRecoveryChain,alias:'店舗名_保留操作復旧後の追加',
+  retries:0}
+];
+const blockedFixFactory=new IDBFactory();
+const blockedFixDb=await new Promise((resolve,reject)=>{
+ const open=blockedFixFactory.open('kurashi-stock-operations-v1',1);
+ open.onupgradeneeded=()=>open.result.createObjectStore('workspace');
+ open.onsuccess=()=>resolve(open.result);
+ open.onerror=()=>reject(open.error);
+});
+const blockedWorkspace={
+ base:temp.call('bootstrap').data,queue:blockedFixQueue,
+ productIdMap:{[staleId]:serverProduct.data.entity.product_id},
+ blocked:{id:blockedOperationId,reason:'PRODUCT_REFERENCE',
+  productId:staleId,message:'未反映の操作に見つからない商品が含まれています。商品を確認してください。'}
+};
+await new Promise((resolve,reject)=>{
+ const tx=blockedFixDb.transaction('workspace','readwrite');
+ tx.objectStore('workspace').put(blockedWorkspace,'primary');
+ tx.oncomplete=resolve;tx.onerror=()=>reject(tx.error);
+ tx.onabort=()=>reject(tx.error);
+});
+blockedFixDb.close();
+const recoveredClient=appSession(blockedFixFactory);
+await waitFor(()=>recoveredClient.window.KurashiLive.state().queued===0&&
+ temp.call('bootstrap').data.receipt_name_mappings.some(x=>
+  x.receipt_name_id===blockedFixAlias.data.entity.receipt_name_id&&
+  x.auto_match_product_id===serverProduct.data.entity.product_id)&&
+ temp.call('bootstrap').data.retail_chains.some(x=>
+  x.chain_id===aliasRecoveryChain&&String(x.aliases).includes('店舗名_保留操作復旧後の追加')),
+ 'legacy blocked alias-link auto-recovers, then the following operation drains');
+assert.equal(recoveredClient.window.KurashiLive.state().blocked,false);
+recoveredClient.window.close();
+console.log('v0.89.6: live alias-link mapping and durable legacy blocked queue repair OK');
+
+/* Stage 1: ChatGPT product suggestions survive a receipt save without
+ * linking products, and a single line link is replay-safe and versioned. */
+const suggestionFixture=fixture(api);
+const suggestionChain=suggestionFixture.call('store.create',{name:'候補テスト店舗'},
+ 'op-suggestion-store-abcdef12345').data.entity.chain_id;
+const suggestionProduct=suggestionFixture.call('product.create',{
+ household_item_id:null,name:'登録候補の正式商品名',package_quantity:null,package_unit:null
+},'op-suggestion-product-abcdef12345').data.entity.product_id;
+const suggestionReceipt=suggestionFixture.call('record.create',{
+ record_type:'receipt',chain_id:suggestionChain,record_date:'2026-11-14',
+ items:[{raw_name:'レシート印字名',linked_product_id:null,quantity:2,line_total_tax_included:340,
+  product_name_candidate:'登録候補の正式商品名',candidate_match_type:'new'}]
+},'op-suggestion-record-abcdef12345');
+assert.equal(suggestionReceipt.ok,true,'receipt with ChatGPT product suggestion is saved');
+const suggestionLine=suggestionReceipt.data.items[0];
+assert.equal(suggestionLine.linked_product_id,'','suggestion never auto-links the purchase');
+assert.equal(suggestionLine.product_name_candidate,'登録候補の正式商品名');
+assert.equal(suggestionLine.candidate_match_type,'new');
+const suggestionLink={record_item_id:suggestionLine.record_item_id,
+ linked_product_id:suggestionProduct,version:1};
+const linked=suggestionFixture.call('record.item.link',suggestionLink,
+ 'op-suggestion-link-abcdef12345');
+assert.equal(linked.ok,true,'single saved receipt line can link to a master product');
+assert.equal(linked.data.entity.version,2,'line version increases');
+assert.equal(linked.data.entity.line_total_tax_included,340,'link does not change amount');
+assert.equal(linked.data.entity.product_name_candidate,'',
+ 'Confirmed product link clears the obsolete AI candidate');
+assert.equal(suggestionFixture.call('record.item.link',suggestionLink,
+ 'op-suggestion-link-abcdef12345').data.entity.version,2,
+ 'same operation ID does not link twice');
+assert.equal(suggestionFixture.call('record.item.link',{
+ ...suggestionLink,linked_product_id:null
+},'op-suggestion-stale-abcdef12345').error.code,'VERSION_CONFLICT',
+ 'concurrent stale line link is rejected');
+const unlink=suggestionFixture.call('record.item.link',{
+ record_item_id:suggestionLine.record_item_id,linked_product_id:null,version:2
+},'op-suggestion-unlink-abcdef12345');
+assert.equal(unlink.ok,true,'saved line can be unlinked');
+assert.equal(unlink.data.entity.linked_product_id,'');
+assert.equal(Object.hasOwn(unlink.data.entity,'price_eligible'),false);
+assert.equal(suggestionFixture.call('bootstrap').data.record_items.find(x=>
+ x.record_item_id===suggestionLine.record_item_id).candidate_match_type,'',
+ 'confirmed AI candidate stays cleared after an unlink');
+console.log('stage1: persisted ChatGPT suggestions, versioned item link, replay and unlink OK');
+
+// Sync optimization regression: one record operation journals all lines,
+// creates new OCR names, updates an existing name's match, and can recover a
+// partial multi-row Sheets write without duplicating either lines or aliases.
+const batchFixture=fixture(api);
+const batchChain=batchFixture.call('store.create',{name:'一括保存テスト店'},
+ 'op-batch-store-abcdefghijklmnop').data.entity.chain_id;
+const batchProduct=batchFixture.call('product.create',{
+ name:'一括照合対象商品',household_item_id:null,package_quantity:null,package_unit:null
+},'op-batch-product-abcdefghijklmnop').data.entity.product_id;
+const oldName=batchFixture.call('alias.upsert',{
+ chain_id:batchChain,raw_alias:'既存のOCR名',auto_match_product_id:null
+},'op-batch-alias-abcdefghijklmnop').data.entity;
+const makeBatch=(name,extras=[])=>({
+ record_type:'receipt',chain_id:batchChain,record_date:'2026-11-16',
+ items:[
+  {raw_name:'既存のOCR名',linked_product_id:batchProduct,quantity:1,
+   line_total_tax_included:123},
+  {raw_name:name,linked_product_id:null,quantity:2,
+   line_total_tax_included:300},
+  ...extras
+ ]
+});
+const receiptBatch=makeBatch('新しいOCR名');
+const pendingBefore=batchFixture.db.processed_operations.length;
+const savedBatch=batchFixture.call('record.create',receiptBatch,
+ 'op-batch-record-abcdefghijklmnop');
+assert.equal(savedBatch.ok,true,'batched receipt save succeeded');
+assert.equal(savedBatch.data.items.length,2,'two separate purchase lines kept');
+assert.equal(batchFixture.db.processed_operations.length,pendingBefore+1,
+ 'receipt and OCR dictionary update share a single operation ID');
+const changedAlias=batchFixture.call('bootstrap').data.receipt_name_mappings.find(x=>
+ x.receipt_name_id===oldName.receipt_name_id);
+assert.equal(changedAlias.auto_match_product_id,batchProduct,
+ 'existing OCR name learns confirmed product inside the receipt transaction');
+assert.equal(Number(changedAlias.version),Number(oldName.version)+1,
+ 'OCR name mapping version changes exactly once');
+assert.ok(savedBatch.data.aliases.some(x=>
+ x.receipt_name_id===oldName.receipt_name_id&&x.auto_match_product_id===batchProduct),
+ 'acknowledgement includes updated OCR dictionary rows');
+const batchItemsBefore=batchFixture.db.record_items.length;
+const batchRepeat=batchFixture.call('record.create',receiptBatch,
+ 'op-batch-record-abcdefghijklmnop');
+assert.equal(batchRepeat.ok,true,'replay of batch returns original result');
+assert.equal(batchFixture.db.record_items.length,batchItemsBefore,
+ 'same operation ID never duplicates receipt lines');
+assert.equal(Number(batchFixture.call('bootstrap').data.receipt_name_mappings.find(x=>
+ x.receipt_name_id===oldName.receipt_name_id).version),Number(changedAlias.version),
+ 'replay does not remap OCR names twice');
+
+const partialBatch=makeBatch('復旧時OCR名',[
+ {raw_name:'復旧時別名2',linked_product_id:null,quantity:1,line_total_tax_included:50}
+]);
+batchFixture.failRecordItemWriteAfter(1);
+const partialResult=batchFixture.call('record.create',partialBatch,
+ 'op-batch-partial-abcdefghijklmnop');
+assert.equal(partialResult.ok,false,'partial multi-row Sheets failure is surfaced');
+const recoveredBatch=batchFixture.call('record.create',partialBatch,
+ 'op-batch-partial-abcdefghijklmnop');
+assert.equal(recoveredBatch.ok,true,'retry reconciles the partial batch');
+assert.equal(recoveredBatch.data.items.length,3,'retry retains every original line');
+const persistedIds=new Set(batchFixture.db.record_items.slice(1)
+ .map(row=>row[batchFixture.db.record_items[0].indexOf('record_item_id')]));
+assert.equal(persistedIds.size,batchFixture.db.record_items.length-1,
+ 'partial retry adds no duplicate purchase row IDs');
+const loggedIds=batchFixture.db.processed_operations.slice(1)
+ .map(row=>row[batchFixture.db.processed_operations[0].indexOf('operation_id')]);
+assert.equal(new Set(loggedIds).size,loggedIds.length,
+ 'partial retry adds no duplicate operation journal entries');
+console.log('sync optimization: batch receipt, alias mapping and partial replay OK');

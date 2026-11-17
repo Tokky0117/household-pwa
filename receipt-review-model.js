@@ -92,7 +92,7 @@ function fromOcrItem(item,{rowId,taxBasis}={}){
    quantityOrigin:item.quantitySource==='printed'?'ocr-printed':'ocr-candidate'
   };
  }
- function applyAssistance(draft,result,{findProduct,isUnconfirmedBarcodeLine}={}){
+ function applyAssistance(draft,result,{findProduct,findChain,isUnconfirmedBarcodeLine}={}){
   if(!draft||draft.source!=='ocr')throw Error('先に写真をOCRで読み取ってください');
   const rows=ocrRows(draft);
   if(!rows.length)throw Error('対応するOCR明細がありません');
@@ -109,6 +109,8 @@ function fromOcrItem(item,{rowId,taxBasis}={}){
   }
   const next={...draft,items:draft.items.map(x=>({...x})),
    matchedCount:0,unmatchedCount:0};
+  // Store identity must come from app OCR or explicit user choice,
+  // never from AI's interpretation of a photographic retailer logo.
   for(const {i} of rows){
    const item=next.items[i],rowId=item.ocrRowId||'row-'+(i+1);
    if(!proposed.has(rowId))throw Error('OCR行IDが不足しています');
@@ -116,9 +118,14 @@ function fromOcrItem(item,{rowId,taxBasis}={}){
     item.productId='';item.autoLinked=false;item.nameCandidate='';
     next.unmatchedCount++;continue;
    }
-   const productId=item.productId||findProduct(item.ocrRawName||'',next.chainId);
+   const storeChanged=next.chainId!==draft.chainId;
+   const productId=item.manuallyLinked||(!storeChanged&&item.productId)?
+    item.productId:findProduct(item.ocrRawName||'',next.chainId);
    const proposedLine=proposed.get(rowId);
+   // OCR correction and product registration suggestions are distinct draft inputs.
+   // Only productSuggestion can become saved product_name_candidate in app.js.
    item.nameCandidate=proposedLine.nameCandidate||'';
+   item.productSuggestion=proposedLine.productSuggestion||null;
    if(productId){
     item.productId=productId;item.autoLinked=!item.manuallyLinked;next.matchedCount++;
    }else{
@@ -146,15 +153,15 @@ function fromOcrItem(item,{rowId,taxBasis}={}){
      result?.version!=='kurashi-receipt-rebuild-1'||
      !Array.isArray(result.items)||!result.items.length)
    throw Error('写真からの明細再解析データを確認してください');
-  const match=result.storeName?findChain(result.storeName):null;
   return {source:'chatgpt-rebuild',date:result.receiptDate||'',
-   chainId:match?.id||null,chainName:match?'':result.storeName||'',
-   branchName:previous.branchName||'',total:result.receiptTotal??null,
+   chainId:previous.chainId||null,chainName:previous.chainName||'',
+   total:result.receiptTotal??null,
    printedCount:result.printedCount??null,ocrReplacedCount:previous.items.length,
    // Do not carry old row IDs, OCR names, product associations or
    // OCR-specific unresolved observations into a fresh photo reconstruction.
    items:result.items.map(line=>({
     name:line.name||'',inferredName:line.name||'',inputOrigin:'photo',
+    productSuggestion:line.productSuggestion||null,
     quantity:line.quantity??1,quantityUncertain:line.quantity===null,
     amount:line.amount===null?'':line.amount,
     productId:'',manuallyLinked:false,autoLinked:false,

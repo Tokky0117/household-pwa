@@ -233,12 +233,32 @@ function makeChatGptReceiptPrompt(ocrReference=''){
 // OCR-assist and full-photo reconstruction are separate, versioned contracts.
 // Reconstructed items never acquire fake OCR IDs or OCR aliases.
 const REBUILD_VERSION='kurashi-receipt-rebuild-1';
+// A product suggestion is only a proposal for the UI. No product is linked or
+// created when the ChatGPT response is imported.
+function parseProductSuggestion(value){
+ if(value===undefined||value===null)return null; // old JSON remains valid
+ if(!isObject(value)||!Object.prototype.hasOwnProperty.call(value,'existingName')||
+    !Object.prototype.hasOwnProperty.call(value,'newName')||
+    Object.keys(value).some(k=>!['existingName','newName','packageQuantity','packageUnit'].includes(k)))
+  throw Error('INVALID_PRODUCT_SUGGESTION');
+ const existingName=value.existingName===null?null:cleanText(value.existingName,80,{optional:true});
+ const newName=value.newName===null?null:cleanText(value.newName,80,{optional:true});
+ if(existingName&&newName)throw Error('INVALID_PRODUCT_SUGGESTION');
+ const qty=value.packageQuantity??null,unit=value.packageUnit??null;
+ if((qty===null)!==(unit===null)||(qty!==null&&
+    (!Number.isFinite(qty)||typeof qty!=='number'||qty<=0||qty>100000||
+     !['個','本','枚','g','kg','mL','L'].includes(unit))))
+  throw Error('INVALID_PRODUCT_PACKAGE');
+ return existingName||newName||qty!==null?
+   {existingName,newName,packageQuantity:qty,packageUnit:unit}:null;
+}
 function parseChatGptOcrRebuildJson(source){
  if(typeof source!=='string'||source.length>30000||!source.trim())
   throw Error('JSON_SIZE_OR_EMPTY');
  const raw=extractOcrAssistJson(source);
- if(!isObject(raw)||Object.keys(raw).sort().join(',')!==
-     'items,printedCount,receiptDate,receiptTotal,storeName,version'||
+ if(!isObject(raw)||!['items,printedCount,receiptDate,receiptTotal,version',
+       'items,printedCount,receiptDate,receiptTotal,storeName,version']
+     .includes(Object.keys(raw).sort().join(','))||
     raw.version!==REBUILD_VERSION||!Array.isArray(raw.items)||
     raw.items.length<1||raw.items.length>100)
   throw Error('INVALID_REBUILD_FORMAT');
@@ -253,17 +273,19 @@ function parseChatGptOcrRebuildJson(source){
    throw Error('REBUILD_DATE_INVALID');
   date=raw.receiptDate;
  }
- const storeName=cleanText(raw.storeName,80,{optional:true});
+ const storeName=raw.storeName===undefined?null:cleanText(raw.storeName,80,{optional:true});
  if(!optionalInteger(raw.receiptTotal)||!optionalInteger(raw.printedCount,10000))
   throw Error('REBUILD_TOTAL_INVALID');
  const items=raw.items.map(line=>{
-  if(!isObject(line)||Object.keys(line).sort().join(',')!=='amount,name,quantity')
+  if(!isObject(line)||!['amount,name,quantity','amount,name,productSuggestion,quantity']
+   .includes(Object.keys(line).sort().join(',')))
    throw Error('INVALID_REBUILD_ITEM');
   const name=line.name===null?null:cleanText(line.name,120);
   if(!optionalInteger(line.quantity,999)||line.quantity===0||
      !optionalInteger(line.amount)||(!name&&line.amount===null))
    throw Error('INVALID_REBUILD_ITEM');
-  return {name,quantity:line.quantity,amount:line.amount};
+  return {name,quantity:line.quantity,amount:line.amount,
+   productSuggestion:parseProductSuggestion(line.productSuggestion)};
  });
  return {version:REBUILD_VERSION,receiptDate:date,storeName,
   receiptTotal:raw.receiptTotal,printedCount:raw.printedCount,items};
@@ -315,18 +337,24 @@ function parseChatGptOcrAssistJson(source){
  if(typeof source!=='string'||source.length>30000||!source.trim())
   throw Error('JSON_SIZE_OR_EMPTY');
  const raw=extractOcrAssistJson(source);
- if(!isObject(raw)||Object.keys(raw).sort().join(',')!=='items,version'||
+ if(!isObject(raw)||!['items,version','items,storeName,version']
+  .includes(Object.keys(raw).sort().join(','))||
   raw.version!==ASSIST_VERSION||!Array.isArray(raw.items)||
   !raw.items.length||raw.items.length>100)
   throw Error('INVALID_OCR_ASSIST_FORMAT');
  const seen=new Set();
  const items=raw.items.map(entry=>{
-  if(!isObject(entry)||!['nameCandidate,ocrName,rowId','amount,nameCandidate,ocrName,quantity,rowId'].includes(Object.keys(entry).sort().join(','))||
+  if(!isObject(entry)||!['ocrName,rowId','amount,ocrName,quantity,rowId',
+   'nameCandidate,ocrName,rowId','amount,nameCandidate,ocrName,quantity,rowId']
+   .includes(Object.keys(entry).filter(k=>k!=='productSuggestion').sort().join(','))||
+   (Object.prototype.hasOwnProperty.call(entry,'productSuggestion')&&
+    !isObject(entry.productSuggestion)&&entry.productSuggestion!==null)||
    typeof entry.rowId!=='string'||!(/^[A-Za-z0-9_-]{1,80}$/).test(entry.rowId)||
    typeof entry.ocrName!=='string'||entry.ocrName.length>120||
    /[\r\n\t<>]/.test(entry.ocrName)||privatePattern.test(entry.ocrName)||
    cardPattern.test(entry.ocrName)||
-   (entry.nameCandidate!==null&&typeof entry.nameCandidate!=='string')||
+   (entry.nameCandidate!==undefined&&entry.nameCandidate!==null&&
+    typeof entry.nameCandidate!=='string')||
    (entry.amount!==undefined&&!optionalInteger(entry.amount))||
    (entry.quantity!==undefined&&(!optionalInteger(entry.quantity,999)||entry.quantity===0)))
    throw Error('INVALID_OCR_ASSIST_ITEM');
@@ -335,15 +363,18 @@ function parseChatGptOcrAssistJson(source){
   return {
    rowId:entry.rowId,
    ocrName:entry.ocrName,
-   nameCandidate:entry.nameCandidate===null?null:
+   nameCandidate:entry.nameCandidate==null?null:
     cleanText(entry.nameCandidate,80,{optional:true}),
-   quantity:entry.quantity??null,amount:entry.amount??null
+   quantity:entry.quantity??null,amount:entry.amount??null,
+   productSuggestion:parseProductSuggestion(entry.productSuggestion)
   };
  });
- return {version:ASSIST_VERSION,items};
+ return {version:ASSIST_VERSION,
+  storeName:raw.storeName===undefined?null:cleanText(raw.storeName,80,{optional:true}),
+  items};
 }
 // Compact photo-first instruction, with exact OCR row identity for the importer.
-function makeChatGptOcrAssistPrompt(ocrReference){
+function makeChatGptOcrAssistPrompt(ocrReference,registeredNames=[]){
  if(typeof ocrReference!=='string'||ocrReference.length>18000)
   throw Error('OCR_REFERENCE_REQUIRED');
  let r;
@@ -351,6 +382,10 @@ function makeChatGptOcrAssistPrompt(ocrReference){
  if(!isObject(r)||!Array.isArray(r.items)||!r.items.length||r.items.length>100||
   r.items.some(x=>!isObject(x)||typeof x.rowId!=='string'||
    typeof x.ocrName!=='string'))throw Error('OCR_REFERENCE_INVALID');
+ if(!Array.isArray(registeredNames)||registeredNames.length>3000||
+    registeredNames.some(name=>typeof name!=='string'||!name.trim()||name.length>80)||
+    JSON.stringify(registeredNames).length>100000)
+  throw Error('PRODUCT_NAMES_INVALID');
  const show=x=>x===null||x===undefined||x===''?'不明':String(x);
  const moneyOrigin={allocated:'税額配賦による計算値',
   'ocr-parsed':'OCR明細額','chatgpt-photo-candidate':'写真解析候補',unknown:'不明'};
@@ -374,9 +409,11 @@ function makeChatGptOcrAssistPrompt(ocrReference){
   show(x.status)+'（近傍文字行'+show(x.nearbyTextRows)+
   '、名前候補'+show(x.eligibleNameRows)+'）');
  const assist={version:ASSIST_VERSION,items:[{rowId:'OCR行IDをそのまま',
-  ocrName:'OCR名をそのまま',nameCandidate:null,quantity:null,amount:null}]};
- const rebuild={version:REBUILD_VERSION,receiptDate:null,storeName:null,
-  receiptTotal:null,printedCount:null,items:[{name:'写真に印字された商品名',quantity:null,amount:null}]};
+  ocrName:'OCR名をそのまま',quantity:null,amount:null,
+  productSuggestion:{existingName:null,newName:null,packageQuantity:null,packageUnit:null}}]};
+ const rebuild={version:REBUILD_VERSION,receiptDate:null,
+  receiptTotal:null,printedCount:null,items:[{name:'写真に印字された商品名',quantity:null,amount:null,
+  productSuggestion:{existingName:null,newName:null,packageQuantity:null,packageUnit:null}}]};
  return [
   'くらしストック｜レシート写真の確認',
   '',
@@ -390,14 +427,21 @@ function makeChatGptOcrAssistPrompt(ocrReference){
   '商品別税込額が印字されない外税レシートで、値引き後税抜明細額と税率別印字税額が確定していれば、税率ごとに税抜金額比で配賦し、端数は最大剰余法（同点は印字順）で割り当てる。全額を検算した商品別税込額は計算値として使用可。印字額と偽らず、根拠が不足する額はnull。',
   '',
   '【2種類のJSONのどちらか1つだけを選ぶ】',
-  'A：写真とOCRの商品行が1対1対応 → kurashi-receipt-assist-1。rowId・ocrName・行順・行数を変えない。OCR名の誤字は写真に基づくnameCandidate（正しければnull）。quantityは購入数量、amountは値引き後の税込明細合計（行の全購入数量分）。不明ならnull。数量だけの誤読は行を再構築せず、この形式で補正する。',
+  'A：写真とOCRの商品行が1対1対応 → kurashi-receipt-assist-1。rowId・ocrName・行順・行数を変えない。店舗名は推定・出力しない。商品名の自然な補正・登録候補はproductSuggestionだけに記す。quantityは購入数量、amountは値引き後の税込明細合計（行の全購入数量分）。不明ならnull。数量だけの誤読は行を再構築せず、この形式で補正する。',
   'B：別レシートの混入・商品行の欠落や余分・行の分割や結合・コードだけの商品名・金額対応の破綻 → kurashi-receipt-rebuild-1。写真で確認した購入商品だけを印字順に記載し、元OCR行IDを使わない。クルーネックとVネック等の異なる形状や、同じ商品の別印字行を統合しない。分からないname・quantity・amount・日付・店舗・合計・点数はnull。',
   '不明な文字や税込明細合計はnullで表し、アプリ確認画面に残す。対象レシートが確定できない、または重大な矛盾が未解決のときだけJSONを停止し、何番目の商品のどの値を確認する必要があるか質問する。ユーザー確認後は確定内容を維持して再検算。',
   '',
+  '【登録商品との照合（レシート写真と数量・金額の解析後に実施）】',
+  '以下の登録商品名一覧はアプリが作成した商品マスタの名前だけであり、商品ID・容量・日用品等は含まない。既に登録されている商品と同一と判断できる場合だけ、productSuggestion.existingNameに一覧中の名称を文字どおり正確に記す。曖昧な場合はnull。',
+  '既存の商品名に該当しない場合のみ、productSuggestion.newNameに適切な新規登録候補名を推測する。可能ならウェブ検索を利用して商品名を確認する。検索できない場合やメーカー・規格を確定できない場合は捏造せず、商品種別までの自然な名称かnullにする。検索した根拠がないのに実在商品を特定できたと主張しない。existingNameとnewNameを同時に指定しない。',
+  '商品名候補はproductSuggestionの1種類だけにし、推定名を別項目で出力しない。店舗名は生成AIでは判定しない。既存商品名に確信がなければexistingNameはnull。OCR原文・行ID・数量を商品候補のために書き換えない。候補は未確認で、登録と紐付けはアプリ上で利用者が選ぶ。',
+  '商品名候補の内容量はproductSuggestion.packageQuantity（数値）とpackageUnit（個・本・枚・g・kg・mL・L）に記す。包装全体の内容量を示し、80g×3袋なら240g。購入数量quantityとは区別する。写真や印字から根拠がない場合は両方null。複数容量で合計の意味が曖昧なら推測せずnull。商品名・内容量とも候補であり登録時に利用者が確認する。',
+  '登録商品名一覧（各要素は登録商品名のみ。空配列なら照合候補なし）：'+JSON.stringify(registeredNames),
+  '',
   '【出力】',
   '最初のjsonコードブロックに1つだけJSON。その後に短い「OCR診断」（商品行数・誤読・構造問題・未確定事項・写真から確認できた店舗名）を書く。両形式同時出力、余分なキー、カード・決済・会員番号・電話番号・住所の出力は禁止。',
-  '形式Aの形（雛形。itemsは実際のOCR全行分）：'+JSON.stringify(assist),
-  '形式Bの形（雛形。写真の全購入行分）：'+JSON.stringify(rebuild),
+  '形式Aの形（雛形。itemsは実際のOCR全行分。productSuggestionは商品名候補）：'+JSON.stringify(assist),
+  '形式Bの形（雛形。写真の全購入行分。productSuggestionは新追加の任意項目）：'+JSON.stringify(rebuild),
   '',
   '【参考OCR結果（写真より優先しない候補）】',
   '購入日候補：'+show(r.receiptDate)+' / 店舗候補：'+show(r.store),

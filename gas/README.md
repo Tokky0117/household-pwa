@@ -1,3 +1,21 @@
+# くらしストック｜試作GAS・Sheets 現行状態（2026-11-14）
+
+**最優先：本節が現在の試作スキーマ契約です。以下の旧バージョン別記録は履歴として残しており、「12シート」「旧レシート名の移行」「自動デプロイ」等は現在の方針ではありません。**
+
+- GitHub作業ブランチ：`preview-v46-clean-base`（`main` の変更禁止）。
+- 現行スキーマ：**11テーブル**。 `receipt_rules` 廃止。 `records.raw_store_name` と `record_items.raw_name` / `inferred_name` / `category_id` / `price_eligible` を保存列から削除。日用品カテゴリの `item_groups.category_id` は維持。
+- OCR原文：`record.create` / `record.update` のAPI入力 `raw_name` は**維持**。`product_aliases.ocr_name` に保管し、保存明細は `alias_id` を参照。
+- 写真再解析・手入力の名称は `record_items.confirmed_name`。生成AIの商品名候補は `suggested_product_name` に一本化し、`suggestion_kind` が空欄なら一括登録しない。
+- `setupNewWorkbook()` は新規の空のGAS/Sheets作成専用であり、既存の試作Sheetsにスキーマ移行として実行しない。
+- **試作GASの自動pushデプロイは停止**。`.github/workflows/gas-deploy-new.yml` は手動 `workflow_dispatch` のみ。
+- **現在はGitHubコード変更段階です。試作Sheetsの列削除とGASの公開更新は未完了**。先に試作Sheetsの新列順と11シートを確認し、手動でGASワークフローを実行する。
+- 具体的な移行列順・保護するシートと操作確認は [RECEIPT_SCHEMA_MIGRATION.md](../RECEIPT_SCHEMA_MIGRATION.md)、現行の全テーブル責務は [DATA_MODEL.md](../DATA_MODEL.md) を参照。
+- レシート過去行は移行不要だが、**日用品・商品・店舗・別名・同期用ID／ログ・オフライン操作キューを意図せず破棄しない**。本番版は一切変更しない。
+
+---
+
+## 過去の実装履歴（現行のスキーマ・配布手順としては使用しない）
+
 # くらしストック｜新規GAS・Google Sheets（クリーン構築）
 
 ## v0.68.0 写真確認名の分離保存（2026-11-04）

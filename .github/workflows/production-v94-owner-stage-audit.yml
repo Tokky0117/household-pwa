@@ -1,0 +1,48 @@
+name: Verify installed production v94 owner helpers (read-only)
+
+on:
+  push:
+    branches:
+      - production-v94-release-ready
+    paths:
+      - scripts/verify-production-manual-stage.mjs
+      - .github/workflows/production-v94-owner-stage-audit.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    env:
+      CLASPRC_JSON: ${{ secrets.CLASPRC_JSON }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Pull currently installed GAS editor source without changes
+        shell: bash
+        run: |
+          set -euo pipefail
+          node - <<'NODE'
+          const fs=require('node:fs'),path=require('node:path');
+          const auth=process.env.CLASPRC_JSON;
+          if(!auth)throw Error('CLASP_AUTH_NOT_CONFIGURED');
+          JSON.parse(auth);
+          fs.writeFileSync(path.join(process.env.HOME,'.clasprc.json'),auth,{mode:0o600});
+          const dest=path.join(process.env.RUNNER_TEMP,'production-owner-verify');
+          fs.mkdirSync(dest,{recursive:true});
+          fs.writeFileSync(path.join(dest,'.clasp.json'),JSON.stringify({
+            scriptId:'1jwI1-JXga74JntHGKfqCm0luDYJueEPDCfQBrbF1SIcE3EHdrlC67bBn',rootDir:'.'}));
+          NODE
+          cd "$RUNNER_TEMP/production-owner-verify"
+          npx --yes @google/clasp@3 pull
+      - name: Check all six source files without leaking data
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --prune origin '+refs/heads/main:refs/remotes/origin/main'
+          node scripts/verify-production-manual-stage.mjs "$RUNNER_TEMP/production-owner-verify"
+          echo 'Existing production GAS has the reviewed owner migration helpers; Sheets untouched.' >> "$GITHUB_STEP_SUMMARY"

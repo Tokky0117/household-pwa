@@ -9,22 +9,22 @@ const KURASHI_NEW_SCHEMA = {
   households: ['household_id', 'display_name', 'version', 'updated_at'],
   users: ['user_id', 'household_id', 'display_name', 'auth_subject'],
   categories: ['category_id', 'name', 'fixed_order'],
-  stores: ['chain_id', 'household_id', 'canonical_name', 'normalized_name', 'aliases', 'version', 'updated_at'],
-  item_groups: ['item_group_id', 'household_id', 'category_id', 'name', 'normalized_name', 'in_stock', 'sort_order', 'is_hidden', 'version', 'created_at', 'updated_at', 'deleted_at'],
-  products: ['product_id', 'household_id', 'item_group_id', 'name', 'normalized_name', 'package_quantity', 'package_unit', 'item_group_order', 'version', 'created_at', 'updated_at', 'deleted_at'],
-  product_aliases: ['alias_id', 'product_id', 'chain_id', 'normalized_alias', 'version', 'updated_at', 'ocr_name'],
-  records: ['record_id', 'household_id', 'record_type', 'chain_id', 'branch_name', 'raw_store_name', 'record_date', 'created_at', 'updated_at', 'version', 'deleted_at'],
-  record_items: ['record_item_id', 'record_id', 'line_order', 'raw_name', 'product_id', 'quantity', 'amount_tax_included', 'category_id', 'price_eligible', 'created_at', 'updated_at', 'version', 'deleted_at', 'alias_id', 'confirmed_name', 'inferred_name'],
+  retail_chains: ['chain_id', 'household_id', 'canonical_name', 'normalized_name', 'aliases', 'version', 'updated_at'],
+  household_items: ['household_item_id', 'household_id', 'category_id', 'name', 'normalized_name', 'in_stock', 'sort_order', 'is_hidden', 'version', 'created_at', 'updated_at', 'deleted_at', 'sub_name'],
+  products: ['product_id', 'household_id', 'household_item_id', 'name', 'normalized_name', 'package_quantity', 'package_unit', 'household_item_order', 'version', 'created_at', 'updated_at', 'deleted_at'],
+  receipt_name_mappings: ['receipt_name_id', 'auto_match_product_id', 'chain_id', 'normalized_receipt_name', 'version', 'updated_at', 'ocr_name'],
+  records: ['record_id', 'household_id', 'record_type', 'chain_id', 'record_date', 'created_at', 'updated_at', 'version', 'deleted_at'],
+  record_items: ['record_item_id', 'record_id', 'line_order', 'linked_product_id', 'quantity', 'line_total_tax_included', 'created_at', 'updated_at', 'version', 'deleted_at', 'receipt_name_id', 'non_ocr_name', 'product_name_candidate', 'candidate_match_type'],
   change_log: ['change_id', 'sequence_no', 'household_id', 'entity_type', 'entity_id', 'action', 'occurred_at'],
-  processed_operations: ['household_id', 'operation_id', 'request_hash', 'result', 'processed_at'],
-  receipt_rules: ['rule_id', 'chain_id', 'pattern', 'priority', 'enabled', 'version', 'updated_at']
+  processed_operations: ['household_id', 'operation_id', 'request_hash', 'result', 'processed_at']
 };
 const KURASHI_FIXED_CATEGORIES = [
-  [0, '飲食', 1],
-  [1, 'キッチン', 2],
-  [2, '洗面・風呂', 3],
-  [3, '洗濯・掃除', 4],
-  [4, 'その他', 5]
+  [0, '食品・飲料', 1],
+  [1, 'キッチン', 3],
+  [2, '洗面・風呂', 4],
+  [3, '洗濯・掃除', 5],
+  [4, 'その他', 6],
+  [5, '調味料', 2]
 ];
 
 function setupNewWorkbook() {
@@ -66,12 +66,12 @@ function setupNewWorkbook() {
         sheet.setFrozenRows(1);
         range.setFontWeight('bold');
       } else if (JSON.stringify(existing) !== JSON.stringify(headers)) {
-        // Preserve v0.63 and v0.64 columns in place, append known trailing columns only.
+        // Preserve non-receipt master columns when only a known trailing field is missing.
         const first=headers.findIndex((h,i)=>existing[i]!==h);
         const extension=headers.length-first;
         const additive=first>=0&&
-          (name==='product_aliases'&&extension===1||
-           name==='record_items'&&(extension===1||extension===2||extension===3))&&
+          (name==='household_items'&&extension===1||
+           name==='receipt_name_mappings'&&extension===1)&&
           existing.slice(first).every(value=>value==='');
         if(!additive)throw new Error(name+': シート列が規定と一致しません。');
         for(let i=first;i<headers.length;i++)
@@ -84,11 +84,11 @@ function setupNewWorkbook() {
     const users = book.getSheetByName('users');
     users.getRange(2, 4, users.getMaxRows() - 1, 1).setNumberFormat('@');
     const records = book.getSheetByName('records');
-    records.getRange(2, 7, records.getMaxRows() - 1, 1).setNumberFormat('@');
+    records.getRange(2, 6, records.getMaxRows() - 1, 1).setNumberFormat('@');
 
     const categories = book.getSheetByName('categories');
     if (categories.getLastRow() === 1) {
-      categories.getRange(2, 1, 5, 3).setValues(KURASHI_FIXED_CATEGORIES);
+      categories.getRange(2, 1, KURASHI_FIXED_CATEGORIES.length, 3).setValues(KURASHI_FIXED_CATEGORIES);
     } else {
       const found = categories.getRange(2, 1, categories.getLastRow() - 1, 3).getValues();
       if (JSON.stringify(found) !== JSON.stringify(KURASHI_FIXED_CATEGORIES)) {
@@ -104,7 +104,7 @@ function setupNewWorkbook() {
       throw new Error('家庭の初期行が不正です。既存データは変更しません。');
     }
 
-    if (book.getSheets().length !== 12) throw new Error('シート数が12ではありません。');
+    if (book.getSheets().length !== 11) throw new Error('シート数が11ではありません。');
     if (!configuredId) props.setProperty('SPREADSHEET_ID', book.getId());
     props.setProperty('KURASHI_SCHEMA_VERSION', '1');
 

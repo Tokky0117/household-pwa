@@ -1,0 +1,61 @@
+name: Audit existing production GAS (read-only)
+
+on:
+  workflow_dispatch:
+    inputs:
+      production_gas_script_id:
+        description: '本番GAS編集URL /projects/ と /edit の間のID'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      PROD_GAS_SCRIPT_ID: ${{ inputs.production_gas_script_id }}
+      PROD_GAS_EXEC_URL: ${{ vars.KURASHI_PRODUCTION_GAS_EXEC }}
+      CLASPRC_JSON: ${{ secrets.CLASPRC_JSON }}
+    steps:
+      - name: Checkout sources with main history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Authenticate without making changes
+        shell: bash
+        run: |
+          set -euo pipefail
+          node - <<'NODE'
+          const fs=require('node:fs'),path=require('node:path');
+          const id=process.env.PROD_GAS_SCRIPT_ID,auth=process.env.CLASPRC_JSON;
+          if(!/^[A-Za-z0-9_-]{25,120}$/.test(id||''))throw Error('INVALID_PRODUCTION_GAS_SCRIPT_ID');
+          if(!auth)throw Error('CLASPRC_JSON_NOT_CONFIGURED');
+          JSON.parse(auth);
+          fs.writeFileSync(path.join(process.env.HOME,'.clasprc.json'),auth,{mode:0o600});
+          const root=path.join(process.env.RUNNER_TEMP,'readonly-production-gas');
+          fs.mkdirSync(root,{recursive:true});
+          fs.writeFileSync(path.join(root,'.clasp.json'),JSON.stringify({scriptId:id,rootDir:'.'}));
+          NODE
+      - name: Pull remote code (read only)
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP/readonly-production-gas"
+          npx --yes @google/clasp@3 pull
+          npx --yes @google/clasp@3 list-deployments "$PROD_GAS_SCRIPT_ID" \
+            > "$RUNNER_TEMP/production-deployments.txt"
+      - name: Verify production source and current deployed URL
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --prune origin '+refs/heads/main:refs/remotes/origin/main'
+          node scripts/verify-production-gas-remote.mjs \
+            "$RUNNER_TEMP/readonly-production-gas" \
+            "$RUNNER_TEMP/production-deployments.txt"
+      - name: Report read-only verification
+        if: success()
+        run: |
+          echo 'Production GAS source and published deployment verified; NO write performed.' >> "$GITHUB_STEP_SUMMARY"

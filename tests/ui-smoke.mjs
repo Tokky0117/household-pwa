@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import vm from 'node:vm';
 const source=readFileSync(new URL('../app.js',import.meta.url),'utf8');
+const packageScript=readFileSync(new URL('../product-package.js',import.meta.url),'utf8');
 const css=readFileSync(new URL('../styles.css',import.meta.url),'utf8');
 const validatorScript=readFileSync(new URL('../receipt-validation.js',import.meta.url),'utf8');
 const validator=vm.runInNewContext(validatorScript+';KurashiReceiptValidation');
@@ -11,29 +12,32 @@ vm.runInNewContext(reviewScript,reviewContext);
 const review=reviewContext.window.KurashiReceiptReview;
 const handlers={};
 const documentHandlers={};
-let mockSwipeRows=[];
+let mockSwipeRows=[],mockTopRows=[];
 const app={innerHTML:'',addEventListener(type,fn){(handlers[type]??=[]).push(fn)},insertAdjacentHTML(){}};
 const storage=new Map();
 const doc={
  addEventListener(type,fn){(documentHandlers[type]??=[]).push(fn)},
  getElementById:k=>k==='app'?app:null,
  querySelector(){return null},
- querySelectorAll(s){return s.includes('.swipe-item:not(.drag-ghost)')?mockSwipeRows:[]},
+ querySelectorAll(s){return s.includes('.category-items[data-category-id=')?mockTopRows:s.includes('.swipe-item:not(.drag-ghost)')?mockSwipeRows:[]},
  createElement:()=>({innerHTML:'',querySelector:()=>null}),
  body:{append(){}}
 };
 const ctx={document:doc,localStorage:{getItem:k=>storage.get(k)??null,setItem:(k,v)=>storage.set(k,v),removeItem:k=>storage.delete(k)},
  navigator:{},window:{scrollTo(){},scrollY:0,KurashiReceiptValidation:validator,KurashiReceiptReview:review},crypto:{randomUUID:()=> 'test-id'},setTimeout:()=>0};
+vm.runInNewContext(packageScript,ctx);
+const packageAPI=ctx.window.KurashiProductPackage;
 const ui=vm.runInNewContext(source+`
-({listView,priceCompareView,pickerView,pickerResults,masterProductsView,masterProductRows,masterProductEditorView,masterGroupPickerView,masterGroupPickerRows,aliasManageView,aliasManageRows,aliasProductPickerView,aliasProductPickerRows,detailHomeView,detailAllView,receiptScanView,receiptChatGptView,recordDetailView,scanStoreNameIssue,scanValidPurchaseDate,scanReadableError,floatingActionPlacement,applyChatGptOcrAssistance,receiptOcrReference,receiptOcrRows,isUnconfirmedBarcodeLine,makeChatGptReceiptRebuildDraft,scanProductView,scanExistingProductView,scanChainForStore,scanStoreHeaderMatch,scanAutolinkUnmatched,scanMatchProduct,scanSimilarProducts,render,initializeCompare,
- setProductGroup,reorderProducts,registeredProducts,convertQuantity,setOpenSwipe,storePickerChoices,
- chainMinima,priceCandidates,savePreviewRecord,periodStart,
+({UI,listView,priceCompareView,pickerView,pickerResults,masterProductsView,masterProductRows,masterProductEditorView,masterGroupPickerView,masterGroupPickerRows,aliasManageView,aliasManageRows,aliasProductPickerView,aliasProductPickerRows,detailHomeView,detailAllView,receiptScanView,receiptChatGptView,recordDetailView,scanStoreNameIssue,scanValidPurchaseDate,scanReadableError,floatingActionPlacement,applyChatGptOcrAssistance,receiptOcrReference,receiptOcrRows,isUnconfirmedBarcodeLine,makeChatGptReceiptRebuildDraft,scanProductView,scanProductGroupChoices,scanExistingProductView,scanExistingProductResults,scanChainForStore,scanStoreHeaderMatch,scanAutolinkUnmatched,scanMatchProduct,scanSimilarProducts,normalizeOcrProductName,normalizedOcrItemName,render,initializeCompare,
+ setProductGroup,reorderProducts,registeredProducts,convertQuantity,setOpenSwipe,storePickerChoices,scrollNewItemIfOffscreen,
+ getItems(){return items},setItems(v){items=v},orderedItemIds,expandItemGroup(k){expandedItemGroups.add(k)},collapseItemGroup(k){expandedItemGroups.delete(k)},
+ chainMinima,priceCandidates,standardizedMinima,savePreviewRecord,periodStart,
  demoRecords,demoRecordItems,allPreviewRecords,allPreviewItems,
  setSelected(v){selected=v},setMasterProductId(v){masterProductId=v},setAliasPickerId(v){aliasPickerId=v},setAliasQuery(v){aliasQuery=v;aliasVisibleLimit=100},setAliasVisibleLimit(v){aliasVisibleLimit=v},setPage(v){page=v},setMode(v){priceScope=v},setDock(v){shopExpanded=v},
  setPeriod(v){period=v},setQty(v){compareQuantity=v},setUnit(v){compareUnit=v},
  createManualRecord,scanDate,
   detailLineName,settingsView,settingsSyncSummary,settingsLastSyncText,setRecordDetailId(v){recordDetailId=v},
- setScanDraft(v){scanDraft=v},setScanPhotos(v){scanPhotos=v},setScanState({busy=false,status='',error='',failed=false}){scanBusy=busy;scanStatus=status;scanError=error;scanReadFailed=failed},setScanProductRow(v){scanProductRow=v},setScanExistingQuery(v){scanExistingQuery=v},setOcrLearning(v){ocrLearning=v},getScanDraft(){return scanDraft},
+ setScanDraft(v){scanDraft=v},setScanAiChanges(v){scanAiChanges=v},setScanPhotos(v){scanPhotos=v},setScanState({busy=false,status='',error='',failed=false}){scanBusy=busy;scanStatus=status;scanError=error;scanReadFailed=failed},setScanProductRow(v){scanProductRow=v},setScanExistingQuery(v){scanExistingQuery=v},setScanGroupQuery(v){scanGroupQuery=v},setScanProductGroupId(v){scanProductGroupId=v},setOcrLearning(v){ocrLearning=v},getScanDraft(){return scanDraft},
  getCompare(){return [compareQuantity,compareUnit]},getSwipe(){return openSwipeId},
  getPeriod(){return period},getListHelpOpen(){return listHelpOpen},listHelpView,readListHelpOpen,catalogue:()=>catalogue})
 `,ctx,{filename:'app.js'});
@@ -54,9 +58,174 @@ for(const selector of ['.iconbtn','.headrow .iconbtn','.sheet-close','.cathead',
  assert.ok(values.length>0&&values.every(x=>x>=44),'Touch area min-height >= 44px: '+selector);
 }
 assert.ok(css.includes('.tertiary{')&&css.includes('color:var(--accent)'),'Shared tertiary button style exists');
+
+assert.equal(packageAPI.infer('三陸カットワカメ80g×3袋')?.quantity,240);
+assert.equal(packageAPI.infer('三陸カットワカメ80g×3袋')?.unit,'g');
+assert.equal(packageAPI.infer('3袋×80g')?.quantity,240);
+assert.equal(packageAPI.infer('牛乳1000ml')?.quantity,1000);
+assert.equal(packageAPI.infer('洗濯洗剤1.2L')?.unit,'L');
+assert.equal(packageAPI.infer('ティッシュ200枚')?.quantity,200);
+assert.equal(packageAPI.infer('キットカット10袋'),null,
+ 'unknown bag unit is not mapped to purchased quantity');
+assert.equal(packageAPI.infer('ワカメ80g×3袋 500g'),null,
+ 'conflicting package sizes must remain unconfirmed');
+assert.equal(packageAPI.infer('R-1'),null);
+assert.equal(packageAPI.candidate('名称だけ',{packageQuantity:240,packageUnit:'g'})?.quantity,240);
+assert.equal(packageAPI.candidate('名称だけ',{packageQuantity:3,packageUnit:'袋'}),null);
+assert.ok(css.includes('.scan-photo-sticky-action{')&&
+ css.includes('.detail-record-product-row{'),
+ 'receipt photo action and inline association use dedicated layout rules');
+
 assert.ok(!source.includes('priceCells(){'),'Obsolete normal/discount UI component removed');
+// Every new action uses one shared markup builder; delegated data IDs must
+// be preserved and escaped instead of hardcoding screen-specific buttons.
+const sharedAction=ui.UI.button({label:'商品を削除',variant:'tertiary',
+ action:'scanRemoveItem',icon:'trash',className:'scan-item-tool',
+ data:{'data-scan-row':3,'data-product-id':'p-"unsafe'},
+ ariaLabel:'明細3を削除'});
+assert.match(sharedAction,/class="tertiary scan-item-tool"/);
+assert.match(sharedAction,/data-act="scanRemoveItem"/);
+assert.match(sharedAction,/data-scan-row="3"/);
+assert.match(sharedAction,/data-product-id="p-&quot;unsafe"/);
+assert.match(sharedAction,/aria-label="明細3を削除"/);
+const navigationRow=ui.UI.catalogueRow({title:'テスト商品',lines:['日用品：日用雑貨'],
+ action:'masterProductEdit',className:'panel',data:{'data-product-id':'item-1'}});
+assert.match(navigationRow,/class="catalogue-candidate panel"/);
+assert.match(navigationRow,/data-act="masterProductEdit"/);
+assert.match(navigationRow,/data-product-id="item-1"/);
+assert.ok(!navigationRow.includes('aria-pressed='),
+ 'navigation rows must not claim the selected-option state');
+const photoPageControls=ruleBody('.scan-viewer-pages button');
+assert.ok(photoPageControls.some(body=>body.includes('min-height:var(--ui-touch-size)')),
+ 'photo page controls use the shared 44px hit-area token');
+assert.ok(css.includes('--ui-touch-size: 44px'),
+ 'touch token is 44px');
+const deleteToolStyles=ruleBody('.scan-item-tool');
+assert.ok(deleteToolStyles.some(body=>body.includes('font-size:var(--ui-action-font-size)')),
+ 'receipt card edit actions inherit shared tertiary typography');
+
+assert.ok(source.includes('class="detail-candidate-origin" role="img" aria-label="生成AIによる候補"')&&
+ source.includes("<span>商品名候補：${esc(line.product_name_candidate)}")&&
+ !source.includes('<span>生成AIの商品名候補：'),'Saved receipt AI attribution uses an icon, not a text label');
+assert.ok(source.includes("label:'候補をまとめて登録（'")&&source.includes("icon:'sparkles'"),
+ 'Bulk product candidate registration uses the shared sparkle icon');
 assert.ok(!css.includes('grid-template-areas:"name value" "name date"'),'Obsolete two-row price CSS removed');
 assert.ok(ui.listView().includes('data-stock=')&&ui.listView().includes('data-list-edit='),'Stock and swipe list preserved');
+// v0.89.7: OCR-only rule-based normalization. No word/product dictionary,
+// no edits to quantity/price or non-OCR merchandise names.
+const nameExamples=[
+ ['キ・ト・ハ°','ギドパ'],
+ ['き・と・は°','ぎどぱ'],
+ ['ヒ・ンク','ビンク'],
+ ['か・ぱ°','がぱ'], // duplicated handakuten is now removed
+ ['サコ・テスト','サゴテスト'],
+ ['タグ・','タグ・'], // unvoiceable dot stays unchanged
+ ['ハ°ト・ か・て・','パド がで'],
+ ['100° 10・ ア・','100° 10・ ア・'], // numeric degree remains intact
+ ['プルーチップ°カンソウヤサイ','プルーチップカンソウヤサイ'],
+ ['グ° プ° ぷ°','グ プ ぷ'],
+ ['ハﾟキﾞ は゜き゛','パギ ぱぎ'], // other OCR voicing variants
+ ['フレ-ク','フレーク'],
+ ['コ-ヒ-','コーヒー'],
+ ['ら-めん','らーめん'],
+ ['コーヒー-無糖','コーヒー無糖'],
+ ['あ－','あー'], // fullwidth hyphen
+ ['R-1 A-100 10-20個','R-1 A-100 10-20個'],
+ ['UMI0Sッナフレ-ク80GX18','UMIOSツナフレーク80GX18'],
+ ['ッナフレーク','ツナフレーク'],
+ ['ABCッナ ABCっな','ABCツナ ABCつな'],
+ ['白っぽい','白っぽい'], // kanji + hiragana, legitimate small tsu
+ ['キットカット かっぷ','キットカット かっぷ'],
+ ['コーヒーッカ','コーヒーッカ'], // the long-vowel mark continues the kana run
+ ['M1LK C0FFEE','MILK COFFEE'],
+ ['1O0 2I4 3o5 6i8','100 214 305 618'],
+ ['P1S A0B','PIS AOB'], // agreed cost of context-only normalization
+ ['ABC01D 80GX18 R-1','ABC01D 80GX18 R-1'],
+ ['30°','30°'], // ordinary numerical degree signs stay
+ ['', '']
+];
+for(const [input,expected] of nameExamples)
+ assert.equal(ui.normalizeOcrProductName(input),expected,
+  'OCR merchandise-name normalization: '+input);
+assert.ok(source.includes('name:normalizedOcrItemName(item)'),
+ 'only merchandise item names are normalized after parsing, before review and matching');
+assert.equal(ui.normalizedOcrItemName({name:'123456O890123',issues:['商品コードのみ（商品名を確認）']}),
+ '123456O890123','barcode-only rows preserve the original OCR code');
+assert.equal(ui.normalizedOcrItemName({name:'123456O890123',issues:[]}),
+ '123456O890123','13-position barcode-like OCR codes are not changed');
+assert.equal(ui.normalizedOcrItemName({name:'UMI0Sッナフレ-ク80GX18',issues:[]}),
+ 'UMIOSツナフレーク80GX18','ordinary OCR product items are corrected');
+const sampleKanaReceipt={name:'UMI0Sッナフレ-ク80GX18',quantity:2,quantitySource:'printed',
+ taxIncludedAmount:540,netAmount:540,issues:[]};
+const normalizedKanaReceipt=review.fromOcrItem(
+ {...sampleKanaReceipt,name:ui.normalizeOcrProductName(sampleKanaReceipt.name)},
+ {rowId:'kana-test',taxBasis:'included'});
+assert.equal(normalizedKanaReceipt.ocrRawName,'UMIOSツナフレーク80GX18');
+assert.equal(sampleKanaReceipt.name,'UMI0Sッナフレ-ク80GX18',
+ 'the OCR parser item remains intact');
+assert.equal(normalizedKanaReceipt.quantity,2);
+assert.equal(normalizedKanaReceipt.amount,540);
+const beforeKanaProducts=ui.catalogue().products;
+ui.catalogue().products=[...beforeKanaProducts,{
+ id:'kana-product-test',name:'UMIOSツナフレーク80GX18',aliases:[]}];
+assert.equal(ui.scanMatchProduct(ui.normalizeOcrProductName(sampleKanaReceipt.name)),
+ 'kana-product-test','the corrected OCR name matches the product master');
+ui.catalogue().products=beforeKanaProducts;
+
+// KS-004: only scroll when the added item is outside the usable viewport.
+const oldQuerySelector=doc.querySelector,oldViewport=ctx.window.innerHeight;
+let scrolled=0,bounds={top:160,bottom:205};
+const dummyRow={getBoundingClientRect:()=>bounds,scrollIntoView:()=>{scrolled++}};
+const dummyHeader={getBoundingClientRect:()=>({bottom:64})};
+const dummyTabbar={getBoundingClientRect:()=>({top:560})};
+doc.querySelector=s=>s.includes('[data-item-id="scroll-test"]')?dummyRow:
+ s==='.top'?dummyHeader:s==='.bottom'?dummyTabbar:null;
+ctx.window.innerHeight=600;
+assert.equal(ui.scrollNewItemIfOffscreen('scroll-test'),false);
+assert.equal(scrolled,0,'visible item does not auto-scroll');
+bounds={top:520,bottom:580};
+assert.equal(ui.scrollNewItemIfOffscreen('scroll-test'),true);
+assert.equal(scrolled,1,'item behind the bottom navigation scrolls into view');
+bounds={top:30,bottom:80};
+assert.equal(ui.scrollNewItemIfOffscreen('scroll-test'),true);
+assert.equal(scrolled,2,'item above the header scrolls into view');
+doc.querySelector=oldQuerySelector;ctx.window.innerHeight=oldViewport;
+
+const preservedItems=ui.getItems();
+ui.setItems([...preservedItems,
+ {id:'bag-vegetable',name:'袋',subName:'野菜用',category:1,inStock:true,hidden:false,order:100,version:1},
+ {id:'bag-garbage',name:'袋',subName:'生ごみ用',category:1,inStock:false,hidden:false,order:101,version:1}]);
+const groupedClosed=ui.listView();
+assert.ok(groupedClosed.includes('data-group-toggle="1:袋"')&&
+ groupedClosed.includes('2種類')&&groupedClosed.includes('item-group-stock-off'),
+ 'two items with same category/name show one collapsed group with aggregate out-of-stock');
+assert.ok(!groupedClosed.includes('data-item-id="bag-vegetable"'),
+ 'collapsed group hides child rows rather than deleting them');
+ui.expandItemGroup('1:袋');
+const groupedOpen=ui.listView();
+assert.ok(groupedOpen.includes('data-item-id="bag-vegetable"')&&
+ groupedOpen.includes('data-item-id="bag-garbage"')&&
+ groupedOpen.includes('野菜用')&&groupedOpen.includes('生ごみ用'),
+ 'expanded group renders independently accessible stock and price rows');
+assert.ok(groupedOpen.includes('data-list-top="true"')&&groupedOpen.includes('ラップ'),
+ 'ordinary items and grouped rows are in the same category order');
+// Group moves as one peer of an ungrouped item; collapsed children still
+// participate in the complete Sheets reorder payload.
+mockTopRows=[{dataset:{itemId:'demo-6'}},
+ {dataset:{groupKey:'1:袋'},querySelectorAll(){return []}}];
+assert.deepEqual(Array.from(ui.orderedItemIds(1)),
+ ['demo-6','bag-vegetable','bag-garbage'],
+ 'normal item may precede a collapsed group; both child IDs remain in the queue');
+mockTopRows=[{dataset:{groupKey:'1:袋'},querySelectorAll(){return [
+  {dataset:{itemId:'bag-garbage'}},{dataset:{itemId:'bag-vegetable'}}]}},
+ {dataset:{itemId:'demo-6'}}];
+assert.deepEqual(Array.from(ui.orderedItemIds(1)),
+ ['bag-garbage','bag-vegetable','demo-6'],
+ 'expanded children can reorder within their group before the ordinary item');
+mockTopRows=[];
+ui.collapseItemGroup('1:袋');
+ui.setItems(preservedItems);
+
 assert.ok(ui.listView().includes('class="ui-search"')&&ui.listView().includes('id="search"'),'Daily list uses shared search component');
 assert.ok(source.includes('iconButton({label,action,iconHtml,title=')&&
  source.includes("const add=UI.iconButton(")&&
@@ -84,7 +253,7 @@ assert.ok(masterListing.indexOf('id="master-product-query"')<
  masterListing.indexOf('id="master-product-results"'),
  'Master creation is above product cards, reachable without long scrolling');
 assert.ok(masterListing.includes('data-act="masterProductEdit"')&&
- masterListing.includes('class="panel catalogue-candidate"'),
+ masterListing.includes('class="catalogue-candidate panel"'),
  'Existing editable master product cards remain intact');
 assert.ok(source.includes("'master-product-query':{set:v=>{masterQuery=v}")&&
  !source.includes("if(e.target.id==='master-product-query')"),
@@ -126,15 +295,15 @@ assert.ok(source.includes("'master-group-search':{set:v=>{masterGroupQuery=v}")&
 
 
 
-const masterCat=ui.catalogue(),originalAliases=masterCat.productAliases;
-masterCat.productAliases=Array.from({length:121},(_,i)=>({
- aliasId:'test-alias-'+i,chainId:'c-a',
+const masterCat=ui.catalogue(),originalAliases=masterCat.receiptNameMappings;
+masterCat.receiptNameMappings=Array.from({length:121},(_,i)=>({
+ receiptNameId:'test-alias-'+i,chainId:'c-a',
  ocrName:'テスト印字名'+String(i).padStart(3,'0'),
- normalizedAlias:'テスト印字名'+String(i).padStart(3,'0'),
+ normalizedReceiptName:'テスト印字名'+String(i).padStart(3,'0'),
  productId:i===0?'p-milk-1':'',version:1
 }));
-masterCat.productAliases.push({aliasId:'local-unsynced',chainId:'c-a',
- ocrName:'同期前の読み取り名',normalizedAlias:'同期前の読み取り名',
+masterCat.receiptNameMappings.push({receiptNameId:'local-unsynced',chainId:'c-a',
+ ocrName:'同期前の読み取り名',normalizedReceiptName:'同期前の読み取り名',
  productId:'',version:1});
 ui.setAliasQuery('');
 const aliasList=ui.aliasManageView();
@@ -177,12 +346,12 @@ assert.ok(aliasSheet.includes('class="sheet-back alias-product-picker-overlay"')
  aliasSheet.includes('テスト印字名000'),
  'One common searchable sheet shows the selected OCR row, unlinked choice and products');
 assert.ok(source.includes("'alias-product-search':{set:v=>{aliasPickerQuery=v}")&&
- source.includes("window.KurashiLive.linkAlias(alias.aliasId,p.productId||null)")&&
+ source.includes("window.KurashiLive.linkAlias(alias.receiptNameId,p.productId||null)")&&
  source.includes("if(action==='confirmAliasLink'")&&
  !source.includes("if(form.dataset.aliasForm)")&&
  css.includes('.alias-product-picker-results{'),
  'Alias picker uses shared IME handlers and the original linkAlias queue only after confirmation');
-masterCat.productAliases=originalAliases;
+masterCat.receiptNameMappings=originalAliases;
 ui.setAliasPickerId(null);ui.setAliasQuery('');
 
 const syncCase=(next={})=>ui.settingsSyncSummary({
@@ -301,6 +470,12 @@ assert.equal(ui.getCompare()[0],null,'Empty initial compare quantity');
 assert.equal(ui.getCompare()[1],'mL','First product unit preselected');
 let view=ui.priceCompareView();
 assert.ok(view.includes('登録商品')&&view.includes('税込・安い順'));
+assert.ok(view.includes('内容量換算の最安値')&&view.includes('100mLあたり'),
+ 'Per-item view compares all registered products by compatible standardized capacity');
+const winners=ui.standardizedMinima(ui.catalogue().products.filter(p=>p.householdItemId==='demo-1'),'1y');
+assert.ok(winners.some(w=>w.label==='100mL'&&w.price>0&&w.productName),
+ 'Normalized minima identify the winning product while retaining its original chain');
+
 assert.ok(view.includes('直近3か月')&&view.includes('直近1年')&&!view.includes('全期間'));
 assert.ok(view.includes('ライフ')&&view.includes('コノミヤ'));
 assert.ok(view.includes('298円')&&view.includes('320円'));
@@ -331,7 +506,8 @@ assert.equal(ui.convertQuantity(1,'L','mL'),1000);
 assert.equal(ui.convertQuantity(2,'個','本'),null);
 assert.ok(view.includes('placeholder="例：1100"')&&view.includes('inputmode="decimal"'),'Comparison uses numeric keyboard');
 ui.setUnit('g');view=ui.priceCompareView();
-assert.ok(view.includes('比較不可'),'Nonconvertible units are reported');
+assert.ok(view.includes('比較不可'),'Incompatible measurement families cannot be compared');
+assert.ok(view.includes('購入価格 '),'Original purchase price remains visible during normalized comparison');
 ui.setUnit('mL');view=ui.priceCompareView();
 assert.ok(css.includes('.shop-compare-dock{')&&css.includes('position:fixed'),'Dock remains fixed');
 const picker=ui.pickerView();
@@ -344,9 +520,9 @@ assert.ok(css.includes('.swipe-item.drag-ghost,')&&css.includes('border-radius:1
 assert.ok(ui.reorderProducts('demo-1',['p-milk-2','p-milk-1']),'Registered product reordering works');
 ui.initializeCompare();assert.equal(ui.getCompare()[1],'L');
 const p=ui.catalogue().products.find(x=>x.id==='p-milk-3');
-ui.setProductGroup(p,'demo-1');assert.equal(p.itemGroupOrder,3);
-ui.setProductGroup(p,null);assert.equal(p.itemGroupOrder,null);
-ui.setProductGroup(p,'demo-15');assert.equal(p.itemGroupOrder,1,'First product in empty group begins with order 1');
+ui.setProductGroup(p,'demo-1');assert.equal(p.householdItemOrder,3);
+ui.setProductGroup(p,null);assert.equal(p.householdItemOrder,null);
+ui.setProductGroup(p,'demo-15');assert.equal(p.householdItemOrder,1,'First product in empty group begins with order 1');
 
 const exampleManual=ui.createManualRecord('receipt');
 ui.setScanDraft(exampleManual);ui.setScanPhotos([]);
@@ -360,7 +536,7 @@ assert.ok(manualReceiptPage.includes('レシート入力')&&
  !manualReceiptPage.includes('読み取り状況')&&
  !manualReceiptPage.includes('data-act="scanOpenCurrentPhoto"'),
  'Manual receipt reuses OCR multi-line confirmation with no photo/OCR buttons');
-const exampleShelf=ui.createManualRecord('shelf');
+const exampleShelf=ui.createManualRecord('price_tag');
 ui.setScanDraft(exampleShelf);
 const manualShelfPage=ui.receiptScanView();
 assert.ok(manualShelfPage.includes('値札入力')&&
@@ -372,7 +548,7 @@ assert.ok(manualShelfPage.includes('値札入力')&&
  manualShelfPage.includes('data-act="scanAddItem"')&&
  manualShelfPage.includes('data-act="scanSaveDraft"'),
  'Shelf uses the same multi-line form without visible quantity and with optional product');
-assert.ok(!source.includes("if(input.type==='shelf'&&!input.productId)return false"),
+assert.ok(!source.includes("if(input.type==='price_tag'&&!input.productId)return false"),
  'Unlinked shelf can be recorded without a product in preview validation');
 ui.setScanDraft(null);
 
@@ -391,7 +567,7 @@ assert.ok(source.includes("UI.button({label:'編集',variant:'tertiary',icon:'pe
  !css.includes('.record-detail-actions>.record-delete-action{')&&
  !css.includes('.record-detail-actions>.primary{'),
  'History edit and delete are equal shared tertiary actions without destructive red');
-assert.ok(source.includes("scanDraft.recordType==='shelf'")&&
+assert.ok(source.includes("scanDraft.recordType==='price_tag'")&&
  source.includes("recordId:r.record_id,recordType:r.record_type,source:'edit'"),
  'Editing a shelf record uses its saved kind and correct wording');
 assert.ok(ui.detailHomeView().includes('明細一覧'));
@@ -409,16 +585,20 @@ assert.ok(source.includes('function detailHomeView(')&&
  !source.includes('function receiptView(')&&
  !source.includes('function receiptAllView('),
  'Page-only view functions describe the shared receipt and shelf detail role');
-assert.equal(ui.detailLineName({product_id:'p-milk-1',confirmed_name:'確定した別名',raw_name:'別OCR',inferred_name:'推定候補'}),
+// Saved OCR names are dereferenced via receipt_name_mappings, never record_items.raw_name.
+const originalPreviewAliases=ui.catalogue().receiptNameMappings;
+ui.catalogue().receiptNameMappings=[...(originalPreviewAliases||[]),{receiptNameId:'test-ocr-name',ocrName:'OCR原文'}];
+assert.equal(ui.detailLineName({linked_product_id:'p-milk-1',non_ocr_name:'確定した別名',receipt_name_id:'test-ocr-name'}),
  'おいしい牛乳','Linked product title takes precedence');
-assert.equal(ui.detailLineName({product_id:null,confirmed_name:'確認した商品名',raw_name:'読み取り名',inferred_name:'推定候補'}),
+assert.equal(ui.detailLineName({linked_product_id:null,non_ocr_name:'確認した商品名',receipt_name_id:'test-ocr-name'}),
  '確認した商品名','Unlinked confirmed line title takes precedence');
-assert.equal(ui.detailLineName({product_id:null,raw_name:'OCR原文',inferred_name:'推定候補'}),
+assert.equal(ui.detailLineName({linked_product_id:null,receipt_name_id:'test-ocr-name',product_name_candidate:'推定候補'}),
  'OCR原文','OCR title is the fallback when not confirmed');
-assert.equal(ui.detailLineName({product_id:null,inferred_name:'未確定のChatGPT名'}),
- '明細名なし','Inference is never silently promoted to a saved title');
-assert.equal(ui.detailLineName({product_id:'p-milk-2',raw_name:''}),
+assert.equal(ui.detailLineName({linked_product_id:null,product_name_candidate:'未確定の生成AI候補'}),
+ '明細名なし','An undecided candidate is never silently promoted to a saved title');
+assert.equal(ui.detailLineName({linked_product_id:'p-milk-2',receipt_name_id:''}),
  '北海道牛乳','A linked item without a printed name still shows its master name');
+ui.catalogue().receiptNameMappings=originalPreviewAliases;
 ui.setRecordDetailId(ui.demoRecords.find(r=>r.record_type==='receipt').record_id);
 const savedReceiptDetail=ui.recordDetailView();
 assert.ok(savedReceiptDetail.includes('class="detail-record-info"')&&
@@ -435,7 +615,7 @@ assert.ok(!savedReceiptDetail.includes('ChatGPT推測名：')&&
  !savedReceiptDetail.includes('レシートの読み取り名：')&&
  !savedReceiptDetail.includes('照合商品：'),
  'Saved details omit receipt-analysis provenance and duplicate titles');
-ui.setRecordDetailId(ui.demoRecords.find(r=>r.record_type==='shelf').record_id);
+ui.setRecordDetailId(ui.demoRecords.find(r=>r.record_type==='price_tag').record_id);
 const savedShelfDetail=ui.recordDetailView();
 assert.ok(savedShelfDetail.includes('>値札確認日</span>')&&
  savedShelfDetail.includes('>価格情報</h2>')&&
@@ -446,7 +626,7 @@ assert.ok(savedShelfDetail.includes('>値札確認日</span>')&&
 ui.setRecordDetailId(ui.allPreviewRecords().at(-1).record_id);
 const unnamedReceiptDetail=ui.recordDetailView();
 assert.ok(unnamedReceiptDetail.includes('明細名なし')&&
- unnamedReceiptDetail.includes('商品未照合')&&
+ unnamedReceiptDetail.includes('商品未紐付け')&&
  unnamedReceiptDetail.includes('数量 2'),
  'Unnamed and unmatched saved receipt line remains accessible');
 
@@ -550,7 +730,7 @@ assert.ok(indexHtml.includes('src="receipt-validation.js?v=71-p2"'),
  'P2 validator is loaded before app entry on the iPhone preview');
 assert.ok(indexHtml.indexOf('src="receipt-validation.js')<indexHtml.indexOf('src="app.js'),
  'P2 validator initializes before app.js');
-assert.ok(previewWorkflow.includes('receipt-chatgpt-import.js receipt-validation.js receipt-review-model.js)'),
+assert.ok(previewWorkflow.includes('receipt-chatgpt-import.js product-package.js receipt-validation.js receipt-review-model.js)'),
  'P2 validator and P4 review adapter are copied into each static preview');
 assert.ok(indexHtml.indexOf('src="receipt-review-model.js')<indexHtml.indexOf('src="app.js'),
  'P4 review adapter loads before app.js');
@@ -581,7 +761,14 @@ assert.ok(source.includes("resetScan();page='recordScan';render();return;"),
  'Removing the last image stays on the empty OCR screen');
 assert.ok(ui.receiptScanView().includes('data-act="scanAddPhotos"'),
  'Empty OCR screen has a direct photo picker button');
-assert.ok(ui.receiptScanView().includes('class="primary scan-photo-add"')&&
+ui.setScanPhotos([{}]);
+const scanWithPhoto=ui.receiptScanView();
+assert.ok(scanWithPhoto.includes('scan-photo-sticky-action')&&
+ scanWithPhoto.includes('data-act="scanStart"')&&
+ !scanWithPhoto.includes('class="primary scan-photo-add"'),
+ 'selected photo does not relocate the main OCR action into the photo list');
+ui.setScanPhotos([]);
+assert.ok(ui.receiptScanView().includes('class="primary scan-photo-primary-action"')&&
  !ui.receiptScanView().includes('写真を選択してください。'),
  'Empty OCR screen uses one common primary photo picker and no redundant instruction');
 assert.equal((indexHtml.match(/type="file" accept="image\/\*"/g)||[]).length,2,
@@ -604,6 +791,19 @@ assert.ok(source.includes("import('./ocr-engine/engine.js')"),
 
 const importer=readFileSync(new URL('../receipt-chatgpt-import.js',import.meta.url),'utf8');
 const imports=vm.runInNewContext(importer+';KurashiReceiptImport');
+const aiPackageJson=JSON.stringify({version:'kurashi-receipt-assist-1',
+ items:[{rowId:'photo-line-1',ocrName:'ワカメ80g×3袋',quantity:1,amount:580,
+  productSuggestion:{existingName:null,newName:'ワカメ80g×3袋',
+   packageQuantity:240,packageUnit:'g'}}]});
+const aiPackage=imports.parseChatGptOcrAssistJson(aiPackageJson);
+assert.equal(aiPackage.items[0].quantity,1,'purchase quantity stays separate from pack content');
+assert.equal(aiPackage.items[0].productSuggestion.packageQuantity,240);
+assert.equal(aiPackage.items[0].productSuggestion.packageUnit,'g');
+assert.throws(()=>imports.parseChatGptOcrAssistJson(aiPackageJson.replace('"packageUnit":"g"','"packageUnit":"袋"')),
+ /INVALID_PRODUCT_PACKAGE/,'unsupported AI capacity units are rejected');
+assert.ok(imports.makeChatGptOcrAssistPrompt(JSON.stringify({
+ items:[{rowId:'r1',ocrName:'80g×3袋'}]})).includes('packageQuantity'),
+ 'current JSON prompt asks AI for optional package capacity');
 // COSTCO excerpt: typographic quotation marks and missing items array brackets.
 const malformed=`{ “version”: “kurashi-receipt-import-1”, “purchaseDate”: null,
  “storeName”: “COSTCO WHOLESALE”, “taxBasis”: “included”, “taxTotal”: 1138,
@@ -633,7 +833,7 @@ assert.equal(parsedCandidate.items[0].name,'キットカットコイマッチャ
  'printed name remains separate from canonical candidate');
 assert.equal(parsedCandidate.items[0].nameCandidate,'キットカット濃い抹茶10袋',
  'new ChatGPT JSON retains a noncommittal master-name candidate');
-assert.ok(source.includes('item.canonicalName||item.inferredName||item.nameCandidate||item.name'),
+assert.ok(source.includes('item.canonicalName||item.productSuggestion?.newName||item.inferredName||item.nameCandidate||item.name'),
  'canonical candidate only initializes editable master registration field');
 assert.equal(parsed.items[0].taxIncludedAmount,2638);
 assert.match(imports.makeChatGptReceiptPrompt('{"row":1,"name":"リンド一ル"}'),
@@ -648,6 +848,18 @@ const rowOcr={...ocrDraft,items:ocrDraft.items.map((x,i)=>({...x,ocrRowId:'row-'
 ui.setScanDraft(rowOcr);
 const ocrReview=ui.receiptScanView();
 assert.ok(ocrReview.includes('chatGptAssist'),'ChatGPT helper is available only after OCR');
+ui.setScanDraft({...rowOcr,recordType:'receipt',items:[{...rowOcr.items[0],productId:'p-milk-1'},
+ {...rowOcr.items[1],productId:''}]});
+ui.setScanAiChanges([{row:2,label:'数量',before:'2',after:'1'}]);
+const reviewedMatch=ui.receiptScanView();
+assert.ok(reviewedMatch.includes('登録商品と一致')&&reviewedMatch.includes('おいしい牛乳'),
+ 'An exact matched product is displayed on the OCR review before saving');
+const lineCards=reviewedMatch.split(/class="panel scan-review-item[^"]*"/);
+assert.ok(!lineCards[1].includes('scan-ai-updated')&&lineCards[2].includes('scan-ai-updated')&&
+ !reviewedMatch.includes('数量：2 → 1')&&!reviewedMatch.includes('生成AIで変更'),
+ 'Only the changed field is marked as AI-updated without verbose before/after text');
+ui.setScanAiChanges([]);
+ui.setScanDraft(rowOcr);
 assert.match(ocrReview,/data-ocr-row="0"/,'OCR name is plain text');
 assert.ok(!ocrReview.includes('name="name-0"'),'OCR print name is never editable');
 assert.ok(!ui.detailHomeView().includes('receiptChatGpt'),'no standalone ChatGPT import button');
@@ -734,7 +946,7 @@ assert.ok(manualAdd.includes('name="name-1"')&&manualAdd.includes('placeholder="
  !manualAdd.includes('name="name-1" required')&&
  manualAdd.indexOf('name="name-1"')>manualAdd.indexOf('name="amount-1"'),
  'Manual name is optional and placed after product, quantity and subtotal');
-assert.ok(!manualAdd.includes('読み取り結果の確認')&&
+assert.ok(manualAdd.includes('読み取り結果の確認')&&
  manualAdd.indexOf('>読み取り状況</h2>')<manualAdd.indexOf('>購入情報</h2>')&&
  manualAdd.indexOf('>購入情報</h2>')<manualAdd.indexOf('>購入明細</h2>')&&
  manualAdd.indexOf('>購入明細</h2>')<manualAdd.indexOf('>合計の確認</h2>')&&
@@ -751,7 +963,7 @@ assert.ok(photoReview.includes('id="scanConfirmForm" class="scan-review" novalid
  'receipt save uses application validation and shared feedback');
 assert.ok(source.includes("function formSaveFeedback(")&&
  source.includes("formSaveFeedback(form,storeError,{fieldName:'chain'})")&&
- source.includes("formSaveFeedback(form,scanDraft.recordType==='shelf'?'値札確認日を入力してください。':'購入日を入力してください。',{fieldName:'date'})")&&
+ source.includes("formSaveFeedback(form,scanDraft.recordType==='price_tag'?'値札確認日を入力してください。':'購入日を入力してください。',{fieldName:'date'})")&&
  source.includes("formSaveFeedback(form,err.message||'保存できませんでした。通信状態を確認してください。')"),
  'receipt save failures use the same feedback helper across validation and async error');
 
@@ -769,8 +981,8 @@ assert.ok(!photoReview.includes('内容を確認して保存してください�
  !photoReview.includes('scan-tax-excluded')&&
  !photoReview.includes('写真で確認'),
  'Review omits redundant guidance, tax breakdown and duplicate photo trigger');
-assert.ok(photoReview.indexOf('読み取り状況')<photoReview.indexOf('ChatGPTで確認')&&
- photoReview.indexOf('ChatGPTで確認')<photoReview.indexOf('購入情報'),
+assert.ok(photoReview.indexOf('読み取り状況')<photoReview.indexOf('生成AIを使用')&&
+ photoReview.indexOf('生成AIを使用')<photoReview.indexOf('購入情報'),
  'Read status groups OCR and ChatGPT before purchase details');
 ui.setScanDraft(null);
 const beforeScan=ui.receiptScanView();
@@ -877,64 +1089,66 @@ ui.setScanDraft({source:'ocr',date:'2026-10-14',chainId:'c-a',total:268,
 ui.setScanProductRow(0);
 const newProductHtml=ui.scanProductView();
 assert.ok(newProductHtml.includes('scan-product-name')&&
- newProductHtml.includes('キットカットコイマッチャ10フクロ')&&
- newProductHtml.includes('scan-product-group'),
- 'canonical product name and household-item linking are both on the new-product form');
-assert.match(newProductHtml,/紐付けしない（商品だけ登録）/,'new product permits an unlinked master');
-assert.ok(!newProductHtml.includes('name="group" required'),
- 'item group selection is optional, not forced');
-const listingHtml=ui.receiptScanView();
-assert.ok(listingHtml.includes('class="ui-picker-value is-unmatched"')&&
- !listingHtml.includes('class="ui-picker-value is-unmatched">商品未照合'),
- 'Unmatched is a neutral state, not a registered product name');
-assert.ok(css.includes('ui-picker-value.is-unmatched')&&
- css.includes('--ui-supporting-value-font-size: 14px')&&
- source.includes("valueVariant:'supporting'")&&source.includes("valueState:scanResolvedProductId(item)?'':'unmatched'"),
- 'Form-level supporting value and neutral unmatched state use shared styling');
-assert.ok(source.includes("function scanAssistView()")&&
- source.includes("UI.statusMessage({text:scanAssistMessage,kind:'success'})")&&
- source.includes("scanAssistMessage=changed||priced?'解析結果を反映しました。'")&&
- !source.includes("scanStatus='ChatGPT推測名'"),
- 'ChatGPT action and short feedback stay together above form, with no counts');
+ newProductHtml.includes('キットカットコイマッチャ10フクロ'),
+ 'manual receipt product registration retains the captured name');
+assert.ok(!newProductHtml.includes('id="scan-group-search"')&&
+ !newProductHtml.includes('name="group"')&&
+ !newProductHtml.includes('name="package_quantity"')&&
+ !newProductHtml.includes('name="package_unit"'),
+ 'receipt product registration defers household linking and package size');
+assert.ok(newProductHtml.includes('class="manage-main scan-product-page"')&&
+ !newProductHtml.includes('receipt-product-modal'),
+ 'legacy manual fallback remains available without nested sheets');
 
+// Receipt entry now records the purchase first. Product selection and
+// ChatGPT-assisted registration happen on the saved detail screen.
+const beforeAiDraft=ui.getScanDraft();
+ui.setScanDraft({source:'ocr',recordType:'receipt',date:'2026-11-14',
+ chainId:null,chainName:'',total:100,printedCount:1,
+ items:[{name:'例カタカナ',ocrRawName:'例カタカナ',ocrRowId:'ai-row-1',
+  quantity:1,amount:100,issues:[],productId:'',manuallyLinked:false,
+  productSuggestion:{existingName:null,newName:'例示商品'}}]});
+const aiReviewHtml=ui.receiptScanView();
+assert.ok(!aiReviewHtml.includes('data-act="scanAiCreateProduct"')&&
+ !aiReviewHtml.includes('scan-product-setting')&&
+ !aiReviewHtml.includes('商品を設定'),
+ 'receipt review does not register or link products before saving');
+assert.ok(!ui.getScanDraft().items[0].productId,
+ 'rendering a ChatGPT candidate never auto-links a product');
+assert.ok(aiReviewHtml.includes('商品名候補')&&aiReviewHtml.includes('例示商品')&&
+ !aiReviewHtml.includes('推定商品名'),
+ 'OCR review presents a single AI product-name candidate');
+ui.setScanDraft(beforeAiDraft);
+const listingHtml=ui.receiptScanView();
 assert.ok(listingHtml.includes('ui-static-field-label">読み取り名</span>')&&
- listingHtml.includes('登録商品')&&listingHtml.includes('商品を設定'),
- 'receipt review distinguishes the read name from the selected registered product');
-assert.ok(!listingHtml.includes('data-act="scanBulkProducts"'),
- 'unmatched product batch creation is removed from receipt review');
-assert.ok(listingHtml.includes('class="formfield scan-product-setting ui-picker-inline"')&&
- listingHtml.includes('is-unmatched')&&listingHtml.includes('>未照合</strong>')&&
- !listingHtml.includes('scan-product-association')&&
- !listingHtml.includes('data-act="scanNewProduct"'),
- 'product selection is a single action without an accordion or split actions');
+ !listingHtml.includes('scan-product-setting')&&
+ !listingHtml.includes('data-act="scanBulkProducts"'),
+ 'receipt review focuses on purchase details and defers product operations');
+assert.ok(source.includes("function scanAssistView()")&&
+ source.includes("UI.statusMessage({text:scanAssistMessage,kind:'success'})"),
+ 'ChatGPT analysis status remains next to the receipt reading action');
 const existingHtml=ui.scanExistingProductView();
 assert.ok(existingHtml.includes('scan-existing-search')&&
- existingHtml.includes('scan-existing-group')&&
+ !existingHtml.includes('scan-existing-group')&&
  existingHtml.includes('日用品リスト：牛乳'),
  'existing-product picker searches products and shows linked household item');
 assert.ok(existingHtml.includes('class="ui-search"')&&
  existingHtml.includes('data-search-clear="scan-existing-search"')&&
- existingHtml.includes('data-ui-select="scan-existing-group"'),
- 'Receipt product selection reuses the shared searchable input and item dropdown');
-assert.ok(newProductHtml.includes('data-ui-select="scan-product-group"')&&
+ !existingHtml.includes('登録先の日用品を変更（任意）'),
+ 'Receipt product selection searches products without an unrelated item reassignment');
+assert.ok(!newProductHtml.includes('scan-product-group-results')&&
  source.includes("control==='date'")&&source.includes("control==='search'"),
- 'Common formField owns date, search and item selection for all receipt forms');
+ 'Receipt product registration defers item linking and uses the common form');
+// Keep the receipt amount label and quantity form unchanged.
 // The yen suffix is part of the label, not the number submitted to Sheets.
 assert.ok(listingHtml.includes('<label for="scan-amount-0">小計（円）</label>')&&
  listingHtml.includes('id="scan-amount-0" name="amount-0" type="number"'),
  'receipt subtotal shows yen while retaining its numeric form value');
 assert.ok(!listingHtml.includes('type="text" value="268円"'),
  'currency unit is never injected into the saved numeric amount');
-const productAction=listingHtml.match(/<button[^>]*data-act="scanPickExisting"[^>]*>[^]*?<\/button>/)?.[0]||'';
-assert.ok(listingHtml.includes('<label for="scan-product-0-action">登録商品</label>')&&
- listingHtml.includes('name="product-0"')&&
- listingHtml.includes('id="scan-product-0-action"')&&
- listingHtml.includes('data-scan-row="0"'),
- 'Product picker uses the shared form label, existing hidden value and unchanged row action');
 assert.ok(!listingHtml.includes('scan-field-label')&&!listingHtml.includes('scan-product-setting-row'),
  'Legacy product-specific label and picker markup are removed');
-assert.ok(listingHtml.includes('class="ui-picker-action-slot"')&&
- css.includes('.formfield.ui-picker-inline .ui-picker-action-slot{')&&
+assert.ok(css.includes('.formfield.ui-picker-inline .ui-picker-action-slot{')&&
  css.includes('height:calc(var(--ui-touch-size) - var(--ui-inline-picker-action-overhang));width:max-content')&&
  css.includes('top:calc(-1 * var(--ui-inline-picker-action-overhang));min-height:var(--ui-touch-size)'),
  'Shared picker reserves the action touch area without a receipt-specific compensating margin');
@@ -947,9 +1161,6 @@ assert.ok(css.includes('--ui-stock-off-background: #fff0dd')&&
  css.includes('color:var(--ui-field-warning-color)')&&
  !css.includes('color:#A97800'),
  'Inventory and receipt warnings use shared semantic color tokens');
-assert.ok(productAction.includes('class="ui-text-action"')&&
- productAction.includes('商品を設定')&&!productAction.includes('ui-chevron'),
- 'registered-product settings use shared text actions without navigation chevrons');
 assert.ok(listingHtml.includes('class="ui-picker-surface"')&&
  listingHtml.includes('data-act="storePickerOpen"')&&
  listingHtml.includes('id="scan-chain" name="chain"')&&
@@ -982,7 +1193,7 @@ const oldCount=shopMaster.length;
 for(let i=0;i<125;i++)shopMaster.push({id:'bulk-store-'+i,name:'追加検証店舗'+i});
 const manyShops=ui.storePickerChoices();
 assert.equal((manyShops.match(/class="ui-choice-row/g)||[]).length,oldCount+125,
- 'all 125 newly registered stores appear in the scrollable shared choice list');
+ 'all 125 newly registered retail_chains appear in the scrollable shared choice list');
 assert.ok(manyShops.includes('追加検証店舗124'),
  'last registered store remains reachable without a fixed result cap');
 assert.ok(css.includes('.store-picker-results{')&&
@@ -1025,8 +1236,8 @@ ui.setScanDraft({source:'chatgpt',date:'2026-11-02',chainId:'c-a',total:200,
  items:[{name:'マスタとは異なる印字略称',quantity:1,amount:200,
   productId:'',issues:[]}]});
 const catalog=ui.catalogue();
-catalog.productAliases=[{productId:'p-milk-1',chainId:'c-a',
- normalizedAlias:'マスタとは異なる印字略称'}];
+catalog.receiptNameMappings=[{productId:'p-milk-1',chainId:'c-a',
+ normalizedReceiptName:'マスタとは異なる印字略称'}];
 catalog.chains.find(x=>x.id==='c-a').aliases=['COSTCO WHOLESALE'];
 assert.equal(ui.scanChainForStore('COSTCO WHOLESALE')?.id,'c-a',
  'print name resolves to the previously confirmed chain alias');
@@ -1058,6 +1269,38 @@ assert.equal(ui.scanChainForStore('スーパー青空 商品A ¥123'),null,
 assert.equal(ui.scanChainForStore('架空衣料店\nコノミヤ'),null,
  'two matched store headers are ambiguous; never auto-select one');
 assert.equal(ui.scanStoreHeaderMatch('架空衣料店\nコノミヤ').status,'ambiguous');
+// AI-assisted retailer correction uses the same registered-chain matching.
+// A photo-verified chain may fix an OCR header that missed the store.
+const storePhoto=imports.parseChatGptOcrAssistJson(JSON.stringify({
+ version:'kurashi-receipt-assist-1',storeName:'コノミヤ 枚方店',items:[{
+  rowId:'photo-store',ocrName:'日用品A',
+  productSuggestion:{existingName:null,newName:null}
+ }]
+}));
+assert.equal(storePhoto.storeName,'コノミヤ 枚方店');
+const localDraft={source:'ocr',recordType:'receipt',chainId:null,items:[
+ {name:'日用品A',ocrRawName:'日用品A',ocrRowId:'photo-store',quantity:1,amount:100,productId:''}
+]};
+const storeApplied=ui.applyChatGptOcrAssistance(localDraft,storePhoto);
+assert.equal(storeApplied.chainId,null,'AI photo store is ignored: retailer confirmation belongs to OCR or the user');
+const notListed=ui.applyChatGptOcrAssistance(localDraft,{...storePhoto,storeName:'登録のないお店XY'});
+assert.equal(notListed.chainId,null,'AI cannot automatically register unknown retailers');
+const lockedStore=ui.applyChatGptOcrAssistance({...localDraft,chainId:'c-a',storeManuallySelected:true},storePhoto);
+assert.equal(lockedStore.chainId,'c-a','Manually confirmed retailer is preserved');
+
+const sampleKohnan={id:'c-photo-kohnan',name:'コーナン',aliases:[]};
+const sampleKonomiya=catalog.chains.find(c=>c.name==='コノミヤ');
+assert.ok(sampleKonomiya,'sample catalogue has registered Konomiya chain');
+catalog.chains.push(sampleKohnan);
+assert.equal(ui.scanChainForStore('領収証\nコーナン商事株式会社\n枚方大橋店\n2026年10月31日')?.id,
+ sampleKohnan.id,'a photographed Kohnan header matches the registered chain via company name');
+assert.equal(ui.scanChainForStore('KOHNAN\n枚方大橋店')?.id,
+ sampleKohnan.id,'Latin logo spelling maps only to a registered Kohnan chain');
+assert.equal(ui.scanChainForStore('⚙コノミヤ 枚方店\n2026年10月12日')?.id,
+ sampleKonomiya.id,'floral logo and branch suffix match registered Konomiya');
+assert.equal(ui.scanChainForStore('KONOMIYA 枚方店')?.id,
+ sampleKonomiya.id,'Latin Konomiya logo maps only to a registered Japanese chain');
+catalog.chains.pop();
 const secondMatch={id:'c-synthetic-duplicate',name:'架空衣料店'};
 catalog.chains.push(secondMatch);
 assert.equal(ui.scanChainForStore('架空衣料店'),null,
@@ -1090,8 +1333,10 @@ assert.ok(countReview.includes('scan-count-text')&&countReview.includes('scan-co
  'Printed item count is shown independently from extracted rows');
 assert.ok(countReview.includes('data-field-hint="date"'),
  'Unknown date warns the user before saving');
-assert.ok(source.includes('scanDraft.items.splice(Number(el.dataset.scanRow),1);saveScanDraft();'),
- 'Deleting a false OCR merchandise row persists the corrected draft');
+assert.ok(source.includes('scanDraft.items[index].pendingDeletion=true;')&&
+ source.includes('delete scanDraft.items[index].pendingDeletion;')&&
+ source.includes('const lines=activeItems.map(({item,i})=>{'),
+ 'Deleted receipt rows are greyed out, restorable, and omitted only when saved');
 assert.ok(source.includes("saveScanDraft();render();return;"),
  'Adding a missing merchandise row persists the corrected draft');
 console.log('v66: uncertain date, printed-count review, and draft row persistence OK');
@@ -1498,11 +1743,19 @@ const photoDraft={source:'ocr',date:'2026-10-12',chainId:'c-a',total:11550,items
 ui.setScanDraft(photoDraft);
 assert.ok(!ui.receiptScanView().includes('scanDetachOcr'));
 assert.ok(!ui.receiptScanView().includes('scanUsePhotoCandidate'));
-assert.ok(ui.receiptScanView().includes('ui-static-field-label">推定商品名</span>')&&
- ui.receiptScanView().includes('ui-value-supporting'),
- 'Proposed product name uses a shared supporting-value field, not a freeform candidate paragraph');
-assert.ok(source.includes('inferred_name:inferredName'));
-assert.ok(source.includes('const aliasLines=lines.filter'));
+assert.ok(ui.receiptScanView().includes('ui-static-field-label">商品名候補</span>')&&
+ !ui.receiptScanView().includes('ui-static-field-label">推定商品名</span>'),
+ 'One product name proposal is shown without duplicate inference labels');
+assert.ok(source.includes('product_name_candidate:suggestedName')&&!source.includes('inferred_name:inferredName'));
+assert.ok(source.includes('item.nameCandidate||item.inferredName||item.savedUnknownSuggestion')&&
+ source.includes("const suggestionKind=candidate?.newName?'new':candidate?.existingName?'existing':''"),
+ 'legacy OCR corrections are unified as undecided names and never bulk registered');
+assert.ok(source.includes("savedUnknownSuggestion:!x.candidate_match_type?x.product_name_candidate||'':''"),
+ 'previously saved undecided product suggestions survive an edit');
+assert.ok(source.includes('const matchedBeforeSave=')&&
+ !source.includes('const aliasLines=lines.filter')&&
+ !source.includes('保存後の商品照合を保留しました'),
+ 'exact product links and OCR names are saved in one journaled receipt operation');
 assert.match(imports.makeChatGptOcrAssistPrompt(ocrRef),/構造問題/);
 console.log('v70: obsolete OCR adoption/detachment buttons removed OK');
 const codeOnly={source:'ocr',date:'2026-10-12',chainId:'c-a',items:[
@@ -1515,8 +1768,8 @@ assert.equal(fabricated.items[0].nameCandidate,'',
  'AI may not convert an isolated barcode into a named merchandise row');
 assert.equal(fabricated.items[0].productId,'',
  'a stale automatic barcode product link is not authoritative');
-assert.ok(source.includes('scanDraft.items.findIndex(isUnconfirmedBarcodeLine)'),
- 'unchecked barcode rows are blocked before they reach the Sheets save queue');
+assert.ok(source.includes('scanDraft.items.findIndex(item=>!item.pendingDeletion&&isUnconfirmedBarcodeLine(item))'),
+ 'unchecked active barcode rows are blocked but pending-deleted rows are omitted');
 assert.equal(ui.isUnconfirmedBarcodeLine({ocrRawName:'2000211787545',savedOcrName:true}),false,
  'editing an existing historical receipt does not require rewriting its old OCR names');
 console.log('v68: barcode-only OCR cannot be automatically accepted or learned OK');
@@ -1550,7 +1803,7 @@ assert.equal(replacement.items[1].inferredName,'メリノクルーネックカ�
 assert.equal(replacement.items.reduce((acc,row)=>acc+Number(row.amount),0),11550);
 assert.equal(replacement.ocrReplacedCount,9);
 assert.equal(replacement.date,'2026-10-12');
-assert.equal(replacement.chainName,'ユニクロ');
+assert.equal(replacement.chainName,'','full AI photo rebuild cannot infer or overwrite a retailer');
 assert.equal(replacement.items.reduce((sum,x)=>sum+x.amount,0),11550);
 assert.ok(replacement.items.every(x=>x.inputOrigin==='photo'&&x.productId===''&&
  !Object.prototype.hasOwnProperty.call(x,'ocrRawName')),
@@ -1560,7 +1813,7 @@ ui.setScanDraft(replacement);
 const photoRebuildReview=ui.receiptScanView();
 assert.ok(photoRebuildReview.includes('>読み取り状況</h2>')&&
  !photoRebuildReview.includes('内容を確認して保存してください。')&&
- !photoRebuildReview.includes('読み取り結果の確認'),
+ photoRebuildReview.includes('読み取り結果の確認'),
  'photo replacement uses the shared reading-status heading without redundant instructions');
 assert.doesNotMatch(photoRebuildReview,/name="photoReviewOk"/);
 assert.equal((photoRebuildReview.match(/name="name-\d+"/g)||[]).length,5,
@@ -1788,7 +2041,7 @@ console.log('P4 common review adapter, provenance, row identity and P2 validatio
 assert.ok(versionParts.length===3&&Number.isInteger(versionParts[2]), 'UI review revision version is current');
 assert.ok(source.includes("UI.sectionHeading({title:'読み取り状況'})"), 'OCR and ChatGPT appear under one section');
 assert.ok(source.includes("UI.sectionHeading({title:isShelf?'値札情報':'購入情報'})"), 'Receipt OCR review groups store and purchase date');
-assert.ok(source.includes("UI.sectionHeading({title:isShelf?'価格情報':'購入明細',subtitle:scanDraft.items.length+'件'+"), 'Receipt OCR review identifies item list and unmatched count');
+assert.ok(source.includes("UI.sectionHeading({title:isShelf?'価格情報':'購入明細',subtitle:remainingCount+'件'+"), 'Receipt OCR review identifies item list and unmatched count');
 assert.ok(source.includes("UI.sectionHeading({title:isShelf?'価格の確認':'合計の確認'})"), 'Receipt OCR review makes reconciliation distinct');
 assert.ok(!source.includes('photoReviewOk'), 'Photo reconstruction no longer requires a formal checkbox');
 assert.ok(source.includes('scan-total-warning')&&source.includes('scan-count-warning'),
@@ -1815,8 +2068,25 @@ assert.ok(unifiedPicker.includes('data-act="scanUnlinkProduct"'),
 assert.ok(unifiedPicker.indexOf('data-act="scanExistingToNew"')<
  unifiedPicker.indexOf('id="scan-existing-results"'),
  'new product creation is reachable above the potentially long existing-products list');
-assert.ok(unifiedPicker.includes('登録先の日用品を変更（任意）'),
- 'optional reassignment stays available without occupying the main picker');
+assert.ok(unifiedPicker.includes('登録商品を検索')&&
+ !unifiedPicker.includes('登録商品・日用品名で探す')&&
+ unifiedPicker.includes('data-act="scanExistingToNew"')&&
+ unifiedPicker.includes('class="ui-text-action"')&&
+ !unifiedPicker.includes('class="secondary" type="button" data-act="scanExistingToNew"'),
+ 'product search is named correctly and nonprimary navigation uses a shared text action');
+assert.ok(!unifiedPicker.includes('登録先の日用品を変更（任意）'),
+ 'existing product selection no longer includes changing product-item ownership');
+const originalCatalogue=ui.catalogue().products.slice();
+ui.catalogue().products.push({id:'receipt-search-test',name:'専用実験商品',
+ packageQuantity:null,packageUnit:null,householdItemId:'demo-1',householdItemOrder:9,aliases:[]});
+ui.setScanExistingQuery('牛乳');
+assert.ok(!ui.scanExistingProductResults().includes('専用実験商品'),
+ 'a product is not found just because its linked household item matches the query');
+ui.setScanExistingQuery('専用実験商品');
+assert.ok(ui.scanExistingProductResults().includes('専用実験商品'),
+ 'searching the actual registered product name finds that product');
+ui.catalogue().products.splice(0,ui.catalogue().products.length,...originalCatalogue);
+ui.setScanExistingQuery('');
 ui.setScanDraft({source:'chatgpt-rebuild',date:'2026-11-07',chainId:'c-life',total:298,
  items:[{name:'おいしい牛乳',inputOrigin:'photo',quantity:1,amount:298,
   productId:'',manuallyLinked:false,issues:[]}]});
@@ -1867,8 +2137,9 @@ assert.ok(css.includes('.ui-date-control{')&&
  'Shared native iOS date picker fills the field while its internal width remains out of flow');
 assert.ok(!css.includes('::-webkit-datetime-edit'),
  'No attempt is made to resize the system date field internals');
-assert.ok(source.includes('data-act="scanOpenPhoto"')&&source.includes('data-act="scanRemoveItem"'),
- 'Photo and deletion actions coexist on each receipt item');
+assert.ok(source.includes('data-act="scanOpenPhoto"')&&
+ source.includes("action:'scanRemoveItem'"),
+ 'Photo and deletion actions coexist on each receipt item using the shared action button');
 const previewCacheWorkflow=readFileSync(new URL('../.github/workflows/pages-previews.yml',import.meta.url),'utf8');
 assert.ok(previewCacheWorkflow.includes('household-preview-$slug-$revision')&&
  previewCacheWorkflow.includes('git rev-parse --short=12'),
@@ -1888,3 +2159,35 @@ ui.setScanDraft(ui.createManualRecord('receipt'));
 assert.ok(ui.receiptScanView().includes('class="ui-date-control"')&&
  ui.receiptScanView().includes('id="scan-date"'),
  'Manual receipt entry shares the native date UI with OCR confirmation');
+
+// KS-008: 120g versus 50g versus unknown quantity under one household item.
+ui.setItems([...ui.getItems(),{id:'demo-wakame',
+ name:'わかめ',subName:'',category:0,inStock:true,hidden:false,order:999,version:1}]);
+ui.catalogue().products.push(
+ {id:'test-wakame120',name:'三陸カットわかめ120g',packageQuantity:120,packageUnit:'g',
+  householdItemId:'demo-wakame',householdItemOrder:1,aliases:[]},
+ {id:'test-wakame50',name:'カットわかめ50g',packageQuantity:50,packageUnit:'g',
+  householdItemId:'demo-wakame',householdItemOrder:2,aliases:[]},
+ {id:'test-wakame-unknown',name:'わかめ容量不明',packageQuantity:null,packageUnit:null,
+  householdItemId:'demo-wakame',householdItemOrder:3,aliases:[]}
+);
+const wakameDate=ui.demoRecords[0].record_date;
+for(const [productId,amount] of [
+ ['test-wakame120',360],['test-wakame50',180],['test-wakame-unknown',80]]){
+ assert.equal(ui.savePreviewRecord({type:'price_tag',chainId:'c-life',date:wakameDate,
+  quantity:1,amount,productId,category:''}),true);
+}
+const standardizedWakame=ui.standardizedMinima(ui.registeredProducts('demo-wakame'),'1y');
+assert.equal(standardizedWakame.find(x=>x.label==='100g').price,300,
+ '120g at 360 yen wins normalized 100g comparison over 50g at 180 yen');
+assert.equal(standardizedWakame.find(x=>x.label==='100g').productId,'test-wakame120',
+ 'unknown-capacity 80-yen product cannot be the normalized-price winner');
+ui.setSelected('demo-wakame');ui.setPage('compare');ui.setMode('product');ui.setDock(false);
+const wakameView=ui.priceCompareView();
+assert.ok(wakameView.includes('内容量未設定の1商品')&&
+ !wakameView.includes('内容量を登録')&&
+ wakameView.includes('80円')&&wakameView.includes('300円')&&
+ wakameView.includes('data-pedit="test-wakame-unknown"')&&
+ wakameView.includes('class="swipe-unlink"')&&
+ !wakameView.includes('class="swipe-delete" data-premove="test-wakame-unknown"'),
+ 'unknown capacity remains in price comparison, without redundant button or a delete-style unlink icon');

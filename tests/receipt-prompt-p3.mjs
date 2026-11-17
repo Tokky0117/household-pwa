@@ -40,6 +40,19 @@ assert.match(signalPrompt,/OCR店舗照合診断：登録済み店舗名・別�
 assert.match(signalPrompt,/上部の英字候補=1行（店舗名とは限らない）/);
 assert.doesNotMatch(signalPrompt,/UNKNOWN APPAREL/);
 const prompt=imports.makeChatGptOcrAssistPrompt(JSON.stringify(ref));
+assert.match(prompt,/商品名候補はproductSuggestionの1種類だけ/);
+assert.ok(!prompt.includes('nameCandidate'),
+ 'New AI output contract no longer asks for two competing candidate names');
+const singleCandidate=imports.parseChatGptOcrAssistJson(JSON.stringify({
+ version:'kurashi-receipt-assist-1',items:[{
+  rowId:'p3-1',ocrName:'コーナン印字商品',quantity:1,amount:298,
+  productSuggestion:{existingName:null,newName:'自然な商品名'}
+ }]
+}));
+assert.equal(singleCandidate.items[0].productSuggestion.newName,'自然な商品名');
+assert.equal(singleCandidate.items[0].nameCandidate,null,
+ 'Historical nameCandidate remains optional to read old analysis results');
+
 assert.match(prompt,/写真そのものを目視/);
 assert.match(prompt,/最大剰余法/);
 assert.match(prompt,/税額配賦による計算値/);

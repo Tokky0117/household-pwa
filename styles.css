@@ -2048,6 +2048,11 @@ html,body {
 .dialog .dialog-description{width:100%;max-width:32ch;margin:0 auto 18px;text-align:left;line-height:1.65}
 .dialog .dialog-line{display:block}
 .dialog .dialog-line+.dialog-line{margin-top:5px}
+/* Pending operations may include many receipt lines; keep actions visible on iPhone. */
+.dialog-pending-ops .dialog-description{max-width:100%;max-height:min(48dvh,400px);overflow-y:auto;overscroll-behavior:contain;white-space:normal}
+.dialog-pending-ops{max-height:90dvh;display:flex;flex-direction:column}
+.dialog-pending-ops .dialog-actions{flex-shrink:0}
+
 
 /* Unified price comparison prototype (v22): style only new, previously undefined elements. */
 .itemname .item-title{display:block;font-weight:var(--ui-list-name-font-weight);line-height:1.45}
@@ -2086,7 +2091,7 @@ html,body {
 .swipe-actions{position:absolute;inset:0 0 0 auto;width:132px;display:flex;z-index:0}
 .swipe-actions button{width:66px;border:0;border-left:1px solid var(--line);color:var(--accent);background:var(--bg);display:flex;flex-direction:column;gap:4px;align-items:center;justify-content:center;font-size:12px;font-weight:700;visibility:hidden}
 .swipe-item.swipe-open .swipe-actions button{visibility:visible}
-.swipe-actions .swipe-delete{background:var(--bg)}
+.swipe-actions .swipe-delete,.swipe-actions .swipe-unlink{background:var(--bg)}
 .swipe-actions button svg{width:18px;height:18px}
 @media(prefers-reduced-motion:reduce){.swipe-front{transition:none}}
 /* v24: unified, less card-heavy price information view */
@@ -2593,8 +2598,8 @@ html,body{touch-action:pan-x pan-y}
 .scan-item-tools{display:flex;align-items:center;gap:3px;min-width:0}
 .scan-item-tool{
  display:inline-flex;align-items:center;justify-content:center;gap:4px;
- min-height:44px;padding:7px 6px;border:0;background:transparent;
- color:var(--accent);font-size:13px;font-weight:650;white-space:nowrap
+ min-height:var(--ui-touch-size);padding:7px 6px;border:0;background:transparent;
+ color:var(--accent);font-size:var(--ui-action-font-size);font-weight:var(--ui-action-font-weight);white-space:nowrap
 }
 .scan-item-tool svg{width:17px;height:17px;flex:none}
 .scan-item-tool[data-act="scanRemoveItem"]{color:var(--muted)}
@@ -2608,6 +2613,17 @@ html,body{touch-action:pan-x pan-y}
 .scan-review-item .scan-product-setting{
  margin:0 0 var(--ui-field-group-gap);min-width:0
 }
+/* Optional ChatGPT master-match proposal: keep all actions in the review row. */
+.scan-ai-candidate{
+ margin:0 0 var(--ui-field-group-gap);padding:9px 0;
+ border-top:1px solid var(--line);min-width:0;overflow-wrap:anywhere
+}
+.scan-ai-candidate-title{font-size:12px;font-weight:650;color:var(--muted);margin:0 0 3px}
+.scan-ai-candidate-name{font-size:14px;font-weight:600;line-height:1.5;margin:0}
+.scan-ai-candidate-note{font-size:12px;color:var(--muted);line-height:1.5;margin:4px 0}
+.scan-ai-candidate-actions{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0 0}
+.scan-ai-candidate-actions button{min-height:44px;min-width:0;max-width:100%;white-space:normal;text-align:center}
+
 .scan-setting-source{display:flex;flex-direction:column;gap:3px;margin:0 0 10px;overflow-wrap:anywhere}
 .scan-setting-source span{font-size:12px;color:var(--muted)}
 .scan-setting-source strong{font-size:14px}
@@ -2616,11 +2632,11 @@ html,body{touch-action:pan-x pan-y}
 .scan-viewer-pages{display:flex;align-items:center;gap:4px;margin-left:auto;min-width:0}
 .scan-viewer-pages button{border:1px solid #656b73;border-radius:8px;
  background:transparent;color:#fff;font-size:12px;font-weight:650;
- min-height:36px;padding:6px 5px;white-space:nowrap}
+ min-height:var(--ui-touch-size);padding:6px 5px;white-space:nowrap}
 @media(max-width:360px){
  /* The native date text cannot widen the visible date control. */
  .scan-item-head{gap:4px}
- .scan-item-tool{padding:6px 3px;gap:3px;font-size:12px}
+ .scan-item-tool{padding:6px 3px;gap:3px}
  .scan-review-item .scan-input-pair{grid-template-columns:minmax(0,1fr) minmax(0,1.1fr)}
  .scan-viewer-head{padding:6px 9px}
  .scan-viewer-pages button{font-size:11px;padding:5px 3px}
@@ -2629,12 +2645,10 @@ html,body{touch-action:pan-x pan-y}
 /* v0.76.1: keep all product-selection decisions reachable above long result lists. */
 .scan-picker-actions{display:flex;flex-wrap:wrap;align-items:center;gap:7px;
  min-width:0;margin:0 0 3px}
-.scan-picker-actions .secondary{display:inline-flex;align-items:center;gap:6px;
- min-height:44px;padding:9px 12px;font-size:13px;white-space:normal}
-.scan-picker-actions .secondary svg{flex:none;width:17px;height:17px}
+.scan-picker-actions .ui-text-action{justify-content:flex-start;padding:4px 0;white-space:normal;text-align:left}
 .scan-picker-actions .scan-unlink-action{display:inline-flex;align-items:center;
- min-height:44px;padding:8px 4px;border:0;background:transparent;
- color:var(--accent);font-weight:650;font-size:13px;white-space:normal}
+ min-height:var(--ui-touch-size);padding:8px 4px;border:0;background:transparent;
+ color:var(--accent);font-weight:var(--ui-action-font-weight);font-size:var(--ui-action-font-size);white-space:normal}
 .scan-existing-group-advanced{min-width:0;max-width:100%;
  border:1px solid var(--line,#d5d9df);border-radius:10px;padding:0 10px}
 .scan-existing-group-advanced summary{display:flex;align-items:center;
@@ -2642,7 +2656,6 @@ html,body{touch-action:pan-x pan-y}
 .scan-existing-group-advanced .formfield{margin:5px 0}
 .scan-existing-group-advanced .hint{font-size:12px;margin:5px 0 10px}
 @media(max-width:360px){
- .scan-picker-actions .secondary{padding:8px 9px}
  .scan-picker-actions{gap:5px}
 }
 
@@ -2753,7 +2766,132 @@ html,body{touch-action:pan-x pan-y}
  flex:none;width:19px;height:19px;color:var(--accent)
 }
 
-/* Queue recovery confirmation: keep long operation inventories scrollable. */
-.dialog-pending-ops{max-height:90dvh;display:flex;flex-direction:column}
-.dialog-pending-ops .dialog-description{max-width:100%;max-height:min(48dvh,400px);overflow-y:auto;overscroll-behavior:contain}
-.dialog-pending-ops .dialog-actions{flex-shrink:0}
+/* KS-006: group same-name household items while retaining individual IDs. */
+.item-group-row{margin-bottom:3px;border:1px solid var(--line);border-radius:11px;overflow:hidden;background:var(--card)}
+.item-group-header{display:flex;align-items:center;gap:9px;width:100%;min-height:52px;padding:6px 12px;border:0;background:inherit;color:inherit;text-align:left;cursor:pointer}
+.item-group-header .ui-chevron{flex:0 0 18px}
+.item-group-title{flex:1 1 auto;min-width:0;font-size:var(--ui-list-name-font-size,15px);font-weight:650;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.item-group-count{flex:0 0 auto;font-size:11px;color:var(--muted)}
+.item-group-stock{flex:0 0 auto;min-width:40px;text-align:center;font-size:12px;font-weight:600;padding:4px 7px;border:1px solid var(--line);border-radius:100px}
+.item-group-stock-off{background:var(--ui-stock-off-background)!important;color:var(--ui-stock-off-text)!important;border-color:var(--ui-stock-off-border)!important}
+.item-group-children{padding-left:12px;border-top:1px solid var(--line)}
+.item-group-child-row{margin-left:0!important}
+.item-group-row.drag-ghost{position:fixed!important;z-index:150;pointer-events:none;box-shadow:0 8px 20px #0002}
+.item-group-row.drag-placeholder{opacity:.3}
+
+/* Searchable household sub-item selection on the full-page receipt product form. */
+.scan-product-page{padding-bottom:calc(24px + env(safe-area-inset-bottom))}
+.scan-product-page .scan-product-group-field{min-width:0}
+.scan-product-page .scan-product-group-results{max-height:min(35dvh,240px)}
+.scan-product-page #scanProductForm>.formactions{margin:18px 0 0}
+.scan-product-group-results{max-height:170px;overflow:auto;overscroll-behavior:contain;border:1px solid var(--line);border-radius:10px}
+.scan-product-group-results .ui-choice-row{width:100%;border-bottom:1px solid var(--line)}
+.scan-product-group-results .ui-choice-row:last-child{border-bottom:0}
+.scan-group-current{font-size:12px;color:var(--muted);padding:5px 1px}
+
+/* KS-008: compact standardized minima above the existing product prices. */
+.normalized-price-summary{margin:6px 0 12px;padding:12px 13px;border:1px solid var(--line);border-radius:11px;background:var(--card)}
+.normalized-price-summary h3{font-size:13px;margin:0 0 8px;font-weight:700;color:var(--ink)}
+.normalized-price-row{display:grid;grid-template-columns:minmax(74px,1fr) auto;column-gap:8px;row-gap:2px;padding:5px 0;border-top:1px solid var(--line);font-size:13px}
+.normalized-price-row strong{font-size:16px;justify-self:end;font-variant-numeric:tabular-nums}
+.normalized-price-row small{grid-column:1/-1;color:var(--muted);font-size:11px}
+.normalized-price-exclusion{font-size:11px;color:var(--muted);margin:8px 0 0}
+.chain-price-pair{grid-area:value;display:flex;flex-direction:column;align-items:flex-end;gap:2px;min-width:0}
+.chain-price-pair .chain-price-value{grid-area:auto}
+.chain-price-pair small{font-size:10px;color:var(--muted);white-space:nowrap}
+/* Capacity remains editable through the product card swipe action. */
+
+/* Confirm many saved-receipt ChatGPT candidates without overflowing iPhone. */
+.dialog.dialog-receipt-bulk{display:flex;flex-direction:column;max-height:min(84dvh,700px);width:min(100%,520px)}
+.dialog-receipt-bulk .dialog-description{overflow-y:auto;overscroll-behavior:contain;min-height:0;max-height:52dvh;overflow-wrap:anywhere}
+.dialog-receipt-bulk .dialog-line{display:block;padding:3px 0}
+.record-detail-bulk{margin:14px 0 4px}
+.record-detail-bulk>button{width:100%}
+
+/* Receipt review: a resolved product is visually distinct from the original OCR. */
+.scan-review-item .scan-matched-product{margin:2px 0 var(--ui-field-group-gap)}
+.scan-review-item .scan-matched-product .ui-static-field-value{
+ color:var(--ink);font-weight:700;overflow-wrap:anywhere
+}
+.scan-review-item .scan-proposed-name .ui-static-field-value{
+ color:var(--ink);font-weight:600;overflow-wrap:anywhere
+}
+.record-detail-saved{margin:10px 0 14px;padding:10px 12px;border:1px solid var(--line);
+ border-radius:var(--ui-radius-card);background:var(--card);line-height:1.5}
+.record-detail-saved strong{display:block;font-size:14px}
+.record-detail-saved p{margin:4px 0 0;color:var(--muted);font-size:12px}
+.record-detail-guidance{margin:8px 0 14px;color:var(--muted);font-size:13px;line-height:1.55}
+.detail-record-line-meta.detail-product-proposal{color:var(--ink)}
+.detail-product-proposal .detail-candidate-origin{display:inline-flex;align-items:center;flex:none;color:var(--muted)}
+.detail-product-proposal .detail-candidate-origin svg{width:16px;height:16px}
+.detail-product-proposal .detail-candidate-origin+span::before{content:none;margin:0}
+
+
+/* A shared sparkle/green language for AI assistance. Never obscure input outlines. */
+.scan-ai-entry{color:#26814b!important;display:inline-flex;align-items:center;gap:6px}
+.scan-ai-entry svg{width:17px;height:17px;flex:none}
+.scan-ai-updated{color:#267b4a!important}
+.scan-ai-updated input,.scan-ai-updated .ui-static-field-value,
+.scan-ai-updated .ui-picker-value{color:#267b4a!important}
+.scan-ai-updated .ui-static-field-label::after,.scan-ai-updated label::after{
+ content:"✦";color:#267b4a;display:inline-block;font-size:12px;margin-left:6px
+}
+@media (prefers-color-scheme:dark){
+ .scan-ai-entry,.scan-ai-updated,.scan-ai-updated input,
+ .scan-ai-updated .ui-static-field-value,.scan-ai-updated .ui-picker-value{
+  color:#8edbad!important}
+ .scan-ai-updated .ui-static-field-label::after,.scan-ai-updated label::after{color:#8edbad}
+}
+.record-detail-benefit{margin:2px 0 12px;color:var(--muted);font-size:13px;line-height:1.55}
+/* Grey out the content, but keep the same-sized original card and action slot. */
+.scan-review-item.is-pending-delete{background:var(--card);border-color:var(--line)}
+.scan-review-item.is-pending-delete .scan-item-content > :not(.scan-item-head){
+ filter:grayscale(1);opacity:.40;pointer-events:none;user-select:none
+}
+.scan-review-item.is-pending-delete .scan-item-head>strong{color:var(--muted);opacity:.55}
+.scan-item-restore{font-weight:600}
+
+
+/* v0.94.5: one stable primary OCR action position before/after photo selection. */
+.scan-photo-sticky-action{
+ position:fixed;z-index:22;left:0;right:0;bottom:0;
+ padding:10px max(16px,calc((100vw - 720px)/2 + 16px))
+  calc(12px + env(safe-area-inset-bottom,0px));
+ background:var(--card);border-top:1px solid var(--line);
+ box-shadow:0 -2px 12px rgba(0,0,0,.055)
+}
+.scan-photo-sticky-action .scan-photo-primary-action{
+ display:flex;align-items:center;justify-content:center;gap:9px;
+ width:100%;min-height:48px;margin:0;font-size:16px
+}
+.scan-photo-sticky-action svg{width:18px;height:18px;flex:none}
+.receipt-scan-page:has(+ .scan-photo-sticky-action){
+ padding-bottom:calc(105px + env(safe-area-inset-bottom,0px))
+}
+.scan-photo-ready{margin:10px 0 0}
+
+/* Product setting and registered product now belong to the same receipt row. */
+.detail-record-product-row{
+ display:flex;justify-content:space-between;align-items:center;
+ gap:8px;min-width:0;margin-top:3px
+}
+.detail-record-product-row .detail-record-line-meta{
+ min-width:0;flex:1 1 auto;margin-top:0
+}
+.detail-record-product-row .record-product-setting-button{
+ flex:none;min-height:var(--ui-touch-size);padding:8px 2px;white-space:nowrap
+}
+
+/* Shared optional per-package capacity editor, not a purchase-quantity field. */
+.product-package-details{margin:6px 0 12px;min-width:0}
+.product-package-details>summary{
+ display:list-item;cursor:pointer;min-height:var(--ui-touch-size);
+ padding:10px 4px;font-size:14px;font-weight:var(--ui-action-font-weight);
+ color:var(--accent);list-style-position:inside
+}
+.product-package-details>summary:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.product-package-details .product-package-hint{
+ margin:2px 0 8px;font-size:12px;line-height:1.55
+}
+.product-package-details .ui-quantity-unit{margin:0 0 6px}
+.product-package-details .formfield{min-width:0}
