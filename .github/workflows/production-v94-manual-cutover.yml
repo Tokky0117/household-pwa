@@ -27,6 +27,7 @@ on:
 
 permissions:
   contents: write
+  actions: write
 
 concurrency:
   group: kurashi-production-v94-cutover
@@ -176,10 +177,15 @@ jobs:
           node scripts/verify-production-bootstrap.mjs "$RUNNER_TEMP/prod-v94-bootstrap.json"
       - name: Fast-forward production main only after verified new GAS
         if: inputs.stage == 'finish_manual'
+        env:
+          GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
           set -euo pipefail
           git fetch --prune origin '+refs/heads/main:refs/remotes/origin/main'
           git merge-base --is-ancestor refs/remotes/origin/main HEAD
           git push origin HEAD:refs/heads/main
-          echo 'The v0.94.5 PWA is now published after owner migration and GAS bootstrap verification.' >> "$GITHUB_STEP_SUMMARY"
+          # Commits made with GITHUB_TOKEN do NOT trigger push workflows.
+          # Explicit workflow_dispatch is required to deploy the updated main.
+          gh workflow run pages-previews.yml --ref main
+          echo 'v0.94.5 main updated; Pages deployment explicitly dispatched after GAS verification.' >> "$GITHUB_STEP_SUMMARY"
