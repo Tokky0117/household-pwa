@@ -1024,7 +1024,7 @@
     throw Error('候補が変更されました。再確認してください');
    if(!Array.isArray(selections)||selections.length!==plan.length)
     throw Error('日用品の選択を確認してください');
-   const snap=project(doc),names=new Map(),linked=new Set();
+   const snap=project(doc),names=new Map(),linked=new Set(),existingGroups=new Map();
    for(let i=0;i<plan.length;i++){
     const row=plan[i],groupId=String(selections[i]||'');
     if(!groupId)continue;
@@ -1035,6 +1035,9 @@
     if(productId){
      const existing=snap.products.find(p=>p.product_id===productId&&!p.deleted_at);
      if(!existing)throw Error('登録商品が見つかりません');
+     if(existingGroups.has(productId)&&existingGroups.get(productId)!==groupId)
+      throw Error('同じ商品には同じ日用品を選択してください');
+     existingGroups.set(productId,groupId);
      if(existing.household_item_id&&existing.household_item_id!==groupId)
       throw Error('別の日用品に登録済みの商品があります。変更先の価格情報から移動してください');
      if(!existing.household_item_id&&!linked.has(productId)){
