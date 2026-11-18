@@ -429,7 +429,7 @@ function recordProductView(){
   '<div class="scan-picker-actions">'+
   (chooseProduct?UI.textAction({label:'日用品から選ぶ',action:'recordProductShowHousehold'}):
    UI.textAction({label:'登録済みの商品を選ぶ',action:'recordProductShowList'}))+
-  (chooseProduct?UI.textAction({label:'新しい商品情報を入力',action:'recordProductShowNew'}):'')+
+  ''+
   '</div>';
  return UI.sheet({title:edit?'紐付けの編集':chooseProduct?'登録商品を選択':'日用品を選択',
    variant:'receipt-product-modal',backdropClass:'record-product-overlay',body});
@@ -1420,7 +1420,7 @@ let previousPage='list', previousSelected=null, listScrollPosition=0, compareQua
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const norm=s=>String(s).normalize('NFKC').trim().replace(/\s+/g,' ').toLocaleLowerCase('ja');
 
-const readingWords=[['牛乳','ぎゅうにゅう'],['醤油','しょうゆ'],['砂糖','さとう'],['若布','わかめ'],['洗剤','せんざい'],['生ごみ','なまごみ'],['保存','ほぞん'],['袋','ふくろ'],['野菜','やさい'],['乾電池','かんでんち'],['柔軟剤','じゅうなんざい']];
+const readingWords=[['牛乳','ぎゅうにゅう'],['醤油','しょうゆ'],['砂糖','さとう'],['若布','わかめ'],['洗剤','せんざい'],['生ごみ','なまごみ'],['保存','ほぞん'],['袋','ふくろ'],['麺','めん'],['野菜','やさい'],['乾電池','かんでんち'],['柔軟剤','じゅうなんざい']];
 const readingKey=value=>{
  let s=String(value||'').normalize('NFKC').toLocaleLowerCase('ja')
   .replace(/[\u30a1-\u30f6]/g,c=>String.fromCharCode(c.charCodeAt(0)-96))
@@ -1435,8 +1435,9 @@ function candidateScore(source,target,item=false,sub=''){
  if(!score){const grams=b.length>1?Array.from({length:b.length-1},(_,i)=>b.slice(i,i+2)):[b];
   score=Math.min(65,Math.round(65*grams.filter(x=>a.includes(x)).length/Math.max(1,grams.length)));}
  if(item){
-  if(c&&a.includes(c))score=Math.min(100,score+20);
+  if(c&&(a.includes(c)||c.endsWith('よう')&&a.includes(c.slice(0,-2))))score=Math.min(100,score+20);
   if(b==='ふくろ'&&/ぽり|びにーる|ほぞん|ごみ/.test(a))score=Math.max(score,85);
+  if(b==='ふくろ'&&/ふりーざーばっぐ|じっぷろっく/.test(a))score=Math.max(score,76);
   if(b==='ふくろ'&&/ふくろめん|てぃーばっぐ/.test(a))score=Math.min(score,8);
  }else{
   const numbers=v=>[...String(v).normalize('NFKC').matchAll(/\d+(?:\.\d+)?/g)].map(m=>m[0]).join(',');
