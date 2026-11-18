@@ -1001,6 +1001,59 @@
   void flush();
   return {product_id:createdId};
  }
+ // Bulk receipt assignment preserves the product master as the stable price
+ // comparison unit; each chosen line is matched to an existing product or
+ // creates one group-linked product in a single durable queue transaction.
+ async function bulkRegisterReceiptHouseholds(receiptId,expectedIds,selections){
+  await boot();if(!workspace.base)await load();
+  let applied=0;
+  await modify(doc=>{
+   const plan=planBulkReceipt(doc,receiptId);
+   if(!Array.isArray(expectedIds)||expectedIds.length!==plan.length||
+      plan.some((line,i)=>line.record_item_id!==expectedIds[i]))
+    throw Error('候補が変更されました。再確認してください');
+   if(!Array.isArray(selections)||selections.length!==plan.length)
+    throw Error('日用品の選択を確認してください');
+   const snap=project(doc),names=new Map(),linked=new Set();
+   for(let i=0;i<plan.length;i++){
+    const row=plan[i],groupId=String(selections[i]||'');
+    if(!groupId)continue;
+    if(!snap.household_items.some(x=>!x.deleted_at&&x.household_item_id===groupId))
+     throw Error('登録先の日用品が見つかりません');
+    const key=receiptProductKey(row.proposed_name);
+    let productId=row.product_id;
+    if(productId){
+     const existing=snap.products.find(p=>p.product_id===productId&&!p.deleted_at);
+     if(!existing)throw Error('登録商品が見つかりません');
+     if(existing.household_item_id&&existing.household_item_id!==groupId)
+      throw Error('別の日用品に登録済みの商品があります。変更先の価格情報から移動してください');
+     if(!existing.household_item_id&&!linked.has(productId)){
+      doc.queue.push(makeProductOperation('product.update',{
+       product_id:productId,household_item_id:groupId
+      },doc));linked.add(productId);
+     }
+    }else if(names.has(key)){
+     const prev=names.get(key);
+     if(prev.groupId!==groupId)throw Error('同じ商品には同じ日用品を選択してください');
+     productId=prev.productId;
+    }else{
+     const capacity=window.KurashiProductPackage?.infer(row.proposed_name);
+     const create=makeProductOperation('product.create',{
+      name:row.proposed_name,household_item_id:groupId,
+      package_quantity:capacity?.quantity??null,package_unit:capacity?.unit??null
+     },doc);
+     doc.queue.push(create);
+     productId=create.clientId;names.set(key,{groupId,productId});
+    }
+    doc.queue.push({id:operationId(),kind:'record-item-link',
+     targetId:row.record_item_id,productId,retries:0});
+    applied++;
+   }
+   if(!applied)throw Error('日用品を1件以上選択してください');
+   return doc;
+  });
+  void flush();return applied;
+ }
  async function bulkRegisterReceiptProducts(receiptId,expectedItemIds){
   await boot();
   if(!workspace.base)await load();
@@ -1885,7 +1938,7 @@
   }).catch(e=>{error=e.message||'端末内の保存領域を開けません';notify()});
  };
  window.KurashiLive={state,load,save,saveRecord,updateRecord,deleteRecord,linkRecordItem,registerReceiptItemProduct,linkReceiptToHouseholdItem,
-  previewBulkReceiptProducts,bulkRegisterReceiptProducts,receiptProductKey,
+  previewBulkReceiptProducts,bulkRegisterReceiptProducts,bulkRegisterReceiptHouseholds,receiptProductKey,
   resolveRecordId:id=>workspace.recordIdMap?.[id]||id,
   resolveRecordItemId:id=>workspace.recordItemIdMap?.[id]||id,blockedReceiptChange,discardBlockedReceipt,blockedProductChange,resolveBlockedProduct,refreshBlockedProducts,pendingOperationReview,beginPendingOperationReview,endPendingOperationReview,discardPendingOperations,confirmedProductId,learnAliases,linkAlias,learnStoreAlias,
   saveReceiptDraft,loadReceiptDraft,saveOcrCorrections,loadOcrCorrections,toggleStock,reorderItems,reorderProducts,retry,logout,renderLogin,
