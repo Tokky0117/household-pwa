@@ -927,7 +927,10 @@
    if(!snap.household_items.some(i=>i.household_item_id===householdItemId&&!i.deleted_at))
     throw Error('日用品が見つかりません');
    if(!validReceiptProductName(name))throw Error('商品名を確認してください');
-   const found=snap.products.filter(p=>!p.deleted_at&&receiptLooseKey(p.name)===receiptLooseKey(name));
+   const linked=line.linked_product_id?snap.products.find(p=>!p.deleted_at&&
+    p.product_id===confirmedProductId(line.linked_product_id)):null;
+   const found=linked?[linked]:snap.products.filter(p=>!p.deleted_at&&
+    receiptLooseKey(p.name)===receiptLooseKey(name));
    if(found.length>1)throw Error('同じ名前の商品が複数あります。登録商品を確認してください');
    if(found[0]){
     const p=found[0];
