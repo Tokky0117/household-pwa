@@ -191,6 +191,7 @@ const scanAiProductSavingRows=new Set();
 let storePickerTarget=null,storePickerQuery='',storePickerNewMode=false;
 let recordProductItemId=null,recordProductMode='household',recordProductQuery='',recordProductSaving=false,recordBulkSaving=false;
 let recordProductGroupId='';
+let recordBulkAssignments=new Map(),recordBulkActiveId=null,recordBulkQuery='';
 function saveScanDraft(){
  if(!liveMode||!window.KurashiLive?.saveReceiptDraft)return;
  const snapshot=scanDraft?JSON.parse(JSON.stringify(scanDraft)):null;
@@ -347,6 +348,49 @@ function recordProductLine(){
  return allPreviewItems().find(x=>x.record_item_id===resolved&&!x.deleted_at &&
   allPreviewRecords().some(r=>r.record_id===x.record_id&&r.record_type==='receipt'&&!r.deleted_at))||null;
 }
+function recordBulkView(){
+ const candidates=window.KurashiLive?.previewBulkReceiptProducts?.(recordDetailId)||[];
+ const rows=candidates.map(row=>{
+  const item=items.find(i=>i.id===recordBulkAssignments.get(row.record_item_id));
+  const top=householdCandidates(row.proposed_name)[0];
+  const capacity=guessedPackage(row.proposed_name);
+  return '<section class="panel bulk-household-row">'+
+   '<strong>'+esc(row.proposed_name)+'</strong>'+
+   '<p class="hint">内容量：'+esc(capacity?capacity.quantity+capacity.unit:'未設定')+'</p>'+
+   '<p class="hint">候補：'+esc(top?itemLabel(top.item):'なし')+'</p>'+
+   UI.button({label:item?itemLabel(item):'日用品を選択',variant:item?'secondary':'tertiary',
+    action:'recordBulkPick',recordItemId:row.record_item_id})+
+   '</section>';
+ }).join('');
+ const selectedCount=candidates.filter(x=>recordBulkAssignments.get(x.record_item_id)).length;
+ return head('日用品をまとめて設定','',true)+
+  '<main class="manage-main bulk-household-main"><p class="hint">日用品を選んだ明細だけを紐付けます。商品の登録・再利用は自動で行います。</p>'+
+  rows+UI.button({label:'選択した'+selectedCount+'件を紐付ける',variant:'primary',
+    action:'recordBulkConfirm',disabled:!selectedCount||recordBulkSaving})+'</main>';
+}
+function recordBulkHouseholdChoices(){
+ const plan=window.KurashiLive?.previewBulkReceiptProducts?.(recordDetailId)||[];
+ const row=plan.find(x=>x.record_item_id===recordBulkActiveId);
+ if(!row)return '';
+ const candidates=householdCandidates(row.proposed_name,recordBulkQuery);
+ return candidates.map(({item:i,score})=>UI.button({label:itemLabel(i)+' ・ 一致度 '+score+'%',
+  variant:'tertiary',action:'recordBulkChooseGroup',
+  data:{'data-household-id':i.id}})).join('')+
+  UI.button({label:'選択しない',variant:'tertiary',action:'recordBulkChooseGroup',
+   data:{'data-household-id':''}});
+}
+function recordBulkHouseholdView(){
+ return UI.sheet({title:'日用品を選択',variant:'receipt-product-modal',
+  backdropClass:'record-bulk-household-overlay',
+  body:UI.searchField({id:'record-bulk-household-search',label:'日用品を検索',
+   placeholder:'日用品名で検索',value:recordBulkQuery})+
+   '<div id="record-bulk-household-results" class="scan-existing-results">'+
+    recordBulkHouseholdChoices()+'</div>'});
+}
+function closeRecordBulkHousehold(){
+ app.querySelector('.record-bulk-household-overlay')?.remove();
+ recordBulkActiveId=null;recordBulkQuery='';syncSheetScrollLock();
+}
 function recordProductChoices(){
  const line=recordProductLine();if(!line)return '';
  const source=line.product_name_candidate||aliasNameFor(line);
@@ -492,7 +536,7 @@ function recordDetailView(){
    </div>
   </section>
 
- ${bulkCandidates.length?'<div class="record-detail-bulk">'+UI.button({label:'候補をまとめて登録（'+bulkCandidates.length+'件）',icon:'sparkles',variant:'secondary',action:'recordBulkPreview',disabled:recordBulkSaving})+'</div>':''}
+ ${bulkCandidates.length?'<div class="record-detail-bulk">'+UI.button({label:'候補の日用品をまとめて設定（'+bulkCandidates.length+'件）',icon:'sparkles',variant:'secondary',action:'recordBulkPreview',disabled:recordBulkSaving})+'</div>':''}
   <section class="detail-record-lines" aria-label="${isShelf?'価格情報':'購入明細'}">
    ${UI.sectionHeading({title:isShelf?'価格情報':'購入明細',subtitle:detail.length+'件'})}
    ${!isShelf&&detail.some(line=>!line.linked_product_id)?'<p class="record-detail-benefit">日用品を設定すると、購入履歴を価格比較に活用できます。</p>':''}
@@ -2087,6 +2131,7 @@ function pageView(){
   case 'recordScan': return receiptScanView();
   case 'recordChatGpt': return receiptChatGptView();
   case 'recordDetail': return recordDetailView();
+   case 'receiptBulk': return recordBulkView();
    case 'receiptProductCreate': return receiptProductCreateView();
   case 'detailAll': return detailAllView();
   case 'scanProduct': return scanProductView();
@@ -2139,7 +2184,7 @@ function render(){
  const enteringScanProduct=page==='scanProduct'&&previousPage==='scanExistingProduct';
  const scrollReset=enteringProductCreate||enteringScanProduct||
   !currentModal&&!wasModal&&(page!==previousPage||(page==='compare'&&selected!==previousSelected));
- const focus=['add','edit','products','productPick','productCreate','scanProduct','recordScan','recordChatGpt','recordDetail','receiptProductCreate'].includes(page);
+ const focus=['add','edit','products','productPick','productCreate','scanProduct','recordScan','recordChatGpt','recordDetail','receiptProductCreate','receiptBulk'].includes(page);
  const modal=page==='scanExistingProduct'?scanExistingProductView():page==='productPick'?pickerView():page==='productEdit'?productCreateView():currentModal?formView():'';
  const overlay=dialogView();
  app.innerHTML=`<div class="shell ${focus?'focus':''}">${pageView()}</div>${modal}${overlay}`;
@@ -2148,6 +2193,7 @@ function render(){
   app.insertAdjacentHTML('beforeend',storePickerView());
  else storePickerTarget=null;
  if(recordProductItemId&&page==='recordDetail')app.insertAdjacentHTML('beforeend',recordProductView());
+  if(recordBulkActiveId&&page==='receiptBulk')app.insertAdjacentHTML('beforeend',recordBulkHouseholdView());
  if(masterGroupPickerOpen&&['masterProductEdit','masterProductNew'].includes(page))
   app.insertAdjacentHTML('beforeend',masterGroupPickerView());
  else masterGroupPickerOpen=false;
@@ -2334,7 +2380,9 @@ function back(){
   if(page==='aliasManage'){page='list';tab='settings';render();return;}
   if(page==='scanExistingProduct'){page='recordScan';scanExistingQuery='';scanProductRow=null;render();return;}
   if(page==='scanProduct'){page='scanExistingProduct';scanGroupQuery='';scanProductGroupId='';render();return;}
-  if(page==='receiptProductCreate'){page='recordDetail';recordProductMode='household';render();return;}
+  if(recordBulkActiveId){closeRecordBulkHousehold();return;}
+   if(page==='receiptBulk'){page='recordDetail';recordBulkAssignments.clear();render();return;}
+   if(page==='receiptProductCreate'){page='recordDetail';recordProductMode='household';render();return;}
    if(page==='recordDetail'){page=recordDetailOrigin;tab='receipt';render();return;}
   if(page==='detailAll'){page='list';tab='receipt';render();return;}
   if(page==='recordChatGpt'){
@@ -2445,7 +2493,7 @@ app.addEventListener('input',e=>{
 function updateSearchResults(){const target=document.getElementById('item-results');if(target){target.innerHTML=listResults();if(openSwipeId)setOpenSwipe(openSwipeId)}}
 const searchBindings={'store-picker-search':{set:v=>{storePickerQuery=v},update:()=>{
  const target=document.getElementById('store-picker-results');if(target)target.innerHTML=storePickerChoices()
-}},search:{set:v=>{query=v},update:updateSearchResults},'catalogue-search':{set:v=>{pickQuery=v},update:()=>{const target=document.getElementById('catalogue-results');if(target)target.innerHTML=pickerResults()}},'alias-query':{set:v=>{aliasQuery=v;aliasVisibleLimit=100},update:()=>{const rows=document.getElementById('alias-results');if(rows)rows.innerHTML=aliasManageRows()}},'alias-product-search':{set:v=>{aliasPickerQuery=v},update:()=>{const rows=document.getElementById('alias-product-results');if(rows)rows.innerHTML=aliasProductPickerRows()}},'master-group-search':{set:v=>{masterGroupQuery=v},update:()=>{const rows=document.getElementById('master-group-results');if(rows)rows.innerHTML=masterGroupPickerRows()}},'master-product-query':{set:v=>{masterQuery=v},update:()=>{const rows=document.getElementById('master-product-results');if(rows)rows.innerHTML=masterProductRows()}},'scan-existing-search':{set:v=>{scanExistingQuery=v},update:()=>{const target=document.getElementById('scan-existing-results');if(target)target.innerHTML=scanExistingProductResults()}},'scan-group-search':{set:v=>{scanGroupQuery=v},update:()=>{const target=document.getElementById('scan-product-group-results');if(target)target.innerHTML=scanProductGroupChoices()}},'record-product-search':{set:v=>{recordProductQuery=v},update:()=>{const target=document.getElementById('record-product-results');if(target)target.innerHTML=recordProductMode==='select'?recordProductChoices():recordHouseholdChoices()}}};
+}},search:{set:v=>{query=v},update:updateSearchResults},'catalogue-search':{set:v=>{pickQuery=v},update:()=>{const target=document.getElementById('catalogue-results');if(target)target.innerHTML=pickerResults()}},'alias-query':{set:v=>{aliasQuery=v;aliasVisibleLimit=100},update:()=>{const rows=document.getElementById('alias-results');if(rows)rows.innerHTML=aliasManageRows()}},'alias-product-search':{set:v=>{aliasPickerQuery=v},update:()=>{const rows=document.getElementById('alias-product-results');if(rows)rows.innerHTML=aliasProductPickerRows()}},'master-group-search':{set:v=>{masterGroupQuery=v},update:()=>{const rows=document.getElementById('master-group-results');if(rows)rows.innerHTML=masterGroupPickerRows()}},'master-product-query':{set:v=>{masterQuery=v},update:()=>{const rows=document.getElementById('master-product-results');if(rows)rows.innerHTML=masterProductRows()}},'scan-existing-search':{set:v=>{scanExistingQuery=v},update:()=>{const target=document.getElementById('scan-existing-results');if(target)target.innerHTML=scanExistingProductResults()}},'scan-group-search':{set:v=>{scanGroupQuery=v},update:()=>{const target=document.getElementById('scan-product-group-results');if(target)target.innerHTML=scanProductGroupChoices()}},'record-product-search':{set:v=>{recordProductQuery=v},update:()=>{const target=document.getElementById('record-product-results');if(target)target.innerHTML=recordProductMode==='select'?recordProductChoices():recordHouseholdChoices()}},'record-bulk-household-search':{set:v=>{recordBulkQuery=v},update:()=>{const target=document.getElementById('record-bulk-household-results');if(target)target.innerHTML=recordBulkHouseholdChoices()}}};
 function syncSearch(input,refresh=true){const binding=searchBindings[input.id];if(!binding)return;binding.set(input.value);input.closest('.ui-search')?.querySelector('.clear-search')?.toggleAttribute('hidden',!input.value);if(refresh)binding.update()}
 app.addEventListener('compositionstart',e=>{if(searchBindings[e.target.id])composing=true});
 app.addEventListener('compositionend',e=>{if(searchBindings[e.target.id]){composing=false;syncSearch(e.target)}});
@@ -2799,7 +2847,7 @@ if(form.id==='productCreateForm'){
  if(page==='productEdit'){const p=catalogue.products.find(x=>x.id===editingProductId&&x.householdItemId===selected);if(!p){fieldNotice(form,'商品が見つかりません','new-product-name');return}Object.assign(p,{name,packageQuantity:productQty,packageUnit:productUnit})}else{catalogue.products.push({id:id(),name,packageQuantity:productQty,packageUnit:productUnit,householdItemId:selected,householdItemOrder:registeredProducts(selected).length+1,aliases:[]})}
  persistCatalogue();page='compare';initializeCompare();render();
 }});
-app.addEventListener('click',e=>{if(e.target.classList?.contains('record-product-overlay')){closeRecordProductPicker();return}if(e.target.classList?.contains('alias-product-picker-overlay')){closeAliasProductPicker();return}if(e.target.classList?.contains('master-group-picker-overlay')){closeMasterGroupPicker();return}if(e.target.classList?.contains('store-picker-overlay')){closeStorePicker();return}if(e.target.classList?.contains('sheet-back')&&['add','edit','productEdit','productPick','scanExistingProduct'].includes(page)){back();return}if(suppressClick){e.preventDefault();e.stopPropagation();suppressClick=false;return}
+app.addEventListener('click',e=>{if(e.target.classList?.contains('record-product-overlay')){closeRecordProductPicker();return}if(e.target.classList?.contains('record-bulk-household-overlay')){closeRecordBulkHousehold();return}if(e.target.classList?.contains('alias-product-picker-overlay')){closeAliasProductPicker();return}if(e.target.classList?.contains('master-group-picker-overlay')){closeMasterGroupPicker();return}if(e.target.classList?.contains('store-picker-overlay')){closeStorePicker();return}if(e.target.classList?.contains('sheet-back')&&['add','edit','productEdit','productPick','scanExistingProduct'].includes(page)){back();return}if(suppressClick){e.preventDefault();e.stopPropagation();suppressClick=false;return}
 if(swipeClickGuard&&e.detail!==0){e.preventDefault();e.stopPropagation();swipeClickGuard=null;return;}
 const exposedItem=e.target.closest('.swipe-item[data-item-id].swipe-open');
 if(exposedItem&&!e.target.closest('.swipe-actions')){
