@@ -627,7 +627,7 @@ assert.ok(savedShelfDetail.includes('>値札確認日</span>')&&
 ui.setRecordDetailId(ui.allPreviewRecords().at(-1).record_id);
 const unnamedReceiptDetail=ui.recordDetailView();
 assert.ok(unnamedReceiptDetail.includes('明細名なし')&&
- unnamedReceiptDetail.includes('商品未紐付け')&&
+ unnamedReceiptDetail.includes('日用品未設定')&&
  unnamedReceiptDetail.includes('数量 2'),
  'Unnamed and unmatched saved receipt line remains accessible');
 
