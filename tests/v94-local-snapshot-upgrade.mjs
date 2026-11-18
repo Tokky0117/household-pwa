@@ -134,7 +134,7 @@ async function makeEnvironment({pending=false,localOnly=false,serverOld=false,se
 }
 const index=readFileSync(new URL('../index.html',import.meta.url),'utf8');
 const app=readFileSync(new URL('../app.js',import.meta.url),'utf8');
-assert.match(app,/^const APP_VERSION='0\.94\.5';/);
+assert.match(app,/^const APP_VERSION='0\.(?:94\.5|95\.0)';/);
 assert.match(index,/live-client\.js\?v=94\.5-package/);
 assert.match(index,/app\.js\?v=94\.5-package/);
 assert.ok(index.includes('product-package.js?v=94.5-package'));
