@@ -957,6 +957,11 @@
      mapping.auto_match_product_id!==productId)
     doc.queue.push({id:operationId(),kind:'alias-link',
      receiptNameId:mapping.receipt_name_id,productId,version:Number(mapping.version),retries:0});
+   if(nameId&&(!mapping||String(mapping.receipt_name_id).startsWith('local-'))){
+    const raw=String(mapping?.ocr_name||'').trim();
+    if(raw)doc.queue.push({id:operationId(),kind:'alias-create',clientId:'local-'+uid(),
+     chainId:receipt.chain_id,productId,alias:raw,retries:0});
+   }
    return doc;
   });
   void flush();return {product_id:productId};
