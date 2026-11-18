@@ -914,6 +914,53 @@
  }
  // A single user tap durably enqueues BOTH master creation and line linking.
  // Never leave an orphan master if the app closes between separate transactions.
+ // Create or reuse the canonical product, attach it to a household item and
+ // link this receipt in one atomic local transaction, preserving offline order.
+ async function linkReceiptToHouseholdItem(recordItemId,householdItemId,name,packageValue={}){
+  await boot();if(!workspace.base)await load();
+  let productId=null;
+  await modify(doc=>{
+   const snap=project(doc),mapped=doc.recordItemIdMap?.[recordItemId]||recordItemId;
+   const line=snap?.record_items.find(x=>x.record_item_id===mapped&&!x.deleted_at);
+   const receipt=snap?.records.find(r=>r.record_id===line?.record_id&&!r.deleted_at&&r.record_type==='receipt');
+   if(!line||!receipt)throw Error('レシート明細が見つかりません');
+   if(!snap.household_items.some(i=>i.household_item_id===householdItemId&&!i.deleted_at))
+    throw Error('日用品が見つかりません');
+   if(!validReceiptProductName(name))throw Error('商品名を確認してください');
+   const found=snap.products.filter(p=>!p.deleted_at&&receiptLooseKey(p.name)===receiptLooseKey(name));
+   if(found.length>1)throw Error('同じ名前の商品が複数あります。登録商品を確認してください');
+   if(found[0]){
+    const p=found[0];
+    if(p.household_item_id&&p.household_item_id!==householdItemId)
+     throw Error('別の日用品に登録済みです。変更先の価格情報から商品を移動してください');
+    productId=p.product_id;
+    if(!p.household_item_id)doc.queue.push(makeProductOperation('product.update',{
+     product_id:p.product_id,household_item_id:householdItemId
+    },doc));
+   }else{
+    const create=makeProductOperation('product.create',{
+     name,household_item_id:householdItemId,
+     package_quantity:packageValue?.quantity??null,
+     package_unit:packageValue?.unit??null
+    },doc);
+    doc.queue.push(create);productId=create.clientId;
+   }
+   const nameId=line.receipt_name_id&&!line.non_ocr_name?line.receipt_name_id:null;
+   const siblings=snap.record_items.filter(x=>!x.deleted_at&&x.record_id===line.record_id&&
+     (x.record_item_id===mapped||nameId&&x.receipt_name_id===nameId&&!x.non_ocr_name));
+   for(const target of siblings)if(target.linked_product_id!==productId)
+    doc.queue.push({id:operationId(),kind:'record-item-link',
+     targetId:target.record_item_id,productId,retries:0});
+   const mapping=nameId&&snap.receipt_name_mappings.find(a=>
+     a.receipt_name_id===nameId&&a.chain_id===receipt.chain_id);
+   if(mapping&&!String(mapping.receipt_name_id).startsWith('local-')&&
+     mapping.auto_match_product_id!==productId)
+    doc.queue.push({id:operationId(),kind:'alias-link',
+     receiptNameId:mapping.receipt_name_id,productId,version:Number(mapping.version),retries:0});
+   return doc;
+  });
+  void flush();return {product_id:productId};
+ }
  async function registerReceiptItemProduct(recordItemId,name,packageValue={quantity:null,unit:null}){
   await boot();
   if(!workspace.base)await load();
@@ -1837,7 +1884,7 @@
    else void load();
   }).catch(e=>{error=e.message||'端末内の保存領域を開けません';notify()});
  };
- window.KurashiLive={state,load,save,saveRecord,updateRecord,deleteRecord,linkRecordItem,registerReceiptItemProduct,
+ window.KurashiLive={state,load,save,saveRecord,updateRecord,deleteRecord,linkRecordItem,registerReceiptItemProduct,linkReceiptToHouseholdItem,
   previewBulkReceiptProducts,bulkRegisterReceiptProducts,receiptProductKey,
   resolveRecordId:id=>workspace.recordIdMap?.[id]||id,
   resolveRecordItemId:id=>workspace.recordItemIdMap?.[id]||id,blockedReceiptChange,discardBlockedReceipt,blockedProductChange,resolveBlockedProduct,refreshBlockedProducts,pendingOperationReview,beginPendingOperationReview,endPendingOperationReview,discardPendingOperations,confirmedProductId,learnAliases,linkAlias,learnStoreAlias,
