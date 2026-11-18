@@ -2895,3 +2895,19 @@ html,body{touch-action:pan-x pan-y}
 }
 .product-package-details .ui-quantity-unit{margin:0 0 6px}
 .product-package-details .formfield{min-width:0}
+
+/* v95 preview: compact association editor and readable ranked candidates. */
+.half-sheet.receipt-product-modal:has(.scan-existing-picker){height:auto;max-height:min(76dvh,630px)}
+.half-sheet.receipt-product-modal:has(.scan-existing-picker)>.sheet-body{flex:0 1 auto}
+.receipt-product-modal .household-candidate-button,
+.receipt-product-modal .scan-existing-results>.household-candidate-button{
+ display:flex;width:100%;min-height:48px;justify-content:flex-start;text-align:left;
+ margin:0 0 6px;padding:11px 12px;border:1px solid var(--line,#d5d9df);
+ border-radius:var(--ui-radius-control);background:var(--card,#fff);
+ color:var(--ink);font-size:var(--ui-value-font-size)
+}
+.receipt-product-modal .scan-existing-results{display:flex;flex-direction:column;gap:6px;min-height:0}
+.bulk-household-main{display:flex;flex-direction:column;gap:12px;padding-bottom:calc(80px + env(safe-area-inset-bottom))}
+.bulk-household-row{display:flex;flex-direction:column;gap:8px;padding:14px}
+.bulk-household-row>.hint{margin:0}
+.bulk-household-row>.secondary,.bulk-household-row>.tertiary{min-height:44px}
