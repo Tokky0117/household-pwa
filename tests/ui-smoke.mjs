@@ -513,7 +513,8 @@ assert.ok(css.includes('.shop-compare-dock{')&&css.includes('position:fixed'),'D
 const picker=ui.pickerView();
 assert.ok(picker.includes('class="half-sheet product-picker-modal"')&&picker.includes('id="catalogue-search"'));
 assert.ok(picker.includes('data-act="productCreate"')&&picker.includes('まだ買っていない商品も登録できます'),'Picker supports new product creation');
-assert.ok(ui.pickerResults().indexOf('低脂肪乳')<ui.pickerResults().indexOf('おいしい牛乳'));
+assert.ok(ui.pickerResults().includes('一致度'),'Price-information picker shows ranked matches rather than all products');
+assert.ok(!ui.pickerResults().includes('おいしい牛乳'),'Already-linked products are omitted from suggestions');
 assert.ok(css.includes('height:min(72dvh,620px)'),'Stable picker height');
 assert.ok(css.includes('.comparison-main .chain-price-row{'),'Chain rows share visual hierarchy');
 assert.ok(css.includes('.swipe-item.drag-ghost,')&&css.includes('border-radius:11px!important'),'Drag styling preserved');
