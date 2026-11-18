@@ -2366,7 +2366,8 @@ function goBack(){
   }
   menu=false;
   if(page==='compare'){page='list';compareQuantity=null;compareUnit='';shopExpanded=false;openSwipeId=null;}
-  else if(page==='productCreate')page='productPick';
+  else if(page==='receiptProductCreate'){page='recordDetail';recordProductMode='household';}
+   else if(page==='productCreate')page='productPick';
   else if(page==='productEdit'){page='compare';initializeCompare();}
   else if(page==='productPick'){page='compare';initializeCompare();}
   else if(page==='edit')page=editReturnPage;
@@ -2384,7 +2385,24 @@ function back(){
   if(page==='scanProduct'){page='scanExistingProduct';scanGroupQuery='';scanProductGroupId='';render();return;}
   if(recordBulkActiveId){closeRecordBulkHousehold();return;}
    if(page==='receiptBulk'){page='recordDetail';recordBulkAssignments.clear();render();return;}
-   if(page==='receiptProductCreate'){page='recordDetail';recordProductMode='household';render();return;}
+   if(page==='receiptProductCreate'){
+    const form=document.getElementById('recordProductCreateForm'),line=recordProductLine();
+    if(form&&line){
+     const d=new FormData(form),original=String(line.product_name_candidate||aliasNameFor(line)||'');
+     const capacity=guessedPackage(original);
+     const enteredQty=String(d.get('quantity')||'').trim();
+     const changed=String(d.get('name')||'').trim()!==original||
+      enteredQty!==(capacity?String(capacity.quantity):'')||
+      (enteredQty&&String(d.get('unit')||'')!==String(capacity?.unit||'g'));
+     if(changed){
+      dialog={title:'変更を破棄しますか？',message:'保存していない商品情報は失われます。',
+       buttons:[{id:'discardChanges',label:'変更を破棄',danger:true},
+        {id:'cancel',label:'編集を続ける'}]};
+      renderDialogOnly();return;
+     }
+    }
+    page='recordDetail';recordProductMode='household';render();return;
+   }
    if(page==='recordDetail'){page=recordDetailOrigin;tab='receipt';render();return;}
   if(page==='detailAll'){page='list';tab='receipt';render();return;}
   if(page==='recordChatGpt'){
