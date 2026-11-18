@@ -1,4 +1,4 @@
-const APP_VERSION='0.94.5';
+const APP_VERSION='0.95.0-preview';
 const CATS=['食品・飲料','キッチン','洗面・風呂','洗濯・掃除','その他','調味料'];
 const CAT_ORDER=[0,5,1,2,3,4];
 const liveMode=!!window.KurashiLive; // Data source only; original Preview v46 UI components remain.
@@ -1333,6 +1333,45 @@ async function runReceiptScan(){
 let previousPage='list', previousSelected=null, listScrollPosition=0, compareQuantity=null,compareUnit='',shopExpanded=false,editReturnPage='list',openSwipeId=null;
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const norm=s=>String(s).normalize('NFKC').trim().replace(/\s+/g,' ').toLocaleLowerCase('ja');
+
+const readingWords=[['牛乳','ぎゅうにゅう'],['醤油','しょうゆ'],['砂糖','さとう'],['若布','わかめ'],['洗剤','せんざい'],['生ごみ','なまごみ'],['保存','ほぞん'],['袋','ふくろ'],['野菜','やさい'],['乾電池','かんでんち'],['柔軟剤','じゅうなんざい']];
+const readingKey=value=>{
+ let s=String(value||'').normalize('NFKC').toLocaleLowerCase('ja')
+  .replace(/[\u30a1-\u30f6]/g,c=>String.fromCharCode(c.charCodeAt(0)-96))
+  .replace(/[\s\p{P}\p{S}]/gu,'');
+ for(const [word,kana] of readingWords)s=s.replaceAll(word,kana);
+ return s;
+};
+function candidateScore(source,target,item=false,sub=''){
+ const a=readingKey(source),b=readingKey(target),c=readingKey(sub);
+ if(!a||!b)return 0;
+ let score=a===b?100:a.includes(b)?Math.min(95,74+Math.round(20*b.length/a.length)):b.includes(a)?75:0;
+ if(!score){const grams=b.length>1?Array.from({length:b.length-1},(_,i)=>b.slice(i,i+2)):[b];
+  score=Math.min(65,Math.round(65*grams.filter(x=>a.includes(x)).length/Math.max(1,grams.length)));}
+ if(item){
+  if(c&&a.includes(c))score=Math.min(100,score+20);
+  if(b==='ふくろ'&&/ぽり|びにーる|ほぞん|ごみ/.test(a))score=Math.max(score,85);
+  if(b==='ふくろ'&&/ふくろめん|てぃーばっぐ/.test(a))score=Math.min(score,8);
+ }else{
+  const numbers=v=>[...String(v).normalize('NFKC').matchAll(/\d+(?:\.\d+)?/g)].map(m=>m[0]).join(',');
+  if(numbers(source)&&numbers(target)&&numbers(source)!==numbers(target))score=Math.min(score,60);
+ }
+ return Math.round(score);
+}
+function householdCandidates(source,query=''){
+ const q=readingKey(query);
+ return items.filter(i=>!i.hidden).map(i=>({item:i,score:candidateScore(source,i.name,true,i.subName)}))
+  .filter(r=>q?readingKey(itemLabel(r.item)).includes(q):r.score>=20)
+  .sort((a,b)=>b.score-a.score||itemLabel(a.item).localeCompare(itemLabel(b.item),'ja')).slice(0,5);
+}
+function productCandidates(source,query='',excludeItem=''){
+ const q=readingKey(query);
+ return catalogue.products.filter(p=>p.householdItemId!==excludeItem)
+  .map(p=>({product:p,score:candidateScore(source,p.name)}))
+  .filter(r=>q?readingKey(r.product.name).includes(q)||productMatches(r.product,query):r.score>=20)
+  .sort((a,b)=>b.score-a.score||a.product.name.localeCompare(b.product.name,'ja')).slice(0,5);
+}
+
 const id=()=>crypto.randomUUID?.()||`id-${Date.now()}-${Math.random()}`;
 function persist(){if(!liveMode)localStorage.setItem(key,JSON.stringify(items))}function visible(){return items.filter(i=>!i.hidden)}function current(){return items.find(i=>i.id===selected)}
 const icons={items:'<rect x="4" y="5" width="16" height="16" rx="2"/><path d="M4 11h16M10 5v16"/>',receipt:'<path d="M6 3h12v18l-3-2-3 2-3-2-3 2z"/><path d="M9 8h6M9 12h6"/>',budget:'<rect x="3" y="5" width="18" height="15" rx="3"/><path d="M3 10h18M16 15h3"/>',settings:'<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.9 4.9 7 7M17 17l2.1 2.1M2 12h3M19 12h3M4.9 19.1 7 17M17 7l2.1-2.1"/>'};
@@ -1656,10 +1695,10 @@ function productsView(){
 
 
 function pickerResults(){
- const pool=catalogue.products.filter(p=>productMatches(p,pickQuery)).sort((a,b)=>Number(Boolean(a.householdItemId))-Number(Boolean(b.householdItemId)) || (a.name||'').localeCompare(b.name||'','ja'));
- return pool.map(p=>{
+ const pool=productCandidates(itemLabel(current()),pickQuery,selected);
+ return pool.map(({product:p,score})=>{
   const existing=p.householdItemId===selected;
-  const sub=`${p.packageQuantity&&p.packageUnit?p.packageQuantity+p.packageUnit:'内容量未設定'} ・ ${p.householdItemId?'登録先：'+linkedItemName(p):'未登録'}`;
+  const sub=`一致度 ${score}% ・ ${p.packageQuantity&&p.packageUnit?p.packageQuantity+p.packageUnit:'内容量未設定'} ・ ${p.householdItemId?'登録先：'+linkedItemName(p):'未登録'}`;
   return UI.catalogueRow({title:p.name,lines:[sub],data:{'data-pick':p.id},disabled:existing,
    ariaLabel:p.name+'を選択',endLabel:existing?'登録済み':''});
  }).join('')||'<div class="panel empty">該当する候補はありません</div>';
