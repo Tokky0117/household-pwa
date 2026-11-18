@@ -2944,15 +2944,15 @@ if(action==='confirmScanAiProduct'&&p&&Number.isInteger(p.row)){
   createScanAiProduct(row,p.name);
  renderDialogOnly();return;
 }
-if(action==='confirmRecordBulk'&&p?.bulkReceiptId&&Array.isArray(p.itemIds)){
-  renderDialogOnly();
-  if(recordBulkSaving)return;
+if(action==='confirmRecordBulk'&&p?.bulkReceiptId&&Array.isArray(p.itemIds)&&Array.isArray(p.groupIds)){
+  renderDialogOnly();if(recordBulkSaving)return;
   recordBulkSaving=true;
-  window.KurashiLive.bulkRegisterReceiptProducts(p.bulkReceiptId,p.itemIds)
-   .then(()=>{recordBulkSaving=false;if(page==='recordDetail')render();})
+  window.KurashiLive.bulkRegisterReceiptHouseholds(p.bulkReceiptId,p.itemIds,p.groupIds)
+   .then(()=>{recordBulkSaving=false;recordBulkAssignments.clear();recordBulkActiveId=null;
+    page='recordDetail';render();})
    .catch(err=>{recordBulkSaving=false;
-    inlineActionNotice(document.querySelector('.detail-record-info'),
-     err.message||'商品候補を登録できませんでした');
+    inlineActionNotice(document.querySelector('.bulk-household-main'),
+     err.message||'日用品への紐付けができませんでした');
    });
   return;
  }
@@ -3254,15 +3254,32 @@ if(action==='scanAddPhotos'){
  if(!scanBusy&&!scanDraft)openReceiptPhotoPicker(document.getElementById('scan-add-picker'));return;
 }
 if(action==='recordBulkPreview'&&page==='recordDetail'&&!recordBulkSaving){
- const receiptId=window.KurashiLive.resolveRecordId(recordDetailId);
- const candidates=window.KurashiLive.previewBulkReceiptProducts(receiptId);
- if(!candidates.length)return;
- const names=candidates.map(row=>row.proposed_name+
-  '（'+(row.action==='existing'?'既存':'新規')+'）');
- dialog={title:'商品名候補をまとめて登録しますか？',
-  message:names.join('\n'),
-  buttons:[{id:'cancel',label:'キャンセル'},{id:'confirmRecordBulk',label:'まとめて登録'}],
-  pending:{bulkReceiptId:receiptId,itemIds:candidates.map(x=>x.record_item_id)}};
+ recordBulkAssignments=new Map();recordBulkActiveId=null;recordBulkQuery='';
+ page='receiptBulk';render();return;
+}
+if(action==='recordBulkPick'&&page==='receiptBulk'){
+ const plan=window.KurashiLive.previewBulkReceiptProducts(recordDetailId);
+ if(!plan.some(x=>x.record_item_id===el.dataset.recordItemId))return;
+ recordBulkActiveId=el.dataset.recordItemId;recordBulkQuery='';
+ app.insertAdjacentHTML('beforeend',recordBulkHouseholdView());syncSheetScrollLock();return;
+}
+if(action==='recordBulkChooseGroup'&&page==='receiptBulk'&&recordBulkActiveId!==null){
+ const group=String(el.dataset.householdId||'');
+ if(group&&!items.some(i=>i.id===group&&!i.hidden))return;
+ if(group)recordBulkAssignments.set(recordBulkActiveId,group);
+ else recordBulkAssignments.delete(recordBulkActiveId);
+ closeRecordBulkHousehold();render();return;
+}
+if(action==='recordBulkConfirm'&&page==='receiptBulk'&&!recordBulkSaving){
+ const rows=window.KurashiLive.previewBulkReceiptProducts(recordDetailId);
+ const selection=rows.map(x=>recordBulkAssignments.get(x.record_item_id)||'');
+ const count=selection.filter(Boolean).length;
+ if(!count)return;
+ dialog={title:'日用品への紐付けを保存しますか？',
+  message:rows.filter((_,i)=>selection[i]).map(row=>
+   row.proposed_name+' → '+itemLabel(items.find(x=>x.id===recordBulkAssignments.get(row.record_item_id)))).join('\n'),
+  buttons:[{id:'cancel',label:'キャンセル'},{id:'confirmRecordBulk',label:count+'件を紐付ける'}],
+  pending:{bulkReceiptId:recordDetailId,itemIds:rows.map(x=>x.record_item_id),groupIds:selection}};
  renderDialogOnly();return;
 }
 if(action==='recordProductOpen'||action==='recordProductNew'){
