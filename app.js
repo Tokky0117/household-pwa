@@ -470,10 +470,11 @@ function chooseRecordHousehold(groupId){
  const line=recordProductLine();
  if(!line||recordProductSaving||!items.some(i=>i.id===groupId&&!i.hidden))return;
  recordProductGroupId=groupId;
- const name=String(line.product_name_candidate||aliasNameFor(line)||'').trim();
+ const linked=catalogue.products.find(p=>p.id===line.linked_product_id);
+ const name=String(linked?.name||line.product_name_candidate||aliasNameFor(line)||'').trim();
  // Without a named AI candidate the printed receipt may be truncated or
  // abbreviated. Let the user verify the canonical name before creation.
- if(!line.product_name_candidate||name.length>80){
+ if(!linked&&(!line.product_name_candidate||name.length>80)){
   app.querySelector('.record-product-overlay')?.remove();
   page='receiptProductCreate';render();return;
  }
@@ -550,7 +551,7 @@ function recordDetailView(){
      <div class="detail-record-line-meta"><span>${isShelf?'販売個数':'数量'} ${esc(line.quantity)}</span>
       ${line.linked_product_id?`<span>日用品：${esc(linkedItemName(catalogue.products.find(p=>p.id===line.linked_product_id)||{}))}</span>`:
        '<span>日用品未設定</span>'}</div>
-     ${!isShelf&&liveMode?UI.button({label:line.linked_product_id?'変更':'日用品を設定',
+     ${!isShelf&&liveMode?UI.button({label:line.linked_product_id&&catalogue.products.find(p=>p.id===line.linked_product_id)?.householdItemId?'変更':'日用品を設定',
        variant:'tertiary',action:'recordProductOpen',recordItemId:line.record_item_id,
        className:'record-product-setting-button'}):''}
     </div>
@@ -3304,7 +3305,8 @@ if(action==='recordBulkConfirm'&&page==='receiptBulk'&&!recordBulkSaving){
 }
 if(action==='recordProductOpen'||action==='recordProductNew'){
  const line=allPreviewItems().find(x=>x.record_item_id===el.dataset.recordItemId);
- openRecordProductPicker(el.dataset.recordItemId,line?.linked_product_id?'edit':'household');return;
+ const product=catalogue.products.find(p=>p.id===line?.linked_product_id);
+ openRecordProductPicker(el.dataset.recordItemId,product?.householdItemId?'edit':'household');return;
 }
 if(action==='recordProductShowNew'){
  app.querySelector('.record-product-overlay')?.remove();page='receiptProductCreate';render();return;
