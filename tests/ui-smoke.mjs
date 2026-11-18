@@ -29,7 +29,7 @@ vm.runInNewContext(packageScript,ctx);
 const packageAPI=ctx.window.KurashiProductPackage;
 const ui=vm.runInNewContext(source+`
 ({UI,listView,priceCompareView,pickerView,pickerResults,masterProductsView,masterProductRows,masterProductEditorView,masterGroupPickerView,masterGroupPickerRows,aliasManageView,aliasManageRows,aliasProductPickerView,aliasProductPickerRows,detailHomeView,detailAllView,receiptScanView,receiptChatGptView,recordDetailView,scanStoreNameIssue,scanValidPurchaseDate,scanReadableError,floatingActionPlacement,applyChatGptOcrAssistance,receiptOcrReference,receiptOcrRows,isUnconfirmedBarcodeLine,makeChatGptReceiptRebuildDraft,scanProductView,scanProductGroupChoices,scanExistingProductView,scanExistingProductResults,scanChainForStore,scanStoreHeaderMatch,scanAutolinkUnmatched,scanMatchProduct,scanSimilarProducts,normalizeOcrProductName,normalizedOcrItemName,render,initializeCompare,
- setProductGroup,reorderProducts,registeredProducts,convertQuantity,setOpenSwipe,storePickerChoices,scrollNewItemIfOffscreen,
+ householdCandidates,productCandidates,candidateScore,readingKey,setProductGroup,reorderProducts,registeredProducts,convertQuantity,setOpenSwipe,storePickerChoices,scrollNewItemIfOffscreen,
  getItems(){return items},setItems(v){items=v},orderedItemIds,expandItemGroup(k){expandedItemGroups.add(k)},collapseItemGroup(k){expandedItemGroups.delete(k)},
  chainMinima,priceCandidates,standardizedMinima,savePreviewRecord,periodStart,
  demoRecords,demoRecordItems,allPreviewRecords,allPreviewItems,
@@ -107,8 +107,8 @@ assert.ok(deleteToolStyles.some(body=>body.includes('font-size:var(--ui-action-f
 assert.ok(source.includes('class="detail-candidate-origin" role="img" aria-label="生成AIによる候補"')&&
  source.includes("<span>商品名候補：${esc(line.product_name_candidate)}")&&
  !source.includes('<span>生成AIの商品名候補：'),'Saved receipt AI attribution uses an icon, not a text label');
-assert.ok(source.includes("label:'候補をまとめて登録（'")&&source.includes("icon:'sparkles'"),
- 'Bulk product candidate registration uses the shared sparkle icon');
+assert.ok(source.includes("label:'候補の日用品をまとめて設定（'")&&source.includes("icon:'sparkles'"),
+ 'Bulk household assignment entry uses the shared sparkle icon');
 assert.ok(!css.includes('grid-template-areas:"name value" "name date"'),'Obsolete two-row price CSS removed');
 assert.ok(ui.listView().includes('data-stock=')&&ui.listView().includes('data-list-edit='),'Stock and swipe list preserved');
 // v0.89.7: OCR-only rule-based normalization. No word/product dictionary,
@@ -2191,3 +2191,9 @@ assert.ok(wakameView.includes('内容量未設定の1商品')&&
  wakameView.includes('class="swipe-unlink"')&&
  !wakameView.includes('class="swipe-delete" data-premove="test-wakame-unknown"'),
  'unknown capacity remains in price comparison, without redundant button or a delete-style unlink icon');
+
+// v95: short household names remain searchable inside long printed names.
+assert.ok(ui.candidateScore('キッチンポリ袋50枚','袋',true)>60);
+assert.ok(ui.candidateScore('袋麺5食','袋',true)<20);
+assert.ok(ui.candidateScore('三陸カットワカメ120g','わかめ',true)>70);
+assert.ok(ui.readingKey('牛乳')===ui.readingKey('ぎゅうにゅう'));
