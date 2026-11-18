@@ -1673,7 +1673,7 @@ const bulkReview=bulkUI.window.document.getElementById('scanConfirmForm');
 bulkReview.dispatchEvent(new bulkUI.window.Event('submit',{bubbles:true,cancelable:true}));
 await waitFor(()=>!!bulkUI.window.document.querySelector('[data-act="recordProductOpen"]'),
  'saved receipt opens its detail where individual product operations live');
-assert.match(bulkUI.window.document.body.textContent,/商品未紐付け/);
+assert.match(bulkUI.window.document.body.textContent,/日用品未設定/);
 bulkUI.window.document.querySelector('[data-act="recordProductOpen"]').click();
 bulkUI.window.document.querySelector('[data-act="recordProductShowNew"]').click();
 const individualForm=bulkUI.window.document.getElementById('recordProductCreateForm');
@@ -2260,7 +2260,7 @@ historySession.window.document.querySelector('#scanConfirmForm').dispatchEvent(
  new historySession.window.Event('submit',{bubbles:true,cancelable:true}));
 await waitFor(()=>!!historySession.window.document.querySelector('[data-act="recordProductOpen"]'),
  'similar but unconfirmed spelling can be linked after receipt save');
-assert.match(historySession.window.document.body.textContent,/商品未紐付け/,
+assert.match(historySession.window.document.body.textContent,/日用品未設定/,
  'near-name candidates are not automatically confirmed');
 historySession.window.document.querySelector('[data-act="recordProductOpen"]').click();
 const historyOption=historySession.window.document.querySelector(
@@ -2337,7 +2337,7 @@ conflictSession.window.document.querySelector('#scanConfirmForm').dispatchEvent(
  new conflictSession.window.Event('submit',{bubbles:true,cancelable:true}));
 await waitFor(()=>!!conflictSession.window.document.querySelector('[data-act="recordProductOpen"]'),
  'unknown retailer receipt can be saved without assigning an ambiguous product');
-assert.match(conflictSession.window.document.body.textContent,/商品未紐付け/);
+assert.match(conflictSession.window.document.body.textContent,/日用品未設定/);
 conflictSession.window.document.querySelector('[data-act="recordProductOpen"]').click();
 assert.ok(conflictSession.window.document.querySelectorAll(
  '[data-act="recordProductChoose"]').length>=2,
@@ -2636,7 +2636,7 @@ await waitFor(()=>aliasUI.window.KurashiLive.state().queued===0&&
  !temp.call('bootstrap').data.receipt_name_mappings.find(a=>a.receipt_name_id===chosenAlias.receipt_name_id)?.auto_match_product_id,
  'Alias becomes unlinked without deleting the OCR dictionary entry');
 const unlinkedRow=aliasUI.window.document.querySelector('[data-alias-id="'+chosenAlias.receipt_name_id+'"]');
-assert.ok(unlinkedRow?.textContent.includes('商品未紐付け'),
+assert.ok(unlinkedRow?.textContent.includes('日用品未設定'),
  'Unlinked OCR name is visible in the same list');
 unlinkedRow.click();
 aliasModal=aliasUI.window.document.querySelector('.alias-product-picker-overlay');
