@@ -810,9 +810,9 @@ await waitFor(()=>productUI.window.KurashiLive.state().queued===0 &&
  !temp.call('bootstrap').data.products.find(p=>p.product_id===uiSaved.product_id).household_item_id,
  'v46 product unlink saved to shared master');
 productUI.window.document.querySelector('[data-act="productPick"]').click();
-const productSearch=productUI.window.document.querySelector('#catalogue-search');
-productSearch.value='UI連携商品編集';
-productSearch.dispatchEvent(new productUI.window.Event('input',{bubbles:true}));
+const relinkProductSearch=productUI.window.document.querySelector('#catalogue-search');
+relinkProductSearch.value='UI連携商品編集';
+relinkProductSearch.dispatchEvent(new productUI.window.Event('input',{bubbles:true}));
 assert.ok(productUI.window.document.querySelector('[data-pick="'+uiSaved.product_id+'"]'),
  'unlinked product stays searchable after entering its name');
 productUI.window.document.querySelector('[data-pick="'+uiSaved.product_id+'"]').click();
