@@ -2660,6 +2660,12 @@ app.addEventListener('submit',e=>{e.preventDefault();const form=e.target;const d
    // row AFTER record.create. Commit the same match in record.create instead.
    // Preserve an explicit "商品未照合にする" choice and never use AI guesses.
    const chosenProductId=scanResolvedProductId(item);
+   // Only a unique, exact, registered existingName is eligible for linking.
+   // An AI newName or fuzzy candidate can never auto-create/auto-link.
+   const aiExistingName=String(item.productSuggestion?.existingName||'').trim();
+   const aiExistingMatches=!item.manuallyLinked&&aiExistingName?
+    catalogue.products.filter(p=>norm(p.name)===norm(aiExistingName)):[];
+   const aiExistingId=aiExistingMatches.length===1?aiExistingMatches[0].id:'';
    const matchedBeforeSave=scanDraft.recordType!=='price_tag'&&!item.manuallyLinked&&
      !chosenProductId?
      scanMatchProduct(verified?confirmedName:item.ocrRawName,
@@ -2669,7 +2675,7 @@ app.addEventListener('submit',e=>{e.preventDefault();const form=e.target;const d
     ...(verified&&confirmedName?{non_ocr_name:confirmedName}:{}),
     ...(suggestedName?{product_name_candidate:suggestedName,candidate_match_type:suggestionKind}:{}),
     linked_product_id:scanDraft.recordType!=='price_tag'?
-     (chosenProductId||matchedBeforeSave||null):
+     (chosenProductId||matchedBeforeSave||aiExistingId||null):
      String(d.get('product-'+i)||'')||null,
     quantity:scanDraft.recordType==='price_tag'?1:Number(d.get('qty-'+i)),
     line_total_tax_included:String(d.get('amount-'+i)||'').trim()===''?NaN:Number(d.get('amount-'+i)),
