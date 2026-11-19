@@ -412,11 +412,53 @@ function recordHouseholdChoices(){
    data:{'data-household-id':i.id}})
  ).join('')||'<p class="hint">該当する候補はありません。日用品名を検索してください。</p>';
 }
+// Resolve purchase products across the entire master, regardless of item registration.
+// Reading similarity proposes candidates; it is not automatic link evidence.
+function receiptPurchaseMatches(line,groupId){
+ const name=String(line?.product_name_candidate||aliasNameFor(line)||'').trim();
+ if(!name)return [];
+ const canonical=readingKey(name);
+ const numbers=value=>[...String(value).normalize('NFKC').matchAll(/\d+(?:\.\d+)?/g)]
+  .map(m=>m[0]).join(',');
+ const proposedSize=guessedPackage(name,{packageQuantity:line.candidate_package_quantity,
+  packageUnit:line.candidate_package_unit});
+ const withoutPack=value=>value.replace(/(\d+(?:\.\d+)?)(?:ふくろ|ぱっく|まい|こ|p)(?![a-z])/g,'$1');
+ return catalogue.products.map(p=>{
+  const key=readingKey(p.name),exact=canonical===key;
+  const pSize=guessedPackage(p.name,{packageQuantity:p.packageQuantity,packageUnit:p.packageUnit});
+  if(proposedSize&&pSize&&(proposedSize.quantity!==pSize.quantity||
+    proposedSize.unit!==pSize.unit))return null;
+  const a=numbers(name),b=numbers(p.name);
+  if(a&&b&&a!==b)return null;
+  let score=candidateScore(name,p.name);
+  if(canonical.length>=6&&withoutPack(canonical)===withoutPack(key))score=Math.max(score,92);
+  if(exact)score=100;
+  if(score<57)return null;
+  return {product:p,score,exact,available:!p.householdItemId||p.householdItemId===groupId};
+ }).filter(Boolean).sort((a,b)=>b.score-a.score||
+  Number(b.product.householdItemId===groupId)-Number(a.product.householdItemId===groupId)||
+  a.product.name.localeCompare(b.product.name,'ja')).slice(0,3);
+}
+function receiptPurchaseConfirmationView(){
+ const line=recordProductLine(),group=items.find(i=>i.id===recordProductGroupId);
+ if(!line||!group)return '';
+ const matches=receiptPurchaseMatches(line,recordProductGroupId);
+ return UI.sheet({title:'購入品を確認',variant:'receipt-product-modal',backdropClass:'record-product-overlay',
+  body:'<p class="scan-setting-source"><span>対象の明細</span><strong>'+
+   esc(aliasNameFor(line)||line.product_name_candidate||'')+'</strong></p>'+
+   '<p class="hint">購入した品物がこちらで合っているか確認してください。</p>'+
+   '<div class="scan-existing-results record-purchase-confirm-results">'+matches.map(({product:p,available})=>
+    UI.choiceRow({title:productTitle(p),subtitle:available?'この購入品で設定':
+     '別の日用品に設定済み：'+linkedItemName(p),action:available?'recordPurchaseConfirm':'',
+     disabled:!available,productId:p.id})).join('')+'</div>'+
+   UI.textAction({label:'別の購入品として確認する',action:'recordPurchaseNew'})});
+}
 function recordProductView(){
  const line=recordProductLine();if(!line)return '';
  const product=catalogue.products.find(p=>p.id===line.linked_product_id);
  const source=line.product_name_candidate||aliasNameFor(line)||'明細名なし';
  const edit=recordProductMode==='edit'&&!!product;
+ if(recordProductMode==='purchaseConfirm')return receiptPurchaseConfirmationView();
  const chooseProduct=recordProductMode==='select';
  const body=edit?'<div class="scan-existing-picker">'+
   '<p class="scan-setting-source"><span>紐付け商品</span><strong>'+esc(productTitle(product))+'</strong></p>'+
@@ -429,11 +471,7 @@ function recordProductView(){
     placeholder:chooseProduct?'登録商品を検索':'日用品を検索',value:recordProductQuery})+
   '<div id="record-product-results" class="scan-existing-results">'+
   (chooseProduct?recordProductChoices():recordHouseholdChoices())+'</div>'+
-  '<div class="scan-picker-actions">'+
-  (chooseProduct?UI.textAction({label:'日用品から選ぶ',action:'recordProductShowHousehold'}):
-   UI.textAction({label:'登録済みの商品を選ぶ',action:'recordProductShowList'}))+
-  ''+
-  '</div>';
+  (chooseProduct?UI.textAction({label:'日用品に戻る',action:'recordProductShowHousehold'}):'');
  return UI.sheet({title:edit?'紐付けの編集':chooseProduct?'登録商品を選択':'日用品を選択',
    variant:'receipt-product-modal',backdropClass:'record-product-overlay',body});
 }
