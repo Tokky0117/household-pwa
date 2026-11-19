@@ -1,4 +1,4 @@
-const APP_VERSION='0.95.0';
+const APP_VERSION='0.95.1';
 const CATS=['食品・飲料','キッチン','洗面・風呂','洗濯・掃除','その他','調味料'];
 const CAT_ORDER=[0,5,1,2,3,4];
 const liveMode=!!window.KurashiLive; // Data source only; original Preview v46 UI components remain.
@@ -376,8 +376,8 @@ function recordBulkHouseholdChoices(){
  const row=plan.find(x=>x.record_item_id===recordBulkActiveId);
  if(!row)return '';
  const candidates=householdCandidates(row.proposed_name,recordBulkQuery);
- return candidates.map(({item:i,score})=>UI.button({label:itemLabel(i)+' ・ 一致度 '+score+'%',
-  variant:'tertiary',action:'recordBulkChooseGroup',
+ return candidates.map(({item:i,score})=>UI.choiceRow({title:itemLabel(i),
+  subtitle:'一致度 '+score+'%',action:'recordBulkChooseGroup',
   data:{'data-household-id':i.id}})).join('')+
   UI.button({label:'選択しない',variant:'tertiary',action:'recordBulkChooseGroup',
    data:{'data-household-id':''}});
@@ -407,7 +407,7 @@ function recordHouseholdChoices(){
  const line=recordProductLine();if(!line)return '';
  const source=line.product_name_candidate||aliasNameFor(line);
  return householdCandidates(source,recordProductQuery).map(({item:i,score})=>
-  UI.button({label:itemLabel(i)+'　・　一致度 '+score+'%',variant:'tertiary',
+  UI.choiceRow({title:itemLabel(i),subtitle:'一致度 '+score+'%',
    action:'recordHouseholdChoose',className:'household-candidate-button',
    data:{'data-household-id':i.id}})
  ).join('')||'<p class="hint">該当する候補はありません。日用品名を検索してください。</p>';
@@ -1426,14 +1426,11 @@ let previousPage='list', previousSelected=null, listScrollPosition=0, compareQua
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const norm=s=>String(s).normalize('NFKC').trim().replace(/\s+/g,' ').toLocaleLowerCase('ja');
 
-const readingWords=[['牛乳','ぎゅうにゅう'],['乳','にゅう'],['醤油','しょうゆ'],['砂糖','さとう'],['若布','わかめ'],['洗剤','せんざい'],['生ごみ','なまごみ'],['保存','ほぞん'],['袋','ふくろ'],['麺','めん'],['野菜','やさい'],['乾電池','かんでんち'],['柔軟剤','じゅうなんざい']];
-const readingKey=value=>{
- let s=String(value||'').normalize('NFKC').toLocaleLowerCase('ja')
-  .replace(/[\u30a1-\u30f6]/g,c=>String.fromCharCode(c.charCodeAt(0)-96))
-  .replace(/[\s\p{P}\p{S}]/gu,'');
- for(const [word,kana] of readingWords)s=s.replaceAll(word,kana);
- return s;
-};
+// Generic offline Japanese readings shared by household and product search.
+const readingKey=value=>window.KurashiJapaneseReading?.key(value)||
+ String(value||'').normalize('NFKC').toLocaleLowerCase('ja')
+ .replace(/[\u30a1-\u30f6]/g,c=>String.fromCharCode(c.charCodeAt(0)-96))
+ .replace(/[\s\p{P}\p{S}]/gu,'');
 function candidateScore(source,target,item=false,sub=''){
  const a=readingKey(source),b=readingKey(target),c=readingKey(sub);
  if(!a||!b)return 0;
@@ -1513,8 +1510,10 @@ const UI={
   floatingAction({label,action,icon='',avoidSelector=''}) {
     return `<div class="ui-floating-action" data-ui-floating-action data-ui-floating-avoid="${esc(avoidSelector)}">${UI.button({label,action,icon,variant:'secondary',className:'ui-floating-action-button'})}</div>`;
   },
-  choiceRow({title,subtitle='',choice=null,action='',productId='',selected=false,disabled=false,className=''}) {
-    return `<button type="button" class="ui-choice-row ${esc(className)} ${selected?'is-selected':''}"${choice!==null?' data-ui-choice="'+esc(choice)+'" aria-pressed="'+String(!!selected)+'"':''}${action?' data-act="'+esc(action)+'"':''}${productId?' data-product-id="'+esc(productId)+'"':''}${disabled?' disabled':''}>
+  choiceRow({title,subtitle='',choice=null,action='',productId='',selected=false,disabled=false,className='',data={}}) {
+    const attrs=Object.entries(data).filter(([name])=>/^data-[a-z][a-z0-9-]*$/.test(name))
+     .map(([name,value])=>' '+name+'="'+esc(String(value))+'"').join('');
+    return `<button type="button" class="ui-choice-row ${esc(className)} ${selected?'is-selected':''}"${attrs}${choice!==null?' data-ui-choice="'+esc(choice)+'" aria-pressed="'+String(!!selected)+'"':''}${action?' data-act="'+esc(action)+'"':''}${productId?' data-product-id="'+esc(productId)+'"':''}${disabled?' disabled':''}>
      <span class="ui-choice-copy"><strong>${esc(title)}</strong>${subtitle?'<span class="ui-choice-sub">'+esc(subtitle)+'</span>':''}</span>
      ${selected?'<span class="ui-choice-check" aria-hidden="true">✓</span>':''}
     </button>`;
@@ -1621,7 +1620,7 @@ const svg=k=>`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-
 function head(title,sub='',back=false,right='',left=''){return `<header class="top"><div class="headrow"><div class="head-left">${back?`${UI.iconButton({label:'戻る',action:'back',iconHtml:chevron('left')})}`:left}</div><div class="head-title">${sub?`<p class="eyebrow">${esc(sub)}</p>`:''}<h1>${esc(title)}</h1></div><div class="head-right">${right}</div></div></header>`}
 function nav(){return `<nav class="bottom" aria-label="メインメニュー"><div class="tabs">${[['items','日用品'],['receipt','明細'],['settings','設定']].map(([k,v])=>`<button class="tab ${tab===k?'active':''}" data-tab="${k}" ${tab===k?'aria-current="page"':''}>${svg(k)}<span>${v}</span></button>`).join('')}</div></nav>`}
 function groupKeyOfItem(i){return i.category+':'+norm(i.name);}
-function itemLabel(i){return i?i.name+(i.subName?' ／ '+i.subName:''):'';}
+function itemLabel(i){return i?i.name+(i.subName?'：'+i.subName:''):'';}
 function itemCardHtml(i,cat,child=false){
  const label=itemLabel(i),groupKey=groupKeyOfItem(i);
  return `<div class="item swipe-item ${child?'item-group-child-row':'item-top-row'} ${openSwipeId===i.id?'swipe-open':''}" data-item-id="${esc(i.id)}" data-category-id="${cat}" data-group-key="${esc(groupKey)}" ${child?'':'data-list-top="true"'}>
