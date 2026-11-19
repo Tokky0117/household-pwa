@@ -203,6 +203,27 @@ function appSession(idbFactory=factory){
  dom.window.document.dispatchEvent(new dom.window.Event('DOMContentLoaded',{bubbles:true}));
  return dom;
 }
+// v95 saved-receipt flow: selecting a household precedes product creation.
+function chooseSavedHousehold(session,search){
+ const field=session.window.document.getElementById('record-product-search');
+ assert.ok(field,'household picker search is present');
+ field.value=search;field.dispatchEvent(new session.window.Event('input',{bubbles:true}));
+ const button=session.window.document.querySelector('[data-act="recordHouseholdChoose"]');
+ assert.ok(button,'requested household appears in search');button.click();
+}
+function showSavedProductChoices(session){
+ const control=session.window.document.querySelector('[data-act="recordProductShowList"]');
+ assert.ok(control,'existing product search route is visible');control.click();
+}
+function chooseBulkHousehold(session,index,search){
+ const row=session.window.document.querySelectorAll('[data-act="recordBulkPick"]')[index];
+ assert.ok(row,'bulk row is visible');row.click();
+ const field=session.window.document.getElementById('record-bulk-household-search');
+ assert.ok(field,'bulk household search is present');
+ field.value=search;field.dispatchEvent(new session.window.Event('input',{bubbles:true}));
+ const choice=session.window.document.querySelector('[data-act="recordBulkChooseGroup"][data-household-id]:not([data-household-id=""])');
+ assert.ok(choice,'bulk household selection exists');choice.click();
+}
 // Build a simulated *PWA OCR result* for existing integration scenarios.
 // This tests the production OCR -> ChatGPT-assist -> product/Sheets route
 // without requiring real camera pixels in the jsdom runner.
@@ -1675,9 +1696,10 @@ await waitFor(()=>!!bulkUI.window.document.querySelector('[data-act="recordProdu
  'saved receipt opens its detail where individual product operations live');
 assert.match(bulkUI.window.document.body.textContent,/日用品未設定/);
 bulkUI.window.document.querySelector('[data-act="recordProductOpen"]').click();
-bulkUI.window.document.querySelector('[data-act="recordProductShowNew"]').click();
+chooseSavedHousehold(bulkUI,'牛乳');
 const individualForm=bulkUI.window.document.getElementById('recordProductCreateForm');
-assert.ok(individualForm,'product editor uses one shared half sheet');
+assert.ok(individualForm&&!bulkUI.window.document.querySelector('.record-product-overlay'),
+ 'new product editor is a full page after household selection');
 assert.equal(individualForm.querySelector('[name="group"]'),null);
 assert.ok(individualForm.querySelector('[name="quantity"]'),
  'receipt product registration offers optional package capacity');
@@ -1695,6 +1717,7 @@ await waitFor(()=>bulkUI.window.KurashiLive.state().queued===0&&
  temp.call('bootstrap').data.record_items.some(x=>aliasText(temp,x)==='レシート個別登録テスト固有'&&!x.linked_product_id),
  'unlink affects only the saved receipt item');
 bulkUI.window.document.querySelector('[data-act="recordProductOpen"]').click();
+showSavedProductChoices(bulkUI);
 const productChoice=bulkUI.window.document.querySelector('[data-act="recordProductChoose"]');
 assert.ok(productChoice,'registered products are available through the common picker');
 const ownProduct=temp.call('bootstrap').data.products.find(p=>p.name==='レシート個別登録テスト固有');
@@ -1746,11 +1769,14 @@ assert.ok(receiptButton,'saved bulk receipt is listed on another device');
 receiptButton.click();
 assert.ok(bulkBatchSession.window.document.querySelector('[data-act="recordBulkPreview"]'));
 bulkBatchSession.window.document.querySelector('[data-act="recordBulkPreview"]').click();
-const bulkDialog=bulkBatchSession.window.document.querySelector('.dialog-receipt-bulk');
-assert.ok(bulkDialog&&bulkDialog.textContent.includes('一括新規商品テスト')&&
- bulkDialog.textContent.includes('一括既存商品テスト'));
-assert.ok(!bulkDialog.textContent.includes('一括対応先不明'),
+const bulkPage=bulkBatchSession.window.document.querySelector('.bulk-household-main');
+assert.ok(bulkPage&&bulkPage.textContent.includes('一括新規商品テスト')&&
+ bulkPage.textContent.includes('一括既存商品テスト'));
+assert.ok(!bulkPage.textContent.includes('一括対応先不明'),
  'ambiguous existing-name guess is not offered for batch registration');
+for(let i=0;i<3;i++)chooseBulkHousehold(bulkBatchSession,i,'牛乳');
+bulkBatchSession.window.document.querySelector('[data-act="recordBulkConfirm"]').click();
+assert.ok(bulkBatchSession.window.document.querySelector('[data-dialog="confirmRecordBulk"]'));
 bulkBatchSession.window.document.querySelector('[data-dialog="confirmRecordBulk"]').click();
 await waitFor(()=>bulkBatchSession.window.KurashiLive.state().queued===0&&
  temp.call('bootstrap').data.record_items.filter(x=>
@@ -1814,10 +1840,10 @@ assert.match(kitSession.window.document.querySelector('.detail-record-line').tex
  /キットカットコイマッチャ10フクロ/,
  'detail retains original OCR product spelling');
 kitSession.window.document.querySelector('[data-act="recordProductOpen"]').click();
-kitSession.window.document.querySelector('[data-act="recordProductShowNew"]').click();
+chooseSavedHousehold(kitSession,'チョコ');
 const kitForm=kitSession.window.document.getElementById('recordProductCreateForm');
-assert.ok(kitForm&&kitSession.window.document.querySelector('.record-product-overlay'),
- 'new product editor is one shared half sheet');
+assert.ok(kitForm&&!kitSession.window.document.querySelector('.record-product-overlay'),
+ 'new product editor is a full page');
 assert.equal(kitForm.querySelector('[name="group"]'),null);
 assert.ok(kitForm.querySelector('[name="quantity"]'),
  'KitKat saved-receipt registration supports optional package capacity');
@@ -1831,7 +1857,7 @@ await waitFor(()=>kitSession.window.KurashiLive.state().queued===0&&
   aliasText(temp,x)===kitRaw&&x.linked_product_id),
  'saved product name is linked to the original printed receipt item');
 const kitSavedProduct=temp.call('bootstrap').data.products.find(x=>x.name===kitCanonical);
-assert.ok(kitSavedProduct&&!kitSavedProduct.household_item_id);
+assert.ok(kitSavedProduct&&kitSavedProduct.household_item_id===chocId);
 const kitSavedLine=temp.call('bootstrap').data.record_items.find(x=>
  aliasText(temp,x)===kitRaw&&x.linked_product_id===kitSavedProduct.product_id);
 assert.ok(kitSavedLine,'the receipt item keeps its own confirmed product ID');
@@ -2041,6 +2067,7 @@ variantReview.dispatchEvent(new existingSession.window.Event('submit',{bubbles:t
 await waitFor(()=>!!existingSession.window.document.querySelector('[data-act="recordProductOpen"]'),
  'saved receipt exposes the shared product chooser');
 existingSession.window.document.querySelector('[data-act="recordProductOpen"]').click();
+showSavedProductChoices(existingSession);
 const existingSearch=existingSession.window.document.getElementById('record-product-search');
 assert.ok(existingSearch,'registered product search is in the saved receipt detail');
 existingSearch.value='キットカット濃い';
@@ -2107,16 +2134,16 @@ try{
  throw err;
 }
 standaloneSession.window.document.querySelector('[data-act="recordProductOpen"]').click();
-standaloneSession.window.document.querySelector('[data-act="recordProductShowNew"]').click();
+chooseSavedHousehold(standaloneSession,'チョコ');
 const standaloneProductForm=standaloneSession.window.document.getElementById('recordProductCreateForm');
 assert.ok(standaloneProductForm&&!standaloneProductForm.querySelector('[name="group"]'),
- 'new product in shared half sheet defers optional household group');
+ 'new product uses full-page editor after household selection');
 standaloneProductForm.querySelector('[name="name"]').value=standaloneName;
 standaloneProductForm.dispatchEvent(new standaloneSession.window.Event(
  'submit',{bubbles:true,cancelable:true}));
 await waitFor(()=>standaloneSession.window.KurashiLive.state().queued===0&&
- temp.call('bootstrap').data.products.some(x=>x.name===standaloneName&&!x.household_item_id),
- 'product.create with null household group syncs from saved receipt');
+ temp.call('bootstrap').data.products.some(x=>x.name===standaloneName&&x.household_item_id===chocId),
+ 'new product is saved with the chosen household');
 const standaloneProduct=temp.call('bootstrap').data.products.find(x=>x.name===standaloneName);
 assert.ok(standaloneProduct);
 await waitFor(()=>temp.call('bootstrap').data.receipt_name_mappings.some(x=>
@@ -2195,6 +2222,7 @@ relinkSession.window.document.querySelector('#scanConfirmForm').dispatchEvent(
 await waitFor(()=>!!relinkSession.window.document.querySelector('[data-act="recordProductOpen"]'),
  'saved receipt exposes common registered-product picker');
 relinkSession.window.document.querySelector('[data-act="recordProductOpen"]').click();
+showSavedProductChoices(relinkSession);
 const manualChoice=relinkSession.window.document.querySelector(
  '[data-act="recordProductChoose"][data-product-id="'+standaloneProduct.product_id+'"]');
 assert.ok(manualChoice,'previously saved product is available for explicit selection');
@@ -2263,6 +2291,7 @@ await waitFor(()=>!!historySession.window.document.querySelector('[data-act="rec
 assert.match(historySession.window.document.body.textContent,/日用品未設定/,
  'near-name candidates are not automatically confirmed');
 historySession.window.document.querySelector('[data-act="recordProductOpen"]').click();
+showSavedProductChoices(historySession);
 const historyOption=historySession.window.document.querySelector(
  '[data-act="recordProductChoose"][data-product-id="'+historyId+'"]');
 assert.ok(historyOption,'manual selection can resolve a near-name spelling');
@@ -2339,6 +2368,7 @@ await waitFor(()=>!!conflictSession.window.document.querySelector('[data-act="re
  'unknown retailer receipt can be saved without assigning an ambiguous product');
 assert.match(conflictSession.window.document.body.textContent,/日用品未設定/);
 conflictSession.window.document.querySelector('[data-act="recordProductOpen"]').click();
+showSavedProductChoices(conflictSession);
 assert.ok(conflictSession.window.document.querySelectorAll(
  '[data-act="recordProductChoose"]').length>=2,
  'ambiguous OCR spellings allow explicit product selection');
