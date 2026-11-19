@@ -23,8 +23,11 @@
   return result.replace(/[\s\p{P}\p{S}]/gu,'');
  }
  function variants(input){
-  const primary=key(input),keys=[primary],seen=new Set(keys);
-  for(const c of hira(input)){
+  const normalized=hira(input),primary=key(input),keys=[primary],seen=new Set(keys);
+  // Known full words keep their lexical reading. Per-kanji alternatives
+  // are meaningful for unknown compounds (野原), not for known words (野菜).
+  if(words.has(normalized))return keys;
+  for(const c of normalized){
    const base=words.get(c);
    if(!base||!primary.includes(base))continue;
    for(const alt of alternativeReadings[c]||[]){
