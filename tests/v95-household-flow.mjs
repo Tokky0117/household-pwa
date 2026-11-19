@@ -216,6 +216,7 @@ assert.equal(captured.ok,true,'unmatched Yamaki receipt exists');
 const capturedId=captured.data.record.record_id;
 ui=appSession();
 await waitFor(()=>ui.window.KurashiLive.state().loaded,'Yamaki scenario loaded');
+assert.equal(await ui.window.KurashiLive.load(),true,'fresh external fixture data loaded');
 assert.equal(ui.window.KurashiJapaneseReading.key('鰹'),ui.window.KurashiJapaneseReading.key('かつお'),
  'general Japanese reading data handles non-joyo kanji without bespoke code');
 assert.equal(ui.window.KurashiJapaneseReading.key('袋'),ui.window.KurashiJapaneseReading.key('ふくろ'),
