@@ -901,6 +901,10 @@
   name.trim().length<=80&&!/^[=+@\-]/.test(name.trim())&&
   !/[\x00-\x1f\x7f<>]/.test(name);
  const receiptLooseKey=name=>receiptProductKey(name).replace(/[\s\p{P}\p{S}]/gu,'');
+ const receiptSize=(name,quantity=null,unit=null)=>
+  window.KurashiProductPackage?.candidate(name,{packageQuantity:quantity,packageUnit:unit})||null;
+ const receiptSizedKey=(name,size)=>receiptProductKey(name)+'|'+
+  (size?size.quantity+':'+size.unit:'unknown');
  function planBulkReceipt(doc,receiptId){
   const snap=project(doc);
   const id=doc.recordIdMap?.[receiptId]||receiptId;
@@ -911,12 +915,16 @@
   for(const line of snap.record_items.filter(x=>x.record_id===id&&!x.deleted_at)
      .sort((a,b)=>Number(a.line_order)-Number(b.line_order))){
    if(line.linked_product_id||!['existing','new'].includes(line.candidate_match_type))continue;
-   const name=String(line.product_name_candidate||'').trim(),key=receiptProductKey(name);
+   const name=String(line.product_name_candidate||'').trim();
    if(!validReceiptProductName(name))continue;
-   const exact=products.filter(p=>receiptProductKey(p.name)===key);
+   const size=receiptSize(name,line.candidate_package_quantity,line.candidate_package_unit);
+   const key=receiptSizedKey(name,size);
+   const exact=products.filter(p=>receiptProductKey(p.name)===receiptProductKey(name)&&
+    (!size||Number(p.package_quantity)===size.quantity&&p.package_unit===size.unit));
    if(exact.length>1||line.candidate_match_type==='existing'&&exact.length!==1)continue;
    // Similar but non-identical punctuation must be manually resolved, not created.
-   if(!exact.length&&products.some(p=>receiptLooseKey(p.name)===receiptLooseKey(name)))continue;
+   if(!exact.length&&products.some(p=>receiptLooseKey(p.name)===receiptLooseKey(name)&&
+     receiptProductKey(p.name)!==receiptProductKey(name)))continue;
    const kind=exact.length?'existing':created.has(key)?'reuse':'new';
    if(!exact.length)created.add(key);
    candidates.push({record_item_id:line.record_item_id,raw_name:line.non_ocr_name||
@@ -948,8 +956,10 @@
    if(!validReceiptProductName(name))throw Error('商品名を確認してください');
    const linked=line.linked_product_id?snap.products.find(p=>!p.deleted_at&&
     p.product_id===confirmedProductId(line.linked_product_id)):null;
+   const size=receiptSize(name,packageValue?.quantity,packageValue?.unit);
    const found=linked?[linked]:snap.products.filter(p=>!p.deleted_at&&
-    receiptLooseKey(p.name)===receiptLooseKey(name));
+    receiptLooseKey(p.name)===receiptLooseKey(name)&&
+    (!size||Number(p.package_quantity)===size.quantity&&p.package_unit===size.unit));
    if(found.length>1)throw Error('同じ名前の商品が複数あります。登録商品を確認してください');
    if(found[0]){
     const p=found[0];
@@ -1047,7 +1057,8 @@
     if(!groupId)continue;
     if(!snap.household_items.some(x=>!x.deleted_at&&x.household_item_id===groupId))
      throw Error('登録先の日用品が見つかりません');
-    const key=receiptProductKey(row.proposed_name);
+    const key=receiptSizedKey(row.proposed_name,receiptSize(row.proposed_name,
+     row.package_quantity,row.package_unit));
     let productId=row.product_id;
     if(productId){
      const existing=snap.products.find(p=>p.product_id===productId&&!p.deleted_at);
@@ -1099,7 +1110,8 @@
    for(const row of plan){
     let productId=row.product_id;
     if(!productId){
-     const key=receiptProductKey(row.proposed_name);
+     const key=receiptSizedKey(row.proposed_name,receiptSize(row.proposed_name,
+      row.package_quantity,row.package_unit));
      if(!names.has(key)){
       const capacity=window.KurashiProductPackage?.candidate(row.proposed_name,{
       packageQuantity:row.package_quantity,packageUnit:row.package_unit});
@@ -1469,10 +1481,6 @@
    // Record edits replace the prior line IDs; deleted records release the hints.
    if(['record-create','record-update'].includes(op.kind)){
     ws.receiptPackages={...(ws.receiptPackages||{})};
-    if(op.kind==='record-update')for(const old of (ws.base?.record_items||[])){
-     if(old.record_id===op.targetId&&!result.items.some(i=>i.record_item_id===old.record_item_id))
-      delete ws.receiptPackages[old.record_item_id];
-    }
     op.items.forEach((line,i)=>{
      const target=result.items[i]?.record_item_id;
      if(!target)return;
@@ -1481,10 +1489,10 @@
      else delete ws.receiptPackages[target];
     });
    }
-   if(op.kind==='record-delete'){
+   if(['record-create','record-update','record-delete'].includes(op.kind)){
     ws.receiptPackages={...(ws.receiptPackages||{})};
-    for(const old of (ws.base?.record_items||[]))if(old.record_id===op.targetId)
-     delete ws.receiptPackages[old.record_item_id];
+    const validIds=new Set(ws.base.record_items.map(x=>x.record_item_id));
+    for(const id of Object.keys(ws.receiptPackages))if(!validIds.has(id))delete ws.receiptPackages[id];
    }
    if(op.kind==='record-create'||op.kind==='record-update'){
     if(op.kind==='record-create'){
