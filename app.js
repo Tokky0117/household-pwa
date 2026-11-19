@@ -2256,12 +2256,12 @@ function syncSheetScrollLock(){
 }
 function render(){
  if(!window.document)return; // A closed iOS page/session must not re-render.
- // Data refreshes may rerender the receipt detail without an intentional UI
- // action. Keep the open sheet DOM (and focused search field) intact so the
- // entrance animation cannot restart or visually flicker.
- const retainedReceiptSheet=page==='recordDetail'&&recordProductItemId?
-  app.querySelector('.record-product-overlay'):null;
- if(retainedReceiptSheet)retainedReceiptSheet.remove();
+ // Preserve the entire open receipt sheet while background data changes.
+ // Detaching and reinserting it would restart iOS Safari's entrance animation,
+ // reset search focus and cause an unsolicited flicker. The latest snapshot is
+ // already updated by the subscription and is rendered when the sheet closes.
+ if(page==='recordDetail'&&recordProductItemId&&
+  app.querySelector('.record-product-overlay')&&!dialog)return;
   closeScanViewer();
  const currentModal=page==='add'||page==='edit'||page==='productEdit'||page==='productPick'||page==='scanExistingProduct';
  const wasModal=previousPage==='add'||previousPage==='edit'||previousPage==='productEdit'||previousPage==='productPick'||previousPage==='recordSource'||previousPage==='scanExistingProduct';
@@ -2280,10 +2280,7 @@ function render(){
  if(storePickerTarget&&((storePickerTarget==='scan'&&page==='recordScan')))
   app.insertAdjacentHTML('beforeend',storePickerView());
  else storePickerTarget=null;
- if(recordProductItemId&&page==='recordDetail'){
-  if(retainedReceiptSheet)app.appendChild(retainedReceiptSheet);
-  else app.insertAdjacentHTML('beforeend',recordProductView());
- }
+ if(recordProductItemId&&page==='recordDetail')app.insertAdjacentHTML('beforeend',recordProductView());
   if(recordBulkActiveId&&page==='receiptBulk')app.insertAdjacentHTML('beforeend',recordBulkHouseholdView());
  if(masterGroupPickerOpen&&['masterProductEdit','masterProductNew'].includes(page))
   app.insertAdjacentHTML('beforeend',masterGroupPickerView());
