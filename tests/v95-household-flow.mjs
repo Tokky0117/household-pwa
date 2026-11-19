@@ -191,4 +191,64 @@ const variants=temp.call('bootstrap').data.products.filter(x=>x.name==='カッ�
 assert.deepEqual(variants.map(x=>Number(x.package_quantity)).sort((a,b)=>a-b),[120,200],
  'same product name retains separate 120g and 200g masters');
 ui.window.close();
-console.log('v95: household search, AI capacity, DOM, offline bulk linking, master reuse and size variants OK');
+// Real-world regression: one registered product exists without a household.
+// Picking the everyday "かつお" household must reuse that product, not create it.
+const katsuoGroups=[
+ temp.call('item.create',{name:'かつお',category_id:0},'op-v951-katsuo-abcde1234567890'),
+ temp.call('item.create',{name:'カツオ',category_id:0},'op-v951-katakana-abcde1234567890'),
+ temp.call('item.create',{name:'鰹',category_id:0},'op-v951-kanji-abcde1234567890'),
+ temp.call('item.create',{name:'テスト1',sub_name:'かつお',category_id:0},'op-v951-sub-abcde1234567890')
+];
+assert.ok(katsuoGroups.every(x=>x.ok),'test households created');
+const katsuoId=katsuoGroups[0].data.entity.household_item_id;
+const yamaki=temp.call('product.create',{
+ name:'ヤマキ かつおパック 60袋',household_item_id:null,
+ package_quantity:null,package_unit:null
+},'op-v951-yamaki-abcde1234567890');
+assert.equal(yamaki.ok,true,'existing Yamaki product has no household');
+const yamakiId=yamaki.data.entity.product_id;
+const captured=temp.call('record.create',{
+ record_type:'receipt',chain_id:chain.data.entity.chain_id,record_date:'2026-11-17',
+ items:[{non_ocr_name:'ヤマキカツオパック 60P',raw_name:'',linked_product_id:null,
+  quantity:1,line_total_tax_included:312}]
+},'op-v951-receipt-abcde1234567890');
+assert.equal(captured.ok,true,'unmatched Yamaki receipt exists');
+const capturedId=captured.data.record.record_id;
+ui=appSession();
+await waitFor(()=>ui.window.KurashiLive.state().loaded,'Yamaki scenario loaded');
+assert.equal(ui.window.eval("readingKey('鰹')"),ui.window.eval("readingKey('かつお')"),
+ 'general Japanese reading data handles non-joyo kanji without bespoke code');
+assert.equal(ui.window.eval("readingKey('袋')"),ui.window.eval("readingKey('ふくろ')"),
+ 'common-use kanji pronunciations are reusable');
+ui.window.document.querySelector('[data-tab="receipt"]').click();
+const yamakiRow=ui.window.document.querySelector('[data-act="recordDetail"][data-record-id="'+capturedId+'"]');
+assert.ok(yamakiRow);yamakiRow.click();
+ui.window.document.querySelector('[data-act="recordProductOpen"]').click();
+assert.equal(ui.window.document.querySelector('[data-act="recordProductShowList"]'),null,
+ 'product catalogue route is absent from daily receipt picker');
+const householdButtons=[...ui.window.document.querySelectorAll('[data-act="recordHouseholdChoose"]')];
+for(const row of katsuoGroups){
+ assert.ok(householdButtons.some(b=>b.dataset.householdId===row.data.entity.household_item_id),
+  'each name or sub-name reading has its own suggested household');
+}
+const sub=householdButtons.find(b=>b.dataset.householdId===katsuoGroups[3].data.entity.household_item_id);
+assert.match(sub.textContent,/テスト1：かつお/,'secondary household label uses colon');
+const first=householdButtons.find(b=>b.dataset.householdId===katsuoId);
+assert.ok(first.querySelector('.ui-choice-sub'),'similarity is subsidiary to item name');
+first.click();
+const confirm=ui.window.document.querySelector('[data-act="recordPurchaseConfirm"][data-product-id="'+yamakiId+'"]');
+assert.ok(confirm,'unassigned master is offered as a purchase verification');
+assert.ok(ui.window.document.querySelector('.record-purchase-confirm-results'));
+confirm.click();
+await waitFor(()=>ui.window.KurashiLive.state().queued===0&&
+ temp.call('bootstrap').data.record_items.some(i=>
+  i.record_id===capturedId&&i.linked_product_id===yamakiId),
+ 'single confirmation attaches receipt to an existing unassigned product');
+const yamakiAfter=temp.call('bootstrap').data;
+assert.equal(yamakiAfter.products.filter(x=>x.name==='ヤマキ かつおパック 60袋').length,1,
+ 'never duplicates a master on near-name receipt');
+assert.equal(yamakiAfter.products.find(x=>x.product_id===yamakiId).household_item_id,katsuoId,
+ 'previously unassigned product is attached to selected household in the same transaction');
+ui.window.close();
+console.log('v95.1: general readings, compact household selection, and unassigned Yamaki master reuse OK');
+
