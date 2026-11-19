@@ -943,7 +943,7 @@
  // Never leave an orphan master if the app closes between separate transactions.
  // Create or reuse the canonical product, attach it to a household item and
  // link this receipt in one atomic local transaction, preserving offline order.
- async function linkReceiptToHouseholdItem(recordItemId,householdItemId,name,packageValue={}){
+ async function linkReceiptToHouseholdItem(recordItemId,householdItemId,name,packageValue={},preferredProductId=null){
   await boot();if(!workspace.base)await load();
   let productId=null;
   await modify(doc=>{
@@ -957,7 +957,11 @@
    const linked=line.linked_product_id?snap.products.find(p=>!p.deleted_at&&
     p.product_id===confirmedProductId(line.linked_product_id)):null;
    const size=receiptSize(name,packageValue?.quantity,packageValue?.unit);
-   const found=linked?[linked]:snap.products.filter(p=>!p.deleted_at&&
+   const chosen=preferredProductId?snap.products.find(p=>!p.deleted_at&&
+    p.product_id===confirmedProductId(preferredProductId)):null;
+   if(preferredProductId&&(!chosen||chosen.name!==name))
+    throw Error('購入品の候補が変更されました。内容を確認してください');
+   const found=chosen?[chosen]:linked?[linked]:snap.products.filter(p=>!p.deleted_at&&
     receiptLooseKey(p.name)===receiptLooseKey(name)&&
     (!size||Number(p.package_quantity)===size.quantity&&p.package_unit===size.unit));
    if(found.length>1)throw Error('同じ名前の商品が複数あります。登録商品を確認してください');
