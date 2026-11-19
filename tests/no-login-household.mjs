@@ -1877,17 +1877,12 @@ try{
 }
 kitSession.window.close();
 
-// Product registration from a receipt is intentionally unlinked. Explicit
-// post-registration master editing may later attach it to a household item,
-// which reretail_chains its price comparison without adding a receipt-screen step.
+// v95 registers the household together with the receipt product. There is
+// no longer a separate post-registration master edit for this use case.
 const kitForLink=temp.call('bootstrap').data.products.find(p=>
  p.product_id===kitSavedProduct.product_id);
-assert.ok(kitForLink&&!kitForLink.household_item_id);
-assert.equal(temp.call('product.update',{
- product_id:kitForLink.product_id,version:Number(kitForLink.version),
- household_item_id:chocId
-},'op-kit-deferred-group-link-abcdefghijklmn').ok,true,
- 'a later product-master edit links the registered product to chocolate');
+assert.equal(kitForLink?.household_item_id,chocId,
+ 'receipt product belongs to the selected chocolate household immediately');
 
 /* Real two-device receipt flow: the second iPhone uses its own IndexedDB
  * and the same Sheets-backed GAS snapshot, not the first phone's cache. */
