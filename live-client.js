@@ -14,7 +14,7 @@
  const OLD_SNAPSHOT='kurashi-new-confirmed-snapshot-v1';
  const OLD_OPERATION='kurashi-new-write-v1-temporary-household';
  const listeners=new Set();
- const blank=()=>({base:null,queue:[],blocked:null,productIdMap:{},recordIdMap:{},recordItemIdMap:{}});
+ const blank=()=>({base:null,queue:[],blocked:null,productIdMap:{},recordIdMap:{},recordItemIdMap:{},receiptPackages:{}});
  let dbPromise=null,bootPromise=null,workspace=blank();
  let refreshPromise=null,flushPromise=null,retryTimer=null,retryMs=3000,stockFlushTimer=null;
  let error='',lastSync=0,authRequired=false,token=null,subject='temporary-household',expiry=0,gisReady=false;
@@ -173,7 +173,8 @@
   return {base,queue:doc.queue,blocked:doc.blocked||null,
    productIdMap:doc.productIdMap&&typeof doc.productIdMap==='object'?doc.productIdMap:{},
    recordIdMap:doc.recordIdMap&&typeof doc.recordIdMap==='object'?doc.recordIdMap:{},
-   recordItemIdMap:doc.recordItemIdMap&&typeof doc.recordItemIdMap==='object'?doc.recordItemIdMap:{}};
+   recordItemIdMap:doc.recordItemIdMap&&typeof doc.recordItemIdMap==='object'?doc.recordItemIdMap:{},
+   receiptPackages:doc.receiptPackages&&typeof doc.receiptPackages==='object'?doc.receiptPackages:{}};
  };
  function project(doc=workspace){
   if(!doc.base)return null;
@@ -236,6 +237,8 @@
      receipt_name_id:receiptAlias(op.chainId,line.raw_name,op.itemIds[i]),non_ocr_name:line.non_ocr_name||'',
      product_name_candidate:line.product_name_candidate||'',candidate_match_type:line.candidate_match_type||'',linked_product_id:line.linked_product_id||'',
      quantity:line.quantity,line_total_tax_included:line.line_total_tax_included,
+     candidate_package_quantity:line.candidate_package_quantity??null,
+     candidate_package_unit:line.candidate_package_unit??null,
      version:1,deleted_at:''
     }));
     continue;
@@ -251,6 +254,8 @@
      receipt_name_id:receiptAlias(op.chainId,line.raw_name,op.itemIds[i]),non_ocr_name:line.non_ocr_name||'',
      product_name_candidate:line.product_name_candidate||'',candidate_match_type:line.candidate_match_type||'',linked_product_id:line.linked_product_id||'',
      quantity:line.quantity,line_total_tax_included:line.line_total_tax_included,
+     candidate_package_quantity:line.candidate_package_quantity??null,
+     candidate_package_unit:line.candidate_package_unit??null,
      version:1,deleted_at:''
     }));
     continue;
@@ -335,6 +340,13 @@
     if(typeof p.sub_name==='string')target.sub_name=p.sub_name;
     if(Number.isInteger(p.category_id))target.category_id=p.category_id;
    }
+  }
+  // These unconfirmed AI hints are local to this preview workspace. GAS does
+  // not store package hints on record_items; never present them as server data.
+  for(const line of snap.record_items){
+   const size=doc.receiptPackages?.[line.record_item_id];
+   if(size){line.candidate_package_quantity=size.quantity;
+    line.candidate_package_unit=size.unit;}
   }
   return snap;
  }
@@ -734,9 +746,12 @@
    if(!Number.isSafeInteger(line.quantity)||line.quantity<=0||
       !Number.isSafeInteger(line.line_total_tax_included)||line.line_total_tax_included<0)
     throw Error('数量・税込金額を確認してください');
+   const sizeQty=line.candidate_package_quantity,sizeUnit=line.candidate_package_unit;
+   const size=window.KurashiProductPackage?.valid(sizeQty,sizeUnit)?
+    {candidate_package_quantity:sizeQty,candidate_package_unit:sizeUnit}:{};
    return {raw_name:rawName,...(confirmed?{non_ocr_name:confirmed}:{}),linked_product_id:productId,
     quantity:line.quantity,line_total_tax_included:line.line_total_tax_included,
-    ...(suggested?{product_name_candidate:suggested,candidate_match_type:suggestionKind}:{})};
+    ...(suggested?{product_name_candidate:suggested,candidate_match_type:suggestionKind,...size}:{})};
   });
   return {id:operationId(),kind:'record-create',clientId:'local-'+uid(),
    chainId,recordType:kind,date,items:lines,
@@ -907,6 +922,8 @@
    candidates.push({record_item_id:line.record_item_id,raw_name:line.non_ocr_name||
     snap.receipt_name_mappings.find(a=>a.receipt_name_id===line.receipt_name_id)?.ocr_name||'',
     proposed_name:name,candidate_match_type:line.candidate_match_type,action:kind,
+    package_quantity:line.candidate_package_quantity??null,
+    package_unit:line.candidate_package_unit??null,
     product_id:exact[0]?.product_id||null});
   }
   return candidates;
@@ -1050,7 +1067,8 @@
      if(prev.groupId!==groupId)throw Error('同じ商品には同じ日用品を選択してください');
      productId=prev.productId;
     }else{
-     const capacity=window.KurashiProductPackage?.infer(row.proposed_name);
+     const capacity=window.KurashiProductPackage?.candidate(row.proposed_name,{
+      packageQuantity:row.package_quantity,packageUnit:row.package_unit});
      const create=makeProductOperation('product.create',{
       name:row.proposed_name,household_item_id:groupId,
       package_quantity:capacity?.quantity??null,package_unit:capacity?.unit??null
@@ -1083,7 +1101,8 @@
     if(!productId){
      const key=receiptProductKey(row.proposed_name);
      if(!names.has(key)){
-      const capacity=window.KurashiProductPackage?.infer(row.proposed_name);
+      const capacity=window.KurashiProductPackage?.candidate(row.proposed_name,{
+      packageQuantity:row.package_quantity,packageUnit:row.package_unit});
       const create=makeProductOperation('product.create',{
        name:row.proposed_name,household_item_id:null,
        package_quantity:capacity?.quantity??null,package_unit:capacity?.unit??null
@@ -1227,7 +1246,8 @@
    return {operationId:op.id,action:'record.create',payload:{
     record_type:op.recordType,chain_id:op.chainId,
     record_date:op.date,
-    items:op.items
+    // Package suggestions are tentative local metadata, not a GAS column.
+    items:op.items.map(({candidate_package_quantity,candidate_package_unit,...line})=>line)
    }};
   }
   if(op.kind==='alias-create'){
@@ -1270,7 +1290,8 @@
     throw Error('商品が見つかりません');
    return {operationId:op.id,action:'record.update',payload:{
     record_id:op.targetId,version:Number(record.version),chain_id:op.chainId,
-    record_date:op.date,items:op.items
+    record_date:op.date,
+    items:op.items.map(({candidate_package_quantity,candidate_package_unit,...line})=>line)
    }};
   }
   if(op.kind==='product-reorder'){
@@ -1444,6 +1465,27 @@
       ...ws.base.household_items.filter(i=>!ids.has(i.household_item_id)),...entities]}),
     sequence_no:Math.max(Number(ws.base.sequence_no),Number(result.sequence_no))};
    ws.queue.shift();
+   // Keep AI package hints across local-ID resolution and GAS snapshots.
+   // Record edits replace the prior line IDs; deleted records release the hints.
+   if(['record-create','record-update'].includes(op.kind)){
+    ws.receiptPackages={...(ws.receiptPackages||{})};
+    if(op.kind==='record-update')for(const old of (ws.base?.record_items||[])){
+     if(old.record_id===op.targetId&&!result.items.some(i=>i.record_item_id===old.record_item_id))
+      delete ws.receiptPackages[old.record_item_id];
+    }
+    op.items.forEach((line,i)=>{
+     const target=result.items[i]?.record_item_id;
+     if(!target)return;
+     if(window.KurashiProductPackage?.valid(line.candidate_package_quantity,line.candidate_package_unit))
+      ws.receiptPackages[target]={quantity:line.candidate_package_quantity,unit:line.candidate_package_unit};
+     else delete ws.receiptPackages[target];
+    });
+   }
+   if(op.kind==='record-delete'){
+    ws.receiptPackages={...(ws.receiptPackages||{})};
+    for(const old of (ws.base?.record_items||[]))if(old.record_id===op.targetId)
+     delete ws.receiptPackages[old.record_item_id];
+   }
    if(op.kind==='record-create'||op.kind==='record-update'){
     if(op.kind==='record-create'){
      ws.recordIdMap={...(ws.recordIdMap||{}),[op.clientId]:result.record.record_id};
