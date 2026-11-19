@@ -367,7 +367,7 @@ function recordBulkView(){
  }).join('');
  const selectedCount=candidates.filter(x=>recordBulkAssignments.get(x.record_item_id)).length;
  return head('日用品をまとめて設定','',true)+
-  '<main class="manage-main bulk-household-main"><p class="hint">日用品を選んだ明細だけを紐付けます。商品の登録・再利用は自動で行います。</p>'+
+  '<main class="manage-main bulk-household-main"><p class="hint">日用品を選んだ明細だけ、購入履歴に反映します。</p>'+
   rows+UI.button({label:'選択した'+selectedCount+'件を紐付ける',variant:'primary',
     action:'recordBulkConfirm',disabled:!selectedCount||recordBulkSaving})+'</main>';
 }
@@ -461,10 +461,9 @@ function recordProductView(){
  if(recordProductMode==='purchaseConfirm')return receiptPurchaseConfirmationView();
  const chooseProduct=recordProductMode==='select';
  const body=edit?'<div class="scan-existing-picker">'+
-  '<p class="scan-setting-source"><span>紐付け商品</span><strong>'+esc(productTitle(product))+'</strong></p>'+
+  '<p class="scan-setting-source"><span>購入品</span><strong>'+esc(productTitle(product))+'</strong></p>'+
   '<p class="hint">日用品：'+esc(linkedItemName(product))+'</p>'+
-  UI.button({label:'紐付け商品を変更',action:'recordProductShowList',variant:'secondary'})+
-  UI.button({label:'紐付けを解除',action:'recordProductUnlink',variant:'tertiary'})+'</div>':
+  UI.button({label:'この明細の設定を解除',action:'recordProductUnlink',variant:'tertiary'})+'</div>':
   '<p class="scan-setting-source"><span>対象の明細</span><strong>'+esc(source)+'</strong></p>'+
   UI.searchField({id:'record-product-search',
     label:chooseProduct?'登録商品を検索':'日用品を検索',
@@ -561,15 +560,15 @@ function receiptProductCreateView(){
  const name=line.product_name_candidate||aliasNameFor(line)||'';
  const item=items.find(i=>i.id===recordProductGroupId);
  const form='<form id="recordProductCreateForm">'+
-  UI.formField({id:'record-product-name',name:'name',label:'商品名',value:name,
+  UI.formField({id:'record-product-name',name:'name',label:'購入品の名前',value:name,
    maxlength:80,required:true,placeholder:'商品名を確認'})+
   productPackageFields({name,quantityId:'record-product-quantity',
    unitId:'record-product-unit',suggestion:{packageQuantity:line.candidate_package_quantity,
     packageUnit:line.candidate_package_unit}})+
   '<p class="hint">日用品：'+esc(item?itemLabel(item):'未選択')+'</p>'+
-  UI.button({label:'日用品に紐付ける',variant:'primary',type:'submit',
+  UI.button({label:'設定する',variant:'primary',type:'submit',
    disabled:!item||recordProductSaving})+'</form>';
- return head('商品情報を確認','',true)+'<main class="manage-main">'+form+'</main>';
+ return head('購入品を確認','',true)+'<main class="manage-main">'+form+'</main>';
 }
 function linkSavedRecordProduct(productId){
  const line=recordProductLine();
