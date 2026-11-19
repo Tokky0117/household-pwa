@@ -26,7 +26,7 @@
   const normalized=hira(input),primary=key(input),keys=[primary],seen=new Set(keys);
   // Known full words keep their lexical reading. Per-kanji alternatives
   // are meaningful for unknown compounds (野原), not for known words (野菜).
-  if(words.has(normalized))return keys;
+  if([...normalized].length>1&&words.has(normalized))return keys;
   for(const c of normalized){
    const base=words.get(c);
    if(!base||!primary.includes(base))continue;
