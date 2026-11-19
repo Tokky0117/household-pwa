@@ -8,6 +8,8 @@ const api=readFileSync(new URL('../gas/Api.gs',import.meta.url),'utf8');
 const client=readFileSync(new URL('../live-client.js',import.meta.url),'utf8');
 const packageCode=readFileSync(new URL('../product-package.js',import.meta.url),'utf8');
 const readingCode=readFileSync(new URL('../japanese-reading.js',import.meta.url),'utf8');
+const css=readFileSync(new URL('../styles.css',import.meta.url),'utf8');
+assert.match(css,/height:min\(74dvh,620px\)/,'receipt sheet height must not depend on number of candidates');
 const app=readFileSync(new URL('../app.js',import.meta.url),'utf8');
 const validator=readFileSync(new URL('../receipt-validation.js',import.meta.url),'utf8');
 const reviewModel=readFileSync(new URL('../receipt-review-model.js',import.meta.url),'utf8');
@@ -200,6 +202,12 @@ const katsuoGroups=[
  temp.call('item.create',{name:'テスト1',sub_name:'かつお',category_id:0},'op-v951-sub-abcde1234567890')
 ];
 assert.ok(katsuoGroups.every(x=>x.ok),'test households created');
+const vegGroups=[
+ temp.call('item.create',{name:'野菜',category_id:0},'op-v952-yasai-abcde1234567890'),
+ temp.call('item.create',{name:'野',category_id:0},'op-v952-ya-abcde1234567890'),
+ temp.call('item.create',{name:'野原',category_id:0},'op-v952-nohara-abcde1234567890')
+];
+assert.ok(vegGroups.every(x=>x.ok),'general reading-search fixtures created');
 const katsuoId=katsuoGroups[0].data.entity.household_item_id;
 const yamaki=temp.call('product.create',{
  name:'ヤマキ かつおパック 60袋',household_item_id:null,
@@ -227,6 +235,33 @@ assert.ok(yamakiRow);yamakiRow.click();
 ui.window.document.querySelector('[data-act="recordProductOpen"]').click();
 assert.equal(ui.window.document.querySelector('[data-act="recordProductShowList"]'),null,
  'product catalogue route is absent from daily receipt picker');
+const search=ui.window.document.getElementById('record-product-search');
+const byId=id=>!!ui.window.document.querySelector(
+ '[data-act="recordHouseholdChoose"][data-household-id="'+id+'"]');
+search.value='や';
+search.dispatchEvent(new ui.window.Event('input',{bubbles:true}));
+assert.ok(byId(vegGroups[0].data.entity.household_item_id)&&
+ byId(vegGroups[1].data.entity.household_item_id),
+ 'the reading や matches both 野菜 and 野');
+search.value='の';
+search.dispatchEvent(new ui.window.Event('input',{bubbles:true}));
+assert.ok(byId(vegGroups[1].data.entity.household_item_id)&&
+ byId(vegGroups[2].data.entity.household_item_id),
+ 'the alternative reading の finds 野 and 野原');
+assert.ok(!byId(vegGroups[0].data.entity.household_item_id),
+ 'known compound 野菜 is not given a fabricated のさい reading');
+const openSheet=ui.window.document.querySelector('.record-product-overlay');
+ui.window.eval('render()');
+assert.equal(ui.window.document.querySelector('.record-product-overlay'),openSheet,
+ 'background render does not recreate or reanimate the open receipt sheet');
+assert.equal(search.value,'の','refresh preserves typed household search');
+search.value='';
+search.dispatchEvent(new ui.window.Event('input',{bubbles:true}));
+assert.equal(ui.window.eval("candidateScore('プルーチップカンソウヤサイ','乾燥',true)"),80);
+assert.equal(ui.window.eval("candidateScore('プルーチップカンソウヤサイ','野菜',true)"),79);
+assert.equal(ui.window.eval("candidateScore('プルーチップカンソウヤサイ','野',true)"),76);
+assert.ok(ui.window.eval("candidateScore('プルーチップカンソウヤサイ','野原',true)")<20,
+ '野原 is correctly absent from auto-suggestions at a score below threshold');
 const householdButtons=[...ui.window.document.querySelectorAll('[data-act="recordHouseholdChoose"]')];
 for(const row of katsuoGroups){
  assert.ok(householdButtons.some(b=>b.dataset.householdId===row.data.entity.household_item_id),
