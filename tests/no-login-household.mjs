@@ -2134,6 +2134,8 @@ try{
 }
 standaloneSession.window.document.querySelector('[data-act="recordProductOpen"]').click();
 chooseSavedHousehold(standaloneSession,'チョコ');
+const purchaseAlternative=standaloneSession.window.document.querySelector('[data-act="recordPurchaseNew"]');
+if(purchaseAlternative)purchaseAlternative.click(); // Explicitly distinct purchase despite a similar existing master.
 const standaloneProductForm=standaloneSession.window.document.getElementById('recordProductCreateForm');
 assert.ok(standaloneProductForm&&!standaloneProductForm.querySelector('[name="group"]'),
  'new product uses full-page editor after household selection');
