@@ -2672,7 +2672,7 @@ await waitFor(()=>aliasUI.window.KurashiLive.state().queued===0&&
  !temp.call('bootstrap').data.receipt_name_mappings.find(a=>a.receipt_name_id===chosenAlias.receipt_name_id)?.auto_match_product_id,
  'Alias becomes unlinked without deleting the OCR dictionary entry');
 const unlinkedRow=aliasUI.window.document.querySelector('[data-alias-id="'+chosenAlias.receipt_name_id+'"]');
-assert.ok(unlinkedRow?.textContent.includes('日用品未設定'),
+assert.ok(unlinkedRow?.textContent.includes('商品未紐付け'),
  'Unlinked OCR name is visible in the same list');
 unlinkedRow.click();
 aliasModal=aliasUI.window.document.querySelector('.alias-product-picker-overlay');
