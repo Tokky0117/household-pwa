@@ -270,7 +270,9 @@ function openRecordEntry(kind,recordId=null){
      productId:x.linked_product_id||'',manuallyLinked:!!x.linked_product_id,issues:[],
      ...(x.product_name_candidate?{productSuggestion:{
       existingName:x.candidate_match_type==='existing'?x.product_name_candidate:null,
-      newName:x.candidate_match_type==='new'?x.product_name_candidate:null
+      newName:x.candidate_match_type==='new'?x.product_name_candidate:null,
+      packageQuantity:x.candidate_package_quantity??null,
+      packageUnit:x.candidate_package_unit??null
      }}:{})}))};
  }else scanDraft=createManualRecord(kind);
  scanNewStoreMode=false;scanStatus='';
@@ -353,7 +355,8 @@ function recordBulkView(){
  const rows=candidates.map(row=>{
   const item=items.find(i=>i.id===recordBulkAssignments.get(row.record_item_id));
   const top=householdCandidates(row.proposed_name)[0];
-  const capacity=guessedPackage(row.proposed_name);
+  const capacity=guessedPackage(row.proposed_name,{
+   packageQuantity:row.package_quantity,packageUnit:row.package_unit});
   return '<section class="panel bulk-household-row">'+
    '<strong>'+esc(row.proposed_name)+'</strong>'+
    '<p class="hint">内容量：'+esc(capacity?capacity.quantity+capacity.unit:'未設定')+'</p>'+
@@ -479,7 +482,8 @@ function chooseRecordHousehold(groupId){
   page='receiptProductCreate';render();return;
  }
  recordProductSaving=true;
- const capacity=guessedPackage(name);
+ const capacity=guessedPackage(name,{
+  packageQuantity:line.candidate_package_quantity,packageUnit:line.candidate_package_unit});
  window.KurashiLive.linkReceiptToHouseholdItem(line.record_item_id,groupId,name,capacity)
  .then(()=>{closeRecordProductPicker();render();})
  .catch(err=>{
@@ -497,7 +501,8 @@ function receiptProductCreateView(){
   UI.formField({id:'record-product-name',name:'name',label:'商品名',value:name,
    maxlength:80,required:true,placeholder:'商品名を確認'})+
   productPackageFields({name,quantityId:'record-product-quantity',
-   unitId:'record-product-unit'})+
+   unitId:'record-product-unit',suggestion:{packageQuantity:line.candidate_package_quantity,
+    packageUnit:line.candidate_package_unit}})+
   '<p class="hint">日用品：'+esc(item?itemLabel(item):'未選択')+'</p>'+
   UI.button({label:'日用品に紐付ける',variant:'primary',type:'submit',
    disabled:!item||recordProductSaving})+'</form>';
@@ -2390,7 +2395,8 @@ function back(){
     const form=document.getElementById('recordProductCreateForm'),line=recordProductLine();
     if(form&&line){
      const d=new FormData(form),original=String(line.product_name_candidate||aliasNameFor(line)||'');
-     const capacity=guessedPackage(original);
+     const capacity=guessedPackage(original,{packageQuantity:line.candidate_package_quantity,
+      packageUnit:line.candidate_package_unit});
      const enteredQty=String(d.get('quantity')||'').trim();
      const changed=String(d.get('name')||'').trim()!==original||
       enteredQty!==(capacity?String(capacity.quantity):'')||
@@ -2742,7 +2748,9 @@ app.addEventListener('submit',e=>{e.preventDefault();const form=e.target;const d
    return {
     raw_name:verified?'':String(item.ocrRawName||'').trim(),
     ...(verified&&confirmedName?{non_ocr_name:confirmedName}:{}),
-    ...(suggestedName?{product_name_candidate:suggestedName,candidate_match_type:suggestionKind}:{}),
+    ...(suggestedName?{product_name_candidate:suggestedName,candidate_match_type:suggestionKind,
+     ...(window.KurashiProductPackage?.valid(candidate?.packageQuantity,candidate?.packageUnit)?
+      {candidate_package_quantity:candidate.packageQuantity,candidate_package_unit:candidate.packageUnit}:{})}:{}),
     linked_product_id:scanDraft.recordType!=='price_tag'?
      (chosenProductId||matchedBeforeSave||aiExistingId||null):
      String(d.get('product-'+i)||'')||null,
