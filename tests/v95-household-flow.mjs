@@ -165,4 +165,29 @@ assert.equal(products[0].household_item_id,wakame);
 assert.ok(saved.record_items.filter(i=>i.record_id===record.record_id)
  .every(x=>x.linked_product_id===products[0].product_id));
 ui.window.close();
-console.log('v95: household search, AI capacity, DOM, offline bulk linking and master reuse OK');
+// Equal names with different package capacities must remain separate product
+// masters. Never reuse a 120 g comparison unit for a 200 g purchase.
+ui=appSession();
+await waitFor(()=>ui.window.KurashiLive.state().loaded,'capacity distinction session');
+await ui.window.KurashiLive.saveRecord({
+ record_type:'receipt',record_date:'2026-11-19',chain_id:chain.data.entity.chain_id,
+ items:[{non_ocr_name:'別容量明細',raw_name:'',quantity:1,line_total_tax_included:220,
+  linked_product_id:null,product_name_candidate:'カットわかめ',candidate_match_type:'new',
+  candidate_package_quantity:200,candidate_package_unit:'g'}]
+});
+await waitFor(()=>ui.window.KurashiLive.state().queued===0,'other capacity saved');
+const otherReceipt=temp.call('bootstrap').data.records.find(x=>x.record_date==='2026-11-19');
+const otherPlan=ui.window.KurashiLive.previewBulkReceiptProducts(otherReceipt.record_id);
+assert.equal(otherPlan.length,1,'second capacity candidate remains eligible');
+assert.equal(otherPlan[0].product_id,null,'different quantity cannot reuse existing 120g product');
+assert.equal(otherPlan[0].package_quantity,200);
+await ui.window.KurashiLive.bulkRegisterReceiptHouseholds(otherReceipt.record_id,
+ otherPlan.map(x=>x.record_item_id),[wakame]);
+await waitFor(()=>ui.window.KurashiLive.state().queued===0 &&
+ temp.call('bootstrap').data.products.filter(x=>x.name==='カットわかめ').length===2,
+ 'different capacity registered independently');
+const variants=temp.call('bootstrap').data.products.filter(x=>x.name==='カットわかめ');
+assert.deepEqual(variants.map(x=>Number(x.package_quantity)).sort((a,b)=>a-b),[120,200],
+ 'same product name retains separate 120g and 200g masters');
+ui.window.close();
+console.log('v95: household search, AI capacity, DOM, offline bulk linking, master reuse and size variants OK');
