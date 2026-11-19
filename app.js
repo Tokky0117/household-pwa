@@ -507,28 +507,53 @@ function learnSavedReceiptAlias(line,productId){
   chain_id:record.chain_id,items:[{raw_name:ocrName,auto_match_product_id:productId}]
  }).catch(err=>console.warn('確認した商品のOCR名を記録できませんでした',err));
 }
+function linkConfirmedPurchase(line,groupId,name,capacity,productId=null){
+ if(recordProductSaving)return;
+ recordProductSaving=true;
+ window.KurashiLive.linkReceiptToHouseholdItem(line.record_item_id,groupId,name,capacity,productId)
+ .then(()=>{closeRecordProductPicker();render();})
+ .catch(err=>{
+  recordProductSaving=false;
+  const target=app.querySelector('.record-product-overlay .sheet-body');
+  if(target)inlineActionNotice(target,err.message||'日用品を設定できませんでした');
+  else say(err.message||'日用品を設定できませんでした');
+ });
+}
 function chooseRecordHousehold(groupId){
  const line=recordProductLine();
  if(!line||recordProductSaving||!items.some(i=>i.id===groupId&&!i.hidden))return;
  recordProductGroupId=groupId;
  const linked=catalogue.products.find(p=>p.id===line.linked_product_id);
- const name=String(linked?.name||line.product_name_candidate||aliasNameFor(line)||'').trim();
- // Without a named AI candidate the printed receipt may be truncated or
- // abbreviated. Let the user verify the canonical name before creation.
- if(!linked&&(!line.product_name_candidate||name.length>80)){
-  app.querySelector('.record-product-overlay')?.remove();
-  page='receiptProductCreate';render();return;
+ if(linked){
+  if(linked.householdItemId&&linked.householdItemId!==groupId){
+   const target=app.querySelector('.record-product-overlay .sheet-body');
+   if(target)inlineActionNotice(target,'この購入品は別の日用品に設定済みです。価格情報から登録先を変更してください。');
+   return;
+  }
+  linkConfirmedPurchase(line,groupId,linked.name,
+   {quantity:linked.packageQuantity??null,unit:linked.packageUnit??null},linked.id);
+  return;
  }
- recordProductSaving=true;
- const capacity=guessedPackage(name,{
-  packageQuantity:line.candidate_package_quantity,packageUnit:line.candidate_package_unit});
- window.KurashiLive.linkReceiptToHouseholdItem(line.record_item_id,groupId,name,capacity)
- .then(()=>{closeRecordProductPicker();render();})
- .catch(err=>{
-  recordProductSaving=false;
-  const target=app.querySelector('.record-product-overlay .sheet-body');
-  if(target)inlineActionNotice(target,err.message||'日用品に紐付けできませんでした');
- });
+ const matches=receiptPurchaseMatches(line,groupId);
+ const exact=matches.filter(x=>x.exact);
+ // An exact and unambiguous spelling/reading may reuse the known product.
+ if(exact.length===1&&matches.length===1&&exact[0].available){
+  const p=exact[0].product;
+  linkConfirmedPurchase(line,groupId,p.name,
+   {quantity:p.packageQuantity??null,unit:p.packageUnit??null},p.id);return;
+ }
+ if(matches.length){
+  recordProductMode='purchaseConfirm';
+  app.querySelector('.record-product-overlay')?.remove();
+  app.insertAdjacentHTML('beforeend',recordProductView());syncSheetScrollLock();return;
+ }
+ const name=String(line.product_name_candidate||aliasNameFor(line)||'').trim();
+ if(!line.product_name_candidate||line.candidate_match_type==='existing'||name.length>80){
+  app.querySelector('.record-product-overlay')?.remove();page='receiptProductCreate';render();return;
+ }
+ // Explicitly choosing the household is the only action for a new AI suggestion.
+ linkConfirmedPurchase(line,groupId,name,guessedPackage(name,{
+  packageQuantity:line.candidate_package_quantity,packageUnit:line.candidate_package_unit}));
 }
 function receiptProductCreateView(){
  const line=recordProductLine();
@@ -3352,6 +3377,16 @@ if(action==='recordProductOpen'||action==='recordProductNew'){
  const line=allPreviewItems().find(x=>x.record_item_id===el.dataset.recordItemId);
  const product=catalogue.products.find(p=>p.id===line?.linked_product_id);
  openRecordProductPicker(el.dataset.recordItemId,product?.householdItemId?'edit':'household');return;
+}
+if(action==='recordPurchaseConfirm'&&recordProductMode==='purchaseConfirm'){
+ const line=recordProductLine(),product=catalogue.products.find(p=>p.id===el.dataset.productId);
+ if(!line||!product||!recordProductGroupId||
+  !receiptPurchaseMatches(line,recordProductGroupId).some(x=>x.product.id===product.id&&x.available))return;
+ linkConfirmedPurchase(line,recordProductGroupId,product.name,
+  {quantity:product.packageQuantity??null,unit:product.packageUnit??null},product.id);return;
+}
+if(action==='recordPurchaseNew'&&recordProductMode==='purchaseConfirm'){
+ app.querySelector('.record-product-overlay')?.remove();page='receiptProductCreate';render();return;
 }
 if(action==='recordProductShowNew'){
  app.querySelector('.record-product-overlay')?.remove();page='receiptProductCreate';render();return;
