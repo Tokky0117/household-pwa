@@ -1495,22 +1495,29 @@ const readingKey=value=>window.KurashiJapaneseReading?.key(value)||
  .replace(/[\u30a1-\u30f6]/g,c=>String.fromCharCode(c.charCodeAt(0)-96))
  .replace(/[\s\p{P}\p{S}]/gu,'');
 function candidateScore(source,target,item=false,sub=''){
- const a=readingKey(source),b=readingKey(target),c=readingKey(sub);
- if(!a||!b)return 0;
- let score=a===b?100:a.includes(b)?Math.min(95,74+Math.round(20*b.length/a.length)):b.includes(a)?75:0;
- if(!score){const grams=b.length>1?Array.from({length:b.length-1},(_,i)=>b.slice(i,i+2)):[b];
-  score=Math.min(65,Math.round(65*grams.filter(x=>a.includes(x)).length/Math.max(1,grams.length)));}
- if(a.includes('にゅう')&&b.includes('にゅう'))score=Math.max(score,55);
- if(item){
-  if(c&&(a.includes(c)||c.endsWith('よう')&&a.includes(c.slice(0,-2))))score=Math.min(100,score+20);
-  if(b==='ふくろ'&&/ぽり|びにーる|ほぞん|ごみ/.test(a))score=Math.max(score,85);
-  if(b==='ふくろ'&&/ふりーざーばっぐ|じっぷろっく/.test(a))score=Math.max(score,76);
-  if(b==='ふくろ'&&/ふくろめん|てぃーばっぐ/.test(a))score=Math.min(score,8);
- }else{
-  const numbers=v=>[...String(v).normalize('NFKC').matchAll(/\d+(?:\.\d+)?/g)].map(m=>m[0]).join(',');
-  if(numbers(source)&&numbers(target)&&numbers(source)!==numbers(target))score=Math.min(score,60);
+ const variants=v=>window.KurashiJapaneseReading?.variants(v)||[readingKey(v)];
+ const sourceKeys=variants(source),targetKeys=item&&String(target).length===1?
+  [readingKey(target)]:variants(target);
+ const c=readingKey(sub);
+ let best=0;
+ for(const a of sourceKeys)for(const b of targetKeys){
+  if(!a||!b)continue;
+  let score=a===b?100:a.includes(b)?Math.min(95,74+Math.round(20*b.length/a.length)):b.includes(a)?75:0;
+  if(!score){const grams=b.length>1?Array.from({length:b.length-1},(_,i)=>b.slice(i,i+2)):[b];
+   score=Math.min(65,Math.round(65*grams.filter(x=>a.includes(x)).length/Math.max(1,grams.length)));}
+  if(a.includes('にゅう')&&b.includes('にゅう'))score=Math.max(score,55);
+  if(item){
+   if(c&&(a.includes(c)||c.endsWith('よう')&&a.includes(c.slice(0,-2))))score=Math.min(100,score+20);
+   if(b==='ふくろ'&&/ぽり|びにーる|ほぞん|ごみ/.test(a))score=Math.max(score,85);
+   if(b==='ふくろ'&&/ふりーざーばっぐ|じっぷろっく/.test(a))score=Math.max(score,76);
+   if(b==='ふくろ'&&/ふくろめん|てぃーばっぐ/.test(a))score=Math.min(score,8);
+  }else{
+   const numbers=v=>[...String(v).normalize('NFKC').matchAll(/\d+(?:\.\d+)?/g)].map(m=>m[0]).join(',');
+   if(numbers(source)&&numbers(target)&&numbers(source)!==numbers(target))score=Math.min(score,60);
+  }
+  best=Math.max(best,score);
  }
- return Math.round(score);
+ return Math.round(best);
 }
 function householdCandidates(source,query=''){
  const q=readingKey(query);
