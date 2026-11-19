@@ -2912,22 +2912,23 @@ html,body{touch-action:pan-x pan-y}
 .bulk-household-row>.hint{margin:0}
 .bulk-household-row>.secondary,.bulk-household-row>.tertiary{min-height:44px}
 
-/* v95.1: household selection uses shared two-line choice rows.
- * Use a content-sized sheet, avoiding a tall blank panel on iPhone.
- * The search and choices have independent geometry and never overlap. */
+/* v95.2: the household picker has a fixed height regardless of candidate count.
+ * The header/search stay still; the result list scrolls within the sheet. */
 .half-sheet.receipt-product-modal:not(:has(.scan-existing-picker)){
- height:auto;max-height:calc(90dvh - env(safe-area-inset-top) - 12px)
+ height:min(74dvh,620px);
+ max-height:calc(100dvh - env(safe-area-inset-top) - 12px)
 }
 .half-sheet.receipt-product-modal:not(:has(.scan-existing-picker))>.sheet-body{
- display:flex;flex-direction:column;gap:12px;flex:0 1 auto;
- overflow-y:auto;min-height:0;padding-top:5px
+ display:flex;flex-direction:column;gap:12px;flex:1 1 auto;
+ overflow:hidden;min-height:0;padding-top:5px
 }
 .receipt-product-modal .scan-existing-results{
- display:flex;flex-direction:column;gap:8px;overflow-y:auto;min-height:0;
- max-height:min(44dvh,430px);padding:2px 1px 4px
+ display:flex;flex:1 1 auto;flex-direction:column;gap:8px;
+ overflow-y:auto;overscroll-behavior:contain;min-height:0;
+ max-height:none;padding:2px 1px 4px
 }
 .receipt-product-modal .ui-search{flex:none;margin:0}
 .receipt-product-modal .ui-choice-row{flex:none;min-height:52px}
 .receipt-product-modal .ui-choice-copy>strong{font-size:var(--ui-value-font-size)}
 .receipt-product-modal .ui-choice-sub{font-size:12px;font-weight:400;color:var(--muted)}
-.receipt-product-modal .record-purchase-confirm-results{max-height:min(42dvh,390px)}
+.receipt-product-modal .record-purchase-confirm-results{min-height:0;max-height:none}
