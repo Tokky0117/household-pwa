@@ -216,9 +216,9 @@ assert.equal(captured.ok,true,'unmatched Yamaki receipt exists');
 const capturedId=captured.data.record.record_id;
 ui=appSession();
 await waitFor(()=>ui.window.KurashiLive.state().loaded,'Yamaki scenario loaded');
-assert.equal(ui.window.eval("readingKey('鰹')"),ui.window.eval("readingKey('かつお')"),
+assert.equal(ui.window.KurashiJapaneseReading.key('鰹'),ui.window.KurashiJapaneseReading.key('かつお'),
  'general Japanese reading data handles non-joyo kanji without bespoke code');
-assert.equal(ui.window.eval("readingKey('袋')"),ui.window.eval("readingKey('ふくろ')"),
+assert.equal(ui.window.KurashiJapaneseReading.key('袋'),ui.window.KurashiJapaneseReading.key('ふくろ'),
  'common-use kanji pronunciations are reusable');
 ui.window.document.querySelector('[data-tab="receipt"]').click();
 const yamakiRow=ui.window.document.querySelector('[data-act="recordDetail"][data-record-id="'+capturedId+'"]');
