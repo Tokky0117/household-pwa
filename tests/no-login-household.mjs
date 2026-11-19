@@ -8,6 +8,7 @@ const setup=readFileSync(new URL('../gas/Setup.gs',import.meta.url),'utf8');
 const api=readFileSync(new URL('../gas/Api.gs',import.meta.url),'utf8');
 const client=readFileSync(new URL('../live-client.js',import.meta.url),'utf8');
 const packageCode=readFileSync(new URL('../product-package.js',import.meta.url),'utf8');
+const readingCode=readFileSync(new URL('../japanese-reading.js',import.meta.url),'utf8');
 const app=readFileSync(new URL('../app.js',import.meta.url),'utf8');
 const validator=readFileSync(new URL('../receipt-validation.js',import.meta.url),'utf8');
 const html=readFileSync(new URL('../index.html',import.meta.url),'utf8');
@@ -196,6 +197,7 @@ function appSession(idbFactory=factory){
  dom.window.HTMLElement.prototype.scrollIntoView=()=>{}; // supported by iOS Safari, absent in jsdom
  dom.window.console=console;
  dom.window.eval(packageCode);
+ dom.window.eval(readingCode);
  dom.window.eval(client);
  dom.window.eval(validator);
  dom.window.eval(reviewModel);
@@ -212,8 +214,10 @@ function chooseSavedHousehold(session,search){
  assert.ok(button,'requested household appears in search');button.click();
 }
 function showSavedProductChoices(session){
- const control=session.window.document.querySelector('[data-act="recordProductShowList"]');
- assert.ok(control,'existing product search route is visible');control.click();
+ // Test-only inspection path. The ordinary receipt UI intentionally hides
+ // product-master selection; exercise the retained diagnostic picker directly.
+ assert.equal(session.window.document.querySelector('[data-act="recordProductShowList"]'),null);
+ session.window.eval("changeRecordProductMode('select')");
 }
 function chooseBulkHousehold(session,index,search){
  const row=session.window.document.querySelectorAll('[data-act="recordBulkPick"]')[index];
