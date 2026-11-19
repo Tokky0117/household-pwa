@@ -1521,7 +1521,13 @@ function candidateScore(source,target,item=false,sub=''){
 function householdCandidates(source,query=''){
  const q=readingKey(query);
  return items.filter(i=>!i.hidden).map(i=>({item:i,score:candidateScore(source,i.name,true,i.subName)}))
-  .filter(r=>q?readingKey(itemLabel(r.item)).includes(q):r.score>=20)
+  .filter(r=>{
+   if(!q)return r.score>=20;
+   // Search by every legitimate reading of the name and sub-information.
+   // Unlike automatic suggestions, manual search must reach low-scored items.
+   const variants=v=>window.KurashiJapaneseReading?.variants(v)||[readingKey(v)];
+   return [r.item.name,r.item.subName||''].some(v=>variants(v).some(k=>k.includes(q)));
+  })
   .sort((a,b)=>b.score-a.score||itemLabel(a.item).localeCompare(itemLabel(b.item),'ja')).slice(0,5);
 }
 function productCandidates(source,query='',excludeItem=''){
@@ -2250,6 +2256,12 @@ function syncSheetScrollLock(){
 }
 function render(){
  if(!window.document)return; // A closed iOS page/session must not re-render.
+ // Data refreshes may rerender the receipt detail without an intentional UI
+ // action. Keep the open sheet DOM (and focused search field) intact so the
+ // entrance animation cannot restart or visually flicker.
+ const retainedReceiptSheet=page==='recordDetail'&&recordProductItemId?
+  app.querySelector('.record-product-overlay'):null;
+ if(retainedReceiptSheet)retainedReceiptSheet.remove();
   closeScanViewer();
  const currentModal=page==='add'||page==='edit'||page==='productEdit'||page==='productPick'||page==='scanExistingProduct';
  const wasModal=previousPage==='add'||previousPage==='edit'||previousPage==='productEdit'||previousPage==='productPick'||previousPage==='recordSource'||previousPage==='scanExistingProduct';
@@ -2268,7 +2280,10 @@ function render(){
  if(storePickerTarget&&((storePickerTarget==='scan'&&page==='recordScan')))
   app.insertAdjacentHTML('beforeend',storePickerView());
  else storePickerTarget=null;
- if(recordProductItemId&&page==='recordDetail')app.insertAdjacentHTML('beforeend',recordProductView());
+ if(recordProductItemId&&page==='recordDetail'){
+  if(retainedReceiptSheet)app.appendChild(retainedReceiptSheet);
+  else app.insertAdjacentHTML('beforeend',recordProductView());
+ }
   if(recordBulkActiveId&&page==='receiptBulk')app.insertAdjacentHTML('beforeend',recordBulkHouseholdView());
  if(masterGroupPickerOpen&&['masterProductEdit','masterProductNew'].includes(page))
   app.insertAdjacentHTML('beforeend',masterGroupPickerView());
