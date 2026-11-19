@@ -2287,6 +2287,9 @@ assert.match(historySession.window.document.body.textContent,/日用品未設定
  'near-name candidates are not automatically confirmed');
 historySession.window.document.querySelector('[data-act="recordProductOpen"]').click();
 showSavedProductChoices(historySession);
+const historySearch=historySession.window.document.getElementById('record-product-search');
+historySearch.value=historyCanonical;
+historySearch.dispatchEvent(new historySession.window.Event('input',{bubbles:true}));
 const historyOption=historySession.window.document.querySelector(
  '[data-act="recordProductChoose"][data-product-id="'+historyId+'"]');
 assert.ok(historyOption,'manual selection can resolve a near-name spelling');
@@ -2364,9 +2367,17 @@ await waitFor(()=>!!conflictSession.window.document.querySelector('[data-act="re
 assert.match(conflictSession.window.document.body.textContent,/日用品未設定/);
 conflictSession.window.document.querySelector('[data-act="recordProductOpen"]').click();
 showSavedProductChoices(conflictSession);
-assert.ok(conflictSession.window.document.querySelectorAll(
- '[data-act="recordProductChoose"]').length>=2,
- 'ambiguous OCR spellings allow explicit product selection');
+const conflictSearch=conflictSession.window.document.getElementById('record-product-search');
+conflictSearch.value=historyCanonical;
+conflictSearch.dispatchEvent(new conflictSession.window.Event('input',{bubbles:true}));
+assert.ok(conflictSession.window.document.querySelector(
+ '[data-act="recordProductChoose"][data-product-id="'+historyId+'"]'),
+ 'first possible product is searchable without auto-selecting it');
+conflictSearch.value='別商品B';
+conflictSearch.dispatchEvent(new conflictSession.window.Event('input',{bubbles:true}));
+assert.ok(conflictSession.window.document.querySelector(
+ '[data-act="recordProductChoose"][data-product-id="'+conflict.data.entity.product_id+'"]'),
+ 'second possible product is also searchable explicitly');
 conflictSession.window.close();
 
 /* Removing an item-group association never deletes its product master or
