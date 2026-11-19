@@ -3,6 +3,7 @@ import {readFileSync} from 'node:fs';
 import vm from 'node:vm';
 const source=readFileSync(new URL('../app.js',import.meta.url),'utf8');
 const packageScript=readFileSync(new URL('../product-package.js',import.meta.url),'utf8');
+const readingScript=readFileSync(new URL('../japanese-reading.js',import.meta.url),'utf8');
 const css=readFileSync(new URL('../styles.css',import.meta.url),'utf8');
 const validatorScript=readFileSync(new URL('../receipt-validation.js',import.meta.url),'utf8');
 const validator=vm.runInNewContext(validatorScript+';KurashiReceiptValidation');
@@ -26,6 +27,7 @@ const doc={
 const ctx={document:doc,localStorage:{getItem:k=>storage.get(k)??null,setItem:(k,v)=>storage.set(k,v),removeItem:k=>storage.delete(k)},
  navigator:{},window:{scrollTo(){},scrollY:0,KurashiReceiptValidation:validator,KurashiReceiptReview:review},crypto:{randomUUID:()=> 'test-id'},setTimeout:()=>0};
 vm.runInNewContext(packageScript,ctx);
+vm.runInNewContext(readingScript,ctx);
 const packageAPI=ctx.window.KurashiProductPackage;
 const ui=vm.runInNewContext(source+`
 ({UI,listView,priceCompareView,pickerView,pickerResults,masterProductsView,masterProductRows,masterProductEditorView,masterGroupPickerView,masterGroupPickerRows,aliasManageView,aliasManageRows,aliasProductPickerView,aliasProductPickerRows,detailHomeView,detailAllView,receiptScanView,receiptChatGptView,recordDetailView,scanStoreNameIssue,scanValidPurchaseDate,scanReadableError,floatingActionPlacement,applyChatGptOcrAssistance,receiptOcrReference,receiptOcrRows,isUnconfirmedBarcodeLine,makeChatGptReceiptRebuildDraft,scanProductView,scanProductGroupChoices,scanExistingProductView,scanExistingProductResults,scanChainForStore,scanStoreHeaderMatch,scanAutolinkUnmatched,scanMatchProduct,scanSimilarProducts,normalizeOcrProductName,normalizedOcrItemName,render,initializeCompare,
