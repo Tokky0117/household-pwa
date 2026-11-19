@@ -7,6 +7,7 @@ const setup=readFileSync(new URL('../gas/Setup.gs',import.meta.url),'utf8');
 const api=readFileSync(new URL('../gas/Api.gs',import.meta.url),'utf8');
 const client=readFileSync(new URL('../live-client.js',import.meta.url),'utf8');
 const packageCode=readFileSync(new URL('../product-package.js',import.meta.url),'utf8');
+const readingCode=readFileSync(new URL('../japanese-reading.js',import.meta.url),'utf8');
 const app=readFileSync(new URL('../app.js',import.meta.url),'utf8');
 const validator=readFileSync(new URL('../receipt-validation.js',import.meta.url),'utf8');
 const reviewModel=readFileSync(new URL('../receipt-review-model.js',import.meta.url),'utf8');
@@ -95,7 +96,7 @@ function appSession(){
  dom.window.fetch=mockFetch;dom.window.scrollTo=()=>{};
  dom.window.HTMLElement.prototype.scrollIntoView=()=>{};
  dom.window.console=console;
- dom.window.eval(packageCode);dom.window.eval(client);
+ dom.window.eval(packageCode);dom.window.eval(readingCode);dom.window.eval(client);
  dom.window.eval(validator);dom.window.eval(reviewModel);dom.window.eval(app);
  dom.window.document.dispatchEvent(new dom.window.Event('DOMContentLoaded',{bubbles:true}));
  return dom;
