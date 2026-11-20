@@ -271,7 +271,38 @@ const sub=householdButtons.find(b=>b.dataset.householdId===katsuoGroups[3].data.
 assert.match(sub.textContent,/テスト1：かつお/,'secondary household label uses colon');
 const first=householdButtons.find(b=>b.dataset.householdId===katsuoId);
 assert.ok(first.querySelector('.ui-choice-sub'),'similarity is subsidiary to item name');
+assert.match(first.textContent,/関連度 \d+/,'candidate shows a ranking score, not a probability');
+assert.ok(!first.textContent.includes('一致度'),'old similarity wording is not shown');
+const sameSheet=ui.window.document.querySelector('.record-product-overlay .half-sheet');
 first.click();
+assert.equal(ui.window.document.querySelector('.record-product-overlay .half-sheet'),sameSheet,
+ 'the same sheet remains open through product confirmation');
+assert.match(ui.window.document.querySelector('.receipt-product-modal .sheet-head').textContent,/商品を確認/);
+const other=ui.window.document.querySelector('[data-act="recordProductShowList"]');
+assert.ok(other,'similar products have a search-all alternative');
+other.click();
+assert.equal(ui.window.document.querySelector('.record-product-overlay .half-sheet'),sameSheet,
+ 'other-product search does not open a second sheet');
+assert.match(ui.window.document.querySelector('.receipt-product-modal .sheet-head').textContent,/商品を選択/);
+const query=ui.window.document.getElementById('record-product-search');
+query.value='試験用まったく新しい商品';
+query.dispatchEvent(new ui.window.Event('input',{bubbles:true}));
+assert.ok(ui.window.document.querySelector('[data-act="recordProductShowNew"]'),
+ 'a typed search allows using its text as the new product name');
+ui.window.document.querySelector('[data-act="recordProductShowNew"]').click();
+const form=ui.window.document.getElementById('recordProductCreateForm');
+assert.ok(form,'product editor is shown within the original sheet');
+assert.equal(ui.window.document.querySelector('.record-product-overlay .half-sheet'),sameSheet);
+assert.equal(form.querySelector('[name="name"]').value,'試験用まったく新しい商品',
+ 'the search query is carried into product registration');
+assert.ok(form.querySelector('[name="quantity"]'),'capacity input is visible');
+assert.equal(form.querySelector('.product-package-details')?.tagName,'DIV',
+ 'capacity is not hidden inside a collapsible disclosure');
+ui.window.document.querySelector('[data-act="recordProductStepBack"]').click();
+assert.equal(ui.window.document.getElementById('record-product-search').value,
+ '試験用まったく新しい商品','back preserves product search');
+ui.window.document.querySelector('[data-act="recordProductStepBack"]').click();
+assert.match(ui.window.document.querySelector('.receipt-product-modal .sheet-head').textContent,/商品を確認/);
 const confirm=ui.window.document.querySelector('[data-act="recordPurchaseConfirm"][data-product-id="'+yamakiId+'"]');
 assert.ok(confirm,'unassigned master is offered as a purchase verification');
 assert.ok(ui.window.document.querySelector('.record-purchase-confirm-results'));
