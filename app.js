@@ -613,13 +613,11 @@ function chooseRecordHousehold(groupId){
    {quantity:p.packageQuantity??null,unit:p.packageUnit??null},p.id);return;
  }
  if(matches.length){
-  recordProductMode='purchaseConfirm';
-  app.querySelector('.record-product-overlay')?.remove();
-  app.insertAdjacentHTML('beforeend',recordProductView());syncSheetScrollLock();return;
+  changeRecordProductMode('purchaseConfirm');return;
  }
  const name=String(line.product_name_candidate||aliasNameFor(line)||'').trim();
  if(!line.product_name_candidate||line.candidate_match_type==='existing'||name.length>80){
-  app.querySelector('.record-product-overlay')?.remove();page='receiptProductCreate';render();return;
+  changeRecordProductMode('create');return;
  }
  // Explicitly choosing the household is the only action for a new AI suggestion.
  linkConfirmedPurchase(line,groupId,name,guessedPackage(name,{
@@ -2671,7 +2669,7 @@ app.addEventListener('input',e=>{
 function updateSearchResults(){const target=document.getElementById('item-results');if(target){target.innerHTML=listResults();if(openSwipeId)setOpenSwipe(openSwipeId)}}
 const searchBindings={'store-picker-search':{set:v=>{storePickerQuery=v},update:()=>{
  const target=document.getElementById('store-picker-results');if(target)target.innerHTML=storePickerChoices()
-}},search:{set:v=>{query=v},update:updateSearchResults},'catalogue-search':{set:v=>{pickQuery=v},update:()=>{const target=document.getElementById('catalogue-results');if(target)target.innerHTML=pickerResults()}},'alias-query':{set:v=>{aliasQuery=v;aliasVisibleLimit=100},update:()=>{const rows=document.getElementById('alias-results');if(rows)rows.innerHTML=aliasManageRows()}},'alias-product-search':{set:v=>{aliasPickerQuery=v},update:()=>{const rows=document.getElementById('alias-product-results');if(rows)rows.innerHTML=aliasProductPickerRows()}},'master-group-search':{set:v=>{masterGroupQuery=v},update:()=>{const rows=document.getElementById('master-group-results');if(rows)rows.innerHTML=masterGroupPickerRows()}},'master-product-query':{set:v=>{masterQuery=v},update:()=>{const rows=document.getElementById('master-product-results');if(rows)rows.innerHTML=masterProductRows()}},'scan-existing-search':{set:v=>{scanExistingQuery=v},update:()=>{const target=document.getElementById('scan-existing-results');if(target)target.innerHTML=scanExistingProductResults()}},'scan-group-search':{set:v=>{scanGroupQuery=v},update:()=>{const target=document.getElementById('scan-product-group-results');if(target)target.innerHTML=scanProductGroupChoices()}},'record-product-search':{set:v=>{recordProductQuery=v},update:()=>{const target=document.getElementById('record-product-results');if(target)target.innerHTML=recordProductMode==='select'?recordProductChoices():recordHouseholdChoices()}},'record-bulk-household-search':{set:v=>{recordBulkQuery=v},update:()=>{const target=document.getElementById('record-bulk-household-results');if(target)target.innerHTML=recordBulkHouseholdChoices()}}};
+}},search:{set:v=>{query=v},update:updateSearchResults},'catalogue-search':{set:v=>{pickQuery=v},update:()=>{const target=document.getElementById('catalogue-results');if(target)target.innerHTML=pickerResults()}},'alias-query':{set:v=>{aliasQuery=v;aliasVisibleLimit=100},update:()=>{const rows=document.getElementById('alias-results');if(rows)rows.innerHTML=aliasManageRows()}},'alias-product-search':{set:v=>{aliasPickerQuery=v},update:()=>{const rows=document.getElementById('alias-product-results');if(rows)rows.innerHTML=aliasProductPickerRows()}},'master-group-search':{set:v=>{masterGroupQuery=v},update:()=>{const rows=document.getElementById('master-group-results');if(rows)rows.innerHTML=masterGroupPickerRows()}},'master-product-query':{set:v=>{masterQuery=v},update:()=>{const rows=document.getElementById('master-product-results');if(rows)rows.innerHTML=masterProductRows()}},'scan-existing-search':{set:v=>{scanExistingQuery=v},update:()=>{const target=document.getElementById('scan-existing-results');if(target)target.innerHTML=scanExistingProductResults()}},'scan-group-search':{set:v=>{scanGroupQuery=v},update:()=>{const target=document.getElementById('scan-product-group-results');if(target)target.innerHTML=scanProductGroupChoices()}},'record-product-search':{set:v=>{if(recordProductMode==='select')recordProductSearchQuery=v;else recordProductQuery=v},update:()=>{const target=document.getElementById('record-product-results');if(target)target.innerHTML=recordProductMode==='select'?recordProductChoices():recordHouseholdChoices()}},'record-bulk-household-search':{set:v=>{recordBulkQuery=v},update:()=>{const target=document.getElementById('record-bulk-household-results');if(target)target.innerHTML=recordBulkHouseholdChoices()}}};
 function syncSearch(input,refresh=true){const binding=searchBindings[input.id];if(!binding)return;binding.set(input.value);input.closest('.ui-search')?.querySelector('.clear-search')?.toggleAttribute('hidden',!input.value);if(refresh)binding.update()}
 app.addEventListener('compositionstart',e=>{if(searchBindings[e.target.id])composing=true});
 app.addEventListener('compositionend',e=>{if(searchBindings[e.target.id]){composing=false;syncSearch(e.target)}});
@@ -2848,7 +2846,8 @@ app.addEventListener('submit',e=>{e.preventDefault();const form=e.target;const d
  }
  if(form.id==='recordProductCreateForm'){
   const line=recordProductLine(),name=String(d.get('name')||'').trim();
-  if(!line||recordProductSaving||page!=='receiptProductCreate')return;
+  if(!line||recordProductSaving||
+    !(page==='recordDetail'&&recordProductMode==='create'||page==='receiptProductCreate'))return;
   if(!recordProductGroupId||!name||name.length>80){
    fieldNotice(form,'日用品と商品名を確認してください','record-product-name');return;
   }
@@ -3475,15 +3474,26 @@ if(action==='recordPurchaseConfirm'&&recordProductMode==='purchaseConfirm'){
   {quantity:product.packageQuantity??null,unit:product.packageUnit??null},product.id);return;
 }
 if(action==='recordPurchaseNew'&&recordProductMode==='purchaseConfirm'){
- app.querySelector('.record-product-overlay')?.remove();page='receiptProductCreate';render();return;
+ changeRecordProductMode('select');return;
 }
-if(action==='recordProductShowNew'){
- app.querySelector('.record-product-overlay')?.remove();page='receiptProductCreate';render();return;
+if(action==='recordProductShowNew'&&recordProductMode==='select'&&
+ recordProductSearchQuery.trim()){
+ changeRecordProductMode('create');return;
 }
 if(action==='recordProductShowList'){changeRecordProductMode('select');return;}
+if(action==='recordProductStepBack'){recordProductStepBack();return;}
 if(action==='recordProductShowHousehold'){changeRecordProductMode('household');return;}
 if(action==='recordHouseholdChoose'){chooseRecordHousehold(el.dataset.householdId);return;}
-if(action==='recordProductChoose'){linkSavedRecordProduct(el.dataset.productId);return;}
+if(action==='recordProductChoose'){
+ const p=catalogue.products.find(x=>x.id===el.dataset.productId);
+ if(recordProductGroupId){
+  if(!p||p.householdItemId&&p.householdItemId!==recordProductGroupId)return;
+  const line=recordProductLine();if(!line)return;
+  linkConfirmedPurchase(line,recordProductGroupId,p.name,
+   {quantity:p.packageQuantity??null,unit:p.packageUnit??null},p.id);
+ }else linkSavedRecordProduct(el.dataset.productId);
+ return;
+}
 if(action==='recordProductUnlink'){linkSavedRecordProduct(null);return;}
 if(action==='recordDetail'){
  recordDetailOrigin=page==='detailAll'?'detailAll':'list';recordDetailId=el.dataset.recordId;
