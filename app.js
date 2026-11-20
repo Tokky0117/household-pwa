@@ -598,7 +598,7 @@ function chooseRecordHousehold(groupId){
  if(linked){
   if(linked.householdItemId&&linked.householdItemId!==groupId){
    const target=app.querySelector('.record-product-overlay .sheet-body');
-   if(target)inlineActionNotice(target,'この購入品は別の日用品に設定済みです。価格情報から登録先を変更してください。');
+   if(target)inlineActionNotice(target,'この商品は別の日用品に登録済みです。変更先の日用品の価格情報から登録先を変更してください。');
    return;
   }
   linkConfirmedPurchase(line,groupId,linked.name,
