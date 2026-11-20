@@ -477,13 +477,14 @@ function receiptProductCreateForm(){
  const line=recordProductLine();if(!line)return '';
  const fallback=line.product_name_candidate||aliasNameFor(line)||'';
  const name=recordProductSearchQuery.trim()||fallback;
+ const suggestion=recordProductSearchQuery.trim()&&norm(name)!==norm(fallback)?
+  null:{packageQuantity:line.candidate_package_quantity,packageUnit:line.candidate_package_unit};
  const item=items.find(i=>i.id===recordProductGroupId);
  return '<form id="recordProductCreateForm" class="record-product-create-form">'+
   UI.formField({id:'record-product-name',name:'name',label:'商品名',value:name,
    maxlength:80,required:true,placeholder:'商品名を入力'})+
   productPackageFields({name,quantityId:'record-product-quantity',
-   unitId:'record-product-unit',suggestion:{packageQuantity:line.candidate_package_quantity,
-    packageUnit:line.candidate_package_unit}})+
+   unitId:'record-product-unit',suggestion})+
   '<p class="hint">日用品：'+esc(item?itemLabel(item):'未選択')+'</p>'+
   UI.button({label:'登録して設定',variant:'primary',type:'submit',
    disabled:!item||recordProductSaving})+'</form>';
@@ -623,21 +624,12 @@ function chooseRecordHousehold(groupId){
  linkConfirmedPurchase(line,groupId,name,guessedPackage(name,{
   packageQuantity:line.candidate_package_quantity,packageUnit:line.candidate_package_unit}));
 }
+// Legacy route retained for previously cached navigation state; normal receipt
+// registration uses this same form inside the persistent sheet.
 function receiptProductCreateView(){
- const line=recordProductLine();
- if(!line)return recordDetailView();
- const name=line.product_name_candidate||aliasNameFor(line)||'';
- const item=items.find(i=>i.id===recordProductGroupId);
- const form='<form id="recordProductCreateForm">'+
-  UI.formField({id:'record-product-name',name:'name',label:'購入品の名前',value:name,
-   maxlength:80,required:true,placeholder:'商品名を確認'})+
-  productPackageFields({name,quantityId:'record-product-quantity',
-   unitId:'record-product-unit',suggestion:{packageQuantity:line.candidate_package_quantity,
-    packageUnit:line.candidate_package_unit}})+
-  '<p class="hint">日用品：'+esc(item?itemLabel(item):'未選択')+'</p>'+
-  UI.button({label:'設定する',variant:'primary',type:'submit',
-   disabled:!item||recordProductSaving})+'</form>';
- return head('購入品を確認','',true)+'<main class="manage-main">'+form+'</main>';
+ if(!recordProductLine())return recordDetailView();
+ return head('商品を登録','',true)+'<main class="manage-main">'+
+  receiptProductCreateForm()+'</main>';
 }
 function linkSavedRecordProduct(productId){
  const line=recordProductLine();
