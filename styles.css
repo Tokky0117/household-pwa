@@ -2884,12 +2884,10 @@ html,body{touch-action:pan-x pan-y}
 
 /* Shared optional per-package capacity editor, not a purchase-quantity field. */
 .product-package-details{margin:6px 0 12px;min-width:0}
-.product-package-details>summary{
- display:list-item;cursor:pointer;min-height:var(--ui-touch-size);
- padding:10px 4px;font-size:14px;font-weight:var(--ui-action-font-weight);
- color:var(--accent);list-style-position:inside
+.product-package-details>.product-package-title{
+ padding:8px 0 4px;font-size:var(--ui-value-font-size);
+ font-weight:var(--ui-value-font-weight);color:var(--ink)
 }
-.product-package-details>summary:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .product-package-details .product-package-hint{
  margin:2px 0 8px;font-size:12px;line-height:1.55
 }
@@ -2932,3 +2930,38 @@ html,body{touch-action:pan-x pan-y}
 .receipt-product-modal .ui-choice-copy>strong{font-size:var(--ui-value-font-size)}
 .receipt-product-modal .ui-choice-sub{font-size:12px;font-weight:400;color:var(--muted)}
 .receipt-product-modal .record-purchase-confirm-results{min-height:0;max-height:none}
+
+/* v95.3: one persistent receipt sheet, with directional page transitions. */
+.receipt-product-modal .sheet-step-back{
+ grid-column:1;grid-row:1;display:flex;align-items:center;justify-content:center;
+ width:42px;height:44px;padding:8px;border:0;background:transparent;
+ color:var(--ink);cursor:pointer
+}
+.receipt-product-modal .sheet-step-back svg{width:22px;height:22px}
+.receipt-product-modal .sheet-step-back:focus-visible{outline:2px solid var(--accent)}
+.receipt-product-modal .sheet-body.record-step-forward{
+ animation:record-step-forward .2s cubic-bezier(.2,.7,.3,1) both
+}
+.receipt-product-modal .sheet-body.record-step-backward{
+ animation:record-step-backward .2s cubic-bezier(.2,.7,.3,1) both
+}
+@keyframes record-step-forward{
+ from{opacity:.55;transform:translateX(18px)}to{opacity:1;transform:translateX(0)}
+}
+@keyframes record-step-backward{
+ from{opacity:.55;transform:translateX(-18px)}to{opacity:1;transform:translateX(0)}
+}
+.half-sheet.receipt-product-modal>.sheet-body:has(.record-product-create-form){
+ overflow-y:auto;display:block
+}
+.receipt-product-modal .record-product-create-form{
+ display:flex;flex-direction:column;gap:12px;padding-bottom:12px
+}
+.receipt-product-modal .record-product-create-form>.primary{flex-shrink:0}
+.receipt-product-modal .record-product-step-message{font-size:14px;line-height:1.6;margin:0}
+.receipt-product-modal .record-product-step-actions{flex:none;padding:6px 0 2px}
+.receipt-product-modal .record-product-create-route{flex:none;padding:4px 0 2px}
+@media(prefers-reduced-motion:reduce){
+ .receipt-product-modal .sheet-body.record-step-forward,
+ .receipt-product-modal .sheet-body.record-step-backward{animation:none}
+}
