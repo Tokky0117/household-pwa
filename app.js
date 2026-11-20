@@ -1717,12 +1717,12 @@ function productPackageFields({name,quantityId,unitId,quantity=null,unit=null,
  const hint=suggested?.source==='ai'?'生成AIによる内容量候補です。正しいか確認してください。':
   suggested?'商品名から内容量を自動入力しました。違う場合は変更できます。':
   '内容量を登録すると、異なる容量の商品も同じ単位で価格比較できます。';
- return `<details class="product-package-details" data-package-mode="${origin}" ${value!==''?'open':''}>
-  <summary>内容量（任意）</summary>
+ return `<div class="product-package-details" data-package-mode="${origin}">
+  <div class="product-package-title">内容量（任意）</div>
   <p class="hint product-package-hint">${esc(hint)}</p>
   ${UI.quantityUnitFields({quantityId,unitId,quantity:value,unit:unitValue,
     extra:'inputmode="decimal"'})}
- </details>`;
+ </div>`;
 }
 function refreshAutoPackage(nameInput){
  const form=nameInput.closest('form');
