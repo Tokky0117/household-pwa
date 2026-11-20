@@ -1702,8 +1702,8 @@ assert.match(bulkUI.window.document.body.textContent,/日用品未設定/);
 bulkUI.window.document.querySelector('[data-act="recordProductOpen"]').click();
 chooseSavedHousehold(bulkUI,'牛乳');
 const individualForm=bulkUI.window.document.getElementById('recordProductCreateForm');
-assert.ok(individualForm&&!bulkUI.window.document.querySelector('.record-product-overlay'),
- 'new product editor is a full page after household selection');
+assert.ok(individualForm&&bulkUI.window.document.querySelector('.record-product-overlay'),
+ 'new product form stays inside the original receipt sheet after household selection');
 assert.equal(individualForm.querySelector('[name="group"]'),null);
 assert.ok(individualForm.querySelector('[name="quantity"]'),
  'receipt product registration offers optional package capacity');
@@ -1846,8 +1846,8 @@ assert.match(kitSession.window.document.querySelector('.detail-record-line').tex
 kitSession.window.document.querySelector('[data-act="recordProductOpen"]').click();
 chooseSavedHousehold(kitSession,'チョコ');
 const kitForm=kitSession.window.document.getElementById('recordProductCreateForm');
-assert.ok(kitForm&&!kitSession.window.document.querySelector('.record-product-overlay'),
- 'new product editor is a full page');
+assert.ok(kitForm&&kitSession.window.document.querySelector('.record-product-overlay'),
+ 'new product editor stays in the receipt sheet');
 assert.equal(kitForm.querySelector('[name="group"]'),null);
 assert.ok(kitForm.querySelector('[name="quantity"]'),
  'KitKat saved-receipt registration supports optional package capacity');
@@ -2134,11 +2134,19 @@ try{
 }
 standaloneSession.window.document.querySelector('[data-act="recordProductOpen"]').click();
 chooseSavedHousehold(standaloneSession,'チョコ');
-const purchaseAlternative=standaloneSession.window.document.querySelector('[data-act="recordPurchaseNew"]');
-if(purchaseAlternative)purchaseAlternative.click(); // Explicitly distinct purchase despite a similar existing master.
+const purchaseAlternative=standaloneSession.window.document.querySelector('[data-act="recordProductShowList"]');
+if(purchaseAlternative)purchaseAlternative.click(); // Search other products before registering a distinct one.
+if(standaloneSession.window.document.querySelector('[data-act="recordProductShowNew"]')===null&&
+ standaloneSession.window.document.getElementById('record-product-search')){
+ const field=standaloneSession.window.document.getElementById('record-product-search');
+ field.value=standaloneName;field.dispatchEvent(new standaloneSession.window.Event('input',{bubbles:true}));
+}
+const newProduct=standaloneSession.window.document.querySelector('[data-act="recordProductShowNew"]');
+if(newProduct)newProduct.click();
 const standaloneProductForm=standaloneSession.window.document.getElementById('recordProductCreateForm');
-assert.ok(standaloneProductForm&&!standaloneProductForm.querySelector('[name="group"]'),
- 'new product uses full-page editor after household selection');
+assert.ok(standaloneProductForm&&standaloneSession.window.document.querySelector('.record-product-overlay')&&
+ !standaloneProductForm.querySelector('[name="group"]'),
+ 'new product uses the same sheet after searching other products');
 standaloneProductForm.querySelector('[name="name"]').value=standaloneName;
 standaloneProductForm.dispatchEvent(new standaloneSession.window.Event(
  'submit',{bubbles:true,cancelable:true}));
