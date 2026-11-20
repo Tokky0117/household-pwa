@@ -190,7 +190,7 @@ let scanExistingQuery='',scanGroupQuery='',scanProductGroupId='',recordDetailOri
 const scanAiProductSavingRows=new Set();
 let storePickerTarget=null,storePickerQuery='',storePickerNewMode=false;
 let recordProductItemId=null,recordProductMode='household',recordProductQuery='',recordProductSaving=false,recordBulkSaving=false;
-let recordProductGroupId='';
+let recordProductGroupId='',recordProductSearchQuery='',recordProductHistory=[];
 let recordBulkAssignments=new Map(),recordBulkActiveId=null,recordBulkQuery='';
 function saveScanDraft(){
  if(!liveMode||!window.KurashiLive?.saveReceiptDraft)return;
@@ -377,7 +377,7 @@ function recordBulkHouseholdChoices(){
  if(!row)return '';
  const candidates=householdCandidates(row.proposed_name,recordBulkQuery);
  return candidates.map(({item:i,score})=>UI.choiceRow({title:itemLabel(i),
-  subtitle:'一致度 '+score+'%',action:'recordBulkChooseGroup',
+  subtitle:'関連度 '+score,action:'recordBulkChooseGroup',
   data:{'data-household-id':i.id}})).join('')+
   UI.button({label:'選択しない',variant:'tertiary',action:'recordBulkChooseGroup',
    data:{'data-household-id':''}});
@@ -396,18 +396,33 @@ function closeRecordBulkHousehold(){
 }
 function recordProductChoices(){
  const line=recordProductLine();if(!line)return '';
- const source=line.product_name_candidate||aliasNameFor(line);
- const found=productCandidates(source,recordProductQuery);
- return found.map(({product:p,score})=>UI.choiceRow({
-  title:productTitle(p),subtitle:'一致度 '+score+'% ・ 日用品：'+linkedItemName(p),
-  action:'recordProductChoose',productId:p.id,selected:line.linked_product_id===p.id
- })).join('')||'<p class="hint">該当する候補はありません。検索語を変更してください。</p>';
+ const q=recordProductSearchQuery.trim(),readings=window.KurashiJapaneseReading;
+ const normalized=q?readingKey(q):'';
+ const matches=catalogue.products.filter(p=>{
+  if(!q)return true;
+  return norm(p.name).includes(norm(q))||
+   (readings?.variants(p.name)||[readingKey(p.name)]).some(k=>k.includes(normalized));
+ }).sort((a,b)=>q?candidateScore(q,b.name)-candidateScore(q,a.name)||
+  a.name.localeCompare(b.name,'ja'):a.name.localeCompare(b.name,'ja'));
+ const list=matches.slice(0,50).map(p=>{
+  const available=!recordProductGroupId||!p.householdItemId||
+   p.householdItemId===recordProductGroupId;
+  return UI.choiceRow({title:productTitle(p),subtitle:available?
+   '日用品：'+linkedItemName(p):'別の日用品に登録済み：'+linkedItemName(p),
+   action:available?'recordProductChoose':'',productId:p.id,disabled:!available,
+   selected:line.linked_product_id===p.id});
+ }).join('');
+ return (list||'<p class="hint">該当する商品はありません。</p>')+
+  (matches.length>50?'<p class="hint">表示は50件までです。商品名で絞り込んでください。</p>':'')+
+  (q?'<div class="record-product-create-route">'+
+    UI.textAction({label:'「'+q+'」で商品を登録',action:'recordProductShowNew'})+'</div>':
+   '<p class="hint">商品が見つからない場合は、名前を入力すると登録できます。</p>');
 }
 function recordHouseholdChoices(){
  const line=recordProductLine();if(!line)return '';
  const source=line.product_name_candidate||aliasNameFor(line);
  return householdCandidates(source,recordProductQuery).map(({item:i,score})=>
-  UI.choiceRow({title:itemLabel(i),subtitle:'一致度 '+score+'%',
+  UI.choiceRow({title:itemLabel(i),subtitle:'関連度 '+score,
    action:'recordHouseholdChoose',className:'household-candidate-button',
    data:{'data-household-id':i.id}})
  ).join('')||'<p class="hint">該当する候補はありません。日用品名を検索してください。</p>';
@@ -1866,7 +1881,7 @@ function pickerResults(){
  const pool=productCandidates(itemLabel(current()),pickQuery,selected);
  return pool.map(({product:p,score})=>{
   const existing=p.householdItemId===selected;
-  const sub=`一致度 ${score}% ・ ${p.packageQuantity&&p.packageUnit?p.packageQuantity+p.packageUnit:'内容量未設定'} ・ ${p.householdItemId?'登録先：'+linkedItemName(p):'未登録'}`;
+  const sub=`関連度 ${score} ・ ${p.packageQuantity&&p.packageUnit?p.packageQuantity+p.packageUnit:'内容量未設定'} ・ ${p.householdItemId?'登録先：'+linkedItemName(p):'未登録'}`;
   return UI.catalogueRow({title:p.name,lines:[sub],data:{'data-pick':p.id},disabled:existing,
    ariaLabel:p.name+'を選択',endLabel:existing?'登録済み':''});
  }).join('')||'<div class="panel empty">該当する候補はありません</div>';
