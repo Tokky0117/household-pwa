@@ -2965,3 +2965,14 @@ html,body{touch-action:pan-x pan-y}
  .receipt-product-modal .sheet-body.record-step-forward,
  .receipt-product-modal .sheet-body.record-step-backward{animation:none}
 }
+
+/* v0.97: explicit inventory selection and memo; visual groups never share stock. */
+.inventory-mode-action{border:0;background:transparent;color:inherit;font:inherit;font-weight:600;padding:9px 10px;cursor:pointer;white-space:nowrap}
+.inventory-select{flex:0 0 21px;width:21px;height:21px;margin:0 4px 0 12px;accent-color:var(--accent,#5573a7);cursor:pointer}
+.inventory-edit-item .swipe-front{transform:none!important;display:flex;align-items:center}
+.inventory-edit-item .swipe-peek{display:none}
+.itemname .list-memo{display:block;color:var(--text-muted,#757575);font-size:.82rem;line-height:1.4;margin-top:4px}
+.inventory-bulk-bar{position:sticky;bottom:calc(65px + env(safe-area-inset-bottom,0px));z-index:20;display:flex;align-items:center;gap:8px;justify-content:flex-end;background:var(--surface,#fff);padding:9px 13px;border-top:1px solid #ddd;box-shadow:0 -2px 8px #0000000c}
+.inventory-bulk-bar>span{margin-right:auto;font-size:.82rem;color:#666;white-space:nowrap}
+.inventory-bulk-bar button{min-width:0}
+.item-group-stock:empty{display:none}
