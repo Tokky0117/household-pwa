@@ -2156,7 +2156,8 @@ try{
  throw err;
 }
 standaloneSession.window.document.querySelector('[data-act="detailAll"]').click();
-const standaloneRecord=temp.call('bootstrap').data.records.find(r=>r.record_type==='receipt'&&
+const standaloneRecord=temp.call('bootstrap').data.records.slice().reverse().find(r=>
+ !r.deleted_at&&r.record_type==='receipt'&&
  temp.call('bootstrap').data.record_items.some(x=>x.record_id===r.record_id&&aliasText(temp,x)===standaloneRaw));
 standaloneSession.window.document.querySelector('[data-act="recordDetail"][data-record-id="'+standaloneRecord.record_id+'"]').click();
 await waitFor(()=>!!standaloneSession.window.document.querySelector('[data-act="recordProductOpen"]'),
