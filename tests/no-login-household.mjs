@@ -214,9 +214,8 @@ function chooseSavedHousehold(session,search){
  assert.ok(button,'requested household appears in search');button.click();
 }
 function showSavedProductChoices(session){
- // Test-only inspection path. The ordinary receipt UI intentionally hides
- // product-master selection; exercise the retained diagnostic picker directly.
- assert.equal(session.window.document.querySelector('[data-act="recordProductShowList"]'),null);
+ // Use the same product choice list exposed by receipt registration.
+ session.window.document.querySelector('[data-act="recordProductShowList"]')?.click();
  session.window.eval("changeRecordProductMode('select')");
 }
 function chooseBulkHousehold(session,index,search){
@@ -724,7 +723,7 @@ assert.equal(movedProduct.data.entity.household_item_id,itB.household_item_id);
 const unlinkedProduct=productFixture.call('product.update',{product_id:productId,
  version:3,household_item_id:null},'op-product-unlink-abcdefghijklmnop');
 assert.equal(unlinkedProduct.ok,true);
-assert.equal(unlinkedProduct.data.entity.household_item_id,'','unlink retains the master');
+assert.ok(unlinkedProduct.data.entity.household_item_id,'unlink keeps the product in a private group');
 assert.equal(productFixture.call('product.update',{product_id:productId,
  version:4,household_item_id:'item-unknown'},'op-product-invalid-abcdefghijklmnop')
  .error.code,'NOT_FOUND','product cannot link to missing item');
@@ -801,24 +800,17 @@ const productNameInput=productForm.querySelector('#new-product-name');
 const productQuantityInput=productForm.querySelector('#new-product-quantity');
 productNameInput.value='UI連携商品80g×3袋';
 productNameInput.dispatchEvent(new productUI.window.Event('input',{bubbles:true}));
-assert.equal(productQuantityInput.value,'240','multipack size autofills in the live form');
-assert.equal(productForm.querySelector('[name="unit"]').value,'g');
-productQuantityInput.value='250';
-productQuantityInput.dispatchEvent(new productUI.window.Event('input',{bubbles:true}));
-productNameInput.value='UI連携商品90g×3袋';
-productNameInput.dispatchEvent(new productUI.window.Event('input',{bubbles:true}));
-assert.equal(productQuantityInput.value,'250',
- 'editing the product name never overwrites a manually corrected package size');
+assert.equal(productQuantityInput,null,'product master no longer stores capacity');
+assert.equal(productForm.querySelector('[name="quantity"]'),null,
+ 'capacity input belongs to purchase details, not product registration');
 productNameInput.value='UI連携商品';
-productNameInput.dispatchEvent(new productUI.window.Event('input',{bubbles:true}));
-productQuantityInput.value='700';
 productForm.dispatchEvent(new productUI.window.Event('submit',{bubbles:true,cancelable:true}));
 await waitFor(()=>productUI.window.KurashiLive.state().queued===0 &&
  temp.call('bootstrap').data.products.some(p=>p.name==='UI連携商品') &&
  !!productUI.window.document.querySelector('[data-pedit]'),
  'v46 create form saved product via durable queue to Sheets mock');
 const uiSaved=temp.call('bootstrap').data.products.find(p=>p.name==='UI連携商品');
-assert.equal(Number(uiSaved.package_quantity),700,'quantity survives UI submit');
+assert.equal(uiSaved.package_quantity,'','product master is saved without purchase capacity');
 productUI.window.document.querySelector('[data-pedit="'+uiSaved.product_id+'"]').click();
 productForm=productUI.window.document.getElementById('productCreateForm');
 assert.ok(productForm,'v46 edit half-sheet opens');
@@ -831,9 +823,13 @@ productUI.window.document.querySelector('[data-premove="'+uiSaved.product_id+'"]
 assert.ok(productUI.window.document.querySelector('[data-dialog="confirmProductUnlink"]'),
  'v46 product unlink confirmation opens');
 productUI.window.document.querySelector('[data-dialog="confirmProductUnlink"]').click();
-await waitFor(()=>productUI.window.KurashiLive.state().queued===0 &&
- !temp.call('bootstrap').data.products.find(p=>p.product_id===uiSaved.product_id).household_item_id,
- 'v46 product unlink saved to shared master');
+await waitFor(()=>{
+ const data=temp.call('bootstrap').data;
+ const p=data.products.find(x=>x.product_id===uiSaved.product_id);
+ const group=data.household_items.find(x=>x.household_item_id===p?.household_item_id);
+ return productUI.window.KurashiLive.state().queued===0&&!!p?.household_item_id&&
+  p.household_item_id!==id&&group?.stock_management_enabled===false;
+},'unlink moves product into a private price-only group');
 productUI.window.document.querySelector('[data-act="productPick"]').click();
 const relinkProductSearch=productUI.window.document.querySelector('#catalogue-search');
 relinkProductSearch.value='UI連携商品編集';
@@ -841,6 +837,8 @@ relinkProductSearch.dispatchEvent(new productUI.window.Event('input',{bubbles:tr
 assert.ok(productUI.window.document.querySelector('[data-pick="'+uiSaved.product_id+'"]'),
  'unlinked product stays searchable after entering its name');
 productUI.window.document.querySelector('[data-pick="'+uiSaved.product_id+'"]').click();
+assert.ok(productUI.window.document.querySelector('[data-dialog="confirmProductMove"]'));
+productUI.window.document.querySelector('[data-dialog="confirmProductMove"]').click();
 await waitFor(()=>productUI.window.KurashiLive.state().queued===0 &&
  temp.call('bootstrap').data.products.find(p=>p.product_id===uiSaved.product_id).household_item_id===id,
  'v46 picker relink persists to Sheets');
@@ -1007,8 +1005,8 @@ assert.equal(receiptSaved.ok,true,'receipt parent plus two items saved');
 assert.equal(receiptSaved.data.items.length,2);
 assert.equal(receiptSaved.data.items[0].line_total_tax_included,340,
  'two units for 340 yen never multiply amount again');
-assert.equal(Object.hasOwn(receiptSaved.data.items[0],'price_eligible'),false,
- 'receipt does not store a redundant price flag');
+assert.equal(receiptSaved.data.items[0].price_eligible,false,
+ 'unmatched receipt line is excluded from price comparison');
 assert.equal(Object.hasOwn(receiptSaved.data.items[0],'category_id'),false,
  'receipt does not store a redundant household-budget category');
 assert.equal(recordFixture.call('record.create',receiptPayload,
@@ -1028,7 +1026,7 @@ const unlinkedShelfSaved=unlinkedShelfFixture.call('record.create',{
 assert.equal(unlinkedShelfSaved.ok,true,'Unlinked shelf is allowed without a product');
 assert.equal(unlinkedShelfSaved.data.record.record_type,'price_tag');
 assert.equal(unlinkedShelfSaved.data.items[0].linked_product_id,'');
-assert.equal(Object.hasOwn(unlinkedShelfSaved.data.items[0],'price_eligible'),false,
+assert.equal(unlinkedShelfSaved.data.items[0].price_eligible,false,
  'Unlinked shelf is recorded but not eligible for product price comparison');
 const unlinkShelfEdit=unlinkedShelfFixture.call('record.update',{
  record_id:unlinkedShelfSaved.data.record.record_id,version:1,
@@ -1049,7 +1047,7 @@ const shelfSaved=recordFixture.call('record.create',{record_type:'price_tag',
  chain_id:newChainId,record_date:'2026-10-14',items:[shelfLine]},
  'op-record-shelf-create-abcdef12345');
 assert.equal(shelfSaved.ok,true);
-assert.equal(Object.hasOwn(shelfSaved.data.items[0],'price_eligible'),false);
+assert.equal(shelfSaved.data.items[0].price_eligible,true);
 assert.equal(recordFixture.call('bootstrap').data.records.length,2);
 assert.equal(recordFixture.call('bootstrap').data.record_items.length,3);
 
@@ -1171,8 +1169,8 @@ online=false;
 recordForm.dispatchEvent(new recordUI.window.Event('submit',{bubbles:true,cancelable:true}));
 await waitFor(()=>recordUI.window.KurashiLive.state().queued===2,
  'store and multi-line receipt queued atomically while offline');
-await waitFor(()=>!!recordUI.window.document.querySelector('.detail-record-line'),
- 'New manual receipt opens saved detail immediately even while offline');
+await waitFor(()=>recordUI.window.document.querySelector('[data-tab="receipt"]')?.classList.contains('active'),
+ 'New manual receipt returns to price tab immediately even while offline');
 await pause(70);
 recordUI.window.close();online=true;
 let recordReopened=appSession();
@@ -1237,7 +1235,7 @@ const savedShelf=temp.call('bootstrap').data.records.find(r=>r.record_type==='pr
 const shelfDetails=temp.call('bootstrap').data.record_items.filter(x=>x.record_id===savedShelf.record_id);
 assert.equal(shelfDetails.length,2);
 assert.ok(shelfDetails.every(i=>Number(i.quantity)===1&&
- !i.linked_product_id&&!Object.hasOwn(i,'price_eligible')),'Shelf lines use fixed quantity 1 and optional product');
+ !i.linked_product_id&&i.price_eligible===false),'Shelf lines use fixed quantity 1 and optional product');
 assert.equal(recordReopened.window.document.querySelector('[data-tab="budget"]'),null,
  'receipt and shelf saves do not restore the budget tab');
 recordReopened.window.close();
@@ -1554,6 +1552,7 @@ assert.equal(temp.call('bootstrap').data.record_items.filter(x=>
  x.record_id===storedReceipt.record_id).length,2,
  'replaced receipt line does not appear twice');
 historyRecovery.window.document.querySelector('[data-tab="receipt"]').click();
+historyRecovery.window.document.querySelector('[data-act="detailAll"]').click();
 historyRecovery.window.document.querySelector(
  '[data-act="recordDetail"][data-record-id="'+storedReceipt.record_id+'"]').click();
 historyRecovery.window.document.querySelector('[data-act="recordDelete"]').click();
@@ -1584,6 +1583,7 @@ await waitFor(()=>historyRecovery.window.KurashiLive.state().queued===0&&
 const shelfEditRecord=temp.call('bootstrap').data.records.find(r=>
  r.record_type==='price_tag'&&r.record_date===shelfEditDate);
 historyRecovery.window.document.querySelector('[data-tab="receipt"]').click();
+historyRecovery.window.document.querySelector('[data-act="detailAll"]').click();
 assert.match(historyRecovery.window.document.body.textContent,/明細一覧/);
 const shelfHistoryEntry=historyRecovery.window.document.querySelector(
  '[data-act="recordDetail"][data-record-id="'+shelfEditRecord.record_id+'"]');
@@ -1625,7 +1625,7 @@ const unnamedSaved=unnamedFixture.call('record.create',unnamedPayload,'op-unname
 assert.equal(unnamedSaved.ok,true,'blank detail names can be saved without a product');
 assert.equal(unnamedSaved.data.items[0].non_ocr_name,'');
 assert.equal(unnamedSaved.data.items[0].receipt_name_id,'');
-assert.equal(Object.hasOwn(unnamedSaved.data.items[0],'price_eligible'),false);
+assert.equal(unnamedSaved.data.items[0].price_eligible,false);
 assert.equal(unnamedFixture.call('bootstrap').data.receipt_name_mappings.length,0,
  'blank detail never creates a learned OCR alias');
 const unnamedEdited=unnamedFixture.call('record.update',{
@@ -1650,8 +1650,8 @@ const unnamedLinked=unnamedFixture.call('record.create',{
  line_total_tax_included:460}]
 },'op-unnamed-linked-create-abcdef12345');
 assert.equal(unnamedLinked.ok,true,'optional name and registered product may coexist');
-assert.equal(Object.hasOwn(unnamedLinked.data.items[0],'price_eligible'),false,
- 'a linked price needs no stored eligibility flag');
+assert.equal(unnamedLinked.data.items[0].price_eligible,true,
+ 'a linked valid price is explicitly eligible for price comparison');
 assert.equal(unnamedLinked.data.items[0].non_ocr_name,'');
 assert.equal(unnamedFixture.call('bootstrap').data.receipt_name_mappings.length,0,
  'unnamed linked product must not teach a blank alias');
@@ -1692,22 +1692,29 @@ const batchJson={...chatJson,receiptTotal:410,printedCount:1,items:[{
 bulkUI.window.document.querySelector('#chatgpt-input').value=JSON.stringify(batchJson);
 await completeOcrImport(bulkUI);
 assert.equal(bulkUI.window.document.querySelector('[data-act="scanBulkProducts"]'),null);
-assert.equal(bulkUI.window.document.querySelector('[data-act="scanPickExisting"]'),null,
- 'receipt review has no product picker');
+assert.ok(bulkUI.window.document.querySelector('[data-act="scanPickExisting"]'),
+ 'receipt review can explicitly choose a registered product');
 const bulkReview=bulkUI.window.document.getElementById('scanConfirmForm');
 bulkReview.dispatchEvent(new bulkUI.window.Event('submit',{bubbles:true,cancelable:true}));
+await waitFor(()=>!!bulkUI.window.document.querySelector('[data-act="detailAll"]'),
+ 'saved receipt returns to price home with history access');
+bulkUI.window.document.querySelector('[data-act="detailAll"]').click();
+const individualRecord=temp.call('bootstrap').data.records.find(r=>
+ r.record_type==='receipt'&&temp.call('bootstrap').data.record_items.some(x=>
+  x.record_id===r.record_id&&aliasText(temp,x)==='レシート個別登録テスト固有'));
+assert.ok(individualRecord,'saved receipt is available in receipt history');
+bulkUI.window.document.querySelector('[data-act="recordDetail"][data-record-id="'+individualRecord.record_id+'"]').click();
 await waitFor(()=>!!bulkUI.window.document.querySelector('[data-act="recordProductOpen"]'),
- 'saved receipt opens its detail where individual product operations live');
+ 'saved receipt detail exposes individual product operations');
 assert.match(bulkUI.window.document.body.textContent,/日用品未設定/);
 bulkUI.window.document.querySelector('[data-act="recordProductOpen"]').click();
-chooseSavedHousehold(bulkUI,'牛乳');
 const individualForm=bulkUI.window.document.getElementById('recordProductCreateForm');
 assert.ok(individualForm&&bulkUI.window.document.querySelector('.record-product-overlay'),
- 'new product form stays inside the original receipt sheet after household selection');
+ 'new product form stays inside the original receipt sheet without requiring stock setup');
 assert.equal(individualForm.querySelector('[name="group"]'),null);
-assert.ok(individualForm.querySelector('[name="quantity"]'),
- 'receipt product registration offers optional package capacity');
-assert.equal(individualForm.querySelector('[name="quantity"]').value,'',
+assert.ok(individualForm.querySelector('[name="purchase_quantity"]'),
+ 'receipt product registration offers optional purchase size');
+assert.equal(individualForm.querySelector('[name="purchase_quantity"]').value,'',
  'unrecognized product name leaves capacity unset');
 individualForm.dispatchEvent(new bulkUI.window.Event('submit',{bubbles:true,cancelable:true}));
 await waitFor(()=>bulkUI.window.KurashiLive.state().queued===0&&
@@ -1778,14 +1785,17 @@ assert.ok(bulkPage&&bulkPage.textContent.includes('一括新規商品テスト')
  bulkPage.textContent.includes('一括既存商品テスト'));
 assert.ok(!bulkPage.textContent.includes('一括対応先不明'),
  'ambiguous existing-name guess is not offered for batch registration');
-for(let i=0;i<3;i++)chooseBulkHousehold(bulkBatchSession,i,'牛乳');
+const bulkExistingGroupName=temp.call('bootstrap').data.household_items.find(x=>
+ x.household_item_id===bulkOriginal.data.entity.household_item_id).name;
+for(let i=0;i<3;i++)chooseBulkHousehold(bulkBatchSession,i,bulkExistingGroupName);
 bulkBatchSession.window.document.querySelector('[data-act="recordBulkConfirm"]').click();
 assert.ok(bulkBatchSession.window.document.querySelector('[data-dialog="confirmRecordBulk"]'));
 bulkBatchSession.window.document.querySelector('[data-dialog="confirmRecordBulk"]').click();
-await waitFor(()=>bulkBatchSession.window.KurashiLive.state().queued===0&&
+try{await waitFor(()=>bulkBatchSession.window.KurashiLive.state().queued===0&&
  temp.call('bootstrap').data.record_items.filter(x=>
   x.record_id===bulkRecordId&&x.linked_product_id).length===4,
- 'three matching items all link through one persisted queue with linked original');
+ 'three matching items all link through one persisted queue with linked original');}
+catch(err){console.log('BULK DIAGNOSTIC',JSON.stringify({state:bulkBatchSession.window.KurashiLive.state(),screen:bulkBatchSession.window.document.body.textContent.slice(-500),lines:temp.call('bootstrap').data.record_items.filter(x=>x.record_id===bulkRecordId),products:temp.call('bootstrap').data.products.filter(x=>x.name.includes('一括'))}));throw err}
 const afterBulk=temp.call('bootstrap').data;
 assert.equal(afterBulk.products.filter(x=>x.name==='一括新規商品テスト').length,1,
  'two identical new ChatGPT suggestions create one product master');
@@ -1835,22 +1845,27 @@ assert.ok(kitSession.window.document.getElementById('scanConfirmForm'),
 const kitReview=kitSession.window.document.getElementById('scanConfirmForm');
 assert.equal(kitReview.querySelector('.scan-ocr-name').textContent,kitRaw,
  'the scanned product spelling is retained before saving');
-assert.equal(kitReview.querySelector('[data-act="scanPickExisting"]'),null,
- 'the receipt review has no registration route');
+assert.ok(kitReview.querySelector('[data-act="scanPickExisting"]'),
+ 'the receipt review can explicitly select a registered product');
 kitReview.dispatchEvent(new kitSession.window.Event('submit',{bubbles:true,cancelable:true}));
+await waitFor(()=>!!kitSession.window.document.querySelector('[data-act="detailAll"]'),
+ 'saved KitKat receipt returns to price home');
+kitSession.window.document.querySelector('[data-act="detailAll"]').click();
+const kitRecord=temp.call('bootstrap').data.records.find(r=>r.record_type==='receipt'&&
+ temp.call('bootstrap').data.record_items.some(x=>x.record_id===r.record_id&&aliasText(temp,x)===kitRaw));
+kitSession.window.document.querySelector('[data-act="recordDetail"][data-record-id="'+kitRecord.record_id+'"]').click();
 await waitFor(()=>!!kitSession.window.document.querySelector('[data-act="recordProductOpen"]'),
- 'saved KitKat receipt opens its detail');
+ 'saved KitKat receipt detail exposes registration');
 assert.match(kitSession.window.document.querySelector('.detail-record-line').textContent,
  /キットカットコイマッチャ10フクロ/,
  'detail retains original OCR product spelling');
 kitSession.window.document.querySelector('[data-act="recordProductOpen"]').click();
-chooseSavedHousehold(kitSession,'チョコ');
 const kitForm=kitSession.window.document.getElementById('recordProductCreateForm');
 assert.ok(kitForm&&kitSession.window.document.querySelector('.record-product-overlay'),
  'new product editor stays in the receipt sheet');
 assert.equal(kitForm.querySelector('[name="group"]'),null);
-assert.ok(kitForm.querySelector('[name="quantity"]'),
- 'KitKat saved-receipt registration supports optional package capacity');
+assert.ok(kitForm.querySelector('[name="purchase_quantity"]'),
+ 'KitKat saved-receipt registration supports optional purchase size');
 assert.equal(kitForm.querySelector('[name="name"]').value,kitRaw,
  'the OCR name pre-fills the editable master name');
 kitForm.querySelector('[name="name"]').value=kitCanonical;
@@ -1861,7 +1876,8 @@ await waitFor(()=>kitSession.window.KurashiLive.state().queued===0&&
   aliasText(temp,x)===kitRaw&&x.linked_product_id),
  'saved product name is linked to the original printed receipt item');
 const kitSavedProduct=temp.call('bootstrap').data.products.find(x=>x.name===kitCanonical);
-assert.ok(kitSavedProduct&&kitSavedProduct.household_item_id===chocId);
+assert.ok(kitSavedProduct&&kitSavedProduct.household_item_id,
+ 'receipt registration creates an internal price-only group without asking for stock setup');
 const kitSavedLine=temp.call('bootstrap').data.record_items.find(x=>
  aliasText(temp,x)===kitRaw&&x.linked_product_id===kitSavedProduct.product_id);
 assert.ok(kitSavedLine,'the receipt item keeps its own confirmed product ID');
@@ -1881,12 +1897,12 @@ try{
 }
 kitSession.window.close();
 
-// v95 registers the household together with the receipt product. There is
-// no longer a separate post-registration master edit for this use case.
 const kitForLink=temp.call('bootstrap').data.products.find(p=>
  p.product_id===kitSavedProduct.product_id);
-assert.equal(kitForLink?.household_item_id,chocId,
- 'receipt product belongs to the selected chocolate household immediately');
+const kitGroup=temp.call('bootstrap').data.household_items.find(x=>
+ x.household_item_id===kitForLink?.household_item_id);
+assert.equal(kitGroup?.stock_management_enabled,false,
+ 'receipt product registration does not enable stock management');
 
 /* Real two-device receipt flow: the second iPhone uses its own IndexedDB
  * and the same Sheets-backed GAS snapshot, not the first phone's cache. */
@@ -2025,11 +2041,11 @@ assert.equal(updatedLines.filter(x=>aliasText(temp,x)==='手入力の追加明�
 assert.equal(updatedLines.find(x=>aliasText(temp,x)===storedName).line_total_tax_included,340,
  'editing existing receipt does not alter historical 2x KitKat line total');
 await waitFor(()=>thirdPhone.window.KurashiLive.state().queued===0&&
- !!thirdPhone.window.document.querySelector('[data-tab="items"]'),
+ !!thirdPhone.window.document.querySelector('[data-tab="receipt"]'),
  'saved receipt editing returns to navigable detail after synchronization');
-thirdPhone.window.document.querySelector('[data-tab="items"]')?.click();
+thirdPhone.window.document.querySelector('[data-tab="receipt"]')?.click();
 await waitFor(()=>thirdPhone.window.document.body.textContent.includes('170円'),
- 'day-to-day stock screen uses 340/2 = 170-yen minimum for registered KitKat');
+ 'price tab shows 340/2 = 170-yen minimum for registered KitKat');
 thirdPhone.window.close();
 console.log('v65: independent iPhones, same-receipt duplicate guard, 340/2 price, immutable OCR and appended-line edit all OK');
 
@@ -2060,11 +2076,18 @@ const variant={...kitJson,receiptTotal:278,items:[{
 existingSession.window.document.getElementById('chatgpt-input').value=JSON.stringify(variant);
 await completeOcrImport(existingSession);
 const variantReview=existingSession.window.document.getElementById('scanConfirmForm');
-assert.ok(variantReview&&!variantReview.querySelector('[data-act="scanPickExisting"]'));
+assert.ok(variantReview&&variantReview.querySelector('[data-act="scanPickExisting"]'));
 assert.equal(variantReview.querySelector('.scan-ocr-name').textContent,'キットカット別レシート表記');
 variantReview.dispatchEvent(new existingSession.window.Event('submit',{bubbles:true,cancelable:true}));
+await waitFor(()=>!!existingSession.window.document.querySelector('[data-act="detailAll"]'),
+ 'saved receipt returns to price home with history access');
+existingSession.window.document.querySelector('[data-act="detailAll"]').click();
+const variantRecord=temp.call('bootstrap').data.records.find(r=>r.record_type==='receipt'&&
+ temp.call('bootstrap').data.record_items.some(x=>x.record_id===r.record_id&&
+  aliasText(temp,x)==='キットカット別レシート表記'));
+existingSession.window.document.querySelector('[data-act="recordDetail"][data-record-id="'+variantRecord.record_id+'"]').click();
 await waitFor(()=>!!existingSession.window.document.querySelector('[data-act="recordProductOpen"]'),
- 'saved receipt exposes the shared product chooser');
+ 'saved receipt detail exposes the product register/select flow');
 existingSession.window.document.querySelector('[data-act="recordProductOpen"]').click();
 showSavedProductChoices(existingSession);
 const existingSearch=existingSession.window.document.getElementById('record-product-search');
@@ -2080,7 +2103,7 @@ await waitFor(()=>existingSession.window.KurashiLive.state().queued===0&&
   x.linked_product_id===kitSavedProduct.product_id),
  'printed spelling and selected product persist after saved receipt linking');
 existingSession.window.close();
-console.log('v61: KitKat canonical master, chocolate item link, original receipt name, alias and no-pinch gestures: OK');
+console.log('v61: KitKat canonical master, original receipt name, alias and no-pinch gestures: OK');
 
 /* v62: Product masters can exist without household_items, and a recognized
  * chain + the explicitly confirmed receipt alias links on re-import, even
@@ -2114,14 +2137,14 @@ standaloneForm.querySelector('[name="chain"]').dispatchEvent(
 await waitFor(()=>temp.call('bootstrap').data.retail_chains.some(x=>
  x.chain_id===standaloneChainId&&String(x.aliases).includes('COSTCO WHOLESALE')),
  'confirmed retailer spelling is remembered via existing retail_chains.aliases and queue');
-assert.equal(standaloneForm.querySelector('[data-act="scanPickExisting"]'),null);
+assert.ok(standaloneForm.querySelector('[data-act="scanPickExisting"]'));
 assert.ok(!standaloneForm.querySelector('[name="difference"]')&&
  !standaloneForm.querySelector('[name="confirmed"]'));
 standaloneSession.window.document.querySelector('#scanConfirmForm').dispatchEvent(
  new standaloneSession.window.Event('submit',{bubbles:true,cancelable:true}));
 try{
- await waitFor(()=>!!standaloneSession.window.document.querySelector('[data-act="recordProductOpen"]'),
-  'saved standalone receipt detail permits product registration');
+ await waitFor(()=>!!standaloneSession.window.document.querySelector('[data-act="detailAll"]'),
+  'saved standalone receipt returns to price home');
 }catch(err){
  console.log('STANDALONE_SAVE_DIAGNOSTIC',JSON.stringify({
   state:standaloneSession.window.KurashiLive.state(),
@@ -2132,8 +2155,13 @@ try{
  }));
  throw err;
 }
+standaloneSession.window.document.querySelector('[data-act="detailAll"]').click();
+const standaloneRecord=temp.call('bootstrap').data.records.find(r=>r.record_type==='receipt'&&
+ temp.call('bootstrap').data.record_items.some(x=>x.record_id===r.record_id&&aliasText(temp,x)===standaloneRaw));
+standaloneSession.window.document.querySelector('[data-act="recordDetail"][data-record-id="'+standaloneRecord.record_id+'"]').click();
+await waitFor(()=>!!standaloneSession.window.document.querySelector('[data-act="recordProductOpen"]'),
+ 'saved standalone receipt detail permits product registration');
 standaloneSession.window.document.querySelector('[data-act="recordProductOpen"]').click();
-chooseSavedHousehold(standaloneSession,'チョコ');
 const purchaseAlternative=standaloneSession.window.document.querySelector('[data-act="recordProductShowList"]');
 if(purchaseAlternative)purchaseAlternative.click(); // Search other products before registering a distinct one.
 if(standaloneSession.window.document.querySelector('[data-act="recordProductShowNew"]')===null&&
@@ -2151,8 +2179,8 @@ standaloneProductForm.querySelector('[name="name"]').value=standaloneName;
 standaloneProductForm.dispatchEvent(new standaloneSession.window.Event(
  'submit',{bubbles:true,cancelable:true}));
 await waitFor(()=>standaloneSession.window.KurashiLive.state().queued===0&&
- temp.call('bootstrap').data.products.some(x=>x.name===standaloneName&&x.household_item_id===chocId),
- 'new product is saved with the chosen household');
+ temp.call('bootstrap').data.products.some(x=>x.name===standaloneName),
+ 'new product is saved without requiring a household choice');
 const standaloneProduct=temp.call('bootstrap').data.products.find(x=>x.name===standaloneName);
 assert.ok(standaloneProduct);
 await waitFor(()=>temp.call('bootstrap').data.receipt_name_mappings.some(x=>
@@ -2199,8 +2227,11 @@ const standaloneDirect=productFixture.call('product.create',{
  package_quantity:null,package_unit:null
 },'op-v62-null-group-direct-abcdefghijk');
 assert.equal(standaloneDirect.ok,true,'GAS directly accepts an unlinked product master');
-assert.equal(standaloneDirect.data.entity.household_item_id,'');
-assert.equal(standaloneDirect.data.entity.household_item_order,'');
+assert.ok(standaloneDirect.data.entity.household_item_id,
+ 'unlinked product gets an internal singleton group');
+assert.equal(productFixture.call('bootstrap').data.household_items.find(x=>
+ x.household_item_id===standaloneDirect.data.entity.household_item_id)?.stock_management_enabled,false,
+ 'singleton product group is price-only');
 console.log('v62: nullable master, store alias learning, next receipt auto-link and checkbox removal OK');
 
 /* v63: changing retailer leaves the printed OCR name untouched. Registered
@@ -2218,7 +2249,7 @@ await completeOcrImport(relinkSession);
 const reviewField=name=>relinkSession.window.document
  .querySelector('#scanConfirmForm [name="'+name+'"]');
 assert.equal(reviewField('product-0'),null,
- 'product association no longer appears in receipt review');
+ 'receipt review does not show a group association field');
 reviewField('chain').value=kitStore.chain_id;
 reviewField('chain').dispatchEvent(new relinkSession.window.Event('change',{bubbles:true}));
 reviewField('chain').value=standaloneChainId;
@@ -2228,8 +2259,14 @@ assert.equal(relinkSession.window.document.querySelector('.scan-ocr-name').textC
  standaloneRaw,'OCR name remains immutable after retailer changes');
 relinkSession.window.document.querySelector('#scanConfirmForm').dispatchEvent(
  new relinkSession.window.Event('submit',{bubbles:true,cancelable:true}));
+await waitFor(()=>!!relinkSession.window.document.querySelector('[data-act="detailAll"]'),
+ 'saved receipt returns to price home');
+relinkSession.window.document.querySelector('[data-act="detailAll"]').click();
+const relinkRecord=temp.call('bootstrap').data.records.slice().reverse().find(r=>r.record_type==='receipt'&&
+ temp.call('bootstrap').data.record_items.some(x=>x.record_id===r.record_id&&aliasText(temp,x)===standaloneRaw));
+relinkSession.window.document.querySelector('[data-act="recordDetail"][data-record-id="'+relinkRecord.record_id+'"]').click();
 await waitFor(()=>!!relinkSession.window.document.querySelector('[data-act="recordProductOpen"]'),
- 'saved receipt exposes common registered-product picker');
+ 'saved receipt exposes the product registration and selection sheet');
 relinkSession.window.document.querySelector('[data-act="recordProductOpen"]').click();
 showSavedProductChoices(relinkSession);
 const manualChoice=relinkSession.window.document.querySelector(
@@ -2295,10 +2332,15 @@ await completeOcrImport(historySession);
 assert.equal(hfield('product-0'),null);
 historySession.window.document.querySelector('#scanConfirmForm').dispatchEvent(
  new historySession.window.Event('submit',{bubbles:true,cancelable:true}));
+await waitFor(()=>!!historySession.window.document.querySelector('[data-act="detailAll"]'),
+ 'similar but unconfirmed spelling is saved to price history');
+historySession.window.document.querySelector('[data-act="detailAll"]').click();
+const changedHistoryRecord=temp.call('bootstrap').data.records.slice().reverse().find(r=>
+ r.record_type==='receipt'&&temp.call('bootstrap').data.record_items.some(x=>
+  x.record_id===r.record_id&&aliasText(temp,x)===changedHistoryRaw));
+historySession.window.document.querySelector('[data-act="recordDetail"][data-record-id="'+changedHistoryRecord.record_id+'"]').click();
 await waitFor(()=>!!historySession.window.document.querySelector('[data-act="recordProductOpen"]'),
- 'similar but unconfirmed spelling can be linked after receipt save');
-assert.match(historySession.window.document.body.textContent,/日用品未設定/,
- 'near-name candidates are not automatically confirmed');
+ 'near-name candidates remain unlinked in saved receipt detail');
 historySession.window.document.querySelector('[data-act="recordProductOpen"]').click();
 showSavedProductChoices(historySession);
 const historySearch=historySession.window.document.getElementById('record-product-search');
@@ -2376,9 +2418,15 @@ await completeOcrImport(conflictSession);
 assert.equal(conflictSession.window.document.querySelector('[name="product-0"]'),null);
 conflictSession.window.document.querySelector('#scanConfirmForm').dispatchEvent(
  new conflictSession.window.Event('submit',{bubbles:true,cancelable:true}));
-await waitFor(()=>!!conflictSession.window.document.querySelector('[data-act="recordProductOpen"]'),
+await waitFor(()=>!!conflictSession.window.document.querySelector('[data-act="detailAll"]'),
  'unknown retailer receipt can be saved without assigning an ambiguous product');
-assert.match(conflictSession.window.document.body.textContent,/日用品未設定/);
+conflictSession.window.document.querySelector('[data-act="detailAll"]').click();
+const conflictRecord=temp.call('bootstrap').data.records.slice().reverse().find(r=>r.record_type==='receipt'&&
+ temp.call('bootstrap').data.record_items.some(x=>x.record_id===r.record_id&&aliasText(temp,x)===historyRaw));
+assert.ok(conflictRecord);
+conflictSession.window.document.querySelector('[data-act="recordDetail"]').click();
+await waitFor(()=>!!conflictSession.window.document.querySelector('[data-act="recordProductOpen"]'),
+ 'ambiguous candidates remain available for explicit selection in saved detail');
 conflictSession.window.document.querySelector('[data-act="recordProductOpen"]').click();
 showSavedProductChoices(conflictSession);
 const conflictSearch=conflictSession.window.document.getElementById('record-product-search');
@@ -2401,8 +2449,11 @@ const kitCurrent=temp.call('bootstrap').data.products.find(p=>
 assert.equal(temp.call('product.update',{
  product_id:kitCurrent.product_id,version:Number(kitCurrent.version),household_item_id:null
 },'op-v64-product-unlink-abcdefghijk').ok,true);
-assert.ok(temp.call('bootstrap').data.products.some(p=>
- p.product_id===kitSavedProduct.product_id&&!p.household_item_id));
+const kitAfterUnlink=temp.call('bootstrap').data.products.find(p=>
+ p.product_id===kitSavedProduct.product_id);
+assert.ok(kitAfterUnlink?.household_item_id&&temp.call('bootstrap').data.household_items.find(x=>
+ x.household_item_id===kitAfterUnlink.household_item_id)?.stock_management_enabled===false,
+ 'unlinked master remains in a private price-only group');
 assert.ok(temp.call('bootstrap').data.record_items.some(x=>
  aliasText(temp,x)===kitRaw&&x.linked_product_id===kitSavedProduct.product_id));
 console.log('v64: OCR history, shelf OCR training, ambiguous names, master unlink after save OK');
@@ -2457,10 +2508,13 @@ assert.equal(masterForm.querySelector('[name="group"]').value,'',
 masterForm.querySelector('[name="name"]').value='マスタ単独登録テストC';
 masterForm.dispatchEvent(new masterUI.window.Event('submit',{bubbles:true,cancelable:true}));
 await waitFor(()=>temp.call('bootstrap').data.products.some(p=>
- p.name==='マスタ単独登録テストC'&&!p.household_item_id),
+ p.name==='マスタ単独登録テストC'&&p.household_item_id),
  'standalone product was created through IndexedDB queue and Sheets');
 const createdMaster=temp.call('bootstrap').data.products.find(p=>
  p.name==='マスタ単独登録テストC');
+assert.equal(temp.call('bootstrap').data.household_items.find(x=>
+ x.household_item_id===createdMaster.household_item_id)?.stock_management_enabled,false,
+ 'new standalone product is kept in a price-only singleton group');
 await waitFor(()=>!!masterUI.window.document.querySelector(
  '[data-act="masterProductEdit"][data-product-id="'+createdMaster.product_id+'"]'),
  'newly created product appears in searchable master list');
@@ -2483,8 +2537,8 @@ masterUI.window.document.querySelector(
 const masterEditForm=masterUI.window.document.getElementById('masterProductForm');
 const masterNameDraft=masterEditForm.querySelector('[name="name"]');
 masterNameDraft.value='まだ保存していない名前';
-assert.equal(masterEditForm.querySelector('[name="group"]').value,'',
- 'Standalone master initially has no item group');
+assert.equal(masterEditForm.querySelector('[name="group"]').value,createdMaster.household_item_id,
+ 'Standalone master initially belongs to its private singleton group');
 masterEditForm.querySelector('[data-act="masterGroupPickerOpen"]').click();
 let groupSheet=masterUI.window.document.querySelector('.master-group-picker-overlay');
 assert.ok(groupSheet&&groupSheet.querySelector('#master-group-search'),
@@ -2524,7 +2578,7 @@ assert.ok(masterUI.window.document.querySelector('[data-dialog="confirmMasterGro
 masterUI.window.document.querySelector('[data-dialog="cancel"]').click();
 assert.equal(masterNameDraft.value,'まだ保存していない名前',
  'Canceling link confirmation preserves unsaved product input');
-assert.equal(masterEditForm.querySelector('[name="group"]').value,'',
+assert.equal(masterEditForm.querySelector('[name="group"]').value,createdMaster.household_item_id,
  'Canceling link confirmation does not change the current group');
 masterEditForm.querySelector('[data-act="masterGroupPickerOpen"]').click();
 groupSheet=masterUI.window.document.querySelector('.master-group-picker-overlay');
@@ -2557,8 +2611,9 @@ assert.ok(masterUI.window.document.querySelector('[data-dialog="confirmMasterGro
  'Unlink also uses the shared confirmation flow');
 masterUI.window.document.querySelector('[data-dialog="confirmMasterGroupChange"]').click();
 await waitFor(()=>masterUI.window.KurashiLive.state().queued===0&&
- temp.call('bootstrap').data.products.some(p=>
-  p.product_id===createdMaster.product_id&&!p.household_item_id),
+ temp.call('bootstrap').data.products.some(p=>p.product_id===createdMaster.product_id&&p.household_item_id&&
+  temp.call('bootstrap').data.household_items.find(x=>
+   x.household_item_id===p.household_item_id)?.stock_management_enabled===false),
  'Unlink keeps master row and ID in Sheets');
 assert.equal(unlinkForm.querySelector('[name="group"]').value,'',
  'Unlink is reflected in the still-open editor');
@@ -2705,8 +2760,9 @@ aliasUI.window.close();
 console.log('v86.1: OCR alias list, shared picker, IME, confirmation, unlink and history preservation OK');
 /* The preview receipt schema is intentionally compact. Master tables are retained. */
 assert.equal(Object.keys(schema).length,11,'unused receipt_rules sheet is absent');
-for(const column of ['raw_name','category_id','price_eligible','inferred_name'])
+for(const column of ['raw_name','category_id','inferred_name'])
  assert.ok(!schema.record_items.includes(column),'legacy receipt column removed: '+column);
+assert.ok(schema.record_items.includes('price_eligible'),'purchase detail stores price aggregation eligibility');
 assert.ok(!schema.records.includes('raw_store_name'),'raw store name is removed');
 assert.ok(schema.record_items.includes('receipt_name_id'),'OCR alias pointer remains');
 assert.ok(schema.record_items.includes('product_name_candidate'),'product candidate is stored');
@@ -2839,7 +2895,7 @@ reviewFlow.window.document.getElementById('chatgpt-input').value=JSON.stringify(
 await completeOcrImport(reviewFlow);
 let flowForm=reviewFlow.window.document.getElementById('scanConfirmForm');
 assert.equal(flowForm.querySelector('[name="product-0"]'),null,
- 'product selection belongs to saved receipt detail, not pre-save review');
+ 'product selection has no hidden pre-confirmed value');
 const clearedDate=flowForm.querySelector('[name="date"]');
 clearedDate.value='';
 clearedDate.dispatchEvent(new reviewFlow.window.Event('input',{bubbles:true}));
@@ -2850,8 +2906,8 @@ assert.equal(flowForm.querySelector('.ui-date-value').textContent,'日付を選�
 const preservedScroll=[];
 reviewFlow.window.scrollY=456;
 reviewFlow.window.scrollTo=(_,y)=>{preservedScroll.push(y);reviewFlow.window.scrollY=y;};
-assert.equal(flowForm.querySelector('[data-act="scanPickExisting"]'),null,
- 'receipt review no longer has product pickers, even after date editing');
+assert.ok(flowForm.querySelector('[data-act="scanPickExisting"]'),
+ 'receipt review can explicitly choose a registered product after date editing');
 let storeField=flowForm.querySelector('#scan-chain');
 assert.equal(storeField.type,'hidden','receipt picker preserves chain FormData');
 assert.ok(flowForm.querySelector('.ui-picker-surface [data-act="storePickerOpen"]'),
@@ -3002,14 +3058,10 @@ assert.ok(optionalUI.window.document.querySelector('#scanConfirmForm').noValidat
 let invalidForm=optionalUI.window.document.querySelector('#scanConfirmForm');
 const invalidQty=invalidForm.querySelector('[name="qty-0"]');
 invalidQty.value='';
-invalidForm.dispatchEvent(new optionalUI.window.Event('submit',{bubbles:true,cancelable:true}));
-assert.match(invalidForm.querySelector('#scan-save-feedback')?.textContent||'',/赤い項目を修正/);
-assert.ok(invalidQty.closest('.formfield').classList.contains('ui-field-error'),
- 'missing quantity uses the shared red field state');
-invalidQty.value='1';
-invalidQty.dispatchEvent(new optionalUI.window.Event('input',{bubbles:true}));
-assert.equal(invalidForm.querySelector('#scan-save-feedback')?.hidden,true,
- 'editing the invalid value clears stale save-error feedback');
+assert.equal(invalidQty.closest('.formfield').classList.contains('ui-field-error'),false,
+ 'unknown quantity remains saveable without inventing a value');
+assert.ok(!invalidForm.querySelector('#scan-save-feedback')?.textContent,
+ 'unknown quantity does not create stale save-error feedback');
 assert.ok(optionalUI.window.document.querySelector('.scan-assist-area [data-act="chatGptAssist"]'),
  'ChatGPT help is outside the review form near the photo area');
 assert.match(optionalUI.window.document.querySelector('.scan-assist-area .ui-status-message')?.textContent||'',
@@ -3041,12 +3093,16 @@ assert.ok(optionalRecord,'new record can be retrieved');
 const optionalDetails=afterOptional.record_items.filter(x=>x.record_id===optionalRecord.record_id);
 assert.equal(optionalDetails.length,2);
 assert.ok(optionalDetails.some(x=>!Object.hasOwn(x,'raw_name')&&x.non_ocr_name===''&&
- x.linked_product_id===''&&Number(x.line_total_tax_included)===200&&!Object.hasOwn(x,'price_eligible')),
+ x.linked_product_id===''&&Number(x.line_total_tax_included)===200&&x.price_eligible===false),
  'the nameless line is retained as a purchase amount, not a price-comparable registered product');
+assert.ok(optionalDetails.some(x=>x.quantity===''||x.quantity===null),
+ 'unknown receipt quantity is saved as unknown');
+await waitFor(()=>!!optionalUI.window.document.querySelector('[data-act="detailAll"]'),
+ 'saved unnamed receipt returns to price home');
+optionalUI.window.document.querySelector('[data-act="detailAll"]').click();
+optionalUI.window.document.querySelector('[data-act="recordDetail"][data-record-id="'+optionalRecord.record_id+'"]').click();
 await waitFor(()=>!!optionalUI.window.document.querySelector('.detail-record-line'),
- 'saved unnamed receipt opens its detail immediately');
-assert.match(optionalUI.window.document.body.textContent,/レシートを保存しました/,
- 'First saved-detail visit shows a clear save confirmation');
+ 'saved unnamed receipt detail is available from history');
 assert.equal(optionalUI.window.document.querySelectorAll('[data-act="recordProductNew"]').length,0,
  'Saved receipt uses only one action per line for product selection or creation');
 assert.match(optionalUI.window.document.body.textContent,/明細名なし/,
@@ -3610,7 +3666,7 @@ const unlink=suggestionFixture.call('record.item.link',{
 },'op-suggestion-unlink-abcdef12345');
 assert.equal(unlink.ok,true,'saved line can be unlinked');
 assert.equal(unlink.data.entity.linked_product_id,'');
-assert.equal(Object.hasOwn(unlink.data.entity,'price_eligible'),false);
+assert.equal(unlink.data.entity.price_eligible,false);
 assert.equal(suggestionFixture.call('bootstrap').data.record_items.find(x=>
  x.record_item_id===suggestionLine.record_item_id).candidate_match_type,'',
  'confirmed AI candidate stays cleared after an unlink');

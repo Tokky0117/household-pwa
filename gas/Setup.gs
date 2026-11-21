@@ -124,8 +124,9 @@ function setupNewWorkbook() {
 
 /**
  * Trial-only, one-time data migration for the product / purchase-size split.
- * Run manually from the bound trial script after deployment. It makes local
- * sheet copies first, then preserves old product IDs as redirect rows.
+ * Run manually from the bound trial script after deployment and after trial
+ * clients stop with empty local sync queues. It backs up the sheets first,
+ * then preserves old product IDs as redirect rows.
  */
 function migrateTrialPriceSchema() {
   const lock = LockService.getScriptLock();

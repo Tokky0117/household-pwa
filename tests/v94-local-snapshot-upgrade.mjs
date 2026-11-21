@@ -135,7 +135,7 @@ async function makeEnvironment({pending=false,localOnly=false,serverOld=false,se
 const index=readFileSync(new URL('../index.html',import.meta.url),'utf8');
 const app=readFileSync(new URL('../app.js',import.meta.url),'utf8');
 assert.match(app,/^const APP_VERSION='0\.(?:94\.5|95\.[0123])';/);
-assert.match(index,/live-client\.js\?v=(?:94\.5-package|95\.(?:1-auto-household|2-stable-household-sheet|3-product-search-sheet))/);
-assert.match(index,/app\.js\?v=(?:94\.5-package|95\.(?:1-auto-household|2-stable-household-sheet|3-product-search-sheet))/);
-assert.ok(/product-package\.js\?v=(?:94\.5-package|95\.(?:1-auto-household|2-stable-household-sheet|3-product-search-sheet))/.test(index));
+assert.match(index,/live-client\.js\?v=(?:94\.5-package|95\.(?:1-auto-household|2-stable-household-sheet|3-product-search-sheet)|96\.0-product-price-groups)/);
+assert.match(index,/app\.js\?v=(?:94\.5-package|95\.(?:1-auto-household|2-stable-household-sheet|3-product-search-sheet)|96\.0-product-price-groups)/);
+assert.ok(/product-package\.js\?v=(?:94\.5-package|95\.(?:1-auto-household|2-stable-household-sheet|3-product-search-sheet)|96\.0-product-price-groups)/.test(index));
 console.log('v46 to v94 local cache, legacy server detection, browser asset versions OK');

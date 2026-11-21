@@ -237,8 +237,9 @@
      receipt_name_id:receiptAlias(op.chainId,line.raw_name,op.itemIds[i]),non_ocr_name:line.non_ocr_name||'',
      product_name_candidate:line.product_name_candidate||'',candidate_match_type:line.candidate_match_type||'',linked_product_id:line.linked_product_id||'',
      quantity:line.quantity,line_total_tax_included:line.line_total_tax_included,
-     candidate_package_quantity:line.candidate_package_quantity??null,
-     candidate_package_unit:line.candidate_package_unit??null,
+     purchase_package_quantity:line.purchase_package_quantity??null,
+     purchase_package_unit:line.purchase_package_unit??null,
+     price_eligible:line.price_eligible!==false,
      version:1,deleted_at:''
     }));
     continue;
@@ -254,8 +255,9 @@
      receipt_name_id:receiptAlias(op.chainId,line.raw_name,op.itemIds[i]),non_ocr_name:line.non_ocr_name||'',
      product_name_candidate:line.product_name_candidate||'',candidate_match_type:line.candidate_match_type||'',linked_product_id:line.linked_product_id||'',
      quantity:line.quantity,line_total_tax_included:line.line_total_tax_included,
-     candidate_package_quantity:line.candidate_package_quantity??null,
-     candidate_package_unit:line.candidate_package_unit??null,
+     purchase_package_quantity:line.purchase_package_quantity??null,
+     purchase_package_unit:line.purchase_package_unit??null,
+     price_eligible:line.price_eligible!==false,
      version:1,deleted_at:''
     }));
     continue;
@@ -263,6 +265,11 @@
    if(op.kind==='record-item-link'){
     const line=snap.record_items.find(x=>x.record_item_id===op.targetId&&!x.deleted_at);
     if(line){line.linked_product_id=op.productId||'';
+     if(op.purchasePackageQuantity!==undefined){
+      line.purchase_package_quantity=op.purchasePackageQuantity??'';
+      line.purchase_package_unit=op.purchasePackageUnit||'';
+     }
+     line.price_eligible=!!op.productId&&line.quantity!==''&&line.line_total_tax_included!=='';
      if(op.productId){line.product_name_candidate='';line.candidate_match_type=''}
      line.version=Number(line.version)+1}
     continue;
@@ -288,7 +295,7 @@
     snap.products.push({product_id:op.clientId,household_id:snap.household_id,
      household_item_id:op.groupId||'',name:op.name,
      normalized_name:op.name.normalize('NFKC').toLocaleLowerCase('ja'),
-     package_quantity:op.quantity??'',package_unit:op.unit||'',
+     package_quantity:'',package_unit:'',merged_into_product_id:'',
      household_item_order:order,version:1,deleted_at:''});
     continue;
    }
@@ -330,7 +337,7 @@
    if(op.kind==='toggle')target.in_stock=op.stock;
    else if(op.kind==='set-stock')target.in_stock=op.stock;
    else if(op.kind==='edit'){
-    target.name=op.name;target.sub_name=op.subName??target.sub_name??'';target.category_id=op.category_id;
+    target.name=op.name;target.sub_name=op.subName??target.sub_name??'';target.category_id=op.category_id;if(op.stockManagementEnabled!==undefined)target.stock_management_enabled=op.stockManagementEnabled;
    }else if(op.kind==='hide')target.is_hidden=op.hidden;
    else if(op.kind==='legacy'){
     const p=op.request?.payload||{};
@@ -610,8 +617,8 @@
   finally{if(refreshPromise===task)refreshPromise=null;notify()}
  }
  function productFields(payload){
-  const name=String(payload.name||'').trim(),qty=payload.package_quantity,
-   unit=payload.package_unit;
+  const name=String(payload.name||'').trim(),qty=payload.package_quantity??null,
+   unit=payload.package_unit??null;
   if(!name||name.length>80||/^[=+@\-]/.test(name)||
      (qty===null)!==(unit===null)||
      (qty!==null&&(!Number.isFinite(qty)||typeof qty!=='number'||qty<=0))||
@@ -626,10 +633,8 @@
     groupId=payload.household_item_id===null?null:String(payload.household_item_id||'');
    if(groupId!==null&&!snap.household_items.some(i=>i.household_item_id===groupId&&!i.deleted_at))
     throw Error('登録先の日用品が見つかりません');
-   if(products.some(p=>p.name.normalize('NFKC')===fields.name.normalize('NFKC')&&
-     Number(p.package_quantity||0)===Number(fields.quantity||0)&&
-     (p.package_unit||null)===fields.unit))
-    throw Error('同じ商品・内容量が既にあります');
+   if(products.some(p=>p.name.normalize('NFKC').trim()===fields.name.normalize('NFKC').trim()))
+    throw Error('同じ商品名の商品が既にあります');
    return {id:operationId(),kind:'product-create',clientId:'local-'+uid(),
     groupId,...fields,retries:0};
   }
@@ -645,10 +650,8 @@
   }
   const fields=productFields(payload);
   if(products.some(p=>p.product_id!==targetId&&
-    p.name.normalize('NFKC')===fields.name.normalize('NFKC')&&
-    Number(p.package_quantity||0)===Number(fields.quantity||0)&&
-    (p.package_unit||null)===fields.unit))
-   throw Error('同じ商品・内容量が既にあります');
+    p.name.normalize('NFKC').trim()===fields.name.normalize('NFKC').trim()))
+   throw Error('同じ商品名の商品が既にあります');
   return {id:operationId(),kind:'product-edit',targetId,...fields,retries:0};
  }
  function makeOperation(action,payload,doc){
@@ -682,7 +685,7 @@
      !i.deleted_at&&i.name.normalize('NFKC').toLocaleLowerCase('ja')===normalized&&
       Number(i.category_id)===cat&&String(i.sub_name||'').normalize('NFKC').toLocaleLowerCase('ja')===subName.normalize('NFKC').toLocaleLowerCase('ja')))
     throw Error('同じ日用品が登録済みです');
-   return {id:operationId(),kind:'edit',targetId,name,subName,category_id:cat,retries:0};
+   return {id:operationId(),kind:'edit',targetId,name,subName,category_id:cat,stockManagementEnabled:typeof payload.stock_management_enabled==='boolean'?payload.stock_management_enabled:undefined,retries:0};
   }
   throw Error('UNSUPPORTED');
  }
@@ -743,15 +746,19 @@
     throw Error('明細の商品名を確認してください');
    if(productId!==null&&!snap.products.some(p=>p.product_id===productId&&!p.deleted_at))
     throw Error('商品が見つかりません');
-   if(!Number.isSafeInteger(line.quantity)||line.quantity<=0||
-      !Number.isSafeInteger(line.line_total_tax_included)||line.line_total_tax_included<0)
+   const quantity=line.quantity==null||line.quantity===''?null:Number(line.quantity);
+   const amount=line.line_total_tax_included==null||line.line_total_tax_included===''?null:Number(line.line_total_tax_included);
+   if(quantity!==null&&(!Number.isSafeInteger(quantity)||quantity<=0)||
+      amount!==null&&(!Number.isSafeInteger(amount)||amount<0))
     throw Error('数量・税込金額を確認してください');
-   const sizeQty=line.candidate_package_quantity,sizeUnit=line.candidate_package_unit;
+   const sizeQty=line.purchase_package_quantity;
+   const sizeUnit=line.purchase_package_unit;
    const size=window.KurashiProductPackage?.valid(sizeQty,sizeUnit)?
-    {candidate_package_quantity:sizeQty,candidate_package_unit:sizeUnit}:{};
+    {purchase_package_quantity:sizeQty,purchase_package_unit:sizeUnit}:{};
    return {raw_name:rawName,...(confirmed?{non_ocr_name:confirmed}:{}),linked_product_id:productId,
-    quantity:line.quantity,line_total_tax_included:line.line_total_tax_included,
-    ...(suggested?{product_name_candidate:suggested,candidate_match_type:suggestionKind,...size}:{})};
+    quantity,line_total_tax_included:amount,...size,
+    ...(suggested?{product_name_candidate:suggested,candidate_match_type:suggestionKind}:{}),
+    price_eligible:line.price_eligible!==false};
   });
   return {id:operationId(),kind:'record-create',clientId:'local-'+uid(),
    chainId,recordType:kind,date,items:lines,
@@ -918,13 +925,9 @@
    const name=String(line.product_name_candidate||'').trim();
    if(!validReceiptProductName(name))continue;
    const size=receiptSize(name,line.candidate_package_quantity,line.candidate_package_unit);
-   const key=receiptSizedKey(name,size);
-   const exact=products.filter(p=>receiptProductKey(p.name)===receiptProductKey(name)&&
-    (!size||Number(p.package_quantity)===size.quantity&&p.package_unit===size.unit));
+   const key=receiptProductKey(name);
+   const exact=products.filter(p=>receiptProductKey(p.name)===key);
    if(exact.length>1||line.candidate_match_type==='existing'&&exact.length!==1)continue;
-   // Similar but non-identical punctuation must be manually resolved, not created.
-   if(!exact.length&&products.some(p=>receiptLooseKey(p.name)===receiptLooseKey(name)&&
-     receiptProductKey(p.name)!==receiptProductKey(name)))continue;
    const kind=exact.length?'existing':created.has(key)?'reuse':'new';
    if(!exact.length)created.add(key);
    candidates.push({record_item_id:line.record_item_id,raw_name:line.non_ocr_name||
@@ -986,7 +989,9 @@
      (x.record_item_id===mapped||nameId&&x.receipt_name_id===nameId&&!x.non_ocr_name));
    for(const target of siblings)if(target.linked_product_id!==productId)
     doc.queue.push({id:operationId(),kind:'record-item-link',
-     targetId:target.record_item_id,productId,retries:0});
+     targetId:target.record_item_id,productId,
+     ...(window.KurashiProductPackage?.valid(packageValue?.quantity,packageValue?.unit)?{
+       purchasePackageQuantity:packageValue.quantity,purchasePackageUnit:packageValue.unit}:{}),retries:0});
    const mapping=nameId&&snap.receipt_name_mappings.find(a=>
      a.receipt_name_id===nameId&&a.chain_id===receipt.chain_id);
    if(mapping&&!String(mapping.receipt_name_id).startsWith('local-')&&
@@ -1016,19 +1021,19 @@
    if(!validReceiptProductName(name))throw Error('商品名を確認してください');
    const key=receiptProductKey(name);
    const existing=snap.products.filter(p=>!p.deleted_at);
-   if(existing.some(p=>receiptProductKey(p.name)===key||
-      receiptLooseKey(p.name)===receiptLooseKey(name)))
-    throw Error('同じ名前または類似した商品があります。登録済みの商品から選択してください');
+   if(existing.some(p=>p.name.normalize('NFKC').trim()===name.normalize('NFKC').trim()))
+    throw Error('同じ商品名の商品が登録済みです。商品を選択してください');
    const amount=packageValue?.quantity??null,unit=packageValue?.unit??null;
    const create=makeProductOperation('product.create',{
-    household_item_id:null,name,package_quantity:amount,package_unit:unit
+    household_item_id:null,name,package_quantity:null,package_unit:null
    },doc);
    doc.queue.push(create);
    const sameOcrId=line.receipt_name_id&&!line.non_ocr_name?line.receipt_name_id:null;
    const siblings=snap.record_items.filter(x=>!x.deleted_at&&x.record_id===line.record_id&&
     (x.record_item_id===mappedId||sameOcrId&&x.receipt_name_id===sameOcrId&&!x.non_ocr_name));
    for(const target of siblings)doc.queue.push({id:operationId(),kind:'record-item-link',
-    targetId:target.record_item_id,productId:create.clientId,retries:0});
+    targetId:target.record_item_id,productId:create.clientId,
+    purchasePackageQuantity:amount,purchasePackageUnit:unit,retries:0});
    // Queue OCR-name learning with product creation instead of racing sync.
    const receipt=snap.records.find(r=>r.record_id===line.record_id);
    const mapping=sameOcrId&&snap.receipt_name_mappings.find(a=>
@@ -1061,8 +1066,7 @@
     if(!groupId)continue;
     if(!snap.household_items.some(x=>!x.deleted_at&&x.household_item_id===groupId))
      throw Error('登録先の日用品が見つかりません');
-    const key=receiptSizedKey(row.proposed_name,receiptSize(row.proposed_name,
-     row.package_quantity,row.package_unit));
+    const key=receiptProductKey(row.proposed_name);
     let productId=row.product_id;
     if(productId){
      const existing=snap.products.find(p=>p.product_id===productId&&!p.deleted_at);
@@ -1082,11 +1086,9 @@
      if(prev.groupId!==groupId)throw Error('同じ商品には同じ日用品を選択してください');
      productId=prev.productId;
     }else{
-     const capacity=window.KurashiProductPackage?.candidate(row.proposed_name,{
-      packageQuantity:row.package_quantity,packageUnit:row.package_unit});
      const create=makeProductOperation('product.create',{
       name:row.proposed_name,household_item_id:groupId,
-      package_quantity:capacity?.quantity??null,package_unit:capacity?.unit??null
+      package_quantity:null,package_unit:null
      },doc);
      doc.queue.push(create);
      productId=create.clientId;names.set(key,{groupId,productId});
@@ -1114,14 +1116,11 @@
    for(const row of plan){
     let productId=row.product_id;
     if(!productId){
-     const key=receiptSizedKey(row.proposed_name,receiptSize(row.proposed_name,
-      row.package_quantity,row.package_unit));
+     const key=receiptProductKey(row.proposed_name);
      if(!names.has(key)){
-      const capacity=window.KurashiProductPackage?.candidate(row.proposed_name,{
-      packageQuantity:row.package_quantity,packageUnit:row.package_unit});
       const create=makeProductOperation('product.create',{
        name:row.proposed_name,household_item_id:null,
-       package_quantity:capacity?.quantity??null,package_unit:capacity?.unit??null
+       package_quantity:null,package_unit:null
       },doc);
       doc.queue.push(create);
       names.set(key,create.clientId);
@@ -1291,6 +1290,9 @@
     throw Error('登録商品が見つかりません');
    return {operationId:op.id,action:'record.item.link',payload:{
     record_item_id:op.targetId,linked_product_id:op.productId||null,
+    ...(op.purchasePackageQuantity!==undefined?{
+      purchase_package_quantity:op.purchasePackageQuantity,
+      purchase_package_unit:op.purchasePackageUnit||null}:{}),
     version:Number(line.version)}};
   }
   if(op.kind==='record-update'||op.kind==='record-delete'){
@@ -1370,7 +1372,7 @@
   if(op.kind==='toggle')payload.in_stock=op.stock;
   else if(op.kind==='set-stock')payload.in_stock=op.stock;
   else if(op.kind==='hide')payload.is_hidden=op.hidden;
-  else if(op.kind==='edit'){payload.name=op.name;payload.category_id=op.category_id;if(op.subName!==undefined)payload.sub_name=op.subName}
+  else if(op.kind==='edit'){payload.name=op.name;payload.category_id=op.category_id;if(op.subName!==undefined)payload.sub_name=op.subName;if(op.stockManagementEnabled!==undefined)payload.stock_management_enabled=op.stockManagementEnabled}
   else throw Error('UNSUPPORTED');
   return {operationId:op.id,action:'item.update',payload};
  }
@@ -1476,7 +1478,9 @@
        records:(ws.base.records||[]).filter(r=>r.record_id!==result.record.record_id),
        record_items:(ws.base.record_items||[]).filter(i=>i.record_id!==result.record.record_id)}
      :productAction?{products:[
-      ...ws.base.products.filter(p=>!ids.has(p.product_id)),...entities]}
+      ...ws.base.products.filter(p=>!ids.has(p.product_id)),...entities],
+      ...(result.created_group?{household_items:[...ws.base.household_items.filter(i=>
+       i.household_item_id!==result.created_group.household_item_id),result.created_group]}:{})}
      :{household_items:[
       ...ws.base.household_items.filter(i=>!ids.has(i.household_item_id)),...entities]}),
     sequence_no:Math.max(Number(ws.base.sequence_no),Number(result.sequence_no))};
@@ -1973,6 +1977,7 @@
   return (data?.household_items||[]).filter(x=>!x.deleted_at).map(x=>({
    id:x.household_item_id,name:x.name,subName:x.sub_name||'',category:Number(x.category_id),
    inStock:toBoolean(x.in_stock),hidden:toBoolean(x.is_hidden),
+   stockManagementEnabled:x.stock_management_enabled===undefined||x.stock_management_enabled===null||x.stock_management_enabled===''?true:toBoolean(x.stock_management_enabled),
    order:Number(x.sort_order)||0,version:Number(x.version)
   }));
  }
@@ -1989,9 +1994,9 @@
    catch(_){}
    return String(value||'').split(/[,、\n]/).map(x=>x.trim()).filter(Boolean);
   };
-  return {receiptNameMappings,products:(data?.products||[]).map(p=>({
-   id:p.product_id,name:p.name,packageQuantity:p.package_quantity===''?null:p.package_quantity,
-   packageUnit:p.package_unit||null,householdItemId:p.household_item_id||null,
+  return {receiptNameMappings,products:(data?.products||[]).filter(p=>!p.deleted_at&&!p.merged_into_product_id).map(p=>({
+   id:p.product_id,name:p.name,packageQuantity:null,
+   packageUnit:null,householdItemId:p.household_item_id||null,
    householdItemOrder:p.household_item_order===''?null:Number(p.household_item_order),
    version:Number(p.version),aliases:receiptNameMappings.filter(a=>a.productId===p.product_id)
     .map(a=>a.normalizedReceiptName)

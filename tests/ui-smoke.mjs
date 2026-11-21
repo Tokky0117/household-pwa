@@ -269,7 +269,7 @@ const masterNewEditor=ui.masterProductEditorView();
 assert.ok(masterNewEditor.includes('id="master-product-group"')&&
  masterNewEditor.includes('name="group"')&&
  masterNewEditor.includes('data-act="masterGroupPickerOpen"')&&
- masterNewEditor.includes('日用品との紐付け（任意）')&&
+ masterNewEditor.includes('在庫グループ（任意）')&&
  masterNewEditor.includes('紐付けしない'),
  'New master uses a shared picker with optional default, not a long dropdown');
 assert.ok(!masterNewEditor.includes('class="ui-select"')&&
@@ -508,7 +508,7 @@ assert.equal(ui.convertQuantity(1,'L','mL'),1000);
 assert.equal(ui.convertQuantity(2,'個','本'),null);
 assert.ok(view.includes('placeholder="例：1100"')&&view.includes('inputmode="decimal"'),'Comparison uses numeric keyboard');
 ui.setUnit('g');view=ui.priceCompareView();
-assert.ok(view.includes('比較不可'),'Incompatible measurement families cannot be compared');
+assert.ok(view.includes('内容量未設定・比較対象外'),'Unknown/incompatible purchase sizes are excluded from unit comparison');
 assert.ok(view.includes('購入価格 '),'Original purchase price remains visible during normalized comparison');
 ui.setUnit('mL');view=ui.priceCompareView();
 assert.ok(css.includes('.shop-compare-dock{')&&css.includes('position:fixed'),'Dock remains fixed');
@@ -1771,8 +1771,8 @@ assert.equal(fabricated.items[0].nameCandidate,'',
  'AI may not convert an isolated barcode into a named merchandise row');
 assert.equal(fabricated.items[0].productId,'',
  'a stale automatic barcode product link is not authoritative');
-assert.ok(source.includes('scanDraft.items.findIndex(item=>!item.pendingDeletion&&isUnconfirmedBarcodeLine(item))'),
- 'unchecked active barcode rows are blocked but pending-deleted rows are omitted');
+assert.ok(!source.includes('scanDraft.items.findIndex(item=>!item.pendingDeletion&&isUnconfirmedBarcodeLine(item))'),
+ 'unmatched barcode rows may be saved as receipt history');
 assert.equal(ui.isUnconfirmedBarcodeLine({ocrRawName:'2000211787545',savedOcrName:true}),false,
  'editing an existing historical receipt does not require rewriting its old OCR names');
 console.log('v68: barcode-only OCR cannot be automatically accepted or learned OK');

@@ -139,14 +139,14 @@ ui=appSession();
 await waitFor(()=>ui.window.KurashiLive.state().loaded,'reloaded');
 const plan=ui.window.KurashiLive.previewBulkReceiptProducts(record.record_id);
 assert.equal(plan.length,2);
-assert.ok(plan.every(x=>x.package_quantity===120&&x.package_unit==='g'),
- 'AI package hints persist after sync and PWA reload');
+assert.ok(plan.every(x=>x.package_quantity===null&&x.package_unit===null),
+ 'unconfirmed AI package hints are not saved as purchase content');
 ui.window.document.querySelector('[data-tab="receipt"]').click();
 const row=ui.window.document.querySelector('[data-act="recordDetail"][data-record-id="'+record.record_id+'"]');
 assert.ok(row,'receipt appears in history');row.click();
 const bulk=ui.window.document.querySelector('[data-act="recordBulkPreview"]');
 assert.ok(bulk,'household-first bulk entry visible');bulk.click();
-assert.match(ui.window.document.body.textContent,/内容量：120g/,'bulk UI displays AI package');
+assert.match(ui.window.document.body.textContent,/内容量：未設定/,'unconfirmed AI package is shown as unknown');
 assert.ok(ui.window.document.querySelector('[data-act="recordBulkPick"]'),'household picker entry visible');
 online=false;
 const applied=await ui.window.KurashiLive.bulkRegisterReceiptHouseholds(record.record_id,
@@ -162,14 +162,13 @@ await waitFor(()=>ui.window.KurashiLive.state().queued===0 &&
 const saved=temp.call('bootstrap').data;
 const products=saved.products.filter(p=>p.name==='カットわかめ');
 assert.equal(products.length,1,'same AI product reused');
-assert.equal(Number(products[0].package_quantity),120);
-assert.equal(products[0].package_unit,'g');
+assert.equal(products[0].package_quantity,'');
+assert.equal(products[0].package_unit,'');
 assert.equal(products[0].household_item_id,wakame);
 assert.ok(saved.record_items.filter(i=>i.record_id===record.record_id)
  .every(x=>x.linked_product_id===products[0].product_id));
 ui.window.close();
-// Equal names with different package capacities must remain separate product
-// masters. Never reuse a 120 g comparison unit for a 200 g purchase.
+// Capacity belongs to purchase rows; the same exact product name uses one master.
 ui=appSession();
 await waitFor(()=>ui.window.KurashiLive.state().loaded,'capacity distinction session');
 await ui.window.KurashiLive.saveRecord({
@@ -182,16 +181,15 @@ await waitFor(()=>ui.window.KurashiLive.state().queued===0,'other capacity saved
 const otherReceipt=temp.call('bootstrap').data.records.find(x=>x.record_date==='2026-11-19');
 const otherPlan=ui.window.KurashiLive.previewBulkReceiptProducts(otherReceipt.record_id);
 assert.equal(otherPlan.length,1,'second capacity candidate remains eligible');
-assert.equal(otherPlan[0].product_id,null,'different quantity cannot reuse existing 120g product');
-assert.equal(otherPlan[0].package_quantity,200);
+assert.equal(otherPlan[0].product_id,products[0].product_id,'capacity difference reuses exact-name product');
+assert.equal(otherPlan[0].package_quantity,null,'unconfirmed AI capacity is not formalized');
 await ui.window.KurashiLive.bulkRegisterReceiptHouseholds(otherReceipt.record_id,
  otherPlan.map(x=>x.record_item_id),[wakame]);
 await waitFor(()=>ui.window.KurashiLive.state().queued===0 &&
- temp.call('bootstrap').data.products.filter(x=>x.name==='カットわかめ').length===2,
- 'different capacity registered independently');
+ temp.call('bootstrap').data.products.filter(x=>x.name==='カットわかめ').length===1,
+ 'different purchase capacity shares the exact-name master');
 const variants=temp.call('bootstrap').data.products.filter(x=>x.name==='カットわかめ');
-assert.deepEqual(variants.map(x=>Number(x.package_quantity)).sort((a,b)=>a-b),[120,200],
- 'same product name retains separate 120g and 200g masters');
+assert.equal(variants.length,1,'capacity variants do not duplicate product masters');
 ui.window.close();
 // Real-world regression: one registered product exists without a household.
 // Picking the everyday "かつお" household must reuse that product, not create it.
@@ -215,6 +213,7 @@ const yamaki=temp.call('product.create',{
 },'op-v951-yamaki-abcde1234567890');
 assert.equal(yamaki.ok,true,'existing Yamaki product has no household');
 const yamakiId=yamaki.data.entity.product_id;
+const yamakiPrivateGroupId=yamaki.data.entity.household_item_id;
 const captured=temp.call('record.create',{
  record_type:'receipt',chain_id:chain.data.entity.chain_id,record_date:'2026-11-17',
  items:[{non_ocr_name:'ヤマキカツオパック 60P',raw_name:'',linked_product_id:null,
@@ -233,80 +232,21 @@ ui.window.document.querySelector('[data-tab="receipt"]').click();
 const yamakiRow=ui.window.document.querySelector('[data-act="recordDetail"][data-record-id="'+capturedId+'"]');
 assert.ok(yamakiRow);yamakiRow.click();
 ui.window.document.querySelector('[data-act="recordProductOpen"]').click();
-assert.equal(ui.window.document.querySelector('[data-act="recordProductShowList"]'),null,
- 'product catalogue route is absent from daily receipt picker');
-const search=ui.window.document.getElementById('record-product-search');
-const byId=id=>!!ui.window.document.querySelector(
- '[data-act="recordHouseholdChoose"][data-household-id="'+id+'"]');
-search.value='や';
-search.dispatchEvent(new ui.window.Event('input',{bubbles:true}));
-assert.ok(byId(vegGroups[0].data.entity.household_item_id)&&
- byId(vegGroups[1].data.entity.household_item_id),
- 'the reading や matches both 野菜 and 野');
-search.value='の';
-search.dispatchEvent(new ui.window.Event('input',{bubbles:true}));
-assert.ok(byId(vegGroups[1].data.entity.household_item_id)&&
- byId(vegGroups[2].data.entity.household_item_id),
- 'the alternative reading の finds 野 and 野原');
-assert.ok(!byId(vegGroups[0].data.entity.household_item_id),
- 'known compound 野菜 is not given a fabricated のさい reading');
-const openSheet=ui.window.document.querySelector('.record-product-overlay');
-ui.window.eval('render()');
-assert.equal(ui.window.document.querySelector('.record-product-overlay'),openSheet,
- 'background render does not recreate or reanimate the open receipt sheet');
-assert.equal(search.value,'の','refresh preserves typed household search');
-search.value='';
-search.dispatchEvent(new ui.window.Event('input',{bubbles:true}));
-assert.equal(ui.window.eval("candidateScore('プルーチップカンソウヤサイ','乾燥',true)"),80);
-assert.equal(ui.window.eval("candidateScore('プルーチップカンソウヤサイ','野菜',true)"),79);
-assert.equal(ui.window.eval("candidateScore('プルーチップカンソウヤサイ','野',true)"),76);
-assert.ok(ui.window.eval("candidateScore('プルーチップカンソウヤサイ','野原',true)")<20,
- '野原 is correctly absent from auto-suggestions at a score below threshold');
-const householdButtons=[...ui.window.document.querySelectorAll('[data-act="recordHouseholdChoose"]')];
-for(const row of katsuoGroups){
- assert.ok(householdButtons.some(b=>b.dataset.householdId===row.data.entity.household_item_id),
-  'each name or sub-name reading has its own suggested household');
-}
-const sub=householdButtons.find(b=>b.dataset.householdId===katsuoGroups[3].data.entity.household_item_id);
-assert.match(sub.textContent,/テスト1：かつお/,'secondary household label uses colon');
-const first=householdButtons.find(b=>b.dataset.householdId===katsuoId);
-assert.ok(first.querySelector('.ui-choice-sub'),'similarity is subsidiary to item name');
-assert.match(first.textContent,/関連度 \d+/,'candidate shows a ranking score, not a probability');
-assert.ok(!first.textContent.includes('一致度'),'old similarity wording is not shown');
+assert.ok(ui.window.document.querySelector('#recordProductCreateForm'),
+ 'unmatched saved receipt has a direct product registration form');
+assert.ok(ui.window.document.querySelector('[name="purchase_quantity"]'),
+ 'purchase size is entered on the receipt detail, not the product master');
 const sameSheet=ui.window.document.querySelector('.record-product-overlay .half-sheet');
-first.click();
+ui.window.document.querySelector('[data-act="recordProductShowList"]').click();
 assert.equal(ui.window.document.querySelector('.record-product-overlay .half-sheet'),sameSheet,
- 'the same sheet remains open through product confirmation');
-assert.match(ui.window.document.querySelector('.receipt-product-modal .sheet-head').textContent,/商品を確認/);
-const other=ui.window.document.querySelector('[data-act="recordProductShowList"]');
-assert.ok(other,'similar products have a search-all alternative');
-other.click();
-assert.equal(ui.window.document.querySelector('.record-product-overlay .half-sheet'),sameSheet,
- 'other-product search does not open a second sheet');
+ 'existing product picker reuses the same sheet');
 assert.match(ui.window.document.querySelector('.receipt-product-modal .sheet-head').textContent,/商品を選択/);
 const query=ui.window.document.getElementById('record-product-search');
-query.value='試験用まったく新しい商品';
+query.value='ヤマキ';
 query.dispatchEvent(new ui.window.Event('input',{bubbles:true}));
-assert.ok(ui.window.document.querySelector('[data-act="recordProductShowNew"]'),
- 'a typed search allows using its text as the new product name');
-ui.window.document.querySelector('[data-act="recordProductShowNew"]').click();
-const form=ui.window.document.getElementById('recordProductCreateForm');
-assert.ok(form,'product editor is shown within the original sheet');
-assert.equal(ui.window.document.querySelector('.record-product-overlay .half-sheet'),sameSheet);
-assert.equal(form.querySelector('[name="name"]').value,'試験用まったく新しい商品',
- 'the search query is carried into product registration');
-assert.ok(form.querySelector('[name="quantity"]'),'capacity input is visible');
-assert.equal(form.querySelector('.product-package-details')?.tagName,'DIV',
- 'capacity is not hidden inside a collapsible disclosure');
-ui.window.document.querySelector('[data-act="recordProductStepBack"]').click();
-assert.equal(ui.window.document.getElementById('record-product-search').value,
- '試験用まったく新しい商品','back preserves product search');
-ui.window.document.querySelector('[data-act="recordProductStepBack"]').click();
-assert.match(ui.window.document.querySelector('.receipt-product-modal .sheet-head').textContent,/商品を確認/);
-const confirm=ui.window.document.querySelector('[data-act="recordPurchaseConfirm"][data-product-id="'+yamakiId+'"]');
-assert.ok(confirm,'unassigned master is offered as a purchase verification');
-assert.ok(ui.window.document.querySelector('.record-purchase-confirm-results'));
-confirm.click();
+const choose=ui.window.document.querySelector('[data-act="recordProductChoose"][data-product-id="'+yamakiId+'"]');
+assert.ok(choose,'existing product can be selected directly from saved receipt detail');
+choose.click();
 await waitFor(()=>ui.window.KurashiLive.state().queued===0&&
  temp.call('bootstrap').data.record_items.some(i=>
   i.record_id===capturedId&&i.linked_product_id===yamakiId),
@@ -314,8 +254,10 @@ await waitFor(()=>ui.window.KurashiLive.state().queued===0&&
 const yamakiAfter=temp.call('bootstrap').data;
 assert.equal(yamakiAfter.products.filter(x=>x.name==='ヤマキ かつおパック 60袋').length,1,
  'never duplicates a master on near-name receipt');
-assert.equal(yamakiAfter.products.find(x=>x.product_id===yamakiId).household_item_id,katsuoId,
- 'previously unassigned product is attached to selected household in the same transaction');
+assert.equal(yamakiAfter.products.find(x=>x.product_id===yamakiId).household_item_id,yamakiPrivateGroupId,
+ 'linking a purchase does not silently assign inventory group membership');
+assert.equal(yamakiAfter.household_items.find(x=>x.household_item_id===yamakiPrivateGroupId).stock_management_enabled,false,
+ 'product-only registration keeps inventory management off');
 ui.window.close();
 console.log('v95.1: general readings, compact household selection, and unassigned Yamaki master reuse OK');
 
