@@ -1821,6 +1821,8 @@ function inventoryGroupSheetView(){
 }
 async function saveInventoryGroups(ids,name){
  const targets=ids.map(id=>items.find(i=>i.id===id&&!i.hidden));
+ if(liveMode&&!window.KurashiLive.state().groupingReady)
+  throw Error('グループ機能は試作データの更新後に利用できます');
  if(targets.some(x=>!x))throw Error('選択した商品が見つかりません');
  if(!targets.length||targets.some(x=>x.category!==targets[0].category))
   throw Error('同じカテゴリの商品を選択してください');
@@ -3440,6 +3442,7 @@ if(action==='inventoryGroupOpen'){
 }
 if(action==='inventoryUngroup'){
  if(!editingInventory||!selectedInventoryIds.size)return;
+ if(liveMode&&!window.KurashiLive.state().groupingReady){say('グループ機能は試作データの更新後に利用できます');return;}
  const targets=[...selectedInventoryIds].filter(id=>items.find(i=>i.id===id)?.displayGroup);
  if(!targets.length){say('グループに所属する商品を選択してください');return}
  if(liveMode){

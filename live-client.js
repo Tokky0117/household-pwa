@@ -44,6 +44,7 @@
   loginRequired:authRequired,temporary:!authRequired,
   loaded:!!workspace.base,cached:!!workspace.base&&!lastSync,
   householdId:workspace.base?.household_id||null,
+  groupingReady:workspace.base?.capabilities?.explicit_display_groups===true,
   busy:!!refreshPromise||!!flushPromise,
   syncing:!!flushPromise,queued:workspace.queue.length,
   blocked:!!workspace.blocked,
@@ -675,6 +676,8 @@
   if(Object.prototype.hasOwnProperty.call(payload,'is_hidden'))
    return {id:operationId(),kind:'hide',targetId,hidden:!!payload.is_hidden,retries:0};
   if(Object.prototype.hasOwnProperty.call(payload,'display_group')){
+   if(snap?.capabilities?.explicit_display_groups!==true)
+    throw Error('グループ機能は試作データの更新後に利用できます');
    const groupName=payload.display_group;
    if(typeof groupName!=='string'||groupName.trim().length>80||/^[=+@\-]/.test(groupName.trim()))
     throw Error('グループ名を確認してください');

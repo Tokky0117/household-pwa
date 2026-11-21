@@ -417,7 +417,7 @@ function kurashiSheet_(name,book) {
     // Only known non-receipt master trailing headers may be appended.
     const first=headers.findIndex((h,i)=>actual[i]!==h);
     const extension=headers.length-first;
-    const allowed=name==='household_items'?extension===1:
+    const allowed=name==='household_items'?extension===1&&headers[first]==='sub_name':
       name==='receipt_name_mappings'?extension===1:
       false;
     if(first<0||!allowed||actual.slice(first).some(value=>value!==''))
@@ -472,6 +472,7 @@ function kurashiBootstrap_(user) {
     // relabel an existing production workbook as a trial workbook.
     return {
       household_id:hid,
+      capabilities:{explicit_display_groups:true},
       categories:kurashiRows_('categories',book).map(x=>kurashiPublic_(x.value)),
       household_items:kurashiRows_('household_items',book)
         .filter(x=>String(x.value.household_id)===hid)
