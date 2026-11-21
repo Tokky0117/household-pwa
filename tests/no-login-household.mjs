@@ -288,6 +288,23 @@ async function completeOcrImport(session){
 }
 
 const pause=ms=>new Promise(resolve=>setTimeout(resolve,ms));
+function openPriceOption(session,action){
+ const doc=session.window.document;
+ let button=doc.querySelector('[data-act="'+action+'"]');
+ if(!button){
+  const menu=doc.querySelector('[data-act="menu"]');
+  assert.ok(menu,'Price-tab options button available');
+  menu.click();
+  button=doc.querySelector('[data-act="'+action+'"]');
+ }
+ assert.ok(button,'Price-tab option '+action+' available');
+ button.click();
+}
+function openPriceHistory(session){
+ const tab=session.window.document.querySelector('[data-tab="receipt"]');
+ if(tab)tab.click();
+ openPriceOption(session,'detailAll');
+}
 async function waitFor(test,description){
  const limit=Date.now()+7000;
  while(Date.now()<limit){if(test())return;await pause(12)}
@@ -1134,7 +1151,7 @@ assert.equal(interruptedRecord.call('bootstrap').ok,true);
 let recordUI=appSession();
 await waitFor(()=>recordUI.window.KurashiLive.state().loaded,'record UI bootstrap');
 recordUI.window.document.querySelector('[data-tab="receipt"]').click();
-recordUI.window.document.querySelector('[data-act="newReceipt"]').click();
+openPriceOption(recordUI,'newReceipt');
 await waitFor(()=>!!recordUI.window.document.getElementById('scanConfirmForm'),'manual receipt editor');
 let recordForm=recordUI.window.document.getElementById('scanConfirmForm');
 assert.match(recordUI.window.document.body.textContent,/レシート入力/);
@@ -1190,9 +1207,10 @@ assert.equal(Number(storedDetails[1].line_total_tax_included),110);
 assert.equal(Object.hasOwn(storedDetails[0],'category_id'),false,'budget category column is retired');
 assert.equal(recordReopened.window.document.querySelector('[data-tab="budget"]'),null,
  'budget tab has been removed');
-recordReopened.window.document.querySelector('[data-tab="receipt"]').click();
+openPriceHistory(recordReopened);
 assert.ok(recordReopened.window.document.body.textContent.includes('アプリ実機試験用チェーン'));
-recordReopened.window.document.querySelector('[data-act="newShelf"]').click();
+recordReopened.window.document.querySelector('[data-act="back"]').click();
+openPriceOption(recordReopened,'newShelf');
 await waitFor(()=>!!recordReopened.window.document.getElementById('scanConfirmForm'),
  'shelf uses shared full-page editor');
 recordForm=recordReopened.window.document.getElementById('scanConfirmForm');
@@ -1258,7 +1276,7 @@ await waitFor(()=>draftUI.window.KurashiLive.state().loaded,'draft conflict sess
 draftUI.window.document.querySelector('[data-tab="receipt"]').click();
 await waitFor(()=>!!draftUI.window.document.querySelector('[data-act="resumeScanDraft"]'),
  'existing local draft detected in receipt tab');
-draftUI.window.document.querySelector('[data-act="newShelf"]').click();
+openPriceOption(draftUI,'newShelf');
 await waitFor(()=>!!draftUI.window.document.querySelector('[data-dialog="confirmReplaceDraft"]'),
  'new shelf input protects previous draft');
 assert.equal(draftUI.window.document.querySelector('.dialog-description').textContent.trim(),
@@ -1266,7 +1284,7 @@ assert.equal(draftUI.window.document.querySelector('.dialog-description').textCo
 draftUI.window.document.querySelector('[data-dialog="cancel"]').click();
 assert.equal((await draftUI.window.KurashiLive.loadReceiptDraft()).items[0].name,
  '以前の下書きの商品','cancel preserves the prior draft');
-draftUI.window.document.querySelector('[data-act="newReceipt"]').click();
+openPriceOption(draftUI,'newReceipt');
 await waitFor(()=>!!draftUI.window.document.querySelector('[data-dialog="confirmReplaceDraft"]'),
  'manual receipt also protects the same draft');
 draftUI.window.document.querySelector('[data-dialog="confirmReplaceDraft"]').click();
@@ -1300,6 +1318,7 @@ assert.deepEqual(exitActions.map(button=>button.textContent.trim()),
 draftUI.window.document.querySelector('[data-dialog="saveScanDraftAndExit"]').click();
 await waitFor(()=>!!draftUI.window.document.querySelector('[data-act="resumeScanDraft"]'),
  'back dialog saves draft and exits');
+openPriceHistory(draftUI);
 draftUI.window.document.querySelector(
  '[data-act="recordDetail"][data-record-id="'+storedReceipt.record_id+'"]').click();
 draftUI.window.document.querySelector('[data-act="recordEdit"]').click();
@@ -1512,7 +1531,7 @@ console.log('v59: PaddleOCR main entry, original queue, budget placeholder: OK')
  * recovery → delete, without touching the existing inventory buttons. */
 let historyUI=appSession();
 await waitFor(()=>historyUI.window.KurashiLive.state().loaded,'history UI bootstrap');
-historyUI.window.document.querySelector('[data-tab="receipt"]').click();
+openPriceHistory(historyUI);
 const historyEntry=historyUI.window.document.querySelector(
   '[data-act="recordDetail"][data-record-id="'+storedReceipt.record_id+'"]');
 assert.ok(historyEntry,'confirmed receipt opens from existing history');
@@ -1553,7 +1572,7 @@ await waitFor(()=>historyRecovery.window.KurashiLive.state().loaded&&
 assert.equal(temp.call('bootstrap').data.record_items.filter(x=>
  x.record_id===storedReceipt.record_id).length,2,
  'replaced receipt line does not appear twice');
-historyRecovery.window.document.querySelector('[data-tab="receipt"]').click();
+openPriceHistory(historyRecovery);
 historyRecovery.window.document.querySelector(
  '[data-act="recordDetail"][data-record-id="'+storedReceipt.record_id+'"]').click();
 historyRecovery.window.document.querySelector('[data-act="recordDelete"]').click();
@@ -1583,7 +1602,7 @@ await waitFor(()=>historyRecovery.window.KurashiLive.state().queued===0&&
  'shelf price observation saved and synced');
 const shelfEditRecord=temp.call('bootstrap').data.records.find(r=>
  r.record_type==='price_tag'&&r.record_date===shelfEditDate);
-historyRecovery.window.document.querySelector('[data-tab="receipt"]').click();
+openPriceHistory(historyRecovery);
 assert.match(historyRecovery.window.document.body.textContent,/明細一覧/);
 const shelfHistoryEntry=historyRecovery.window.document.querySelector(
  '[data-act="recordDetail"][data-record-id="'+shelfEditRecord.record_id+'"]');
@@ -1762,7 +1781,7 @@ let bulkBatchSession=appSession(new IDBFactory());
 await waitFor(()=>bulkBatchSession.window.KurashiLive.state().loaded&&
  !bulkBatchSession.window.KurashiLive.state().cached,
  'ChatGPT bulk saved candidates loaded on new device');
-bulkBatchSession.window.document.querySelector('[data-tab="receipt"]').click();
+openPriceHistory(bulkBatchSession);
 const originalPlan=bulkBatchSession.window.KurashiLive.previewBulkReceiptProducts(bulkRecordId);
 assert.equal(originalPlan.length,3,'only unlinked and unambiguous candidates are eligible');
 assert.equal(Array.from(originalPlan,x=>x.action).join(','),'new,reuse,existing',
@@ -1900,7 +1919,7 @@ await waitFor(()=>otherPhone.window.KurashiLive.state().loaded&&
  'separate iPhone has loaded the shared KitKat product');
 await waitFor(()=>!otherPhone.window.KurashiLive.state().cached,
  'other iPhone finished remote bootstrap');
-otherPhone.window.document.querySelector('[data-tab="receipt"]').click();
+openPriceHistory(otherPhone);
 const syncedKitLine=kitBaseline.record_items.find(x=>
  aliasText(temp,x)===kitRaw&&x.linked_product_id===kitSavedProduct.product_id);
 assert.ok(syncedKitLine&&otherPhone.window.document.querySelector(
@@ -1981,7 +2000,7 @@ let thirdPhone=appSession(new IDBFactory());
 await waitFor(()=>thirdPhone.window.KurashiLive.state().loaded&&
  !thirdPhone.window.KurashiLive.state().cached,
  'third independent iPhone loaded fresh shared Sheets snapshot');
-thirdPhone.window.document.querySelector('[data-tab="receipt"]').click();
+openPriceHistory(thirdPhone);
 assert.match(thirdPhone.window.document.body.textContent,/340円/,
  'new receipt appears on a different fresh iPhone');
 // Saved OCR names must remain immutable, but a newly appended line must be
