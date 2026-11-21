@@ -124,8 +124,9 @@ function setupNewWorkbook() {
 
 /**
  * Trial-only, one-time data migration for the product / purchase-size split.
- * Run manually from the bound trial script after deployment and after trial
- * clients stop with empty local sync queues and the backup is available. It backs up the sheets first,
+ * The deployment workflow never invokes this migration. Run manually from the
+ * bound trial script only after clients stop with empty local sync queues and
+ * the backup is available. It backs up the sheets first,
  * then preserves old product IDs as redirect rows.
  */
 function migrateTrialPriceSchema() {
