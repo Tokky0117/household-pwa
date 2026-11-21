@@ -142,6 +142,8 @@ assert.equal(plan.length,2);
 assert.ok(plan.every(x=>x.package_quantity===120&&x.package_unit==='g'),
  'AI package hints persist after sync and PWA reload');
 ui.window.document.querySelector('[data-tab="receipt"]').click();
+ui.window.document.querySelector('[data-act="menu"]').click();
+ui.window.document.querySelector('[data-act="detailAll"]').click();
 const row=ui.window.document.querySelector('[data-act="recordDetail"][data-record-id="'+record.record_id+'"]');
 assert.ok(row,'receipt appears in history');row.click();
 const bulk=ui.window.document.querySelector('[data-act="recordBulkPreview"]');
