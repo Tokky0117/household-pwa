@@ -2976,3 +2976,11 @@ html,body{touch-action:pan-x pan-y}
 .inventory-bulk-bar>span{margin-right:auto;font-size:.82rem;color:#666;white-space:nowrap}
 .inventory-bulk-bar button{min-width:0}
 .item-group-stock:empty{display:none}
+
+/* v0.97 product price entry: one receipt action, otherwise product search. */
+.price-home{padding-bottom:25px}
+.price-receipt-action{margin:12px 0 22px}
+.price-product-results .catalogue-candidate{width:100%;margin-bottom:7px}
+.product-price-stock{display:flex;gap:12px;flex-wrap:wrap;color:#666;font-size:.86rem;margin:8px 0 18px}
+.price-product-best{font-size:.9rem;line-height:1.6;margin:12px 0 22px}
+.comparison-product-title[data-act]{appearance:none;border:0;background:transparent;text-align:left;cursor:pointer;color:inherit;padding:0;min-width:0;flex:1}
