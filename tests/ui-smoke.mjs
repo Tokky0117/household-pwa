@@ -475,7 +475,7 @@ storage.set('household_pwa_list_help_open_v1','true');
 assert.equal(ui.readListHelpOpen(),true,'Expanded state is restored from device storage');
 assert.equal((ui.listView().match(/class="item swipe-item /g)||[]).length,15,'Five fixed categories, 15 demo items');
 assert.ok(!ui.listView().includes('298円／おいしい牛乳／コノミヤ'),'Stock list shows memo, not prices');
-assert.ok(ui.priceHomeView().includes('おいしい牛乳')&&ui.priceHomeView().includes('298円／コノミヤ'),'Price tab shows linked product price summaries');
+assert.ok(ui.priceHomeView().includes('おいしい牛乳')&&ui.priceHomeView().includes('298円 ／ コノミヤ'),'Price tab shows linked product price summaries');
 assert.ok(!ui.listView().includes('（割引）'),'No normal/discount labels in list');
 assert.equal(ui.getPeriod(),'1y','One-year initial period');
 const first=ui.chainMinima('p-milk-1','1y');
