@@ -2213,7 +2213,7 @@ function priceHomeView(){
   ],{label:'価格メニュー'}):'');
  return `${head('価格','くらしストック',false,actions)}<main class="price-home">
   ${UI.searchField({id:'price-product-search',label:'商品名を検索',placeholder:'商品を検索',value:priceQuery,extra:'autocomplete="off"'})}
-  <div class="price-receipt-action">${UI.button({label:'レシートを読み取る',action:'receiptScan',icon:'camera',variant:'secondary',disabled:!liveMode})}</div>
+  <div class="price-receipt-action">${scanDraftAvailable?UI.button({label:'下書きを再開',action:'resumeScanDraft',icon:'receiptText',variant:'secondary'}):UI.button({label:'レシートを読み取る',action:'receiptScan',icon:'camera',variant:'secondary',disabled:!liveMode})}</div>
   ${UI.sectionHeading({title:'商品一覧'})}
   <div id="price-product-results" class="price-product-results">${priceProductRows()}</div>
  </main>${nav()}`;
