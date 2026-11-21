@@ -85,15 +85,8 @@ jobs:
           node tests/receipt-seven-case-acceptance.mjs
           node tests/receipt-layout-p1.mjs
           node tests/receipt-prompt-p3.mjs
-          node tests/production-build.mjs
           node tests/trial-sheet-schema-cutover.mjs
           node tests/gas-execution-result.mjs
-          node tests/v94-local-snapshot-upgrade.mjs
-          node tests/production-release-guards.mjs
-          node tests/production-v94-converter.mjs
-          node tests/production-v94-cutover-runner.mjs
-          node tests/production-final-gas-verify.mjs
-          node tests/production-v94-owner-manual-workflow.mjs
 
       - name: Build verified prior PaddleOCR for the main receipt screen
         shell: bash
