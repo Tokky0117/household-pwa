@@ -232,6 +232,8 @@ assert.equal(ui.window.KurashiJapaneseReading.key('鰹'),ui.window.KurashiJapane
 assert.equal(ui.window.KurashiJapaneseReading.key('袋'),ui.window.KurashiJapaneseReading.key('ふくろ'),
  'common-use kanji pronunciations are reusable');
 ui.window.document.querySelector('[data-tab="receipt"]').click();
+ui.window.document.querySelector('[data-act="menu"]').click();
+ui.window.document.querySelector('[data-act="detailAll"]').click();
 const yamakiRow=ui.window.document.querySelector('[data-act="recordDetail"][data-record-id="'+capturedId+'"]');
 assert.ok(yamakiRow);yamakiRow.click();
 ui.window.document.querySelector('[data-act="recordProductOpen"]').click();
