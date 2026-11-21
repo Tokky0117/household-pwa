@@ -53,11 +53,34 @@ jobs:
       # hardcodes removed controls and must be migrated before production.
       # Keep unaffected OCR/schema regression tests and release guards active.
       - name: Validate v95 household-first preview
-        if: ${{ github.ref_name == 'preview-v95-household-link-flow' || github.ref_name == 'preview-v97-product-stock-groups' }}
+        if: ${{ github.ref_name == 'preview-v95-household-link-flow' }}
         run: |
           node tests/ui-smoke.mjs
           node tests/v95-household-flow.mjs
           node tests/no-login-household.mjs
+          node tests/receipt-baseline.mjs
+          node tests/receipt-seven-case-acceptance.mjs
+          node tests/receipt-layout-p1.mjs
+          node tests/receipt-prompt-p3.mjs
+          node tests/production-build.mjs
+          node tests/trial-sheet-schema-cutover.mjs
+          node tests/gas-execution-result.mjs
+          node tests/v94-local-snapshot-upgrade.mjs
+          node tests/production-release-guards.mjs
+          node tests/production-v94-converter.mjs
+          node tests/production-v94-cutover-runner.mjs
+          node tests/production-final-gas-verify.mjs
+          node tests/production-v94-owner-manual-workflow.mjs
+
+      # v97 changes the receipts tab into a price catalogue and relocates
+      # history/actions to its menu. The old no-login end-to-end test hardcodes
+      # the obsolete tab structure; do not pretend it validates this preview.
+      # v95 receipt journaling plus the focused UI smoke suite remain active.
+      - name: Validate v97 isolated product/inventory UI preview
+        if: ${{ github.ref_name == 'preview-v97-product-stock-groups' }}
+        run: |
+          node tests/ui-smoke.mjs
+          node tests/v95-household-flow.mjs
           node tests/receipt-baseline.mjs
           node tests/receipt-seven-case-acceptance.mjs
           node tests/receipt-layout-p1.mjs
