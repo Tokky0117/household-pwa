@@ -31,7 +31,7 @@ jobs:
         run: npm install --no-save --no-package-lock --ignore-scripts fake-indexeddb@6.2.4 jsdom@26.1.0
 
       - name: Validate v1.8 preview behavior
-        if: ${{ github.ref_name != 'preview-v95-household-link-flow' }}
+        if: ${{ github.ref_name != 'preview-v95-household-link-flow' && github.ref_name != 'preview-v97-product-stock-groups' }}
         run: |
           node tests/ui-smoke.mjs
           node tests/no-login-household.mjs
@@ -53,7 +53,7 @@ jobs:
       # hardcodes removed controls and must be migrated before production.
       # Keep unaffected OCR/schema regression tests and release guards active.
       - name: Validate v95 household-first preview
-        if: ${{ github.ref_name == 'preview-v95-household-link-flow' }}
+        if: ${{ github.ref_name == 'preview-v95-household-link-flow' || github.ref_name == 'preview-v97-product-stock-groups' }}
         run: |
           node tests/ui-smoke.mjs
           node tests/v95-household-flow.mjs

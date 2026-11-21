@@ -30,7 +30,7 @@ vm.runInNewContext(packageScript,ctx);
 vm.runInNewContext(readingScript,ctx);
 const packageAPI=ctx.window.KurashiProductPackage;
 const ui=vm.runInNewContext(source+`
-({UI,listView,priceCompareView,pickerView,pickerResults,masterProductsView,masterProductRows,masterProductEditorView,masterGroupPickerView,masterGroupPickerRows,aliasManageView,aliasManageRows,aliasProductPickerView,aliasProductPickerRows,detailHomeView,detailAllView,receiptScanView,receiptChatGptView,recordDetailView,scanStoreNameIssue,scanValidPurchaseDate,scanReadableError,floatingActionPlacement,applyChatGptOcrAssistance,receiptOcrReference,receiptOcrRows,isUnconfirmedBarcodeLine,makeChatGptReceiptRebuildDraft,scanProductView,scanProductGroupChoices,scanExistingProductView,scanExistingProductResults,scanChainForStore,scanStoreHeaderMatch,scanAutolinkUnmatched,scanMatchProduct,scanSimilarProducts,normalizeOcrProductName,normalizedOcrItemName,render,initializeCompare,
+({UI,listView,priceHomeView,productPriceView,priceCompareView,pickerView,pickerResults,masterProductsView,masterProductRows,masterProductEditorView,masterGroupPickerView,masterGroupPickerRows,aliasManageView,aliasManageRows,aliasProductPickerView,aliasProductPickerRows,detailHomeView,detailAllView,receiptScanView,receiptChatGptView,recordDetailView,scanStoreNameIssue,scanValidPurchaseDate,scanReadableError,floatingActionPlacement,applyChatGptOcrAssistance,receiptOcrReference,receiptOcrRows,isUnconfirmedBarcodeLine,makeChatGptReceiptRebuildDraft,scanProductView,scanProductGroupChoices,scanExistingProductView,scanExistingProductResults,scanChainForStore,scanStoreHeaderMatch,scanAutolinkUnmatched,scanMatchProduct,scanSimilarProducts,normalizeOcrProductName,normalizedOcrItemName,render,initializeCompare,
  householdCandidates,productCandidates,candidateScore,readingKey,setProductGroup,reorderProducts,registeredProducts,convertQuantity,setOpenSwipe,storePickerChoices,scrollNewItemIfOffscreen,
  getItems(){return items},setItems(v){items=v},orderedItemIds,expandItemGroup(k){expandedItemGroups.add(k)},collapseItemGroup(k){expandedItemGroups.delete(k)},
  chainMinima,priceCandidates,standardizedMinima,savePreviewRecord,periodStart,
@@ -194,47 +194,68 @@ assert.equal(scrolled,2,'item above the header scrolls into view');
 doc.querySelector=oldQuerySelector;ctx.window.innerHeight=oldViewport;
 
 const preservedItems=ui.getItems();
-ui.setItems([...preservedItems,
+const bags=[
  {id:'bag-vegetable',name:'袋',subName:'野菜用',category:1,inStock:true,hidden:false,order:100,version:1},
- {id:'bag-garbage',name:'袋',subName:'生ごみ用',category:1,inStock:false,hidden:false,order:101,version:1}]);
+ {id:'bag-garbage',name:'袋',subName:'生ごみ用',category:1,inStock:false,hidden:false,order:101,version:1}
+];
+ui.setItems([...preservedItems,...bags]);
+const noAutoGroup=ui.listView();
+assert.ok(noAutoGroup.includes('data-item-id="bag-vegetable"')&&
+ noAutoGroup.includes('data-item-id="bag-garbage"')&&
+ !noAutoGroup.includes('data-group-toggle="1:袋"'),
+ 'identically named items are never grouped automatically');
+assert.ok(noAutoGroup.includes('野菜用')&&noAutoGroup.includes('生ごみ用')&&
+ !noAutoGroup.includes('class="list-prices"'),
+ 'stock cards show per-item memo rather than price');
+const explicit=bags.map(item=>({...item,displayGroup:'袋類'}));
+ui.setItems([...preservedItems,...explicit]);
 const groupedClosed=ui.listView();
-assert.ok(groupedClosed.includes('data-group-toggle="1:袋"')&&
- groupedClosed.includes('2種類')&&groupedClosed.includes('item-group-stock-off'),
- 'two items with same category/name show one collapsed group with aggregate out-of-stock');
+assert.ok(groupedClosed.includes('data-group-toggle="1:group:袋類"')&&
+ groupedClosed.includes('2商品')&&groupedClosed.includes('在庫なし1件'),
+ 'an explicitly assigned group shows the number of out-of-stock members');
 assert.ok(!groupedClosed.includes('data-item-id="bag-vegetable"'),
- 'collapsed group hides child rows rather than deleting them');
-ui.expandItemGroup('1:袋');
+ 'collapsed explicit group hides child rows without deleting them');
+ui.expandItemGroup('1:group:袋類');
 const groupedOpen=ui.listView();
 assert.ok(groupedOpen.includes('data-item-id="bag-vegetable"')&&
  groupedOpen.includes('data-item-id="bag-garbage"')&&
- groupedOpen.includes('野菜用')&&groupedOpen.includes('生ごみ用'),
- 'expanded group renders independently accessible stock and price rows');
+ groupedOpen.includes('野菜用')&&groupedOpen.includes('生ごみ用')&&
+ groupedOpen.includes('data-open="bag-vegetable"'),
+ 'each expanded row retains its independent stock state and price navigation');
 assert.ok(groupedOpen.includes('data-list-top="true"')&&groupedOpen.includes('ラップ'),
- 'ordinary items and grouped rows are in the same category order');
-// Group moves as one peer of an ungrouped item; collapsed children still
-// participate in the complete Sheets reorder payload.
+ 'ungrouped items and the explicit group share the category ordering');
+// Collapsed group members are retained in the reorder operation payload.
 mockTopRows=[{dataset:{itemId:'demo-6'}},
- {dataset:{groupKey:'1:袋'},querySelectorAll(){return []}}];
+ {dataset:{groupKey:'1:group:袋類'},querySelectorAll(){return []}}];
 assert.deepEqual(Array.from(ui.orderedItemIds(1)),
  ['demo-6','bag-vegetable','bag-garbage'],
- 'normal item may precede a collapsed group; both child IDs remain in the queue');
-mockTopRows=[{dataset:{groupKey:'1:袋'},querySelectorAll(){return [
+ 'single item and grouped children remain reorderable together');
+mockTopRows=[{dataset:{groupKey:'1:group:袋類'},querySelectorAll(){return [
   {dataset:{itemId:'bag-garbage'}},{dataset:{itemId:'bag-vegetable'}}]}},
  {dataset:{itemId:'demo-6'}}];
 assert.deepEqual(Array.from(ui.orderedItemIds(1)),
  ['bag-garbage','bag-vegetable','demo-6'],
- 'expanded children can reorder within their group before the ordinary item');
+ 'children can reorder independently inside an explicit group');
 mockTopRows=[];
-ui.collapseItemGroup('1:袋');
+ui.collapseItemGroup('1:group:袋類');
 ui.setItems(preservedItems);
 
-assert.ok(ui.listView().includes('class="ui-search"')&&ui.listView().includes('id="search"'),'Daily list uses shared search component');
+assert.ok(ui.listView().includes('class="ui-search"')&&ui.listView().includes('id="search"'),'Inventory list reuses shared search');
+assert.ok(ui.priceHomeView().includes('id="price-product-search"')&&
+ ui.priceHomeView().includes('data-act="priceProductDetail"')&&
+ ui.priceHomeView().includes('data-act="receiptScan"')&&
+ !ui.priceHomeView().includes('data-act="newShelf"'),
+ 'price tab shows product search and the receipt scan entry; secondary entry belongs in the menu');
+assert.ok(source.includes("action:'inventoryGroupOpen'")&&
+ source.includes("action:'inventoryUngroup'")&&
+ readFileSync(new URL('../live-client.js',import.meta.url),'utf8').includes("kind:'group'"),
+ 'selection controls exist and grouping is persisted in the live-client journal');
 assert.ok(source.includes('iconButton({label,action,iconHtml,title=')&&
  source.includes("const add=UI.iconButton(")&&
  source.includes("registration.map(x=>UI.button("),
  'Daily add action and receipt entry actions use shared builders');
 assert.ok(!ui.listView().includes('data-act="copyList"')&&
- ui.listView().includes('data-act="add" aria-label="日用品を追加"')&&
+ ui.listView().includes('data-act="add" aria-label="商品を追加"')&&
  source.includes("label:'レシート読取'")&&
  ui.detailHomeView().includes('data-act="newReceipt"'),
  'Retained action builders preserve existing user labels without inventory copy');
