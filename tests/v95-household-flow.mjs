@@ -272,7 +272,7 @@ for(const row of katsuoGroups){
   'each name or sub-name reading has its own suggested household');
 }
 const sub=householdButtons.find(b=>b.dataset.householdId===katsuoGroups[3].data.entity.household_item_id);
-assert.match(sub.textContent,/テスト1：かつお/,'secondary household label uses colon');
+assert.match(sub.textContent,/テスト1（メモ：かつお）/,'memo clarifies duplicate stock names in receipt picker without becoming the title');
 const first=householdButtons.find(b=>b.dataset.householdId===katsuoId);
 assert.ok(first.querySelector('.ui-choice-sub'),'similarity is subsidiary to item name');
 assert.match(first.textContent,/関連度 \d+/,'candidate shows a ranking score, not a probability');

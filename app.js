@@ -1759,7 +1759,7 @@ const svg=k=>`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-
 function head(title,sub='',back=false,right='',left=''){return `<header class="top"><div class="headrow"><div class="head-left">${back?`${UI.iconButton({label:'戻る',action:'back',iconHtml:chevron('left')})}`:left}</div><div class="head-title">${sub?`<p class="eyebrow">${esc(sub)}</p>`:''}<h1>${esc(title)}</h1></div><div class="head-right">${right}</div></div></header>`}
 function nav(){return `<nav class="bottom" aria-label="メインメニュー"><div class="tabs">${[['items','在庫'],['receipt','価格'],['settings','設定']].map(([k,v])=>`<button class="tab ${tab===k?'active':''}" data-tab="${k}" ${tab===k?'aria-current="page"':''}>${svg(k)}<span>${v}</span></button>`).join('')}</div></nav>`}
 function groupKeyOfItem(i){return i.displayGroup?i.category+':group:'+norm(i.displayGroup):i.category+':single:'+i.id;}
-function itemLabel(i){return i?i.name:'';}
+function itemLabel(i){return i?i.name+(i.subName?'（メモ：'+i.subName+'）':''):'';}
 function itemCardHtml(i,cat,child=false){
  const label=itemLabel(i),groupKey=groupKeyOfItem(i),chosen=selectedInventoryIds.has(i.id);
  return `<div class="item swipe-item ${child?'item-group-child-row':'item-top-row'} ${editingInventory?'inventory-edit-item':''} ${!editingInventory&&openSwipeId===i.id?'swipe-open':''}" data-item-id="${esc(i.id)}" data-category-id="${cat}" data-group-key="${esc(groupKey)}" ${child?'':'data-list-top="true"'}>
@@ -1770,7 +1770,7 @@ function itemCardHtml(i,cat,child=false){
    <div class="swipe-front">
     ${editingInventory?`<input type="checkbox" class="inventory-select" data-select-item="${esc(i.id)}" aria-label="${esc(label)}を選択" ${chosen?'checked':''}>`:''}
     <button type="button" class="itemname" ${editingInventory?`data-select-item="${esc(i.id)}" aria-pressed="${chosen}"`:`data-open="${esc(i.id)}" aria-label="${esc(label)}の価格情報を開く"`}>
-     <span class="item-title">${esc(label)}</span>
+     <span class="item-title">${esc(i.name)}</span>
      ${i.subName?`<span class="list-memo">${esc(i.subName)}</span>`:''}
     </button>
     ${editingInventory?'':`<div class="item-stock-area">${UI.stock(i)}</div>`}
