@@ -2,7 +2,7 @@ name: Deploy only the NEW Kurashi GAS
 
 on:
   push:
-    branches: [preview-v46-clean-base]
+    branches: [preview-v46-clean-base, preview-v95-household-link-flow]
     paths: ['gas/Api.gs', 'gas/Setup.gs', '.github/workflows/gas-deploy-new.yml']
   workflow_dispatch:
 
@@ -15,7 +15,7 @@ concurrency:
 
 jobs:
   deploy:
-    if: github.ref == 'refs/heads/preview-v46-clean-base'
+    if: github.ref == 'refs/heads/preview-v46-clean-base' || github.ref == 'refs/heads/preview-v95-household-link-flow'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
@@ -167,8 +167,10 @@ jobs:
           try{response=JSON.parse(fs.readFileSync(filename,'utf8'))}
           catch(_){throw Error('NEW_GAS_BOOTSTRAP_INVALID_JSON')}
           if(response?.ok!==true||!response?.data?.household_id||
-             response.data.categories?.length!==5||
-             !Array.isArray(response.data.item_groups))
+             response.data.categories?.length!==6||
+             !Array.isArray(response.data.household_items)||
+             !Array.isArray(response.data.products)||
+             !Array.isArray(response.data.record_items))
             throw Error('NEW_GAS_BOOTSTRAP_INVALID_SCHEMA');
           console.log('New GAS /exec anonymous household bootstrap: OK (contents not logged)');
           NODE
