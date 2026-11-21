@@ -320,7 +320,7 @@
    if(op.kind==='create'){
     snap.household_items.push({household_item_id:op.clientId,
       household_id:snap.household_id,category_id:op.category_id,
-      name:op.name,sub_name:op.subName||'',in_stock:false,is_hidden:false,
+      name:op.name,sub_name:op.subName||'',display_group:'',in_stock:false,is_hidden:false,
       sort_order:Math.max(0,...snap.household_items.filter(i=>Number(i.category_id)===op.category_id)
        .map(i=>Number(i.sort_order)||0))+1,version:1,deleted_at:''});
     continue;
@@ -329,6 +329,7 @@
    if(!target)continue;
    if(op.kind==='toggle')target.in_stock=op.stock;
    else if(op.kind==='set-stock')target.in_stock=op.stock;
+   else if(op.kind==='group')target.display_group=op.groupName;
    else if(op.kind==='edit'){
     target.name=op.name;target.sub_name=op.subName??target.sub_name??'';target.category_id=op.category_id;
    }else if(op.kind==='hide')target.is_hidden=op.hidden;
@@ -673,6 +674,12 @@
   }
   if(Object.prototype.hasOwnProperty.call(payload,'is_hidden'))
    return {id:operationId(),kind:'hide',targetId,hidden:!!payload.is_hidden,retries:0};
+  if(Object.prototype.hasOwnProperty.call(payload,'display_group')){
+   const groupName=payload.display_group;
+   if(typeof groupName!=='string'||groupName.trim().length>80||/^[=+@\-]/.test(groupName.trim()))
+    throw Error('グループ名を確認してください');
+   return {id:operationId(),kind:'group',targetId,groupName:groupName.trim(),retries:0};
+  }
   if(typeof payload.name==='string'&&payload.category_id!==undefined){
    const name=payload.name.trim(),subName=String(payload.sub_name??target.sub_name??'').trim(),cat=Number(payload.category_id);
    if(!name||name.length>80||subName.length>80||!Number.isInteger(cat)||cat<0||cat>5)
@@ -1370,6 +1377,7 @@
   if(op.kind==='toggle')payload.in_stock=op.stock;
   else if(op.kind==='set-stock')payload.in_stock=op.stock;
   else if(op.kind==='hide')payload.is_hidden=op.hidden;
+  else if(op.kind==='group')payload.display_group=op.groupName;
   else if(op.kind==='edit'){payload.name=op.name;payload.category_id=op.category_id;if(op.subName!==undefined)payload.sub_name=op.subName}
   else throw Error('UNSUPPORTED');
   return {operationId:op.id,action:'item.update',payload};
@@ -1971,7 +1979,7 @@
  }
  function itemsOf(data){
   return (data?.household_items||[]).filter(x=>!x.deleted_at).map(x=>({
-   id:x.household_item_id,name:x.name,subName:x.sub_name||'',category:Number(x.category_id),
+   id:x.household_item_id,name:x.name,subName:x.sub_name||'',displayGroup:x.display_group||'',category:Number(x.category_id),
    inStock:toBoolean(x.in_stock),hidden:toBoolean(x.is_hidden),
    order:Number(x.sort_order)||0,version:Number(x.version)
   }));

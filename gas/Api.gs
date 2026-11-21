@@ -568,6 +568,7 @@ function kurashiSaveItem_(user,action,payload,operationId) {
   if (isCreate && !['category_id,name','category_id,name,sub_name'].includes(keys))
     kurashiFail_('BAD_REQUEST','登録する日用品を確認してください');
   if (!isCreate && !['household_item_id,in_stock,version',
+      'display_group,household_item_id,version',
       'household_item_id,is_hidden,version','category_id,household_item_id,name,version',
       'category_id,household_item_id,name,sub_name,version'].includes(keys))
     kurashiFail_('BAD_REQUEST','更新する日用品を確認してください');
@@ -643,6 +644,10 @@ function kurashiSaveItem_(user,action,payload,operationId) {
           if (typeof payload[field]!=='boolean')
             kurashiFail_('BAD_REQUEST','在庫・表示状態が不正です');
           entity[field]=payload[field];
+        } else if (keys==='display_group,household_item_id,version') {
+          if (typeof payload.display_group!=='string' || payload.display_group.trim().length>80)
+            kurashiFail_('BAD_REQUEST','グループ名を確認してください');
+          entity.display_group=payload.display_group.trim()?kurashiName_(payload.display_group.trim()):'';
         } else {
           entity.name=kurashiName_(payload.name);
           entity.sub_name=kurashiSubName_(payload.sub_name===undefined?record.sub_name:payload.sub_name);

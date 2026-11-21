@@ -10,7 +10,7 @@ const KURASHI_NEW_SCHEMA = {
   users: ['user_id', 'household_id', 'display_name', 'auth_subject'],
   categories: ['category_id', 'name', 'fixed_order'],
   retail_chains: ['chain_id', 'household_id', 'canonical_name', 'normalized_name', 'aliases', 'version', 'updated_at'],
-  household_items: ['household_item_id', 'household_id', 'category_id', 'name', 'normalized_name', 'in_stock', 'sort_order', 'is_hidden', 'version', 'created_at', 'updated_at', 'deleted_at', 'sub_name'],
+  household_items: ['household_item_id', 'household_id', 'category_id', 'name', 'normalized_name', 'in_stock', 'sort_order', 'is_hidden', 'version', 'created_at', 'updated_at', 'deleted_at', 'sub_name', 'display_group'],
   products: ['product_id', 'household_id', 'household_item_id', 'name', 'normalized_name', 'package_quantity', 'package_unit', 'household_item_order', 'version', 'created_at', 'updated_at', 'deleted_at'],
   receipt_name_mappings: ['receipt_name_id', 'auto_match_product_id', 'chain_id', 'normalized_receipt_name', 'version', 'updated_at', 'ocr_name'],
   records: ['record_id', 'household_id', 'record_type', 'chain_id', 'record_date', 'created_at', 'updated_at', 'version', 'deleted_at'],
