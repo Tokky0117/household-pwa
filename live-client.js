@@ -302,9 +302,9 @@
    if(op.kind==='product-edit'||op.kind==='product-link'){
     const p=snap.products.find(x=>x.product_id===op.targetId);
     if(!p)continue;
-    if(op.kind==='product-edit'){
-     p.name=op.name;p.package_quantity=op.quantity??'';
-     p.package_unit=op.unit||'';
+   if(op.kind==='product-edit'){
+     p.name=op.name;p.package_quantity='';
+     p.package_unit='';
     }else if(p.household_item_id!==op.groupId){
      p.household_item_id=op.groupId||'';
      p.household_item_order=op.groupId?
@@ -959,14 +959,12 @@
    if(!validReceiptProductName(name))throw Error('商品名を確認してください');
    const linked=line.linked_product_id?snap.products.find(p=>!p.deleted_at&&
     p.product_id===confirmedProductId(line.linked_product_id)):null;
-   const size=receiptSize(name,packageValue?.quantity,packageValue?.unit);
    const chosen=preferredProductId?snap.products.find(p=>!p.deleted_at&&
     p.product_id===confirmedProductId(preferredProductId)):null;
    if(preferredProductId&&(!chosen||chosen.name!==name))
     throw Error('購入品の候補が変更されました。内容を確認してください');
    const found=chosen?[chosen]:linked?[linked]:snap.products.filter(p=>!p.deleted_at&&
-    receiptLooseKey(p.name)===receiptLooseKey(name)&&
-    (!size||Number(p.package_quantity)===size.quantity&&p.package_unit===size.unit));
+    receiptLooseKey(p.name)===receiptLooseKey(name));
    if(found.length>1)throw Error('同じ名前の商品が複数あります。登録商品を確認してください');
    if(found[0]){
     const p=found[0];
@@ -979,8 +977,7 @@
    }else{
     const create=makeProductOperation('product.create',{
      name,household_item_id:householdItemId,
-     package_quantity:packageValue?.quantity??null,
-     package_unit:packageValue?.unit??null
+     package_quantity:null,package_unit:null
     },doc);
     doc.queue.push(create);productId=create.clientId;
    }

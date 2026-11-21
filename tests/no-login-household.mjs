@@ -1706,7 +1706,7 @@ assert.ok(individualRecord,'saved receipt is available in receipt history');
 bulkUI.window.document.querySelector('[data-act="recordDetail"][data-record-id="'+individualRecord.record_id+'"]').click();
 await waitFor(()=>!!bulkUI.window.document.querySelector('[data-act="recordProductOpen"]'),
  'saved receipt detail exposes individual product operations');
-assert.match(bulkUI.window.document.body.textContent,/日用品未設定/);
+assert.match(bulkUI.window.document.body.textContent,/商品未設定/);
 bulkUI.window.document.querySelector('[data-act="recordProductOpen"]').click();
 const individualForm=bulkUI.window.document.getElementById('recordProductCreateForm');
 assert.ok(individualForm&&bulkUI.window.document.querySelector('.record-product-overlay'),

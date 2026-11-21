@@ -868,8 +868,10 @@ function kurashiProductFields_(payload){
     (qty!==null&&(!Number.isFinite(qty)||typeof qty!=='number'||qty<=0))||
     (unit!==null&&!['個','本','枚','g','kg','mL','L'].includes(unit)))
     kurashiFail_('BAD_REQUEST','内容量と単位を確認してください');
+  // Keep accepting queued v0.96 product payloads, but capacity belongs to a
+  // purchase line and must never be written back to the product master.
   return {name,normalized_name:kurashiNormalize_(name),
-    package_quantity:qty===null?'':qty,package_unit:unit===null?'':unit};
+    package_quantity:'',package_unit:''};
 }
 function kurashiProductGroup_(groupId,hid,book){
   if(groupId===null)return null;

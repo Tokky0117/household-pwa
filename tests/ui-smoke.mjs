@@ -24,18 +24,19 @@ const doc={
  createElement:()=>({innerHTML:'',querySelector:()=>null}),
  body:{append(){}}
 };
+let testId=0;
 const ctx={document:doc,localStorage:{getItem:k=>storage.get(k)??null,setItem:(k,v)=>storage.set(k,v),removeItem:k=>storage.delete(k)},
- navigator:{},window:{scrollTo(){},scrollY:0,KurashiReceiptValidation:validator,KurashiReceiptReview:review},crypto:{randomUUID:()=> 'test-id'},setTimeout:()=>0};
+ navigator:{},window:{scrollTo(){},scrollY:0,KurashiReceiptValidation:validator,KurashiReceiptReview:review},crypto:{randomUUID:()=> 'test-id-'+(++testId)},setTimeout:()=>0};
 vm.runInNewContext(packageScript,ctx);
 vm.runInNewContext(readingScript,ctx);
 const packageAPI=ctx.window.KurashiProductPackage;
 const ui=vm.runInNewContext(source+`
-({UI,listView,priceCompareView,pickerView,pickerResults,masterProductsView,masterProductRows,masterProductEditorView,masterGroupPickerView,masterGroupPickerRows,aliasManageView,aliasManageRows,aliasProductPickerView,aliasProductPickerRows,detailHomeView,detailAllView,receiptScanView,receiptChatGptView,recordDetailView,scanStoreNameIssue,scanValidPurchaseDate,scanReadableError,floatingActionPlacement,applyChatGptOcrAssistance,receiptOcrReference,receiptOcrRows,isUnconfirmedBarcodeLine,makeChatGptReceiptRebuildDraft,scanProductView,scanProductGroupChoices,scanExistingProductView,scanExistingProductResults,scanChainForStore,scanStoreHeaderMatch,scanAutolinkUnmatched,scanMatchProduct,scanSimilarProducts,normalizeOcrProductName,normalizedOcrItemName,render,initializeCompare,
+({UI,listView,priceHomeView,priceProductRows,priceCompareView,pickerView,pickerResults,masterProductsView,masterProductRows,masterProductEditorView,masterGroupPickerView,masterGroupPickerRows,aliasManageView,aliasManageRows,aliasProductPickerView,aliasProductPickerRows,detailHomeView,detailAllView,receiptScanView,receiptChatGptView,recordDetailView,scanStoreNameIssue,scanValidPurchaseDate,scanReadableError,floatingActionPlacement,applyChatGptOcrAssistance,receiptOcrReference,receiptOcrRows,isUnconfirmedBarcodeLine,makeChatGptReceiptRebuildDraft,scanProductView,scanProductGroupChoices,scanExistingProductView,scanExistingProductResults,scanChainForStore,scanStoreHeaderMatch,scanAutolinkUnmatched,scanMatchProduct,scanSimilarProducts,normalizeOcrProductName,normalizedOcrItemName,render,initializeCompare,
  householdCandidates,productCandidates,candidateScore,readingKey,setProductGroup,reorderProducts,registeredProducts,convertQuantity,setOpenSwipe,storePickerChoices,scrollNewItemIfOffscreen,
  getItems(){return items},setItems(v){items=v},orderedItemIds,expandItemGroup(k){expandedItemGroups.add(k)},collapseItemGroup(k){expandedItemGroups.delete(k)},
  chainMinima,priceCandidates,standardizedMinima,savePreviewRecord,periodStart,
  demoRecords,demoRecordItems,allPreviewRecords,allPreviewItems,
- setSelected(v){selected=v},setMasterProductId(v){masterProductId=v},setAliasPickerId(v){aliasPickerId=v},setAliasQuery(v){aliasQuery=v;aliasVisibleLimit=100},setAliasVisibleLimit(v){aliasVisibleLimit=v},setPage(v){page=v},setMode(v){priceScope=v},setDock(v){shopExpanded=v},
+ setSelected(v){selected=v},setCompareProductId(v){compareProductId=v},setMasterProductId(v){masterProductId=v},setAliasPickerId(v){aliasPickerId=v},setAliasQuery(v){aliasQuery=v;aliasVisibleLimit=100},setAliasVisibleLimit(v){aliasVisibleLimit=v},setPage(v){page=v},setMode(v){priceScope=v},setDock(v){shopExpanded=v},
  setPeriod(v){period=v},setQty(v){compareQuantity=v},setUnit(v){compareUnit=v},
  createManualRecord,scanDate,
   detailLineName,settingsView,settingsSyncSummary,settingsLastSyncText,setRecordDetailId(v){recordDetailId=v},
@@ -109,7 +110,7 @@ assert.ok(deleteToolStyles.some(body=>body.includes('font-size:var(--ui-action-f
 assert.ok(source.includes('class="detail-candidate-origin" role="img" aria-label="生成AIによる候補"')&&
  source.includes("<span>商品名候補：${esc(line.product_name_candidate)}")&&
  !source.includes('<span>生成AIの商品名候補：'),'Saved receipt AI attribution uses an icon, not a text label');
-assert.ok(source.includes("label:'候補の日用品をまとめて設定（'")&&source.includes("icon:'sparkles'"),
+assert.ok(source.includes("label:'商品候補をまとめて設定（'")&&source.includes("icon:'sparkles'"),
  'Bulk household assignment entry uses the shared sparkle icon');
 assert.ok(!css.includes('grid-template-areas:"name value" "name date"'),'Obsolete two-row price CSS removed');
 assert.ok(ui.listView().includes('data-stock=')&&ui.listView().includes('data-list-edit='),'Stock and swipe list preserved');
@@ -234,7 +235,7 @@ assert.ok(source.includes('iconButton({label,action,iconHtml,title=')&&
  source.includes("registration.map(x=>UI.button("),
  'Daily add action and receipt entry actions use shared builders');
 assert.ok(!ui.listView().includes('data-act="copyList"')&&
- ui.listView().includes('data-act="add" aria-label="日用品を追加"')&&
+ ui.listView().includes('data-act="add" aria-label="在庫グループを追加"')&&
  source.includes("label:'レシート読取'")&&
  ui.detailHomeView().includes('data-act="newReceipt"'),
  'Retained action builders preserve existing user labels without inventory copy');
@@ -244,7 +245,7 @@ const masterListing=ui.masterProductsView();
 assert.ok(masterListing.includes('class="ui-search"')&&
  masterListing.includes('id="master-product-query"')&&
  masterListing.includes('data-search-clear="master-product-query"')&&
- masterListing.includes('aria-label="商品名・日用品名で検索"'),
+ masterListing.includes('aria-label="商品名・在庫グループ名で検索"'),
  'Master search reuses the shared searchable input with accessible label and clear');
 assert.ok(masterListing.includes('class="secondary master-product-add-action"')&&
  masterListing.includes('data-act="masterProductNew"'),
@@ -270,7 +271,7 @@ assert.ok(masterNewEditor.includes('id="master-product-group"')&&
  masterNewEditor.includes('name="group"')&&
  masterNewEditor.includes('data-act="masterGroupPickerOpen"')&&
  masterNewEditor.includes('在庫グループ（任意）')&&
- masterNewEditor.includes('紐付けしない'),
+ masterNewEditor.includes('在庫管理なし'),
  'New master uses a shared picker with optional default, not a long dropdown');
 assert.ok(!masterNewEditor.includes('class="ui-select"')&&
  !masterNewEditor.includes('data-act="masterProductUnlink"'),
@@ -445,8 +446,8 @@ assert.equal(ui.getListHelpOpen(),true,'Guide is initially expanded on an unset 
 let listWithHelp=ui.listView();
 assert.ok(listWithHelp.indexOf('class="list-help"')>listWithHelp.indexOf('id="item-results"'),'Usage guide follows category list');
 assert.ok(listWithHelp.includes('aria-expanded="true"')&&listWithHelp.includes('id="list-help-content"'),'Guide accessible expanded state');
-assert.ok(listWithHelp.includes('日用品名を押して価格情報を確認')&&listWithHelp.includes('左スワイプで編集・削除')&&listWithHelp.includes('長押しして上下に並び替え'),'Guide covers non-obvious actions');
-assert.ok(listWithHelp.includes('右上の＋で日用品を追加')&&!listWithHelp.includes('在庫なしをコピー'),'Guide explains the add action but not removed copying');
+assert.ok(listWithHelp.includes('グループ名を押して商品と価格を確認')&&listWithHelp.includes('左スワイプで編集・削除')&&listWithHelp.includes('長押しして上下に並び替え'),'Guide covers non-obvious actions');
+assert.ok(listWithHelp.includes('右上の＋で在庫グループを追加')&&!listWithHelp.includes('在庫なしをコピー'),'Guide explains the add action but not removed copying');
 assert.ok(css.includes('.list-help-toggle{')&&css.includes('min-height:44px'),'Accordion has shared accessible tap target');
 storage.set('household_pwa_list_help_open_v1','false');
 assert.equal(ui.readListHelpOpen(),false,'Collapsed state is restored from device storage');
@@ -469,9 +470,9 @@ assert.ok(!source.includes('discountStatus'),'No obsolete discount bucket');
 assert.ok(!source.includes('function bestPrice('),'Obsolete sample price aggregator removed');
 ui.setSelected('demo-1');ui.setPage('compare');ui.initializeCompare();
 assert.equal(ui.getCompare()[0],null,'Empty initial compare quantity');
-assert.equal(ui.getCompare()[1],'mL','First product unit preselected');
+assert.equal(ui.getCompare()[1],'g','Comparison starts with the stable base unit');
 let view=ui.priceCompareView();
-assert.ok(view.includes('登録商品')&&view.includes('税込・安い順'));
+assert.ok(view.includes('登録商品')&&view.includes('税込・購入日順'));
 assert.ok(view.includes('内容量換算の最安値')&&view.includes('100mLあたり'),
  'Per-item view compares all registered products by compatible standardized capacity');
 const winners=ui.standardizedMinima(ui.catalogue().products.filter(p=>p.householdItemId==='demo-1'),'1y');
@@ -501,7 +502,7 @@ assert.ok(view.includes('内容量を入力'),'Missing amount clearly stated whe
 assert.ok(view.includes('id="compare-quantity"')&&view.includes('id="compare-unit"'),'Comparison fields exist in dock');
 assert.ok(view.includes('店頭商品の内容量を入力'),'Input instruction exists');
 ui.setQty(900);view=ui.priceCompareView();
-assert.ok(view.includes('900mLあたりの換算価格'),'Comparison basis is displayed');
+assert.ok(view.includes('900gあたりの換算価格'),'Comparison basis is displayed');
 assert.ok(view.includes('298円'),'Same-unit conversion');
 assert.ok(!view.includes('>内容量を入力</strong>'),'Completed input removes per-chain missing-quantity status');
 assert.equal(ui.convertQuantity(1,'L','mL'),1000);
@@ -515,13 +516,13 @@ assert.ok(css.includes('.shop-compare-dock{')&&css.includes('position:fixed'),'D
 const picker=ui.pickerView();
 assert.ok(picker.includes('class="half-sheet product-picker-modal"')&&picker.includes('id="catalogue-search"'));
 assert.ok(picker.includes('data-act="productCreate"')&&picker.includes('まだ買っていない商品も登録できます'),'Picker supports new product creation');
-assert.ok(ui.pickerResults().includes('関連度'),'Price-information picker shows ranked matches rather than all products');
+assert.ok(ui.pickerResults().includes('候補度'),'Product picker shows ranked matches rather than all products');
 assert.ok(!ui.pickerResults().includes('おいしい牛乳'),'Already-linked products are omitted from suggestions');
 assert.ok(css.includes('height:min(72dvh,620px)'),'Stable picker height');
 assert.ok(css.includes('.comparison-main .chain-price-row{'),'Chain rows share visual hierarchy');
 assert.ok(css.includes('.swipe-item.drag-ghost,')&&css.includes('border-radius:11px!important'),'Drag styling preserved');
 assert.ok(ui.reorderProducts('demo-1',['p-milk-2','p-milk-1']),'Registered product reordering works');
-ui.initializeCompare();assert.equal(ui.getCompare()[1],'L');
+ui.initializeCompare();assert.equal(ui.getCompare()[1],'g');
 const p=ui.catalogue().products.find(x=>x.id==='p-milk-3');
 ui.setProductGroup(p,'demo-1');assert.equal(p.householdItemOrder,3);
 ui.setProductGroup(p,null);assert.equal(p.householdItemOrder,null);
@@ -629,7 +630,7 @@ assert.ok(savedShelfDetail.includes('>値札確認日</span>')&&
 ui.setRecordDetailId(ui.allPreviewRecords().at(-1).record_id);
 const unnamedReceiptDetail=ui.recordDetailView();
 assert.ok(unnamedReceiptDetail.includes('明細名なし')&&
- unnamedReceiptDetail.includes('日用品未設定')&&
+ unnamedReceiptDetail.includes('商品未設定')&&
  unnamedReceiptDetail.includes('数量 2'),
  'Unnamed and unmatched saved receipt line remains accessible');
 
@@ -1133,7 +1134,7 @@ assert.ok(source.includes("function scanAssistView()")&&
 const existingHtml=ui.scanExistingProductView();
 assert.ok(existingHtml.includes('scan-existing-search')&&
  !existingHtml.includes('scan-existing-group')&&
- existingHtml.includes('日用品リスト：牛乳'),
+ existingHtml.includes('在庫グループ：牛乳'),
  'existing-product picker searches products and shows linked household item');
 assert.ok(existingHtml.includes('class="ui-search"')&&
  existingHtml.includes('data-search-clear="scan-existing-search"')&&
@@ -2163,37 +2164,57 @@ assert.ok(ui.receiptScanView().includes('class="ui-date-control"')&&
  ui.receiptScanView().includes('id="scan-date"'),
  'Manual receipt entry shares the native date UI with OCR confirmation');
 
-// KS-008: 120g versus 50g versus unknown quantity under one household item.
+// v0.96 review: one master product spans package sizes, stores and unknown capacities.
 ui.setItems([...ui.getItems(),{id:'demo-wakame',
  name:'わかめ',subName:'',category:0,inStock:true,hidden:false,order:999,version:1}]);
 ui.catalogue().products.push(
- {id:'test-wakame120',name:'三陸カットわかめ120g',packageQuantity:120,packageUnit:'g',
+ {id:'test-wakame',name:'三陸カットわかめ',
   householdItemId:'demo-wakame',householdItemOrder:1,aliases:[]},
- {id:'test-wakame50',name:'カットわかめ50g',packageQuantity:50,packageUnit:'g',
-  householdItemId:'demo-wakame',householdItemOrder:2,aliases:[]},
- {id:'test-wakame-unknown',name:'わかめ容量不明',packageQuantity:null,packageUnit:null,
+ {id:'test-wakame-soup',name:'わかめスープ',
   householdItemId:'demo-wakame',householdItemOrder:3,aliases:[]}
 );
 const wakameDate=ui.demoRecords[0].record_date;
-for(const [productId,amount] of [
- ['test-wakame120',360],['test-wakame50',180],['test-wakame-unknown',80]]){
- assert.equal(ui.savePreviewRecord({type:'price_tag',chainId:'c-life',date:wakameDate,
-  quantity:1,amount,productId,category:''}),true);
+const newerWakameDate=new Date(wakameDate+'T12:00:00');newerWakameDate.setDate(newerWakameDate.getDate()+1);
+const newerWakameDay=[newerWakameDate.getFullYear(),String(newerWakameDate.getMonth()+1).padStart(2,'0'),String(newerWakameDate.getDate()).padStart(2,'0')].join('-');
+for(const [chainId,date,amount,quantity,purchasePackageQuantity,purchasePackageUnit] of [
+ ['c-life',wakameDate,360,1,120,'g'],['c-life',newerWakameDay,600,1,200,'g'],
+ ['c-konomiya',wakameDate,240,2,50,'g'],['c-life',wakameDate,80,1,null,''],
+ ['c-life',wakameDate,90,1,250,'mL']
+]){
+ assert.equal(ui.savePreviewRecord({type:'price_tag',chainId,date,
+  quantity,amount,productId:'test-wakame',purchasePackageQuantity,purchasePackageUnit,category:''}),true);
 }
-const standardizedWakame=ui.standardizedMinima(ui.registeredProducts('demo-wakame'),'1y');
-assert.equal(standardizedWakame.find(x=>x.label==='100g').price,300,
- '120g at 360 yen wins normalized 100g comparison over 50g at 180 yen');
-assert.equal(standardizedWakame.find(x=>x.label==='100g').productId,'test-wakame120',
- 'unknown-capacity 80-yen product cannot be the normalized-price winner');
-ui.setSelected('demo-wakame');ui.setPage('compare');ui.setMode('product');ui.setDock(false);
-const wakameView=ui.priceCompareView();
-assert.ok(wakameView.includes('内容量未設定の1商品')&&
- !wakameView.includes('内容量を登録')&&
- wakameView.includes('80円')&&wakameView.includes('300円')&&
- wakameView.includes('data-pedit="test-wakame-unknown"')&&
- wakameView.includes('class="swipe-unlink"')&&
- !wakameView.includes('class="swipe-delete" data-premove="test-wakame-unknown"'),
- 'unknown capacity remains in price comparison, without redundant button or a delete-style unlink icon');
+const minima=ui.chainMinima('test-wakame','1y');
+assert.equal(minima.length,4,'Per-chain minima keep weight, volume and unknown capacity categories separate');
+assert.ok(minima.some(x=>x.chainId==='c-konomiya'&&x.purchasePackageQuantity===50&&x.quantity===2),
+ 'Purchase count and purchase-time package size are both retained');
+assert.ok(minima.some(x=>x.chainId==='c-life'&&x.unitFamily==='weight'&&
+ x.purchasePackageQuantity===200&&x.date===newerWakameDay),
+ 'Equal normalized prices retain the newer purchase date as the tie-break');
+assert.ok(minima.some(x=>x.capacityKnown===false&&x.price===80),
+ 'Unknown capacity remains visible at its purchase price and is not treated as a conversion minimum');
+assert.ok(!minima.some(x=>x.chainId==='c-life'&&x.unitFamily==='weight'&&x.normalizedPrice===90),
+ 'mL purchase is never compared against g purchases');
+const standardizedWakame=ui.standardizedMinima([ui.catalogue().products.find(p=>p.id==='test-wakame')],'1y');
+assert.equal(standardizedWakame.find(x=>x.label==='100g').price,240,
+ '50g × 2 at 240 yen beats the 120g purchase after quantity conversion');
+const priceRows=ui.priceProductRows();
+const wakamePriceRow=priceRows.match(/data-price-product="test-wakame"[\s\S]*?<\/button>/)?.[0]||'';
+assert.ok((wakamePriceRow.match(/<strong>ライフ<\/strong>/g)||[]).length===1&&
+ (wakamePriceRow.match(/<strong>コノミヤ<\/strong>/g)||[]).length===1&&
+ wakamePriceRow.includes('200g×1')&&wakamePriceRow.includes('50g×2'),
+ 'Price tab presents one current purchase per chain under one product master');
+ui.setCompareProductId('test-wakame');ui.setSelected('demo-wakame');ui.setPage('compare');ui.setMode('product');ui.setDock(false);
+const focusedView=ui.priceCompareView();
+assert.ok(focusedView.includes('商品価格')&&focusedView.includes('三陸カットわかめ')&&
+ !focusedView.includes('わかめスープ')&&focusedView.includes('在庫グループを設定')&&
+ focusedView.includes('80円')&&focusedView.includes('内容量未設定'),
+ 'Price tab opens the selected product only');
+ui.setCompareProductId(null);
+const groupView=ui.priceCompareView();
+assert.ok(groupView.includes('在庫グループ価格')&&groupView.includes('三陸カットわかめ')&&
+ groupView.includes('わかめスープ'),
+ 'Inventory tab keeps all group products with their separate price histories');
 
 // v95: short household names remain searchable inside long printed names.
 assert.ok(ui.candidateScore('キッチンポリ袋50枚','袋',true)>60);
