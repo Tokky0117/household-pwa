@@ -1099,7 +1099,7 @@ function kurashiGroupStockProducts_(user,payload,operationId){
     }else{
       const visible=kurashiRows_('products',book).filter(x=>
         String(x.value.household_id)===hid&&Number(x.value.category_id)===cat&&
-        x.value.stock_enabled===true&&!x.value.is_hidden&&!x.value.deleted_at&&
+        !x.value.is_hidden&&!x.value.deleted_at&&
         ids.includes(String(x.value.product_id)));
       if(visible.length!==ids.length)
         kurashiFail_('VERSION_CONFLICT','別の端末で一覧が変更されています');
