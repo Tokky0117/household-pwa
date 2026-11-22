@@ -175,6 +175,42 @@ assert.equal(call('product.stock.group',{
  category_id:4,display_group:'お菓子',product_ids:['product-3'],
  versions:[priceOnlyBefore.version]
 },'op-v98-price-only-group-0123456789').ok,true,'price-only grouping replay must be durable');
+// Membership is distinct from inventory state. Switching it must never
+// rewrite existing product, group or historical receipt references.
+const baselineReceiptLinks=JSON.stringify(call('bootstrap',{}).data.record_items
+ .map(x=>[x.record_item_id,x.linked_product_id]));
+const beforeEnable=call('bootstrap',{}).data.products.find(x=>x.product_id==='product-3');
+const membershipOn=call('product.stock.update',{
+ product_id:'product-3',version:beforeEnable.version,
+ stock_enabled:true,in_stock:false,category_id:1
+},'op-v98-price-stock-on-0123456789');
+assert.equal(membershipOn.ok,true,JSON.stringify(membershipOn.error));
+assert.equal(membershipOn.data.entity.stock_enabled,true);
+assert.equal(membershipOn.data.entity.in_stock,false);
+assert.equal(membershipOn.data.entity.category_id,1);
+assert.equal(membershipOn.data.entity.display_group,'お菓子');
+const afterEnable=call('bootstrap',{}).data.products.find(x=>x.product_id==='product-3');
+const membershipOff=call('product.stock.update',{
+ product_id:'product-3',version:afterEnable.version,
+ stock_enabled:false,in_stock:false
+},'op-v98-price-stock-off-0123456789');
+assert.equal(membershipOff.ok,true,JSON.stringify(membershipOff.error));
+const afterDisable=call('bootstrap',{}).data;
+assert.equal(afterDisable.products.find(x=>x.product_id==='product-3').stock_enabled,false);
+assert.equal(afterDisable.products.find(x=>x.product_id==='product-3').in_stock,false);
+assert.equal(afterDisable.products.find(x=>x.product_id==='product-3').display_group,'お菓子');
+assert.equal(JSON.stringify(afterDisable.record_items.map(x=>[x.record_item_id,x.linked_product_id])),
+ baselineReceiptLinks,'membership changes must not alter receipt history');
+const newPriceProduct=call('product.create',{
+ household_item_id:null,name:'まだ買っていないお菓子',
+ package_quantity:null,package_unit:null,
+ category_id:0,stock_enabled:false,in_stock:false,memo:'試してみる',display_group:''
+},'op-v98-new-price-only-0123456789');
+assert.equal(newPriceProduct.ok,true,JSON.stringify(newPriceProduct.error));
+assert.equal(newPriceProduct.data.entity.stock_enabled,false);
+assert.equal(newPriceProduct.data.entity.category_id,0);
+assert.equal(newPriceProduct.data.entity.memo,'試してみる');
+assert.equal(newPriceProduct.data.entity.in_stock,false);
 const record=call('record.create',{record_type:'receipt',chain_id:'chain1',record_date:'2026-11-22',
  items:[{raw_name:'アタックZERO 580g',linked_product_id:'product-1',
   quantity:null,line_total_tax_included:null,purchase_size_quantity:580,purchase_size_unit:'g'}]},
@@ -190,4 +226,4 @@ assert.equal(recordSnapshot.record_items.find(x=>x.record_item_id===record.data.
 // A changed original cell must be detected, rather than declared restorable.
 backup.tables.get('products')[1][3]='TAMPERED_NAME';
 assert.throws(()=>context.kurashiTrialStockVerify(),/バックアップと一致しません/);
-console.log('v98 trial stock migration, verified backup, immutable history, product CRUD/reorder, null receipt values and size persistence: OK');
+console.log('v98 trial stock migration, membership on/off, price-only create, history integrity, grouping and receipts: OK');
