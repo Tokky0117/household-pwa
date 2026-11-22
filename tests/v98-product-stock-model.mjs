@@ -29,6 +29,7 @@ assert.equal(byId.p3.category_id,0);
 assert.equal(byId.p3.memo,'野菜室');
 assert.equal(byId.p4.stock_enabled,false,'price-only product must stay out of stock tab');
 assert.equal(byId.p5.stock_enabled,false,'hidden legacy item must not become visible stock');
+assert.equal(byId.p5.is_hidden,true,'hidden legacy item must remain hidden after product migration');
 assert.equal(plan.createProductsForOrphanItems[0].name,'ティッシュ');
 assert.equal(plan.createProductsForOrphanItems[0].stock_enabled,false,'legacy per-item stock exclusion is preserved');
 assert.ok(plan.warnings.some(x=>x.code==='SHARED_STOCK_SPLIT'));
