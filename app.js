@@ -3440,7 +3440,15 @@ if(el.dataset.selectPriceProduct!==undefined){
  render();return;
 }
 if(el.dataset.groupToggle!==undefined){const k=el.dataset.groupToggle;expandedItemGroups.has(k)?expandedItemGroups.delete(k):expandedItemGroups.add(k);render();return}
-if(el.dataset.listEdit){duplicateItemId=null;selected=el.dataset.listEdit;editReturnPage='list';openSwipeId=null;page='edit';render();return}if(el.dataset.listHide){selected=el.dataset.listHide;setOpenSwipe(null);dialog=stockV2()?
+if(el.dataset.listEdit){
+ const id=el.dataset.listEdit;openSwipeId=null;
+ if(stockV2()){
+  const p=catalogue.products.find(x=>x.id===id);
+  if(!p)return;
+  selectedProductId=p.id;priceReturn='inventory';page='productPrice';render();return;
+ }
+ duplicateItemId=null;selected=id;editReturnPage='list';page='edit';render();return;
+}if(el.dataset.listHide){selected=el.dataset.listHide;setOpenSwipe(null);dialog=stockV2()?
  {title:'在庫管理から外しますか？',message:'購入履歴と価格情報は残ります。',buttons:[{id:'cancel',label:'キャンセル'},{id:'confirmHide',label:'在庫管理から外す',critical:true}]}:
  {title:'日用品を削除',message:'日用品リストから削除します。',buttons:[{id:'cancel',label:'キャンセル'},{id:'confirmHide',label:'削除',critical:true}]};render();return}
 if(el.dataset.tab){tab=el.dataset.tab;page='list';openSwipeId=null;menu=false;editingInventory=false;selectedInventoryIds.clear();inventoryGroupSheet=false;editingPrice=false;selectedPriceIds.clear();priceGroupSheet=false;selectedProductId=null;render();return}if(el.dataset.cat!==undefined){if(onlyOut)return;const c=Number(el.dataset.cat);collapsed.has(c)?collapsed.delete(c):collapsed.add(c);render();return}if(el.dataset.stock){const i=items.find(x=>x.id===el.dataset.stock);if(!i)return;
@@ -3610,6 +3618,14 @@ if(action==='confirmDiscardPendingOperations'&&liveMode&&p?.pendingOpsSignature)
   document.querySelector('#settings-sync-status'),e.message||'操作を取り消せませんでした'));
  return;
 }
+if(action==='confirmPriceStockDisable'&&p?.productId){
+ const product=catalogue.products.find(x=>x.id===p.productId);
+ if(!stockV2()||!product||!product.stockEnabled)return;
+ window.KurashiLive.save('product.stock.update',{
+  product_id:product.id,stock_enabled:false,in_stock:false
+ }).then(()=>render()).catch(err=>say(err.message||'在庫管理を解除できませんでした'));
+ return;
+}
 if(action==='confirmRecordDelete'&&p?.recordId){
  window.KurashiLive.deleteRecord(p.recordId).then(()=>{
   page='list';tab='receipt';recordDetailId=null;render();
@@ -3624,7 +3640,7 @@ if(action==='saveScanDraftAndExit'){void leaveScanAsDraft();return}
 if(action==='discardScan'){resetScan();page='list';tab='receipt';render();return}
 if(action==='discardChanges'){goBack();return}if(action==='confirmHide'){if(liveMode){const i=current();if(i)
    window.KurashiLive.save(stockV2()?'product.stock.update':'item.update',
-    stockV2()?{product_id:i.id,stock_enabled:false}:{household_item_id:i.id,version:i.version,is_hidden:true})
+    stockV2()?{product_id:i.id,stock_enabled:false,in_stock:false}:{household_item_id:i.id,version:i.version,is_hidden:true})
    .then(()=>{page='list';openSwipeId=null;render()})
    .catch(err=>inlineActionNotice(document.querySelector('[data-list-hide="'+i.id+'"]'),err.message||'削除できませんでした'));
    render();return}
@@ -3683,13 +3699,6 @@ if(action==='blockedReceiptDiscard'&&liveMode){
   message:'この端末の未反映の編集・削除操作は消えます。必要な編集内容は、先にコピーして保管してください。取り消した後、他の端末が保存した最新の記録を読み込みます。',
   buttons:[{id:'cancel',label:'キャンセル'},{id:'confirmDiscardBlockedReceipt',label:'操作を取り消す',critical:true}]};
  render();return;
-}
-if(action==='productAddToInventory'){
- const p=catalogue.products.find(x=>x.id===selectedProductId);
- if(!stockV2()||!p)return;
- window.KurashiLive.save('product.stock.update',{product_id:p.id,stock_enabled:true})
-  .then(()=>render()).catch(err=>inlineActionNotice(el,err.message||'在庫に追加できませんでした'));
- return;
 }
 if(action==='priceSelectProduct'){
   if(!editingPrice)return;
