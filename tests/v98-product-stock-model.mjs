@@ -51,6 +51,14 @@ assert.deepEqual(Array.from(sameNamed.createProductsForOrphanItems,x=>x.proposed
  ['袋（野菜用）','袋（生ごみ用）']);
 assert.ok(sameNamed.createProductsForOrphanItems.every(x=>x.proposed_display_group==='袋'));
 assert.ok(!sameNamed.warnings.some(x=>x.code==='ORPHAN_NAME_REVIEW'));
+const genericAndSpecific=model.draftMigration({household_items:[
+ {household_item_id:'bag-a',name:'袋',sub_name:'野菜用',category_id:1},
+ {household_item_id:'bag-b',name:'袋',sub_name:'',category_id:1}
+],products:[],record_items:[]});
+assert.deepEqual(Array.from(genericAndSpecific.createProductsForOrphanItems,x=>x.proposed_name),
+ ['袋（野菜用）','袋']);
+assert.ok(!genericAndSpecific.warnings.some(x=>x.code==='ORPHAN_NAME_REVIEW'),
+ 'one blank label may keep its original generic name without ambiguity');
 const ambiguous=model.draftMigration({household_items:[
  {household_item_id:'bag-a',name:'袋',sub_name:'',category_id:1},
  {household_item_id:'bag-b',name:'袋',sub_name:'',category_id:1}
