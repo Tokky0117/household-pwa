@@ -57,7 +57,7 @@
      shared?String(old.name||''):'',
     sort_order:Number(p.sort_order)>0?Number(p.sort_order):
      valid?Number(old.sort_order)||0:0,
-    is_hidden:p.is_hidden!==undefined&&p.is_hidden!==''?bool(p.is_hidden):false,
+    is_hidden:p.is_hidden!==undefined&&p.is_hidden!==''?bool(p.is_hidden):valid?bool(old.is_hidden):false,
     migrated_from_household_item_id:oldId
    };
    conversions.push(row);
@@ -71,7 +71,7 @@
     in_stock:bool(old.in_stock),stock_enabled:old.stock_management_enabled!==undefined&&old.stock_management_enabled!==''?
      bool(old.stock_management_enabled):!bool(old.is_hidden),
     sort_order:Number(old.sort_order)||0,
-    display_group:''
+    display_group:'',is_hidden:bool(old.is_hidden)
    });
   }
   const receiptIds=new Set(record_items.filter(x=>!x.deleted_at&&x.linked_product_id)
