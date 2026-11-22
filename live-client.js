@@ -1287,7 +1287,7 @@
       (groupName&&/^[=+@\-]/.test(groupName)))
     throw Error('グループ名を確認してください');
    const active=snapshot.products.filter(p=>Number(p.category_id)===cat&&
-    toBoolean(p.stock_enabled)&&!toBoolean(p.is_hidden)&&!p.deleted_at);
+    !toBoolean(p.is_hidden)&&!p.deleted_at);
    const valid=new Set(active.map(p=>p.product_id));
    if(!Number.isInteger(cat)||cat<0||cat>5||ids.length<1||
       new Set(ids).size!==ids.length||ids.some(id=>!valid.has(id)))
@@ -1439,7 +1439,7 @@
   }
   if(op.kind==='product-stock-group'){
    const rows=(base?.products||[]).filter(p=>Number(p.category_id)===op.category_id&&
-    toBoolean(p.stock_enabled)&&!toBoolean(p.is_hidden)&&!p.deleted_at);
+    !toBoolean(p.is_hidden)&&!p.deleted_at);
    const sorted=op.product_ids.filter(id=>rows.some(p=>p.product_id===id));
    if(sorted.length!==op.product_ids.length)throw Error('グループの対象が変更されています');
    const byId=new Map(rows.map(p=>[p.product_id,p]));
