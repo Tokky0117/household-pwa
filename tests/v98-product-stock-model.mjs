@@ -147,7 +147,7 @@ assert.match(appSource,/if\(e\.target\.id==='price-stock-enabled'\)/);
 assert.match(appSource,/if\(form\.id==='stockManageForm'\)/);
 assert.match(appSource,/stock_enabled:true,in_stock:false,category_id:category/);
 assert.match(appSource,/stock_enabled:false,in_stock:false/);
-assert.match(appSource,/if\(action==='confirmPriceStockDisable'\)/);
+assert.ok(appSource.includes("if(action==='confirmPriceStockDisable'&&p?.productId)"));
 assert.ok(appSource.includes("const add=stockV2()?'':UI.iconButton("),
  'inventory tab has no parallel product registration entry in v98');
 assert.ok(appSource.includes("UI.textAction({label:'商品を登録',action:'masterProductNew'})"),
