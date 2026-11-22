@@ -2073,9 +2073,14 @@ function kurashiTrialStockMigrate(){
   const props=PropertiesService.getScriptProperties();
   // The migration is append-only and requires a separate restorable workbook.
   if(!props.getProperty('KURASHI_STOCK_BACKUP_ID')){
-   const id=DriveApp.getFileById(book.getId()).makeCopy(
-     'くらしストック_試作_v98移行前_'+new Date().toISOString()).getId();
-   if(!id)kurashiFail_('BACKUP_REQUIRED','試作データのバックアップに失敗しました');
+   const backup=SpreadsheetApp.create('くらしストック_試作_v98移行前_'+new Date().toISOString());
+   const empty=backup.getSheets()[0];
+   empty.setName('__v98_temporary__');
+   for(const sheet of book.getSheets())sheet.copyTo(backup).setName(sheet.getName());
+   backup.deleteSheet(empty);
+   const id=backup.getId();
+   if(!id||backup.getSheets().length!==book.getSheets().length)
+    kurashiFail_('BACKUP_REQUIRED','試作データのバックアップを確認できません');
    props.setProperty('KURASHI_STOCK_BACKUP_ID',id);
   }
   const products=book.getSheetByName('products');
