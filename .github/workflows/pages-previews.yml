@@ -90,7 +90,9 @@ jobs:
 
       - name: Validate v98 pure product stock migration model
         if: ${{ github.ref_name == 'preview-v98-product-stock-model' }}
-        run: node tests/v98-product-stock-model.mjs
+        run: |
+          node tests/v98-product-stock-model.mjs
+          node tests/v98-stock-gas.mjs
 
       - name: Build verified prior PaddleOCR for the main receipt screen
         shell: bash
