@@ -2237,8 +2237,13 @@ function masterProductEditorView(){
  if(editing&&!p)return masterProductsView();
  if(stockV2()){
   const fields=UI.formField({id:'master-product-name',name:'name',
-    label:'商品名',value:p?.name||'',required:true,maxlength:80});
-  return head(editing?'商品を編集':'商品を追加','',true)+
+    label:'商品名',value:p?.name||'',required:true,maxlength:80})+
+   UI.formField({id:'master-product-category',name:'category_id',label:'カテゴリ',
+    control:'select',value:p?.category??4,
+    options:CAT_ORDER.map(value=>({value,label:CATS[value]}))})+
+   UI.formField({id:'master-product-memo',name:'memo',label:'メモ（任意）',
+    value:p?.memo||'',maxlength:80});
+  return head(editing?'商品を編集':'商品を登録','',true)+
    '<main class="manage-main"><form id="masterProductForm">'+fields+
    '<div class="formactions">'+UI.button({label:editing?'変更を保存':'商品を登録',
      variant:'primary',type:'submit'})+'</div></form></main>';
@@ -2325,7 +2330,7 @@ function priceHomeView(){
  return `${head('価格','くらしストック',false,actions)}<main class="price-home">
   ${UI.searchField({id:'price-product-search',label:'商品名を検索',placeholder:'商品を検索',value:priceQuery,extra:'autocomplete="off"'})}
   <div class="price-receipt-action">${scanDraftAvailable?UI.button({label:'下書きを再開',action:'resumeScanDraft',icon:'receiptText',variant:'secondary'}):UI.button({label:'レシートを読み取る',action:'receiptScan',icon:'camera',variant:'secondary',disabled:!liveMode})}</div>
-  ${UI.sectionHeading({title:'商品一覧'})}
+  ${UI.sectionHeading({title:'商品一覧',trailing:stockV2()&&!editingPrice?UI.textAction({label:'商品を登録',action:'masterProductNew'}):''})}
   <div id="price-product-results" class="price-product-results">${priceProductRows()}</div>
  </main>${bulk}${nav()}`;
 }
@@ -2339,9 +2344,19 @@ function productPriceView(){
   <strong class="chain-price-value">${esc(yen(x.price))}</strong>
   <time class="chain-price-date" datetime="${esc(x.date)}">${esc(x.date.slice(2).replace(/-/g,'/'))}</time>
  </div>`).join('')||'<div class="chain-price-empty">価格記録はありません</div>';
- const stockInfo=stock?`<div class="product-price-stock"><span>在庫</span>${stockV2()?UI.stock(stock):`<span>${stock.inStock?'あり':'なし'}</span>`}${stock.subName?`<span>メモ：${esc(stock.subName)}</span>`:''}</div>`:stockV2()?`<div class="product-price-stock">${UI.button({label:'在庫に追加',action:'productAddToInventory',variant:'secondary'})}</div>`:'';
+ const stockInfo=stockV2()?
+  `<section class="product-stock-management">
+    <label class="switchlabel product-stock-enabled-control">
+      <input type="checkbox" id="price-stock-enabled" ${p.stockEnabled?'checked':''}>
+      <span>在庫管理する</span>
+    </label>
+    <p class="hint">${p.stockEnabled?'在庫のあり／なしは「在庫」タブで切り替えます。':'管理を始めると「在庫」タブに表示されます。'}</p>
+  </section>`:
+  stock?`<div class="product-price-stock"><span>在庫：${stock.inStock?'あり':'なし'}</span>${stock.subName?`<span>メモ：${esc(stock.subName)}</span>`:''}</div>`:'';
+ const editAction=stockV2()?`<div class="product-detail-edit">${UI.textAction({label:'商品情報を編集',action:'priceProductEdit'})}</div>`:'';
  return `${head(p.name,'商品別の価格情報',true)}<main class="detail-main comparison-main">
   ${stockInfo}
+  ${editAction}
   ${UI.sectionHeading({title:'最安値',subtitle:'税込・直近の購入履歴から計算',
     trailing:UI.dropdown({id:'price-period',value:period,label:'期間',compact:true,
      open:periodMenu,options:[{value:'3m',label:'直近3か月'},{value:'1y',label:'直近1年'}]})})}
@@ -2437,10 +2452,10 @@ function settingsView(){
     ${s.error&&s.queued&&!s.blocked?'<p class="settings-sync-note hint">通信が回復すると自動で再送します。未反映の操作は端末に残っています。</p>':''}
     ${s.loginRequired?(s.signedIn?UI.button({label:'ログアウト',variant:'secondary',action:'liveLogout'}):'<div id="google-login-button"></div>'):''}
    </section>
-   <section class="settings-overview-section" aria-label="商品マスタ">
+   ${stockV2()?'':`<section class="settings-overview-section" aria-label="商品マスタ">
     ${UI.sectionHeading({title:'商品マスタ'})}
     <div class="settings-link-row">${UI.textAction({label:'商品マスタを管理',action:'masterProducts'})}</div>
-   </section>
+   </section>`}
    <section class="settings-overview-section" aria-label="読み取り名の管理">
     ${UI.sectionHeading({title:'読み取り名の管理'})}
     <div class="settings-link-row">${UI.textAction({label:'読み取り名の紐付けを管理',action:'aliasManage'})}</div>
