@@ -37,7 +37,8 @@ class MockBook{
 }
 const trial=new MockBook('trial');
 for(const [name,headers] of Object.entries(schema)){
- trial.tables.set(name,[deep(name==='household_items'?[...headers.slice(0,-1),'stock_management_enabled']:headers)]);
+ trial.tables.set(name,[deep(name==='household_items'?[...headers.slice(0,-1),'stock_management_enabled']:
+  name==='products'?[...headers,'merged_into_product_id']:headers)]);
 }
 function add(name,obj){const h=trial.tables.get(name)[0];trial.tables.get(name).push(h.map(k=>obj[k]??''))}
 add('households',{household_id:'h1',display_name:'試作',version:1});
@@ -84,6 +85,9 @@ assert.equal(call('bootstrap',{}).data.capabilities.product_stock_v2,false);
 const migrated=context.kurashiTrialStockMigrate();
 assert.equal(migrated.status,'PRODUCT_STOCK_V2_READY');
 assert.equal(migrated.orphan_products_created,1);
+assert.equal(trial.tables.get('products')[0][schema.products.length],'merged_into_product_id');
+assert.equal(trial.tables.get('products')[0][schema.products.length+1],'category_id',
+ 'new stock columns must follow the existing merge metadata, not overwrite it');
 assert.equal(props.KURASHI_PRODUCT_STOCK_VERSION,'2');
 assert.ok(props.KURASHI_STOCK_BACKUP_ID&&backups.has(props.KURASHI_STOCK_BACKUP_ID));
 assert.equal(props.KURASHI_STOCK_BACKUP_VERIFIED,'yes');
