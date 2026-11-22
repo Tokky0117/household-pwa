@@ -206,6 +206,19 @@ jobs:
           }).length;
           const warnings={};
           for(const w of plan.warnings)warnings[w.code]=(warnings[w.code]||0)+1;
+          const orphanCounts=new Map();
+          for(const item of plan.createProductsForOrphanItems){
+            const key=norm(item.name);
+            orphanCounts.set(key,(orphanCounts.get(key)||0)+1);
+          }
+          const orphanMissingSubLabels=plan.createProductsForOrphanItems.filter(x=>
+            orphanCounts.get(norm(x.name))>1&&!String(x.memo||'').trim()).length;
+          const proposedNames=plan.createProductsForOrphanItems.map(x=>norm(x.proposed_name));
+          const orphanRepeatedProposedNames=proposedNames.length-new Set(proposedNames).size;
+          const orphanProposedProductConflicts=proposedNames.filter(x=>
+            legacyNormalizedNames.has(x)).length;
+          const orphanOverlongGeneratedNames=plan.createProductsForOrphanItems.filter(x=>
+            String(x.proposed_name).length>80).length;
           const fatal=!!(activeMerges||orphanNameConflicts||gasNormalizedNameConflicts||invalidStockFlags||
             (warnings.ORPHAN_NAME_REVIEW||0)||
             (warnings.DUPLICATE_NAME_REQUIRES_REVIEW||0)||
@@ -223,6 +236,10 @@ jobs:
             orphan_products_with_disambiguated_names:plan.createProductsForOrphanItems.filter(x=>
               x.proposed_name!==x.name).length,
             orphan_name_review_required:warnings.ORPHAN_NAME_REVIEW||0,
+            orphan_missing_sub_labels:orphanMissingSubLabels,
+            orphan_repeated_proposed_names:orphanRepeatedProposedNames,
+            orphan_proposed_product_name_conflicts:orphanProposedProductConflicts,
+            orphan_overlong_generated_names:orphanOverlongGeneratedNames,
             trial_editor_matches_link_01:process.env.GAS_SCRIPT_ID_NEW==='1I0l8OgHv2Mi9LhgAKpL-VGrpG2VJiTLhZMwuFDUtz6urddO2Gg3Ud0ci',
             trial_editor_matches_link_02:process.env.GAS_SCRIPT_ID_NEW==='15pyx5qYzEMEqgGQmbSyRdx5U2DywTxnRYgWpQb9lazE__tGwQ58DJGIU',
             invalid_legacy_stock_flags:invalidStockFlags,
