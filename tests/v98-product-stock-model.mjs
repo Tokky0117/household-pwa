@@ -105,3 +105,39 @@ assert.equal(weights.find(x=>x.label==='100mL')?.chainId,'chain-D',
  'weights and volumes never share a lowest-price slot');
 assert.equal(weights.length,2,'missing package sizes do not create bogus 0/100g winners');
 console.log('v98 per-receipt package normalization and incomparable-unit exclusion: OK');
+// The price tab must display the same saved group for stock and price-only
+// products, and the selection editor must not require stock_enabled=true.
+const priceStart=appSource.indexOf('function priceProductRows(){');
+const priceEnd=appSource.indexOf('function priceHomeView(){',priceStart);
+assert.ok(priceStart>0&&priceEnd>priceStart,'shared v98 price-group listing is present');
+const priceRender=appSource.slice(priceStart,priceEnd);
+const priceProducts=[
+ {id:'a',name:'クッキーA',category:4,stockEnabled:true,displayGroup:'お菓子'},
+ {id:'b',name:'クッキーB',category:4,stockEnabled:false,displayGroup:'お菓子'},
+ {id:'c',name:'牛乳',category:0,stockEnabled:true,displayGroup:''}
+];
+function priceList(editingPrice,expanded){
+ return vm.runInNewContext(priceRender+';priceProductRows()',{
+  priceQuery:'',catalogue:{products:priceProducts},norm:x=>String(x||'').toLowerCase(),
+  productMatches:(p,q)=>p.name.includes(q),editingPrice,selectedPriceIds:new Set(),
+  chainMinima:()=>[],yen:x=>String(x),chainLabel:x=>String(x),esc:x=>String(x),
+  UI:{catalogueRow:({title})=>'<button>'+title+'</button>'},CATS:['食品・飲料','','','','その他'],
+  chevron:()=>'<span>⌄</span>',expandedPriceGroups:new Set(expanded?['4:group:お菓子']:[])
+ });
+}
+const compactPrice=priceList(false,false);
+assert.match(compactPrice,/お菓子/);
+assert.match(compactPrice,/2商品/);
+assert.doesNotMatch(compactPrice,/クッキーA/);
+const expandedPrice=priceList(false,true);
+assert.match(expandedPrice,/クッキーA/);
+assert.match(expandedPrice,/クッキーB/,'price-only products must share group display');
+const editPrice=priceList(true,false);
+assert.match(editPrice,/data-select-price-product="b"/);
+assert.match(appSource,/const stockInfo=stock\?`<div class="product-price-stock"><span>在庫<\/span>\$\{stockV2\(\)\?UI\.stock\(stock\)/);
+const css=readFileSync(new URL('../styles.css',import.meta.url),'utf8');
+assert.match(css,/\.headrow:has\(\.inventory-mode-action\) \.head-right\{/);
+assert.match(appSource,/if\(action==='priceGroupOpen'\)/);
+assert.match(appSource,/if\(action==='priceUngroup'\)/);
+console.log('v98 price detail stock toggle, shared grouping, selection, and header overflow guard: OK');
+
