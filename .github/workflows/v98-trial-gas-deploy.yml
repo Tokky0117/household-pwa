@@ -1,0 +1,176 @@
+name: Deploy v0.98 to existing TRIAL GAS only (no Sheets migration)
+
+on:
+  push:
+    branches: [preview-v98-product-stock-model]
+    paths:
+      - gas/Api.gs
+      - gas/Setup.gs
+      - .github/workflows/v98-trial-gas-deploy.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: kurashi-new-gas
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: github.ref == 'refs/heads/preview-v98-product-stock-model'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      GAS_SCRIPT_ID_NEW: ${{ vars.GAS_SCRIPT_ID_NEW || secrets.GAS_SCRIPT_ID_NEW }}
+      TARGET_DEPLOYMENT_ID: AKfycbwn-SfXqRBIjJWVUUIKEsJuaUR6DLAEWbMVR-_rEB3iVZy2zi0ZNSA7JjNmyykvKjvdoQ
+    steps:
+      - uses: actions/checkout@v4
+        with: {fetch-depth: 0}
+
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+
+      - name: Validate v98 GAS and migration contract before any write
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp gas/Api.gs "$RUNNER_TEMP/Api.js"
+          cp gas/Setup.gs "$RUNNER_TEMP/Setup.js"
+          node --check "$RUNNER_TEMP/Api.js"
+          node --check "$RUNNER_TEMP/Setup.js"
+          node tests/v98-stock-gas.mjs
+          node tests/v98-product-stock-model.mjs
+
+      - name: Prepare trial-only clasp credentials
+        env:
+          CLASPRC_JSON: ${{ secrets.CLASPRC_JSON }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          node - <<'NODE'
+          const fs=require('node:fs'),path=require('node:path');
+          const c=process.env.CLASPRC_JSON,id=process.env.GAS_SCRIPT_ID_NEW;
+          if(!c)throw Error('Trial clasp credential missing');
+          if(!/^[A-Za-z0-9_-]{25,120}$/.test(id||''))throw Error('Trial GAS script ID missing or invalid');
+          const auth=JSON.parse(c);
+          if(!auth||typeof auth!=='object'||Array.isArray(auth))throw Error('Invalid clasp credential');
+          fs.writeFileSync(path.join(process.env.HOME,'.clasprc.json'),c,{mode:0o600});
+          for(const part of ['remote','stage']){
+            const dir=path.join(process.env.RUNNER_TEMP,'v98-trial',part);
+            fs.mkdirSync(dir,{recursive:true});
+            fs.writeFileSync(path.join(dir,'.clasp.json'),JSON.stringify({scriptId:id,rootDir:'.'}));
+          }
+          NODE
+
+      - name: Check exact trial deployment and pull remote code (read-only)
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP/v98-trial/remote"
+          npx --yes @google/clasp@3 pull
+          npx --yes @google/clasp@3 list-deployments "$GAS_SCRIPT_ID_NEW" > "$RUNNER_TEMP/v98-trial-deployments.txt"
+          node - <<'NODE'
+          const fs=require('node:fs'),s=fs.readFileSync(process.env.RUNNER_TEMP+'/v98-trial-deployments.txt','utf8');
+          if(!s.includes(process.env.TARGET_DEPLOYMENT_ID))
+            throw Error('The configured script does not own the verified TRIAL deployment; no write');
+          NODE
+
+      - name: Require reviewed remote source and stage ONLY the two trial files
+        shell: bash
+        run: |
+          set -euo pipefail
+          node - <<'NODE'
+          const fs=require('node:fs'),path=require('node:path'),cp=require('node:child_process');
+          const base=path.join(process.env.RUNNER_TEMP,'v98-trial');
+          const remote=path.join(base,'remote'),stage=path.join(base,'stage');
+          const entries=fs.readdirSync(remote).filter(x=>!x.startsWith('.'));
+          const scripts=entries.filter(x=>/\.(js|gs)$/.test(x));
+          if(scripts.length!==2||!entries.includes('appsscript.json')||entries.length!==3)
+            throw Error('Unexpected trial GAS source structure; no write');
+          const canonical=s=>s.replace(/^\uFEFF/,'').replace(/\r\n/g,'\n').trimEnd()
+            .replace(/(?:^|\n)function myFunction\(\)\s*\{\s*\}\s*$/,'').trim();
+          const used=new Set();
+          for(const [source,marker] of [['gas/Setup.gs','setupNewWorkbook'],['gas/Api.gs','kurashiSaveItem_']]){
+            const matches=scripts.filter(file=>fs.readFileSync(path.join(remote,file),'utf8').includes(marker));
+            if(matches.length!==1||used.has(matches[0]))throw Error('Ambiguous trial GAS source');
+            const file=matches[0];used.add(file);
+            const remoteContent=canonical(fs.readFileSync(path.join(remote,file),'utf8'));
+            const commits=cp.execFileSync('git',['log','--format=%H','--',source],{encoding:'utf8'}).trim().split('\n');
+            if(!commits.some(sha=>{
+              try{return remoteContent===canonical(cp.execFileSync('git',['show',sha+':'+source],{encoding:'utf8'}))}
+              catch(_){return false}
+            }))throw Error('Unreviewed remote source: '+file+'; no write');
+            fs.copyFileSync(path.join(process.env.GITHUB_WORKSPACE,source),path.join(stage,file));
+          }
+          const manifest=JSON.parse(fs.readFileSync(path.join(remote,'appsscript.json'),'utf8'));
+          if(manifest.runtimeVersion&&manifest.runtimeVersion!=='V8')throw Error('Unexpected GAS runtime');
+          fs.copyFileSync(path.join(remote,'appsscript.json'),path.join(stage,'appsscript.json'));
+          NODE
+
+      - name: Back up remote trial GAS source before push
+        uses: actions/upload-artifact@v4
+        with:
+          name: kurashi-v98-trial-gas-before-${{ github.run_id }}
+          path: ${{ runner.temp }}/v98-trial/remote/
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Push and independently verify TRIAL script source
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP/v98-trial/stage"
+          npx --yes @google/clasp@3 push --force
+          npx --yes @google/clasp@3 pull
+          node - <<'NODE'
+          const fs=require('node:fs'),path=require('node:path');
+          const p=path.join(process.env.RUNNER_TEMP,'v98-trial','stage');
+          const norm=s=>s.replace(/\r\n/g,'\n').trimEnd();
+          for(const file of fs.readdirSync(p).filter(x=>/\.(js|gs)$/.test(x))){
+            const actual=norm(fs.readFileSync(path.join(p,file),'utf8'));
+            const source=actual.includes('setupNewWorkbook')?'gas/Setup.gs':
+              actual.includes('kurashiSaveItem_')?'gas/Api.gs':null;
+            if(!source||actual!==norm(fs.readFileSync(path.join(process.env.GITHUB_WORKSPACE,source),'utf8')))
+              throw Error('Trial GAS verification mismatch; deployment not updated');
+          }
+          NODE
+
+      - name: Update EXISTING trial /exec deployment only
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP/v98-trial/stage"
+          npx --yes @google/clasp@3 update-deployment "$TARGET_DEPLOYMENT_ID"
+          npx --yes @google/clasp@3 list-deployments "$GAS_SCRIPT_ID_NEW" > "$RUNNER_TEMP/v98-trial-after.txt"
+          grep -Fq "$TARGET_DEPLOYMENT_ID" "$RUNNER_TEMP/v98-trial-after.txt"
+          echo "v98 GAS published ONLY to the established trial endpoint. Sheets migration NOT executed." >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Read-only trial bootstrap check
+        shell: bash
+        run: |
+          set -euo pipefail
+          url="https://script.google.com/macros/s/$TARGET_DEPLOYMENT_ID/exec"
+          curl --fail --silent --show-error --location --max-time 35 \
+            -H 'Content-Type: text/plain;charset=utf-8' \
+            --data '{"action":"bootstrap","payload":{}}' \
+            "$url" --output "$RUNNER_TEMP/v98-trial-bootstrap.json"
+          node - <<'NODE'
+          const fs=require('node:fs');
+          let reply;
+          try{reply=JSON.parse(fs.readFileSync(process.env.RUNNER_TEMP+'/v98-trial-bootstrap.json','utf8'))}
+          catch(_){throw Error('Trial bootstrap is not JSON')}
+          if(reply?.ok!==true||typeof reply?.data?.household_id!=='string'||
+             !Array.isArray(reply.data.categories)||reply.data.categories.length!==6||
+             !Array.isArray(reply.data.products)||!Array.isArray(reply.data.record_items)||
+             typeof reply.data.capabilities?.product_stock_v2!=='boolean')
+            throw Error('Trial bootstrap schema invalid');
+          console.log('Trial bootstrap accepted; no household values logged');
+          NODE
+
+      - name: Remove temporary credentials
+        if: always()
+        shell: bash
+        run: |
+          rm -f "$HOME/.clasprc.json" "$RUNNER_TEMP/Api.js" "$RUNNER_TEMP/Setup.js"
+          rm -rf "$RUNNER_TEMP/v98-trial"
