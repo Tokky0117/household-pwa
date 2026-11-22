@@ -1568,7 +1568,7 @@ function kurashiEnsureNewRows_(name,idField,entries,hid,book){
   }else missing.push(entity);
  }
  if(!missing.length)return;
- const sheet=kurashiSheet_(name,book),headers=KURASHI_NEW_SCHEMA[name];
+ const sheet=kurashiSheet_(name,book),headers=kurashiColumnNames_(name,book);
  const values=missing.map(entry=>headers.map(k=>
   entry[k]===undefined||entry[k]===null?'':entry[k]));
  sheet.getRange(sheet.getLastRow()+1,1,values.length,headers.length).setValues(values);
