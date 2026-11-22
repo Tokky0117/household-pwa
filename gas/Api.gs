@@ -454,12 +454,22 @@ function kurashiColumnNames_(name,book){
   const columns=sheet?.getLastColumn();
   if(columns===base.length-1&&base[base.length-1]==='display_group')
    return base.slice(0,-1);
+  const oldHeaders=[...base.slice(0,-1),'stock_management_enabled'];
+  if(columns===oldHeaders.length&&JSON.stringify(sheet.getRange(1,1,1,columns).getValues()[0])===JSON.stringify(oldHeaders))
+   return oldHeaders;
  }
  return KURASHI_NEW_SCHEMA[name];
 }
 function kurashiSheet_(name,book) {
   const headers = KURASHI_NEW_SCHEMA[name], sheet = book.getSheetByName(name);
   if (!headers || !sheet) kurashiFail_('SCHEMA_ERROR','保存先のシート構成が不正です');
+  // A deployed trial workbook has a genuine stock_management_enabled column.
+  // Preserve its header and values until owner migration copies the flag to products.
+  if(name==='household_items'){
+   const legacy=[...headers.slice(0,-1),'stock_management_enabled'];
+   if(sheet.getLastColumn()===legacy.length&&JSON.stringify(sheet.getRange(1,1,1,legacy.length).getValues()[0])===JSON.stringify(legacy))
+    return sheet;
+  }
   const actual = sheet.getRange(1,1,1,headers.length).getValues()[0];
   if (JSON.stringify(actual) !== JSON.stringify(headers)) {
     // Only known non-receipt master trailing headers may be appended.
@@ -2164,6 +2174,15 @@ function kurashiTrialStockVerify(){
   record_items:history.original_record_items,historical_products:history.original_products,
   historical_data_preserved:true};
 }
+function kurashiLegacyStockEnabled_(item){
+ const old=item.stock_management_enabled;
+ if(old!==undefined&&old!==null&&old!==''){
+  if(old===true||String(old).toLowerCase()==='true')return true;
+  if(old===false||String(old).toLowerCase()==='false')return false;
+  kurashiFail_('STOCK_MIGRATION_REVIEW','旧在庫管理対象の値が不正です');
+ }
+ return !(item.is_hidden===true||String(item.is_hidden).toLowerCase()==='true');
+}
 function kurashiTrialStockPlan_(book){
  const prop=PropertiesService.getScriptProperties();
  if(prop.getProperty('SPREADSHEET_ID')!==prop.getProperty('KURASHI_NEW_WORKBOOK_ID')||
@@ -2203,7 +2222,7 @@ function kurashiTrialStockPlan_(book){
   const item=parents.get(String(value.household_item_id||''));
   const shared=!!item&&(related.get(String(value.household_item_id))||[]).length>1;
   const data={...value,category_id:item?Number(item.category_id):4,
-   stock_enabled:item?!Boolean(item.is_hidden===true||String(item.is_hidden)==='true'):false,
+   stock_enabled:item?kurashiLegacyStockEnabled_(item):false,
    in_stock:item?Boolean(item.in_stock===true||String(item.in_stock)==='true'):false,
    memo:item?String(item.sub_name||''):'',
    display_group:shared?String(item.name||''):'',
@@ -2302,7 +2321,7 @@ function kurashiTrialStockMigrate(){
      normalized_name:kurashiNormalize_(String(i.name)),
      package_quantity:'',package_unit:'',household_item_order:'',
      version:1,created_at:now,updated_at:now,deleted_at:'',
-     category_id:Number(i.category_id),stock_enabled:!Boolean(i.is_hidden===true||String(i.is_hidden)==='true'),
+     category_id:Number(i.category_id),stock_enabled:kurashiLegacyStockEnabled_(i),
      in_stock:Boolean(i.in_stock===true||String(i.in_stock)==='true'),
      memo:String(i.sub_name||''),display_group:'',sort_order:Number(i.sort_order)||1,
      is_hidden:false,migrated_from_household_item_id:item.source_item_id},book);
