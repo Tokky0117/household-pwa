@@ -23,6 +23,7 @@ function fixture(code) {
   let uuid=0,locked=false,failAfterWrites=null,failAfterSheet='household_items';
   const sheet=name=>({
     getLastRow:()=>db[name].length,
+    getLastColumn:()=>db[name][0].length,
     getRange:(start,col,count,width)=>({
       getValues:()=>Array.from({length:count},(_,i)=>Array.from(
         {length:width},(_,j)=>db[name][start+i-1]?.[col+j-1]??'')),
