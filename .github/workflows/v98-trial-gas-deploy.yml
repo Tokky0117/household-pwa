@@ -177,6 +177,47 @@ jobs:
           console.log('Trial bootstrap accepted; no household values logged');
           NODE
 
+      - name: Plan trial stock migration using live read-only snapshot
+        shell: bash
+        run: |
+          set -euo pipefail
+          node - <<'NODE'
+          const fs=require('node:fs');
+          const model=require('./product-stock-model.js');
+          const reply=JSON.parse(fs.readFileSync(process.env.RUNNER_TEMP+'/v98-trial-bootstrap.json','utf8'));
+          if(reply?.ok!==true||!reply.data)throw Error('TRIAL_BOOTSTRAP_REQUIRED');
+          const data=reply.data,plan=model.draftMigration(data);
+          const items=data.household_items.filter(x=>!x.deleted_at);
+          const products=data.products.filter(x=>!x.deleted_at);
+          const norm=x=>String(x||'').normalize('NFKC').trim().replace(/\\s+/g,' ').toLocaleLowerCase('ja');
+          const existingNames=new Set(products.map(x=>norm(x.name)));
+          const orphanNameConflicts=plan.createProductsForOrphanItems.filter(x=>
+            existingNames.has(norm(x.name))).length;
+          const activeMerges=products.filter(x=>String(x.merged_into_product_id||'').trim()).length;
+          const invalidStockFlags=items.filter(x=>{
+            const v=x.stock_management_enabled;
+            return v!==undefined&&v!==null&&v!==''&&
+              !['true','false'].includes(String(v).toLowerCase());
+          }).length;
+          const warnings={};
+          for(const w of plan.warnings)warnings[w.code]=(warnings[w.code]||0)+1;
+          const fatal=!!(activeMerges||orphanNameConflicts||invalidStockFlags||
+            (warnings.DUPLICATE_NAME_REQUIRES_REVIEW||0)||
+            (warnings.EMPTY_PRODUCT_NAME||0)||(warnings.ORPHAN_LINK||0));
+          console.log('TRIAL_V98_READONLY_PREFLIGHT',JSON.stringify({
+            status:fatal?'REVIEW_REQUIRED':'DATA_PLAN_OK',
+            existing_products:plan.summary.existingProducts,
+            new_products:plan.summary.newProducts,
+            shared_groups_to_split:plan.summary.itemGroupsSplit,
+            linked_receipt_items:plan.summary.receiptLinksPreserved,
+            active_merges:activeMerges,
+            orphan_name_conflicts:orphanNameConflicts,
+            invalid_legacy_stock_flags:invalidStockFlags,
+            warnings_by_code:warnings
+          }));
+          if(fatal)throw Error('TRIAL_V98_REVIEW_REQUIRED: no migration performed');
+          NODE
+
       - name: Remove temporary credentials
         if: always()
         shell: bash
