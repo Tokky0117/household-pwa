@@ -2710,6 +2710,11 @@ function hasUnsavedFormChanges(){
    const d=new FormData(master),p=masterProductId?
     catalogue.products.find(x=>x.id===masterProductId):null;
    const name=String(d.get('name')||'').trim(),q=String(d.get('quantity')||'').trim();
+   if(stockV2()){
+    const category=Number(d.get('category_id')),memo=String(d.get('memo')||'').trim();
+    return p?name!==p.name||category!==p.category||memo!==String(p.memo||''):
+     !!(name||memo||category!==4);
+   }
    if(p)return name!==p.name||(q?Number(q.replace(',','.')):null)!==p.packageQuantity||
     (q?String(d.get('unit')||''):null)!==p.packageUnit;
    return !!(name||q||String(d.get('group')||''));
@@ -4168,7 +4173,7 @@ if(liveMode)window.KurashiLive.subscribe((state,data)=>{
     null:Number(line.line_total_tax_included)
  }))};
  if(page==='aliasManage'&&aliasPickerId)return;
- if(inventoryGroupSheet)return;
+ if(inventoryGroupSheet||priceGroupSheet||stockManageSheet)return;
  if(['add','edit','productEdit','productPick','productCreate','masterProductEdit','masterProductNew'].includes(page))return;
  // Preserve existing DOM buttons during writes. Recreating the entire DOM while
  // iOS completes a tap can eat the user's next click.
