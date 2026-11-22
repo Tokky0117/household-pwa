@@ -88,10 +88,10 @@
    const base=item.name.trim(),key=norm(base);
    const repeated=orphanCounts.get(key)>1;
    const detail=item.memo.trim();
-   const proposed=repeated?base+'（'+detail+'）':base;
+   const proposed=repeated&&detail?base+'（'+detail+'）':base;
    item.proposed_name=proposed;
    item.proposed_display_group=repeated?base:'';
-   if(!base||existingProductNames.has(key)||repeated&&!detail||
+   if(!base||existingProductNames.has(key)||
       proposed.length>80||reservedNames.has(norm(proposed)))
     warnings.push({code:'ORPHAN_NAME_REVIEW',household_item_id:item.household_item_id});
    reservedNames.add(norm(proposed));
