@@ -2045,10 +2045,13 @@ function productCreateView(){
 let masterQuery='',masterProductId=null,masterGroupPickerOpen=false,masterGroupQuery='',masterGroupChanging=false;
 function masterProductRows(){
  const q=norm(masterQuery);
+ const v2=stockV2();
  const found=catalogue.products.filter(p=>!q||productMatches(p,q)||
-  norm(linkedItemName(p)).includes(q)).sort((a,b)=>a.name.localeCompare(b.name,'ja'));
- return found.map(p=>UI.catalogueRow({title:productTitle(p),
-  lines:['日用品：'+linkedItemName(p)],action:'masterProductEdit',
+  (v2?norm(p.memo||''):norm(linkedItemName(p))).includes(q))
+  .sort((a,b)=>a.name.localeCompare(b.name,'ja'));
+ return found.map(p=>UI.catalogueRow({title:v2?p.name:productTitle(p),
+  lines:v2?[p.stockEnabled?'在庫管理中':'価格記録のみ',...(p.memo?[p.memo]:[])]:
+   ['日用品：'+linkedItemName(p)],action:'masterProductEdit',
   data:{'data-product-id':p.id},className:'panel'
  })).join('')||'<div class="panel empty">該当する商品はありません</div>';
 }
@@ -2212,7 +2215,7 @@ function chooseAliasProduct(productId){
 function masterProductsView(){
  return head('商品マスタ','登録商品の管理',true)+
   '<main class="manage-main">'+
-  UI.searchField({id:'master-product-query',label:'商品名・日用品名で検索',placeholder:'商品を検索',value:masterQuery,extra:'autocomplete="off"'})+
+  UI.searchField({id:'master-product-query',label:stockV2()?'商品名で検索':'商品名・日用品名で検索',placeholder:'商品を検索',value:masterQuery,extra:'autocomplete="off"'})+
   UI.button({label:'商品マスタを追加',icon:'plus',variant:'secondary',action:'masterProductNew',className:'master-product-add-action'})+
   '<div id="master-product-results" class="catalogue-rows">'+masterProductRows()+'</div></main>';
 }
