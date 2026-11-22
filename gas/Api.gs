@@ -2165,6 +2165,9 @@ function kurashiTrialStockPlan_(book){
   if(!existingNames.has(normalized))existingNames.set(normalized,[]);
   existingNames.get(normalized).push(p.value.product_id);
  }
+ for(const ids of existingNames.values())
+  if(ids.length>1)
+   kurashiFail_('STOCK_MIGRATION_REVIEW','同じ名前の容量違い商品があります。商品統合を確認してから移行してください');
  for(const {value} of items){
   const originalId=String(value.household_item_id);
   if(related.has(originalId))continue;
@@ -2175,6 +2178,7 @@ function kurashiTrialStockPlan_(book){
   if(existingNames.has(normalized))
    kurashiFail_('STOCK_MIGRATION_REVIEW','未紐付けの商品と同名の日用品があります');
   creates.push({source_item_id:originalId,source:value});
+  existingNames.set(normalized,[originalId]);
  }
  return {book,planned,creates,existing_count:products.length,
   to_create:creates.length,split_groups:[...related.values()].filter(v=>v.length>1).length,
