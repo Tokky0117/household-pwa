@@ -134,10 +134,30 @@ assert.match(expandedPrice,/クッキーA/);
 assert.match(expandedPrice,/クッキーB/,'price-only products must share group display');
 const editPrice=priceList(true,false);
 assert.match(editPrice,/data-select-price-product="b"/);
-assert.match(appSource,/const stockInfo=stock\?`<div class="product-price-stock"><span>在庫<\/span>\$\{stockV2\(\)\?UI\.stock\(stock\)/);
+const detailStart=appSource.indexOf('function productPriceView(){');
+const detailEnd=appSource.indexOf('function detailHomeView(){',detailStart);
+const detailView=appSource.slice(detailStart,detailEnd);
+assert.ok(detailView.includes('id="price-stock-enabled"')&&
+ detailView.includes("p.stockEnabled?'checked':''")&&
+ detailView.includes("UI.textAction({label:'商品情報を編集',action:'priceProductEdit'})"),
+ 'price detail displays stock management setting and product editing');
+assert.ok(!detailView.includes('UI.stock(stock)'),
+ 'actual in/out-of-stock switching belongs only to inventory tab');
+assert.match(appSource,/if\(e\.target\.id==='price-stock-enabled'\)/);
+assert.match(appSource,/if\(form\.id==='stockManageForm'\)/);
+assert.match(appSource,/stock_enabled:true,in_stock:false,category_id:category/);
+assert.match(appSource,/stock_enabled:false,in_stock:false/);
+assert.match(appSource,/if\(action==='confirmPriceStockDisable'\)/);
+assert.ok(appSource.includes("const add=stockV2()?'':UI.iconButton("),
+ 'inventory tab has no parallel product registration entry in v98');
+assert.ok(appSource.includes("UI.textAction({label:'商品を登録',action:'masterProductNew'})"),
+ 'price tab is the product registration entry');
+assert.ok(appSource.includes("name:'category_id',label:'カテゴリ'")&&
+ appSource.includes("name:'memo',label:'メモ（任意）'"),
+ 'price product editor allows category and memo for all products');
 const css=readFileSync(new URL('../styles.css',import.meta.url),'utf8');
 assert.match(css,/\.headrow:has\(\.inventory-mode-action\) \.head-right\{/);
 assert.match(appSource,/if\(action==='priceGroupOpen'\)/);
 assert.match(appSource,/if\(action==='priceUngroup'\)/);
-console.log('v98 price detail stock toggle, shared grouping, selection, and header overflow guard: OK');
+console.log('v98 stock management opt-in/out, price-side product editing, shared grouping and header overflow: OK');
 
