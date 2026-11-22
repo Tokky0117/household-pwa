@@ -163,6 +163,7 @@ jobs:
           console.log('TRIAL_BOOTSTRAP_DIAGNOSTIC',JSON.stringify({
             ok:reply?.ok===true,
             error_code:reply?.error?.code||null,
+            error_message:String(reply?.error?.message||'').slice(0,120),
             category_count:Array.isArray(reply?.data?.categories)?reply.data.categories.length:null,
             has_products:Array.isArray(reply?.data?.products),
             has_record_items:Array.isArray(reply?.data?.record_items),
