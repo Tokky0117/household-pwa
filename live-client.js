@@ -8,8 +8,11 @@
  const ENDPOINT='https://script.google.com/macros/s/AKfycbwn-SfXqRBIjJWVUUIKEsJuaUR6DLAEWbMVR-_rEB3iVZy2zi0ZNSA7JjNmyykvKjvdoQ/exec';
  const CLIENT_ID='290567395833-cdemend3itmapsgsounu8pf72hgvm315.apps.googleusercontent.com';
  const DB_NAME='kurashi-stock-operations-v1',STORE='workspace',KEY='primary';
- const ACTIVE_DB_NAME=window.location?.pathname?.includes('/previews/preview-v95-household-link-flow/')?
-  'kurashi-stock-operations-v95-preview':DB_NAME;
+ const V98_PREVIEW=window.location?.pathname?.includes('/previews/preview-v98-product-stock-model/')===true;
+ const V98_DEMO=V98_PREVIEW&&new URLSearchParams(window.location.search).get('demo')==='1';
+ const ACTIVE_DB_NAME=V98_PREVIEW?'kurashi-stock-operations-v98-preview':
+  window.location?.pathname?.includes('/previews/preview-v95-household-link-flow/')?
+   'kurashi-stock-operations-v95-preview':DB_NAME;
  const RECEIPT_DRAFT_KEY='receipt-draft-1',OCR_CORRECTIONS_KEY='ocr-corrections-1';
  const OLD_SNAPSHOT='kurashi-new-confirmed-snapshot-v1';
  const OLD_OPERATION='kurashi-new-write-v1-temporary-household';
@@ -2165,6 +2168,8 @@
    aliases:aliases(s.aliases)}))};
  }
  const kick=()=>{
+  // The demo renders local fixtures only; never bootstrap or drain any queue.
+  if(V98_DEMO)return;
   boot().then(()=>{
    if(workspace.queue.length)void flush();
    else void load();
