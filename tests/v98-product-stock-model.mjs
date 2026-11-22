@@ -42,3 +42,42 @@ assert.equal(result.find(x=>x.id==='p2').inStock,true);
 assert.equal(result.find(x=>x.id==='p3').name,'キャベツ');
 assert.throws(()=>model.draftMigration({products:[{product_id:'x'},{product_id:'x'}]}),/STOCK_PLAN_INVALID_PRODUCT_ID/);
 console.log('v98 stock migration planner and product-owned stock projection: OK');
+
+const appSource=readFileSync(new URL('../app.js',import.meta.url),'utf8');
+const fnStart=appSource.indexOf('function standardizedMinima(');
+const fnEnd=appSource.indexOf('function normalizedPriceSummary(',fnStart);
+assert.ok(fnStart>0&&fnEnd>fnStart,'v98 stock price comparator is present');
+const comparator=appSource.slice(fnStart,fnEnd);
+const fixtures=[
+ {linked_product_id:'price-1',purchase_size_quantity:580,purchase_size_unit:'g',
+  line_total_tax_included:398,quantity:1,record:{chain_id:'chain-A',record_date:'2026-11-20'}},
+ {linked_product_id:'price-1',purchase_size_quantity:900,purchase_size_unit:'g',
+  line_total_tax_included:420,quantity:1,record:{chain_id:'chain-B',record_date:'2026-11-21'}},
+ {linked_product_id:'price-1',purchase_size_quantity:null,purchase_size_unit:null,
+  line_total_tax_included:200,quantity:1,record:{chain_id:'chain-C',record_date:'2026-11-22'}},
+ {linked_product_id:'price-1',purchase_size_quantity:500,purchase_size_unit:'mL',
+  line_total_tax_included:250,quantity:1,record:{chain_id:'chain-D',record_date:'2026-11-22'}},
+ {linked_product_id:'price-1',purchase_size_quantity:200,purchase_size_unit:'g',
+  line_total_tax_included:null,quantity:null,record:{chain_id:'chain-E',record_date:'2026-11-22'}}
+];
+const weights=vm.runInNewContext(
+ "const STANDARD_BASES=[['g',100,'100g'],['mL',100,'100mL'],['個',1,'1個'],['枚',1,'1枚'],['本',1,'1本']];\\n"+
+ comparator+";standardizedMinima([{id:'price-1',name:'洗剤',packageQuantity:null,packageUnit:null}],'1y')",
+ {stockV2:()=>true,allPreviewRecords:()=>[],allPreviewItems:()=>fixtures,
+  priceCandidates:(_a,b)=>b.filter(x=>Number.isFinite(x.line_total_tax_included)&&Number.isFinite(x.quantity)),
+  convertQuantity:(amount,from,to)=>{
+   if(!Number.isFinite(amount)||amount<=0)return null;
+   if(from===to)return amount;
+   const scales={g:1,kg:1000,mL:1,L:1000};
+   const family=u=>['g','kg'].includes(u)?'mass':['mL','L'].includes(u)?'volume':u;
+   return family(from)===family(to)&&scales[from]&&scales[to]?
+    amount*scales[from]/scales[to]:null;
+  }}
+);
+assert.equal(weights.find(x=>x.label==='100g')?.chainId,'chain-B',
+ '900g has lower normalized price than 580g even when its checkout price is higher');
+assert.ok(Math.abs(weights.find(x=>x.label==='100g').price-(420/900*100))<1e-8);
+assert.equal(weights.find(x=>x.label==='100mL')?.chainId,'chain-D',
+ 'weights and volumes never share a lowest-price slot');
+assert.equal(weights.length,2,'missing package sizes do not create bogus 0/100g winners');
+console.log('v98 per-receipt package normalization and incomparable-unit exclusion: OK');
