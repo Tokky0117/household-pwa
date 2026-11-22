@@ -2966,6 +2966,31 @@ html,body{touch-action:pan-x pan-y}
  .receipt-product-modal .sheet-body.record-step-backward{animation:none}
 }
 
+/* v0.98: keep action controls within the header's actual viewport width.
+   The shared header normally reserves only 44px on the right. */
+.headrow:has(.inventory-mode-action){
+ grid-template-columns:minmax(0,1fr) minmax(0,auto) minmax(0,1fr);
+ width:100%;max-width:100%;min-width:0
+}
+.headrow:has(.inventory-mode-action) .head-right{
+ width:auto;max-width:100%;justify-self:end;justify-content:flex-end;gap:4px
+}
+.headrow:has(.inventory-mode-action) .head-left{justify-self:start}
+.headrow:has(.inventory-mode-action) .head-title{min-width:0}
+.price-group-row{border:1px solid var(--line);border-radius:11px;background:var(--card);overflow:hidden;margin-bottom:8px}
+.price-group-header{display:flex;align-items:center;gap:9px;width:100%;min-height:50px;border:0;background:transparent;color:var(--ink);padding:8px 12px;text-align:left}
+.price-group-header .ui-chevron{flex:0 0 18px}
+.price-group-header strong{min-width:0;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:15px}
+.price-group-header>span{font-size:12px;color:var(--muted);white-space:nowrap}
+.price-group-children{padding:8px 9px 1px 12px;border-top:1px solid var(--line)}
+.price-group-children .catalogue-candidate{width:100%;max-width:100%}
+.price-edit-item{display:grid;grid-template-columns:42px minmax(0,1fr);align-items:center;width:100%;min-width:0}
+.price-edit-item>.inventory-select{margin-left:11px;margin-right:4px}
+.price-edit-item>.catalogue-candidate{min-width:0;width:100%}
+.price-product-results{min-width:0;max-width:100%}
+.price-home .price-product-results>.price-edit-item{margin-bottom:7px}
+.product-price-stock .stock{min-width:48px;min-height:44px}
+
 /* v0.97: explicit inventory selection and memo; visual groups never share stock. */
 .inventory-mode-action{border:0;background:transparent;color:inherit;font:inherit;font-weight:600;padding:9px 10px;cursor:pointer;white-space:nowrap}
 .inventory-select{flex:0 0 21px;width:21px;height:21px;margin:0 4px 0 12px;accent-color:var(--accent,#5573a7);cursor:pointer}
