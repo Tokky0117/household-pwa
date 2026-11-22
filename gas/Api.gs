@@ -430,21 +430,22 @@ function kurashiProductStockColumns_(book) {
    if(JSON.stringify(heads)===JSON.stringify(allowed))return allowed;
   kurashiFail_('SCHEMA_ERROR','商品の列構成が想定と異なります（列数'+heads.length+'/'+base.length+'、追加列='+heads.slice(base.length).map(x=>/^[a-z][a-z0-9_]{0,39}$/.test(String(x))?x:'非公開').join('|')+'）');
 }
+const KURASHI_TRIAL_LEGACY_RECORD_FIELDS=['purchase_package_quantity','purchase_package_unit','price_eligible'];
 function kurashiRecordItemColumns_(book) {
  const base=KURASHI_NEW_SCHEMA.record_items,sheet=book.getSheetByName('record_items');
  if(!sheet)kurashiFail_('SCHEMA_ERROR','明細シートがありません');
  const heads=sheet.getRange(1,1,1,sheet.getLastColumn()).getValues()[0];
- if(JSON.stringify(heads)===JSON.stringify(base))return base;
- const all=[...base,...KURASHI_V98_RECORD_FIELDS];
- if(JSON.stringify(heads)===JSON.stringify(all))return all;
+ const legacy=[...base,...KURASHI_TRIAL_LEGACY_RECORD_FIELDS];
+ for(const allowed of [base,legacy,[...base,...KURASHI_V98_RECORD_FIELDS],
+   [...legacy,...KURASHI_V98_RECORD_FIELDS]])
+  if(JSON.stringify(heads)===JSON.stringify(allowed))return allowed;
  kurashiFail_('SCHEMA_ERROR','明細シートの列構成が想定外です（列数'+heads.length+'/'+base.length+'、追加列='+heads.slice(base.length).map(x=>/^[a-z][a-z0-9_]{0,39}$/.test(String(x))?x:'非公開').join('|')+'）');
 }
 function kurashiStockReady_(book){
  const props=PropertiesService.getScriptProperties();
  return props.getProperty('KURASHI_PRODUCT_STOCK_VERSION')==='2' &&
   KURASHI_V98_PRODUCT_FIELDS.every(h=>kurashiProductStockColumns_(book).includes(h)) &&
-  kurashiRecordItemColumns_(book).length===
-   KURASHI_NEW_SCHEMA.record_items.length+KURASHI_V98_RECORD_FIELDS.length;
+  KURASHI_V98_RECORD_FIELDS.every(h=>kurashiRecordItemColumns_(book).includes(h));
 }
 function kurashiColumnNames_(name,book){
  if(name==='products')return kurashiProductStockColumns_(book);
@@ -514,6 +515,21 @@ function kurashiSequence_(hid,book) {
     .filter(x=>String(x.value.household_id)===hid)
     .reduce((n,x)=>Math.max(n,Number(x.value.sequence_no)||0),0);
 }
+// Keep historical receipt-package measurements readable without rewriting
+// the original legacy columns, while new v98 writes use purchase_size_*.
+function kurashiPublicRecordItem_(raw){
+ const value=kurashiPublic_(raw);
+ const missing=x=>x===undefined||x===null||x==='';
+ if(missing(value.purchase_size_quantity)&&missing(value.purchase_size_unit) &&
+    !missing(value.purchase_package_quantity)&&!missing(value.purchase_package_unit)){
+  const n=Number(value.purchase_package_quantity),unit=String(value.purchase_package_unit);
+  if(Number.isFinite(n)&&n>0&&['g','kg','mL','L','個','本','枚'].includes(unit)){
+   value.purchase_size_quantity=n;
+   value.purchase_size_unit=unit;
+  }
+ }
+ return value;
+}
 function kurashiBootstrap_(user) {
   const book=user.book,hid=user.householdId;
   const lock=LockService.getScriptLock();
@@ -565,7 +581,7 @@ function kurashiBootstrap_(user) {
           .map(x=>String(x.value.record_id)));
         return kurashiRows_('record_items',book).filter(x=>
           ownedIds.has(String(x.value.record_id))&&!x.value.deleted_at)
-          .map(x=>kurashiPublic_(x.value));
+          .map(x=>kurashiPublicRecordItem_(x.value));
       })(),
       sequence_no:kurashiSequence_(hid,book)
     };
@@ -2192,8 +2208,7 @@ function kurashiTrialStockPlan_(book){
  const productHeaders=kurashiProductStockColumns_(book);
  const schemaUpgraded=KURASHI_V98_PRODUCT_FIELDS.every(h=>productHeaders.includes(h));
  const recordHeaders=kurashiRecordItemColumns_(book);
- const recordReady=recordHeaders.length===KURASHI_NEW_SCHEMA.record_items.length+
-   KURASHI_V98_RECORD_FIELDS.length;
+ const recordReady=KURASHI_V98_RECORD_FIELDS.every(h=>recordHeaders.includes(h));
  const journal=kurashiRows_('processed_operations',book);
  if(journal.some(x=>{
    let plan;
@@ -2300,7 +2315,7 @@ function kurashiTrialStockMigrate(){
      .setValues([KURASHI_V98_PRODUCT_FIELDS]);
   }
   if(!plan.record_schema_upgraded){
-   const records=book.getSheetByName('record_items'),last=KURASHI_NEW_SCHEMA.record_items.length;
+   const records=book.getSheetByName('record_items'),last=kurashiRecordItemColumns_(book).length;
    records.getRange(1,last+1,1,KURASHI_V98_RECORD_FIELDS.length)
     .setValues([KURASHI_V98_RECORD_FIELDS]);
   }
