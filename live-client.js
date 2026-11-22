@@ -274,6 +274,14 @@
     snap.record_items=snap.record_items.filter(i=>i.record_id!==op.targetId);
     continue;
    }
+   if(op.kind==='product-stock-reorder'){
+    const rows=snap.products.filter(p=>p.stock_enabled===true&&Number(p.category_id)===op.category_id&&!p.is_hidden&&!p.deleted_at);
+    const byId=new Map(rows.map(p=>[p.product_id,p]));
+    const ids=op.product_ids.filter(id=>byId.has(id));
+    [...ids,...rows.filter(p=>!ids.includes(p.product_id)).sort((a,b)=>Number(a.sort_order)-Number(b.sort_order)).map(p=>p.product_id)]
+     .forEach((id,i)=>{byId.get(id).sort_order=i+1});
+    continue;
+   }
    if(op.kind==='product-reorder'){
     const active=snap.products.filter(p=>p.household_item_id===op.groupId&&!p.deleted_at);
     const byId=new Map(active.map(p=>[p.product_id,p]));
@@ -1236,6 +1244,20 @@
     household_item_ids:ids,retries:0};
   });
  }
+ async function reorderStockItems(categoryId,orderedIds){
+  return enqueue(doc=>{
+   const snapshot=project(doc),cat=Number(categoryId),ids=Array.isArray(orderedIds)?orderedIds:[];
+   if(snapshot?.capabilities?.product_stock_v2!==true)throw Error('商品在庫の移行が必要です');
+   const active=snapshot.products.filter(p=>Number(p.category_id)===cat&&
+    toBoolean(p.stock_enabled)&&!toBoolean(p.is_hidden)&&!p.deleted_at);
+   const valid=new Set(active.map(p=>p.product_id));
+   if(!Number.isInteger(cat)||cat<0||cat>5||ids.length<2||
+      ids.length!==active.length||new Set(ids).size!==ids.length||
+      ids.some(id=>!valid.has(id)))throw Error('並び順を確認できません');
+   return {id:operationId(),kind:'product-stock-reorder',category_id:cat,
+     product_ids:ids.slice(),retries:0};
+  });
+ }
  async function reorderProducts(itemId,orderedIds){
   return enqueue(doc=>{
    const groupId=String(itemId||''),
@@ -1362,6 +1384,16 @@
     items:op.items.map(({candidate_package_quantity,candidate_package_unit,...line})=>line)
    }};
   }
+  if(op.kind==='product-stock-reorder'){
+   const rows=(base?.products||[]).filter(p=>
+    Number(p.category_id)===op.category_id&&toBoolean(p.stock_enabled)&&!toBoolean(p.is_hidden)&&!p.deleted_at);
+   const sorted=op.product_ids.filter(id=>rows.some(p=>p.product_id===id));
+   if(rows.length!==sorted.length)throw Error('並び替え対象が変更されています');
+   const byId=new Map(rows.map(p=>[p.product_id,p]));
+   return {operationId:op.id,action:'product.stock.reorder',payload:{
+    category_id:op.category_id,product_ids:sorted,
+    versions:sorted.map(id=>Number(byId.get(id).version))}};
+  }
   if(op.kind==='product-reorder'){
    const active=(base?.products||[]).filter(p=>
     p.household_item_id===op.groupId&&!p.deleted_at);
@@ -1478,6 +1510,12 @@
    if(!result.entity||typeof result.entity.chain_id!=='string'||
       result.entity.chain_id!==plan.payload.chain_id)
     throw Error('RESPONSE_INVALID');
+  }else if(plan.action==='product.stock.reorder'){
+   if(!Array.isArray(result.entities)||
+      result.entities.length!==plan.payload.product_ids.length||
+      result.entities.some((p,i)=>p?.product_id!==plan.payload.product_ids[i]||
+       Number(p.sort_order)!==i+1||!positiveVersion(p.version)))
+     throw Error('RESPONSE_INVALID');
   }else if(plan.action==='product.reorder'){
    if(!Array.isArray(result.entities)||
       result.entities.length!==plan.payload.product_ids.length||
@@ -1503,7 +1541,7 @@
    if(!ws.base)throw Error('HOUSEHOLD_CHANGED');
    const recordAction=['record.create','record.update','record.delete'].includes(plan.action);
    const entities=recordAction?[result.record,...result.items]:
-    ['item.reorder','product.reorder'].includes(plan.action)?
+    ['item.reorder','product.reorder','product.stock.reorder'].includes(plan.action)?
      result.entities:[result.entity];
    if(entities.some(e=>e.household_id!==undefined&&
        e.household_id!==ws.base.household_id))
@@ -2070,7 +2108,7 @@
   previewBulkReceiptProducts,bulkRegisterReceiptProducts,bulkRegisterReceiptHouseholds,receiptProductKey,
   resolveRecordId:id=>workspace.recordIdMap?.[id]||id,
   resolveRecordItemId:id=>workspace.recordItemIdMap?.[id]||id,blockedReceiptChange,discardBlockedReceipt,blockedProductChange,resolveBlockedProduct,refreshBlockedProducts,pendingOperationReview,beginPendingOperationReview,endPendingOperationReview,discardPendingOperations,confirmedProductId,learnAliases,linkAlias,learnStoreAlias,
-  saveReceiptDraft,loadReceiptDraft,saveOcrCorrections,loadOcrCorrections,toggleStock,reorderItems,reorderProducts,retry,logout,renderLogin,
+  saveReceiptDraft,loadReceiptDraft,saveOcrCorrections,loadOcrCorrections,toggleStock,reorderItems,reorderProducts,reorderStockItems,retry,logout,renderLogin,
   subscribe:fn=>{listeners.add(fn);return()=>listeners.delete(fn)},itemsOf,catalogueOf};
  window.addEventListener('kurashi-gis-ready',initialize);
  window.addEventListener('online',kick);
