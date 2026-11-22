@@ -160,6 +160,14 @@ jobs:
           let reply;
           try{reply=JSON.parse(fs.readFileSync(process.env.RUNNER_TEMP+'/v98-trial-bootstrap.json','utf8'))}
           catch(_){throw Error('Trial bootstrap is not JSON')}
+          console.log('TRIAL_BOOTSTRAP_DIAGNOSTIC',JSON.stringify({
+            ok:reply?.ok===true,
+            error_code:reply?.error?.code||null,
+            category_count:Array.isArray(reply?.data?.categories)?reply.data.categories.length:null,
+            has_products:Array.isArray(reply?.data?.products),
+            has_record_items:Array.isArray(reply?.data?.record_items),
+            stock_capability:reply?.data?.capabilities?.product_stock_v2??null
+          }));
           if(reply?.ok!==true||typeof reply?.data?.household_id!=='string'||
              !Array.isArray(reply.data.categories)||reply.data.categories.length!==6||
              !Array.isArray(reply.data.products)||!Array.isArray(reply.data.record_items)||
