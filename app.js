@@ -6,13 +6,13 @@ const liveMode=!!window.KurashiLive&&!demoMode; // Demo isolated from all GAS/Sh
 const stockV2=()=>liveMode&&window.KurashiLive.state().productStockV2===true;
 const SEED=[['牛乳',0,true],['麦茶',0,false],['コーヒー',0,true],['卵',0,false],['キッチンペーパー',1,false],['ラップ',1,true],['食器用洗剤',1,true],['シャンプー',2,false],['歯磨き粉',2,true],['ハンドソープ',2,false],['洗濯洗剤',3,false],['柔軟剤',3,true],['トイレットペーパー',3,false],['乾電池',4,true],['ティッシュ',4,true]];
 const makeSeed=()=>SEED.map(([name,category,inStock],i)=>({id:`demo-${i+1}`,name,subName:'',category,inStock,hidden:false,order:i,version:1}));
-const key=demoMode?'household_pwa_v97_demo_items':'household_pwa_ui_v3';
+const key=demoMode?'household_pwa_v98_demo_items':'household_pwa_ui_v3';
 // 商品・チェーンは仮データ。今後はproducts / retail_chainsへの照会に置き換える。
 
 const UNIT_OPTIONS=['個','本','枚','g','kg','mL','L'];
 
 /* Local-only product and chain sample catalogue; no product disable field. */
-const catalogueKey=demoMode?'household_pwa_v97_demo_products':'household_pwa_catalogue_v4';
+const catalogueKey=demoMode?'household_pwa_v98_demo_products':'household_pwa_catalogue_v4';
 const sampleCatalogue=()=>({
  products:[
   {id:'p-milk-1',name:'おいしい牛乳',packageQuantity:900,packageUnit:'mL',householdItemId:'demo-1',householdItemOrder:1,aliases:['ｵｲｼｲｷﾞｭｳﾆｭｳ']},
@@ -79,7 +79,7 @@ const demoRecordItems=priceFixtures.map((r,n)=>({
  created_at:null,updated_at:null,version:1,deleted_at:null
 }));
 // Manual preview records remain only on this browser; never sent to a server.
-const previewRecordsKey=demoMode?'household_pwa_v97_demo_records':'household_pwa_records_preview_v1';
+const previewRecordsKey=demoMode?'household_pwa_v98_demo_records':'household_pwa_records_preview_v1';
 function loadPreviewRecords(){
  try{const v=JSON.parse(localStorage.getItem(previewRecordsKey));
  if(v&&Array.isArray(v.records)&&Array.isArray(v.record_items))return v;
