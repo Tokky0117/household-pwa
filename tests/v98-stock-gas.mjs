@@ -113,6 +113,26 @@ assert.equal(reordered.ok,true,JSON.stringify(reordered.error));
 assert.deepEqual(Array.from(reordered.data.entities,x=>x.product_id),ids);
 assert.equal(reordered.data.entities[0].sort_order,1);
 assert.equal(reordered.data.entities[1].sort_order,2);
+const groupedBefore=call('bootstrap',{}).data;
+const groupIds=['product-1','product-2'];
+const groupVersions=groupIds.map(id=>groupedBefore.products.find(x=>x.product_id===id).version);
+const groupPayload={category_id:3,display_group:'衣類洗剤',product_ids:groupIds,versions:groupVersions};
+const group=call('product.stock.group',groupPayload,'op-v98-group-test-012345678901');
+assert.equal(group.ok,true,JSON.stringify(group.error));
+assert.ok(group.data.entities.every(x=>x.display_group==='衣類洗剤'));
+assert.equal(call('product.stock.group',groupPayload,'op-v98-group-test-012345678901').ok,true,
+ 'retrying group request must never create duplicate grouping or increments');
+const groupedAfter=call('bootstrap',{}).data;
+assert.equal(groupedAfter.products.find(x=>x.product_id==='product-1').in_stock,true,
+ 'grouping does not share product stock state');
+assert.equal(groupedAfter.products.find(x=>x.product_id==='product-2').in_stock,false);
+const ungroupVersion=groupedAfter.products.find(x=>x.product_id==='product-2').version;
+const ungroup=call('product.stock.group',{
+ category_id:3,display_group:'',product_ids:['product-2'],versions:[ungroupVersion]
+},'op-v98-ungroup-test-0123456789');
+assert.equal(ungroup.ok,true,JSON.stringify(ungroup.error));
+assert.equal(ungroup.data.entities[0].display_group,'');
+assert.equal(call('bootstrap',{}).data.products.find(x=>x.product_id==='product-1').display_group,'衣類洗剤');
 const record=call('record.create',{record_type:'receipt',chain_id:'chain1',record_date:'2026-11-22',
  items:[{raw_name:'アタックZERO 580g',linked_product_id:'product-1',
   quantity:null,line_total_tax_included:null,purchase_size_quantity:580,purchase_size_unit:'g'}]},
