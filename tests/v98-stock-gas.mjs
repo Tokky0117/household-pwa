@@ -160,6 +160,21 @@ const ungroup=call('product.stock.group',{
 assert.equal(ungroup.ok,true,JSON.stringify(ungroup.error));
 assert.equal(ungroup.data.entities[0].display_group,'');
 assert.equal(call('bootstrap',{}).data.products.find(x=>x.product_id==='product-1').display_group,'衣類洗剤');
+// Price-only products may be grouped for price search without changing inventory.
+const priceOnlyBefore=call('bootstrap',{}).data.products.find(x=>x.product_id==='product-3');
+assert.equal(priceOnlyBefore.stock_enabled,false);
+const groupedPriceOnly=call('product.stock.group',{
+ category_id:4,display_group:'お菓子',product_ids:['product-3'],
+ versions:[priceOnlyBefore.version]
+},'op-v98-price-only-group-0123456789');
+assert.equal(groupedPriceOnly.ok,true,JSON.stringify(groupedPriceOnly.error));
+const priceOnlyAfter=call('bootstrap',{}).data.products.find(x=>x.product_id==='product-3');
+assert.equal(priceOnlyAfter.display_group,'お菓子');
+assert.equal(priceOnlyAfter.stock_enabled,false,'grouping must not opt a price-only item into stock');
+assert.equal(call('product.stock.group',{
+ category_id:4,display_group:'お菓子',product_ids:['product-3'],
+ versions:[priceOnlyBefore.version]
+},'op-v98-price-only-group-0123456789').ok,true,'price-only grouping replay must be durable');
 const record=call('record.create',{record_type:'receipt',chain_id:'chain1',record_date:'2026-11-22',
  items:[{raw_name:'アタックZERO 580g',linked_product_id:'product-1',
   quantity:null,line_total_tax_included:null,purchase_size_quantity:580,purchase_size_unit:'g'}]},
