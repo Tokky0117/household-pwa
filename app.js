@@ -2334,6 +2334,19 @@ function priceHomeView(){
   <div id="price-product-results" class="price-product-results">${priceProductRows()}</div>
  </main>${bulk}${nav()}`;
 }
+function stockManageSheetView(){
+ const p=catalogue.products.find(x=>x.id===selectedProductId);
+ if(!p||p.stockEnabled)return '';
+ return UI.sheet({title:'在庫管理を開始',variant:'stock-manage-sheet',
+  body:`<form id="stockManageForm">
+   <p class="hint">「${esc(p.name)}」を在庫タブに追加します。</p>
+   ${UI.formField({id:'stock-manage-category',name:'category_id',label:'カテゴリ',
+     control:'select',value:p.category??4,
+     options:CAT_ORDER.map(value=>({value,label:CATS[value]}))})}
+   <p class="hint">在庫状態は「なし」で開始します。必要に応じて在庫タブで変更できます。</p>
+   <div class="formactions">${UI.button({label:'在庫管理を開始',variant:'primary',type:'submit'})}</div>
+  </form>`});
+}
 function productPriceView(){
  const p=catalogue.products.find(x=>x.id===selectedProductId);
  if(!p)return priceHomeView();
@@ -2550,7 +2563,7 @@ function render(){
  const scrollReset=enteringProductCreate||enteringScanProduct||
   !currentModal&&!wasModal&&(page!==previousPage||(page==='compare'&&selected!==previousSelected));
  const focus=['add','edit','products','productPick','productCreate','scanProduct','recordScan','recordChatGpt','recordDetail','receiptProductCreate','receiptBulk'].includes(page);
- const modal=priceGroupSheet?inventoryGroupSheetView(true):inventoryGroupSheet?inventoryGroupSheetView():page==='scanExistingProduct'?scanExistingProductView():page==='productPick'?pickerView():page==='productEdit'?productCreateView():currentModal?formView():'';
+ const modal=stockManageSheet?stockManageSheetView():priceGroupSheet?inventoryGroupSheetView(true):inventoryGroupSheet?inventoryGroupSheetView():page==='scanExistingProduct'?scanExistingProductView():page==='productPick'?pickerView():page==='productEdit'?productCreateView():currentModal?formView():'';
  const overlay=dialogView();
  app.innerHTML=`<div class="shell ${focus?'focus':''}">${pageView()}</div>${modal}${overlay}`;
  if(openSwipeId)setOpenSwipe(openSwipeId);
@@ -2746,7 +2759,7 @@ function goBack(){
   render();
 }
 function back(){
-  if(priceGroupSheet){priceGroupSheet=false;render();return;}if(inventoryGroupSheet){inventoryGroupSheet=false;render();return;}
+  if(stockManageSheet){stockManageSheet=false;render();return;}if(priceGroupSheet){priceGroupSheet=false;render();return;}if(inventoryGroupSheet){inventoryGroupSheet=false;render();return;}
   if(aliasPickerId){closeAliasProductPicker();return;}
   if(masterGroupPickerOpen){closeMasterGroupPicker();return;}
   if(page==='aliasManage'){page='list';tab='settings';render();return;}
@@ -3041,8 +3054,45 @@ function syncScanReview(){
  }
  return relinked;
 }
-app.addEventListener('change',e=>{if(e.target.id==='onlyOut'){const wasOut=onlyOut;onlyOut=e.target.checked;if(wasOut&&!onlyOut)collapsed.clear();render()}});
+app.addEventListener('change',e=>{
+ if(e.target.id==='price-stock-enabled'){
+  if(!stockV2()||page!=='productPrice')return;
+  const p=catalogue.products.find(x=>x.id===selectedProductId);
+  if(!p)return;
+  if(p.stockEnabled&&!e.target.checked){
+   dialog={title:'在庫管理を解除しますか？',
+    message:'「'+p.name+'」を在庫一覧から外します。商品情報・グループ・購入履歴・価格情報は残ります。',
+    buttons:[{id:'cancel',label:'キャンセル'},
+     {id:'confirmPriceStockDisable',label:'在庫管理を解除'}],
+    pending:{productId:p.id}};
+   render();return;
+  }
+  if(!p.stockEnabled&&e.target.checked){
+   stockManageSheet=true;render();return;
+  }
+  render();return;
+ }
+ if(e.target.id==='onlyOut'){const wasOut=onlyOut;onlyOut=e.target.checked;if(wasOut&&!onlyOut)collapsed.clear();render()}});
 app.addEventListener('submit',e=>{e.preventDefault();const form=e.target;const d=new FormData(form);
+ if(form.id==='stockManageForm'){
+  const p=catalogue.products.find(x=>x.id===selectedProductId);
+  const category=Number(d.get('category_id'));
+  if(!stockV2()||!p||p.stockEnabled||!Number.isInteger(category)||category<0||category>5){
+   fieldNotice(form,'対象商品またはカテゴリを確認してください','stock-manage-category');return;
+  }
+  const submit=form.querySelector('[type="submit"]');
+  if(submit?.disabled)return;
+  if(submit)submit.disabled=true;
+  window.KurashiLive.save('product.stock.update',{
+   product_id:p.id,stock_enabled:true,in_stock:false,category_id:category
+  }).then(()=>{stockManageSheet=false;render()})
+   .catch(err=>{
+    if(submit?.isConnected)submit.disabled=false;
+    if(form.isConnected)fieldNotice(form,err.message||'在庫管理を開始できませんでした','stock-manage-category');
+    else say(err.message||'在庫管理を開始できませんでした');
+   });
+  return;
+ }
  if(form.id==='inventoryGroupForm'){
   const existing=String(d.get('existing')||''),name=(existing||String(d.get('groupName')||'')).trim();
   if(!name||name.length>80){fieldNotice(form,'グループ名を入力してください','inventory-group-name');return}
@@ -3298,7 +3348,7 @@ if(form.id==='productCreateForm'){
  if(page==='productEdit'){const p=catalogue.products.find(x=>x.id===editingProductId&&x.householdItemId===selected);if(!p){fieldNotice(form,'商品が見つかりません','new-product-name');return}Object.assign(p,{name,packageQuantity:productQty,packageUnit:productUnit})}else{catalogue.products.push({id:id(),name,packageQuantity:productQty,packageUnit:productUnit,householdItemId:selected,householdItemOrder:registeredProducts(selected).length+1,aliases:[]})}
  persistCatalogue();page='compare';initializeCompare();render();
 }});
-app.addEventListener('click',e=>{if(e.target.classList?.contains('record-product-overlay')){closeRecordProductPicker();return}if(e.target.classList?.contains('record-bulk-household-overlay')){closeRecordBulkHousehold();return}if(e.target.classList?.contains('alias-product-picker-overlay')){closeAliasProductPicker();return}if(e.target.classList?.contains('master-group-picker-overlay')){closeMasterGroupPicker();return}if(e.target.classList?.contains('store-picker-overlay')){closeStorePicker();return}if(e.target.classList?.contains('sheet-back')&&(inventoryGroupSheet||['add','edit','productEdit','productPick','scanExistingProduct'].includes(page))){back();return}if(suppressClick){e.preventDefault();e.stopPropagation();suppressClick=false;return}
+app.addEventListener('click',e=>{if(e.target.classList?.contains('record-product-overlay')){closeRecordProductPicker();return}if(e.target.classList?.contains('record-bulk-household-overlay')){closeRecordBulkHousehold();return}if(e.target.classList?.contains('alias-product-picker-overlay')){closeAliasProductPicker();return}if(e.target.classList?.contains('master-group-picker-overlay')){closeMasterGroupPicker();return}if(e.target.classList?.contains('store-picker-overlay')){closeStorePicker();return}if(e.target.classList?.contains('sheet-back')&&(stockManageSheet||priceGroupSheet||inventoryGroupSheet||['add','edit','productEdit','productPick','scanExistingProduct'].includes(page))){back();return}if(suppressClick){e.preventDefault();e.stopPropagation();suppressClick=false;return}
 if(swipeClickGuard&&e.detail!==0){e.preventDefault();e.stopPropagation();swipeClickGuard=null;return;}
 const exposedItem=e.target.closest('.swipe-item[data-item-id].swipe-open');
 if(exposedItem&&!e.target.closest('.swipe-actions')){
@@ -3719,7 +3769,7 @@ if(action==='restoreItem'||action==='showExistingItem'){
  }item.hidden=false;item.version=(item.version||0)+1}
  revealItem(item);return;
 }
-if(action==='back'){if(priceGroupSheet){priceGroupSheet=false;render();return}if(inventoryGroupSheet){inventoryGroupSheet=false;render();return}if(recordProductItemId){closeRecordProductPicker();return}if(aliasPickerId){closeAliasProductPicker();return}if(masterGroupPickerOpen){closeMasterGroupPicker();return}if(storePickerTarget){closeStorePicker();return}back();return}
+if(action==='back'){if(stockManageSheet){stockManageSheet=false;render();return}if(priceGroupSheet){priceGroupSheet=false;render();return}if(inventoryGroupSheet){inventoryGroupSheet=false;render();return}if(recordProductItemId){closeRecordProductPicker();return}if(aliasPickerId){closeAliasProductPicker();return}if(masterGroupPickerOpen){closeMasterGroupPicker();return}if(storePickerTarget){closeStorePicker();return}back();return}
 if(action==='aliasMore'){aliasVisibleLimit+=100;const rows=document.getElementById('alias-results');if(rows)rows.innerHTML=aliasManageRows();return}
 if(action==='aliasPickerOpen'){openAliasProductPicker(el.dataset.aliasId);return}
 if(action==='masterGroupPickerOpen'){if(!stockV2())openMasterGroupPicker();return}
