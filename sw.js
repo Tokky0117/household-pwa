@@ -1,5 +1,5 @@
 const CACHE='household-ui-v95.3-product-search-sheet';
-const ASSETS=['./','./index.html','./styles.css','./app.js','./live-client.js','./receipt-validation.js','./receipt-review-model.js','./receipt-chatgpt-import.js','./product-package.js','./japanese-reading.js','./manifest.webmanifest','./icon.svg'];
+const ASSETS=['./','./index.html','./styles.css','./app.js','./live-client.js','./receipt-validation.js','./receipt-review-model.js','./receipt-chatgpt-import.js','./product-package.js','./product-stock-model.js','./japanese-reading.js','./manifest.webmanifest','./icon.svg'];
 // CacheStorage is shared by all Pages paths on the same origin.
 // Never let a production SW update delete preview caches, or vice versa.
 const SCOPE_CACHE_PREFIX='kurashi-scope-'+encodeURIComponent(new URL(self.registration.scope).pathname)+'-';

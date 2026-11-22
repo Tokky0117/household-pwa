@@ -45,6 +45,7 @@
   loaded:!!workspace.base,cached:!!workspace.base&&!lastSync,
   householdId:workspace.base?.household_id||null,
   groupingReady:workspace.base?.capabilities?.explicit_display_groups===true,
+  productStockV2:workspace.base?.capabilities?.product_stock_v2===true,
   busy:!!refreshPromise||!!flushPromise,
   syncing:!!flushPromise,queued:workspace.queue.length,
   blocked:!!workspace.blocked,
@@ -290,7 +291,13 @@
      household_item_id:op.groupId||'',name:op.name,
      normalized_name:op.name.normalize('NFKC').toLocaleLowerCase('ja'),
      package_quantity:op.quantity??'',package_unit:op.unit||'',
-     household_item_order:order,version:1,deleted_at:''});
+     household_item_order:order,version:1,deleted_at:'',...(op.stockFields||{})});
+    continue;
+   }
+   if(op.kind==='product-stock-update'){
+    const p=snap.products.find(x=>x.product_id===op.targetId);
+    if(p){Object.assign(p,op.fields);if(typeof op.fields.name==='string')
+     p.normalized_name=op.fields.name.normalize('NFKC').toLocaleLowerCase('ja');}
     continue;
    }
    if(op.kind==='product-edit'||op.kind==='product-link'){
@@ -623,6 +630,31 @@
  }
  function makeProductOperation(action,payload,doc){
   const snap=project(doc),products=snap?.products||[];
+  if(action==='product.stock.update'){
+   if(snap?.capabilities?.product_stock_v2!==true)throw Error('商品単位の在庫管理はまだ利用できません');
+   const targetId=String(payload.product_id||'');
+   const product=products.find(p=>p.product_id===targetId&&!p.deleted_at);
+   if(!product)throw Error('商品が見つかりません');
+   const keys=Object.keys(payload).filter(k=>!['product_id','version'].includes(k));
+   if(!keys.length||keys.some(k=>!['in_stock','stock_enabled','memo','display_group','category_id','is_hidden','name'].includes(k)))
+    throw Error('商品の保存内容を確認してください');
+   const fields={};
+   for(const key of keys){
+    const value=payload[key];
+    if(['in_stock','stock_enabled','is_hidden'].includes(key)){
+     if(typeof value!=='boolean')throw Error('在庫状態を確認してください');
+    }else if(key==='category_id'){
+     if(!Number.isInteger(value)||value<0||value>5)throw Error('カテゴリを確認してください');
+    }else if(typeof value!=='string'||value.length>(key==='memo'?80:80)||
+      (['name','display_group'].includes(key)&&value.trim()&&/^[=+@\-]/.test(value.trim()))||
+      (key==='name'&&!value.trim()))throw Error('商品名またはメモを確認してください');
+    fields[key]=typeof value==='string'?value.trim():value;
+   }
+   if(fields.name&&products.some(p=>p.product_id!==targetId&&!p.deleted_at&&
+    p.name.normalize('NFKC')===fields.name.normalize('NFKC')))
+    throw Error('同じ商品名が既にあります');
+   return {id:operationId(),kind:'product-stock-update',targetId,fields,retries:0};
+  }
   if(action==='product.create'){
    const fields=productFields(payload),
     groupId=payload.household_item_id===null?null:String(payload.household_item_id||'');
@@ -633,7 +665,11 @@
      (p.package_unit||null)===fields.unit))
     throw Error('同じ商品・内容量が既にあります');
    return {id:operationId(),kind:'product-create',clientId:'local-'+uid(),
-    groupId,...fields,retries:0};
+    groupId,...fields,stockFields:snap?.capabilities?.product_stock_v2===true?{
+     stock_enabled:payload.stock_enabled===true,
+     in_stock:false,category_id:Number.isInteger(payload.category_id)?payload.category_id:4,
+     memo:String(payload.memo||''),display_group:''
+    }:null,retries:0};
   }
   if(action!=='product.update')throw Error('UNSUPPORTED');
   const targetId=String(payload.product_id||''),
@@ -676,7 +712,7 @@
   if(Object.prototype.hasOwnProperty.call(payload,'is_hidden'))
    return {id:operationId(),kind:'hide',targetId,hidden:!!payload.is_hidden,retries:0};
   if(Object.prototype.hasOwnProperty.call(payload,'display_group')){
-   if(snap?.capabilities?.explicit_display_groups!==true)
+   if(project(doc)?.capabilities?.explicit_display_groups!==true)
     throw Error('グループ機能は試作データの更新後に利用できます');
    const groupName=payload.display_group;
    if(typeof groupName!=='string'||groupName.trim().length>80||/^[=+@\-]/.test(groupName.trim()))
@@ -1217,7 +1253,13 @@
   });
  }
  async function toggleStock(itemId){
-  await boot();if(!workspace.base)await load();
+  await boot();
+  if(workspace.base?.capabilities?.product_stock_v2===true){
+   const item=project()?.products.find(p=>p.product_id===itemId&&!p.deleted_at);
+   if(!item)throw Error('商品が見つかりません');
+   await save('product.stock.update',{product_id:itemId,in_stock:!toBoolean(item.in_stock)});
+   return project()?.products.find(p=>p.product_id===itemId)||null;
+  }if(!workspace.base)await load();
   await modify(doc=>{
    const item=project(doc)?.household_items.find(i=>i.household_item_id===itemId&&!i.deleted_at);
    if(!item)throw Error('日用品が見つかりません');
@@ -1344,7 +1386,14 @@
     throw Error('登録先の日用品が見つかりません');
    return {operationId:op.id,action:'product.create',payload:{
     name:op.name,package_quantity:op.quantity,package_unit:op.unit,
-    household_item_id:op.groupId}};
+    household_item_id:op.groupId,...(op.stockFields||{})}};
+  }
+  if(op.kind==='product-stock-update'){
+   const p=base?.products.find(x=>x.product_id===op.targetId&&!x.deleted_at);
+   if(!p||base?.capabilities?.product_stock_v2!==true)
+    throw Error('商品在庫の保存先が見つかりません');
+   return {operationId:op.id,action:'product.stock.update',payload:{
+    product_id:p.product_id,version:Number(p.version),...op.fields}};
   }
   if(op.kind==='product-edit'||op.kind==='product-link'){
    const p=base?.products.find(x=>x.product_id===op.targetId);
@@ -1981,6 +2030,8 @@
   return flush();
  }
  function itemsOf(data){
+  const v2=window.KurashiProductStockModel?.stockItems?.(data);
+  if(v2!==null&&v2!==undefined)return v2;
   return (data?.household_items||[]).filter(x=>!x.deleted_at).map(x=>({
    id:x.household_item_id,name:x.name,subName:x.sub_name||'',displayGroup:x.display_group||'',category:Number(x.category_id),
    inStock:toBoolean(x.in_stock),hidden:toBoolean(x.is_hidden),
@@ -2001,7 +2052,7 @@
    return String(value||'').split(/[,、\n]/).map(x=>x.trim()).filter(Boolean);
   };
   return {receiptNameMappings,products:(data?.products||[]).map(p=>({
-   id:p.product_id,name:p.name,packageQuantity:p.package_quantity===''?null:p.package_quantity,
+   id:p.product_id,name:p.name,category:Number(p.category_id)||0,stockEnabled:toBoolean(p.stock_enabled),inStock:toBoolean(p.in_stock),memo:p.memo||'',displayGroup:p.display_group||'',packageQuantity:p.package_quantity===''?null:p.package_quantity,
    packageUnit:p.package_unit||null,householdItemId:p.household_item_id||null,
    householdItemOrder:p.household_item_order===''?null:Number(p.household_item_order),
    version:Number(p.version),aliases:receiptNameMappings.filter(a=>a.productId===p.product_id)
