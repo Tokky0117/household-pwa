@@ -809,8 +809,12 @@
        (!Number.isSafeInteger(line.line_total_tax_included)||line.line_total_tax_included<0))
     throw Error('数量・税込金額を確認してください');
    const sizeQty=line.candidate_package_quantity,sizeUnit=line.candidate_package_unit;
+   const inferred=snap.capabilities?.product_stock_v2===true?
+    window.KurashiProductPackage?.candidate(rawName||confirmed||suggested,{
+     packageQuantity:sizeQty,packageUnit:sizeUnit}):null;
    const size=window.KurashiProductPackage?.valid(sizeQty,sizeUnit)?
-    {candidate_package_quantity:sizeQty,candidate_package_unit:sizeUnit}:{};
+    {candidate_package_quantity:sizeQty,candidate_package_unit:sizeUnit}:
+    inferred?{candidate_package_quantity:inferred.quantity,candidate_package_unit:inferred.unit}:{};
    return {raw_name:rawName,...(confirmed?{non_ocr_name:confirmed}:{}),linked_product_id:productId,
     quantity:line.quantity,line_total_tax_included:line.line_total_tax_included,
     ...(snap.capabilities?.product_stock_v2===true?{
