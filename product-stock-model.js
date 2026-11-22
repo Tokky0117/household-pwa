@@ -74,6 +74,28 @@
     display_group:'',is_hidden:bool(old.is_hidden)
    });
   }
+  // Mirror the owner-only GAS migration: legacy items may share a generic
+  // name while differing by sub_name. Derive distinct fallback product names.
+  const orphanCounts=new Map();
+  for(const item of missing){
+   const key=norm(item.name);
+   orphanCounts.set(key,(orphanCounts.get(key)||0)+1);
+  }
+  const existingProductNames=new Set(products.filter(x=>!x.deleted_at)
+   .map(x=>norm(x.normalized_name||x.name)));
+  const reservedNames=new Set(existingProductNames);
+  for(const item of missing){
+   const base=item.name.trim(),key=norm(base);
+   const repeated=orphanCounts.get(key)>1;
+   const detail=item.memo.trim();
+   const proposed=repeated?base+'（'+detail+'）':base;
+   item.proposed_name=proposed;
+   item.proposed_display_group=repeated?base:'';
+   if(!base||existingProductNames.has(key)||repeated&&!detail||
+      proposed.length>80||reservedNames.has(norm(proposed)))
+    warnings.push({code:'ORPHAN_NAME_REVIEW',household_item_id:item.household_item_id});
+   reservedNames.add(norm(proposed));
+  }
   const receiptIds=new Set(record_items.filter(x=>!x.deleted_at&&x.linked_product_id)
    .map(x=>String(x.linked_product_id)));
   for(const id of receiptIds)if(!ids.has(id))
