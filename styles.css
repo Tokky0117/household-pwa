@@ -3009,3 +3009,15 @@ html,body{touch-action:pan-x pan-y}
 .product-price-stock{display:flex;gap:12px;flex-wrap:wrap;color:#666;font-size:.86rem;margin:8px 0 18px}
 .price-product-best{font-size:.9rem;line-height:1.6;margin:12px 0 22px}
 .comparison-product-title[data-act]{appearance:none;border:0;background:transparent;text-align:left;cursor:pointer;color:inherit;padding:0;min-width:0;flex:1}
+
+/* v0.98: price details own membership in inventory; stock tab owns stock state. */
+.product-stock-management{
+ margin:0 0 6px;padding:13px 14px 11px;
+ border:1px solid var(--line);border-radius:11px;background:var(--card)
+}
+.product-stock-enabled-control{display:flex;align-items:center;gap:10px;min-height:44px;cursor:pointer;font-weight:600;color:var(--ink)}
+.product-stock-enabled-control input{flex:none;width:21px;height:21px;accent-color:var(--accent)}
+.product-stock-management .hint{margin:2px 0 0;font-size:12px;line-height:1.5;color:var(--muted)}
+.product-detail-edit{display:flex;justify-content:flex-end;margin-bottom:12px}
+.stock-manage-sheet #stockManageForm{display:flex;flex-direction:column;gap:10px}
+.stock-manage-sheet #stockManageForm>.hint{margin:0;line-height:1.55}
