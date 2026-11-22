@@ -2241,7 +2241,7 @@ function kurashiTrialStockPlan_(book){
    memo:item?String(item.sub_name||''):'',
    display_group:shared?String(item.name||''):'',
    sort_order:item?Number(item.sort_order)||1:Math.max(1,row),
-   is_hidden:false,
+   is_hidden:item?item.is_hidden===true||String(item.is_hidden).toLowerCase()==='true':false,
    migrated_from_household_item_id:String(value.household_item_id||'')};
   planned.push({row,entity:data});
  }
@@ -2337,7 +2337,8 @@ function kurashiTrialStockMigrate(){
      category_id:Number(i.category_id),stock_enabled:kurashiLegacyStockEnabled_(i),
      in_stock:Boolean(i.in_stock===true||String(i.in_stock)==='true'),
      memo:String(i.sub_name||''),display_group:'',sort_order:Number(i.sort_order)||1,
-     is_hidden:false,migrated_from_household_item_id:item.source_item_id},book);
+     is_hidden:i.is_hidden===true||String(i.is_hidden).toLowerCase()==='true',
+     migrated_from_household_item_id:item.source_item_id},book);
    recovered.add(item.source_item_id);created++;
   }
   // Reject lost IDs, failed orphan creation or any changed historical values.
