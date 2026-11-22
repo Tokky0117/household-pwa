@@ -37,7 +37,7 @@ class MockBook{
 }
 const trial=new MockBook('trial');
 for(const [name,headers] of Object.entries(schema)){
- trial.tables.set(name,[deep(name==='household_items'?headers.slice(0,-1):headers)]);
+ trial.tables.set(name,[deep(name==='household_items'?[...headers.slice(0,-1),'stock_management_enabled']:headers)]);
 }
 function add(name,obj){const h=trial.tables.get(name)[0];trial.tables.get(name).push(h.map(k=>obj[k]??''))}
 add('households',{household_id:'h1',display_name:'試作',version:1});
@@ -45,9 +45,9 @@ for(const [id,name,order] of [[0,'食品・飲料',1],[1,'キッチン',3],[2,'�
  add('categories',{category_id:id,name,fixed_order:order});
 add('retail_chains',{chain_id:'chain1',household_id:'h1',canonical_name:'コノミヤ',normalized_name:'コノミヤ',aliases:'[]',version:1});
 add('household_items',{household_item_id:'item-1',household_id:'h1',category_id:3,name:'洗濯洗剤',normalized_name:'洗濯洗剤',
- in_stock:true,sort_order:1,is_hidden:false,sub_name:'詰替用優先',version:1});
+ in_stock:true,sort_order:1,is_hidden:false,sub_name:'詰替用優先',stock_management_enabled:true,version:1});
 add('household_items',{household_item_id:'item-2',household_id:'h1',category_id:1,name:'袋',normalized_name:'袋',
- in_stock:false,sort_order:1,is_hidden:false,sub_name:'野菜用',version:1});
+ in_stock:false,sort_order:1,is_hidden:false,sub_name:'野菜用',stock_management_enabled:false,version:1});
 for(const [id,name,item,qty,unit] of [['product-1','アタックZERO','item-1',580,'g'],['product-2','NANOX','item-1',900,'g'],['product-3','キットカット','',null,null]]){
  add('products',{product_id:id,household_id:'h1',household_item_id:item,name,normalized_name:name,
   package_quantity:qty??'',package_unit:unit??'',household_item_order:item?1:'',version:1});
@@ -100,6 +100,8 @@ assert.equal(bootstrap.products.find(x=>x.product_id==='product-1').display_grou
 assert.equal(bootstrap.products.find(x=>x.product_id==='product-2').in_stock,true);
 assert.equal(bootstrap.products.find(x=>x.product_id==='product-3').stock_enabled,false);
 assert.ok(bootstrap.products.find(x=>x.name==='袋'&&x.memo==='野菜用'));
+assert.equal(bootstrap.products.find(x=>x.name==='袋').stock_enabled,false,
+ 'legacy stock_management_enabled=false must be preserved');
 const updated=call('product.stock.update',{product_id:'product-2',version:1,in_stock:false},
  'op-v98-stock-test-012345678901');
 assert.equal(updated.ok,true,JSON.stringify(updated.error));
