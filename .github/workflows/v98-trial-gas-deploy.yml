@@ -207,6 +207,7 @@ jobs:
           const warnings={};
           for(const w of plan.warnings)warnings[w.code]=(warnings[w.code]||0)+1;
           const fatal=!!(activeMerges||orphanNameConflicts||gasNormalizedNameConflicts||invalidStockFlags||
+            (warnings.ORPHAN_NAME_REVIEW||0)||
             (warnings.DUPLICATE_NAME_REQUIRES_REVIEW||0)||
             (warnings.EMPTY_PRODUCT_NAME||0)||(warnings.ORPHAN_LINK||0));
           console.log('TRIAL_V98_READONLY_PREFLIGHT',JSON.stringify({
@@ -219,6 +220,9 @@ jobs:
             orphan_name_conflicts:orphanNameConflicts,
             gas_normalized_name_conflicts:gasNormalizedNameConflicts,
             mismatched_legacy_normalized_names:normalizedNameMismatches,
+            orphan_products_with_disambiguated_names:plan.createProductsForOrphanItems.filter(x=>
+              x.proposed_name!==x.name).length,
+            orphan_name_review_required:warnings.ORPHAN_NAME_REVIEW||0,
             trial_editor_matches_link_01:process.env.GAS_SCRIPT_ID_NEW==='1I0l8OgHv2Mi9LhgAKpL-VGrpG2VJiTLhZMwuFDUtz6urddO2Gg3Ud0ci',
             trial_editor_matches_link_02:process.env.GAS_SCRIPT_ID_NEW==='15pyx5qYzEMEqgGQmbSyRdx5U2DywTxnRYgWpQb9lazE__tGwQ58DJGIU',
             invalid_legacy_stock_flags:invalidStockFlags,
