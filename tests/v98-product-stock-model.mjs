@@ -42,6 +42,20 @@ assert.equal(result.length,3);
 assert.equal(result.find(x=>x.id==='p1').displayGroup,'洗濯洗剤');
 assert.equal(result.find(x=>x.id==='p2').inStock,true);
 assert.equal(result.find(x=>x.id==='p3').name,'キャベツ');
+const sameNamed=model.draftMigration({household_items:[
+ {household_item_id:'bag-a',name:'袋',sub_name:'野菜用',category_id:1},
+ {household_item_id:'bag-b',name:'袋',sub_name:'生ごみ用',category_id:1}
+],products:[],record_items:[]});
+assert.equal(sameNamed.createProductsForOrphanItems.length,2);
+assert.deepEqual(Array.from(sameNamed.createProductsForOrphanItems,x=>x.proposed_name),
+ ['袋（野菜用）','袋（生ごみ用）']);
+assert.ok(sameNamed.createProductsForOrphanItems.every(x=>x.proposed_display_group==='袋'));
+assert.ok(!sameNamed.warnings.some(x=>x.code==='ORPHAN_NAME_REVIEW'));
+const ambiguous=model.draftMigration({household_items:[
+ {household_item_id:'bag-a',name:'袋',sub_name:'',category_id:1},
+ {household_item_id:'bag-b',name:'袋',sub_name:'',category_id:1}
+],products:[],record_items:[]});
+assert.ok(ambiguous.warnings.some(x=>x.code==='ORPHAN_NAME_REVIEW'));
 assert.throws(()=>model.draftMigration({products:[{product_id:'x'},{product_id:'x'}]}),/STOCK_PLAN_INVALID_PRODUCT_ID/);
 console.log('v98 stock migration planner and product-owned stock projection: OK');
 
