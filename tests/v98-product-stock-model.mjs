@@ -61,7 +61,7 @@ const fixtures=[
   line_total_tax_included:null,quantity:null,record:{chain_id:'chain-E',record_date:'2026-11-22'}}
 ];
 const weights=vm.runInNewContext(
- "const STANDARD_BASES=[['g',100,'100g'],['mL',100,'100mL'],['個',1,'1個'],['枚',1,'1枚'],['本',1,'1本']];\\n"+
+ "const STANDARD_BASES=[['g',100,'100g'],['mL',100,'100mL'],['個',1,'1個'],['枚',1,'1枚'],['本',1,'1本']];\n"+
  comparator+";standardizedMinima([{id:'price-1',name:'洗剤',packageQuantity:null,packageUnit:null}],'1y')",
  {stockV2:()=>true,allPreviewRecords:()=>[],allPreviewItems:()=>fixtures,
   priceCandidates:(_a,b)=>b.filter(x=>Number.isFinite(x.line_total_tax_included)&&Number.isFinite(x.quantity)),
