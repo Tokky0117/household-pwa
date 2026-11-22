@@ -413,6 +413,7 @@ function kurashiBook_() {
 }
 // v98 product-owned stock is opt-in per trial workbook; old installations
 // remain readable until the separately authenticated owner migration completes.
+const KURASHI_V98_RECORD_FIELDS = ['purchase_size_quantity','purchase_size_unit'];
 const KURASHI_V98_PRODUCT_FIELDS = ['category_id','stock_enabled','in_stock',
   'memo','display_group','sort_order','is_hidden','migrated_from_household_item_id'];
 function kurashiProductStockColumns_(book) {
@@ -425,14 +426,26 @@ function kurashiProductStockColumns_(book) {
   if(JSON.stringify(heads)===JSON.stringify(all))return all;
   kurashiFail_('SCHEMA_ERROR','商品の列構成が想定と異なります');
 }
+function kurashiRecordItemColumns_(book) {
+ const base=KURASHI_NEW_SCHEMA.record_items,sheet=book.getSheetByName('record_items');
+ if(!sheet)kurashiFail_('SCHEMA_ERROR','明細シートがありません');
+ const heads=sheet.getRange(1,1,1,sheet.getLastColumn()).getValues()[0];
+ if(JSON.stringify(heads)===JSON.stringify(base))return base;
+ const all=[...base,...KURASHI_V98_RECORD_FIELDS];
+ if(JSON.stringify(heads)===JSON.stringify(all))return all;
+ kurashiFail_('SCHEMA_ERROR','明細シートの列構成が想定外です');
+}
 function kurashiStockReady_(book){
  const props=PropertiesService.getScriptProperties();
  return props.getProperty('KURASHI_PRODUCT_STOCK_VERSION')==='2' &&
   kurashiProductStockColumns_(book).length===
-   KURASHI_NEW_SCHEMA.products.length+KURASHI_V98_PRODUCT_FIELDS.length;
+   KURASHI_NEW_SCHEMA.products.length+KURASHI_V98_PRODUCT_FIELDS.length &&
+  kurashiRecordItemColumns_(book).length===
+   KURASHI_NEW_SCHEMA.record_items.length+KURASHI_V98_RECORD_FIELDS.length;
 }
 function kurashiColumnNames_(name,book){
  if(name==='products')return kurashiProductStockColumns_(book);
+ if(name==='record_items')return kurashiRecordItemColumns_(book);
  if(name==='household_items'){
   const base=KURASHI_NEW_SCHEMA.household_items;
   const sheet=book.getSheetByName('household_items');
@@ -1401,7 +1414,8 @@ function kurashiCompleteOperation_(book,hid,id,hash,plan,result,entityType,entit
   return result;
 }
 function kurashiSameSchemaRow_(name,a,b){
-  return KURASHI_NEW_SCHEMA[name].every(k=>String(a[k]??'')===String(b[k]??''));
+  const keys=name==='record_items'?[...KURASHI_NEW_SCHEMA.record_items,...KURASHI_V98_RECORD_FIELDS]:KURASHI_NEW_SCHEMA[name];
+  return keys.every(k=>String(a[k]??'')===String(b[k]??''));
 }
 // Write adjacent new rows as one Sheets call. Verify already-written rows
 // before retrying a partially completed journaled operation; never duplicate
@@ -1535,16 +1549,24 @@ function kurashiPlanAlias_(raw,chainId,productId,index,newRows,updates,now){
 function kurashiRecordLineFields_(line) {
  if(!line||typeof line!=='object'||Array.isArray(line))kurashiFail_('BAD_REQUEST','明細の形式が不正です');
  const allowed=new Set(['raw_name','non_ocr_name','linked_product_id','quantity',
-  'line_total_tax_included','product_name_candidate','candidate_match_type']);
+  'line_total_tax_included','product_name_candidate','candidate_match_type',
+  'purchase_size_quantity','purchase_size_unit']);
  if(Object.keys(line).some(k=>!allowed.has(k))||
     !['raw_name','linked_product_id','quantity','line_total_tax_included']
       .every(k=>Object.prototype.hasOwnProperty.call(line,k)))
   kurashiFail_('BAD_REQUEST','明細の形式が不正です');
+ const hasSize=Object.prototype.hasOwnProperty.call(line,'purchase_size_quantity')||
+  Object.prototype.hasOwnProperty.call(line,'purchase_size_unit');
+ const sizeQuantity=line.purchase_size_quantity??null,sizeUnit=line.purchase_size_unit??null;
+ if(hasSize&&((sizeQuantity===null)!==(sizeUnit===null)||
+    (sizeQuantity!==null&&(!Number.isFinite(sizeQuantity)||typeof sizeQuantity!=='number'||sizeQuantity<=0))||
+    (sizeUnit!==null&&!['g','kg','mL','L','個','本','枚'].includes(sizeUnit))))
+  kurashiFail_('BAD_REQUEST','購入時の内容量を確認してください');
  const name=line.product_name_candidate===undefined?'':kurashiRawName_(line.product_name_candidate);
  const kind=line.candidate_match_type===undefined?'':line.candidate_match_type;
  if(typeof kind!=='string'||(name&&!['','existing','new'].includes(kind))||(!name&&kind!==''))
   kurashiFail_('BAD_REQUEST','商品名候補の形式が不正です');
- return {name,kind};
+ return {name,kind,sizeQuantity,sizeUnit,hasSize};
 }
 
 function kurashiCreateRecord_(user,payload,id){
@@ -1575,6 +1597,8 @@ function kurashiCreateRecord_(user,payload,id){
       const aliasIndex=kurashiAliasIndex_(book),newAliases=[],aliasUpdates=[];
       const lineItems=payload.items.map((line,n)=>{
         const suggestion=kurashiRecordLineFields_(line);
+        if(suggestion.hasSize&&!kurashiStockReady_(book))
+          kurashiFail_('STOCK_MIGRATION_REQUIRED','明細内容量の保存先がありません');
         const prod=line.linked_product_id;
         if(prod!==null&&(typeof prod!=='string'||!productIds.has(prod)))
           kurashiFail_('NOT_FOUND','商品が見つかりません');
@@ -1590,6 +1614,9 @@ function kurashiCreateRecord_(user,payload,id){
           record_id:recordId,line_order:n+1,receipt_name_id:receiptNameId,non_ocr_name:confirmed,
           linked_product_id:prod||'',quantity:qty,line_total_tax_included:amount,
           product_name_candidate:suggestion.name,candidate_match_type:suggestion.kind,
+          ...(kurashiStockReady_(book)?{
+            purchase_size_quantity:suggestion.sizeQuantity??'',
+            purchase_size_unit:suggestion.sizeUnit||''}:{}),
           created_at:now,updated_at:now,version:1,deleted_at:''};
       });
       plan={status:'prepared',action,
@@ -1674,6 +1701,8 @@ function kurashiMutateRecord_(user,action,payload,id){
     const aliasIndex=kurashiAliasIndex_(book),newAliases=[];
     fresh=payload.items.map((line,n)=>{
      const suggestion=kurashiRecordLineFields_(line);
+     if(suggestion.hasSize&&!kurashiStockReady_(book))
+      kurashiFail_('STOCK_MIGRATION_REQUIRED','明細内容量の保存先がありません');
      const prod=line.linked_product_id;
      if(prod!==null&&(!known.has(prod)||typeof prod!=='string'))
        kurashiFail_('NOT_FOUND','商品がありません');
@@ -1690,6 +1719,9 @@ function kurashiMutateRecord_(user,action,payload,id){
       linked_product_id:prod||'',quantity:line.quantity,
       line_total_tax_included:line.line_total_tax_included,
       product_name_candidate:suggestion.name,candidate_match_type:suggestion.kind,
+      ...(kurashiStockReady_(book)?{
+        purchase_size_quantity:suggestion.sizeQuantity??'',
+        purchase_size_unit:suggestion.sizeUnit||''}:{}),
       created_at:now,updated_at:now,version:1,deleted_at:''};
     });
     next.chain_id=payload.chain_id;next.record_date=date;
@@ -1958,6 +1990,9 @@ function kurashiTrialStockPlan_(book){
  const sheet=book.getSheetByName('products'),headers=KURASHI_NEW_SCHEMA.products;
  const all=[...headers,...KURASHI_V98_PRODUCT_FIELDS];
  const actual=sheet.getRange(1,1,1,sheet.getLastColumn()).getValues()[0];
+ const recordHeaders=kurashiRecordItemColumns_(book);
+ const recordReady=recordHeaders.length===KURASHI_NEW_SCHEMA.record_items.length+
+   KURASHI_V98_RECORD_FIELDS.length;
  if(JSON.stringify(actual)!==JSON.stringify(headers)&&
     JSON.stringify(actual)!==JSON.stringify(all))
   kurashiFail_('SCHEMA_ERROR','商品シートに予期しない列があります');
@@ -2015,7 +2050,8 @@ function kurashiTrialStockPlan_(book){
  }
  return {book,planned,creates,existing_count:products.length,
   to_create:creates.length,split_groups:[...related.values()].filter(v=>v.length>1).length,
-  already_complete:kurashiStockReady_(book),schema_upgraded:actual.length===all.length};
+  already_complete:kurashiStockReady_(book),schema_upgraded:actual.length===all.length,
+  record_schema_upgraded:recordReady};
 }
 function kurashiTrialStockPreflight(){
  const book=kurashiTrialNamingBook_();
@@ -2023,6 +2059,7 @@ function kurashiTrialStockPreflight(){
  const result={status:plan.already_complete?'READY':'DRY_RUN_OK',
   product_count:plan.existing_count,orphan_items_to_create:plan.to_create,
   former_shared_groups:plan.split_groups,schema_upgraded:plan.schema_upgraded,
+  record_schema_upgraded:plan.record_schema_upgraded,
   backup_id:!!PropertiesService.getScriptProperties().getProperty('KURASHI_STOCK_BACKUP_ID')};
  console.log(JSON.stringify(result));
  return result;
@@ -2047,6 +2084,11 @@ function kurashiTrialStockMigrate(){
    const last=base.length;
    products.getRange(1,last+1,1,KURASHI_V98_PRODUCT_FIELDS.length)
      .setValues([KURASHI_V98_PRODUCT_FIELDS]);
+  }
+  if(!plan.record_schema_upgraded){
+   const records=book.getSheetByName('record_items'),last=KURASHI_NEW_SCHEMA.record_items.length;
+   records.getRange(1,last+1,1,KURASHI_V98_RECORD_FIELDS.length)
+    .setValues([KURASHI_V98_RECORD_FIELDS]);
   }
   // Recoverability: every step is safely repeatable before the ready marker.
   // Old columns and all record/alias/product IDs remain unchanged.
