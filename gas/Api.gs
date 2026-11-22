@@ -2276,9 +2276,9 @@ function kurashiTrialStockPlan_(book){
    kurashiFail_('STOCK_MIGRATION_REVIEW','未紐付けの商品と同名の日用品があります');
   const repeated=(orphanNameCounts.get(baseKey)||0)>1;
   const subName=String(value.sub_name||'').trim();
-  if(repeated&&!subName)
-   kurashiFail_('STOCK_MIGRATION_REVIEW','同名の日用品にサブ情報がないため商品を区別できません');
-  const productName=repeated?baseName+'（'+subName+'）':baseName;
+  // A single blank sub_name keeps its unmodified base name.
+  // Two blank labels still collide and are stopped by proposedNames below.
+  const productName=repeated&&subName?baseName+'（'+subName+'）':baseName;
   if(productName.length>80)
    kurashiFail_('STOCK_MIGRATION_REVIEW','商品名が長すぎる日用品があります');
   const productKey=kurashiNormalize_(productName);
