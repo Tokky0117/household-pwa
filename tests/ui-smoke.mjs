@@ -252,7 +252,7 @@ assert.ok(source.includes("action:'inventoryGroupOpen'")&&
  readFileSync(new URL('../live-client.js',import.meta.url),'utf8').includes("kind:'group'"),
  'selection controls exist and grouping is persisted in the live-client journal');
 assert.ok(source.includes('iconButton({label,action,iconHtml,title=')&&
- source.includes("const add=UI.iconButton(")&&
+ (source.includes("const add=UI.iconButton(")||source.includes("const add=stockV2()?'':UI.iconButton("))&&
  source.includes("registration.map(x=>UI.button("),
  'Daily add action and receipt entry actions use shared builders');
 assert.ok(!ui.listView().includes('data-act="copyList"')&&
