@@ -241,6 +241,8 @@
      quantity:line.quantity,line_total_tax_included:line.line_total_tax_included,
      candidate_package_quantity:line.candidate_package_quantity??null,
      candidate_package_unit:line.candidate_package_unit??null,
+     purchase_size_quantity:line.purchase_size_quantity??null,
+     purchase_size_unit:line.purchase_size_unit??null,
      version:1,deleted_at:''
     }));
     continue;
@@ -258,6 +260,8 @@
      quantity:line.quantity,line_total_tax_included:line.line_total_tax_included,
      candidate_package_quantity:line.candidate_package_quantity??null,
      candidate_package_unit:line.candidate_package_unit??null,
+     purchase_size_quantity:line.purchase_size_quantity??null,
+     purchase_size_unit:line.purchase_size_unit??null,
      version:1,deleted_at:''
     }));
     continue;
@@ -807,6 +811,9 @@
     {candidate_package_quantity:sizeQty,candidate_package_unit:sizeUnit}:{};
    return {raw_name:rawName,...(confirmed?{non_ocr_name:confirmed}:{}),linked_product_id:productId,
     quantity:line.quantity,line_total_tax_included:line.line_total_tax_included,
+    ...(snap.capabilities?.product_stock_v2===true?{
+      purchase_size_quantity:size.candidate_package_quantity??null,
+      purchase_size_unit:size.candidate_package_unit??null}:{}),
     ...(suggested?{product_name_candidate:suggested,candidate_match_type:suggestionKind,...size}:{})};
   });
   return {id:operationId(),kind:'record-create',clientId:'local-'+uid(),
