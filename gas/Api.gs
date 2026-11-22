@@ -886,7 +886,8 @@ function kurashiReorderItems_(user,payload,operationId){
  * old group's household_item_order are harmless and existing relative order stays.
  * Prepared journal + before/after row enable exact-operation crash recovery. */
 function kurashiSameProduct_(a,b){
-  return KURASHI_NEW_SCHEMA.products.every(k=>String(a[k]??'')===String(b[k]??''));
+  return [...KURASHI_NEW_SCHEMA.products,...KURASHI_V98_PRODUCT_FIELDS]
+    .every(k=>String(a[k]??'')===String(b[k]??''));
 }
 function kurashiProductFields_(payload){
   const name=kurashiName_(payload.name);
@@ -1822,4 +1823,140 @@ function kurashiUpsertStoreAlias_(user,payload,id){
       sequence_no:plan.sequence_no
     },'retail_chains',plan.entity.chain_id);
   }finally{lock.releaseLock()}
+}
+
+
+// v98 OWNER-ONLY TRIAL MIGRATION. This is deliberately not exposed by doPost.
+// Running it is a separate manual decision after ALL devices have no queued
+// writes; this script cannot inspect a disconnected phone's IndexedDB.
+function kurashiTrialStockPlan_(book){
+ const prop=PropertiesService.getScriptProperties();
+ if(prop.getProperty('SPREADSHEET_ID')!==prop.getProperty('KURASHI_NEW_WORKBOOK_ID')||
+    prop.getProperty('KURASHI_SCHEMA_VERSION')!=='1')
+  kurashiFail_('CONFIG_REQUIRED','試作Sheetsの設定を確認してください');
+ const sheet=book.getSheetByName('products'),headers=KURASHI_NEW_SCHEMA.products;
+ const all=[...headers,...KURASHI_V98_PRODUCT_FIELDS];
+ const actual=sheet.getRange(1,1,1,sheet.getLastColumn()).getValues()[0];
+ if(JSON.stringify(actual)!==JSON.stringify(headers)&&
+    JSON.stringify(actual)!==JSON.stringify(all))
+  kurashiFail_('SCHEMA_ERROR','商品シートに予期しない列があります');
+ const journal=kurashiRows_('processed_operations',book);
+ if(journal.some(x=>{
+   let plan;
+   try{plan=JSON.parse(String(x.value.result||''))}catch(_){
+    kurashiFail_('RECOVERY_CONFLICT','操作履歴を読み取れません');
+   }
+   return plan?.status==='prepared';
+  }))kurashiFail_('RECOVERY_REQUIRED','途中の保存操作を先に復旧してください');
+ const h=kurashiTemporaryHousehold_().householdId;
+ const items=kurashiRows_('household_items',book).filter(x=>
+  String(x.value.household_id)===h&&!x.value.deleted_at);
+ const products=kurashiRows_('products',book).filter(x=>
+  String(x.value.household_id)===h&&!x.value.deleted_at);
+ const parents=new Map(items.map(x=>[String(x.value.household_item_id),x.value]));
+ const related=new Map();
+ for(const row of products){
+  const id=String(row.value.household_item_id||'');
+  if(!parents.has(id))continue;
+  const list=related.get(id)||[];list.push(row.value.product_id);related.set(id,list);
+ }
+ const planned=[];
+ for(const {row,value} of products){
+  const item=parents.get(String(value.household_item_id||''));
+  const shared=!!item&&(related.get(String(value.household_item_id))||[]).length>1;
+  const data={...value,category_id:item?Number(item.category_id):4,
+   stock_enabled:item?!Boolean(item.is_hidden===true||String(item.is_hidden)==='true'):false,
+   in_stock:item?Boolean(item.in_stock===true||String(item.in_stock)==='true'):false,
+   memo:item?String(item.sub_name||''):'',
+   display_group:shared?String(item.name||''):'',
+   sort_order:item?Number(item.sort_order)||1:Math.max(1,row),
+   is_hidden:false,
+   migrated_from_household_item_id:String(value.household_item_id||'')};
+  planned.push({row,entity:data});
+ }
+ const creates=[];
+ const existingNames=new Map();
+ for(const p of products){
+  const normalized=String(p.value.normalized_name||p.value.name||'').normalize('NFKC').trim().toLocaleLowerCase('ja');
+  if(!existingNames.has(normalized))existingNames.set(normalized,[]);
+  existingNames.get(normalized).push(p.value.product_id);
+ }
+ for(const {value} of items){
+  const originalId=String(value.household_item_id);
+  if(related.has(originalId))continue;
+  if(!String(value.name||'').trim())kurashiFail_('STOCK_MIGRATION_REVIEW','名前のない日用品があります');
+  // If a price-only product shares the name, ownership cannot be inferred.
+  // Never silently merge, copy or reassign historical receipt product IDs.
+  const normalized=String(value.name).normalize('NFKC').trim().toLocaleLowerCase('ja');
+  if(existingNames.has(normalized))
+   kurashiFail_('STOCK_MIGRATION_REVIEW','未紐付けの商品と同名の日用品があります');
+  creates.push({source_item_id:originalId,source:value});
+ }
+ return {book,planned,creates,existing_count:products.length,
+  to_create:creates.length,split_groups:[...related.values()].filter(v=>v.length>1).length,
+  already_complete:kurashiStockReady_(book),schema_upgraded:actual.length===all.length};
+}
+function kurashiTrialStockPreflight(){
+ const book=kurashiTrialNamingBook_();
+ const plan=kurashiTrialStockPlan_(book);
+ const result={status:plan.already_complete?'READY':'DRY_RUN_OK',
+  product_count:plan.existing_count,orphan_items_to_create:plan.to_create,
+  former_shared_groups:plan.split_groups,schema_upgraded:plan.schema_upgraded,
+  backup_id:!!PropertiesService.getScriptProperties().getProperty('KURASHI_STOCK_BACKUP_ID')};
+ console.log(JSON.stringify(result));
+ return result;
+}
+function kurashiTrialStockMigrate(){
+ const lock=LockService.getScriptLock();
+ if(!lock.tryLock(20000))kurashiFail_('BUSY','保存処理中のため移行しません');
+ try{
+  const book=kurashiTrialNamingBook_(),plan=kurashiTrialStockPlan_(book);
+  if(plan.already_complete)return {status:'ALREADY_READY'};
+  const props=PropertiesService.getScriptProperties();
+  // The migration is append-only and requires a separate restorable workbook.
+  if(!props.getProperty('KURASHI_STOCK_BACKUP_ID')){
+   const id=DriveApp.getFileById(book.getId()).makeCopy(
+     'くらしストック_試作_v98移行前_'+new Date().toISOString()).getId();
+   if(!id)kurashiFail_('BACKUP_REQUIRED','試作データのバックアップに失敗しました');
+   props.setProperty('KURASHI_STOCK_BACKUP_ID',id);
+  }
+  const products=book.getSheetByName('products');
+  const base=KURASHI_NEW_SCHEMA.products;
+  if(!plan.schema_upgraded){
+   const last=base.length;
+   products.getRange(1,last+1,1,KURASHI_V98_PRODUCT_FIELDS.length)
+     .setValues([KURASHI_V98_PRODUCT_FIELDS]);
+  }
+  // Recoverability: every step is safely repeatable before the ready marker.
+  // Old columns and all record/alias/product IDs remain unchanged.
+  for(const entry of plan.planned)kurashiReplace_('products',entry.row,entry.entity,book);
+  const existing=kurashiRows_('products',book);
+  const recovered=new Set(existing.map(x=>String(x.value.migrated_from_household_item_id||'')));
+  const household=kurashiTemporaryHousehold_().householdId,now=new Date().toISOString();
+  let created=0;
+  for(const item of plan.creates){
+   if(recovered.has(item.source_item_id))continue;
+   const i=item.source;
+   kurashiAppend_('products',{product_id:'product-'+Utilities.getUuid(),household_id:household,
+     household_item_id:item.source_item_id,name:String(i.name),
+     normalized_name:kurashiNormalize_(String(i.name)),
+     package_quantity:'',package_unit:'',household_item_order:'',
+     version:1,created_at:now,updated_at:now,deleted_at:'',
+     category_id:Number(i.category_id),stock_enabled:!Boolean(i.is_hidden===true||String(i.is_hidden)==='true'),
+     in_stock:Boolean(i.in_stock===true||String(i.in_stock)==='true'),
+     memo:String(i.sub_name||''),display_group:'',sort_order:Number(i.sort_order)||1,
+     is_hidden:false,migrated_from_household_item_id:item.source_item_id},book);
+   recovered.add(item.source_item_id);created++;
+  }
+  // Verify ALL legacy row IDs remain present and the new names are readable.
+  const after=kurashiRows_('products',book);
+  if(after.length<plan.existing_count+plan.to_create||
+     after.some(x=>typeof x.value.stock_enabled!=='boolean'&&
+       !['true','false'].includes(String(x.value.stock_enabled).toLowerCase())))
+   kurashiFail_('STOCK_MIGRATION_INCOMPLETE','再実行して移行を完了してください');
+  props.setProperty('KURASHI_PRODUCT_STOCK_VERSION','2');
+  const result={status:'PRODUCT_STOCK_V2_READY',products:after.length,
+   orphan_products_created:created,receipt_history_preserved:true};
+  console.log(JSON.stringify(result));return result;
+ }finally{lock.releaseLock()}
 }
