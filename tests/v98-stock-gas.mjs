@@ -61,7 +61,7 @@ let uuid=0,locked=false;
 const props={SPREADSHEET_ID:'trial',KURASHI_NEW_WORKBOOK_ID:'trial',KURASHI_SCHEMA_VERSION:'1'};
 const context=vm.createContext({
  SpreadsheetApp:{
-  openById:id=>{assert.equal(id,'trial');return trial},
+  openById:id=>{const book=books.get(id);assert.ok(book,'unknown workbook '+id);return book},
   create:name=>{const b=new MockBook('backup-'+(++uuid));b.tables.set('Sheet1',[['']]);books.set(b.id,b);backups.set(b.id,name);return b}
  },
  LockService:{getScriptLock:()=>({tryLock:()=>!locked&&(locked=true),releaseLock:()=>{locked=false}})},
@@ -86,6 +86,8 @@ assert.equal(migrated.status,'PRODUCT_STOCK_V2_READY');
 assert.equal(migrated.orphan_products_created,1);
 assert.equal(props.KURASHI_PRODUCT_STOCK_VERSION,'2');
 assert.ok(props.KURASHI_STOCK_BACKUP_ID&&backups.has(props.KURASHI_STOCK_BACKUP_ID));
+assert.equal(props.KURASHI_STOCK_BACKUP_VERIFIED,'yes');
+assert.equal(context.kurashiTrialStockVerify().status,'VERIFIED');
 const backup=books.get(props.KURASHI_STOCK_BACKUP_ID);
 assert.equal(backup.getSheets().length,trial.getSheets().length);
 assert.equal(backup.tables.get('products').length,4,'backup kept exactly the original three products');
@@ -145,4 +147,7 @@ const recordSnapshot=call('bootstrap',{}).data;
 assert.ok(recordSnapshot.record_items.some(x=>x.purchase_size_quantity===580&&x.purchase_size_unit==='g'));
 assert.equal(recordSnapshot.record_items.find(x=>x.record_item_id===record.data.items[0].record_item_id).quantity,'',
  'unknown quantity must remain blank rather than becoming 0 or 1');
-console.log('v98 trial stock migration, backup, product CRUD/reorder, null receipt values and size persistence: OK');
+// A changed original cell must be detected, rather than declared restorable.
+backup.tables.get('products')[1][3]='TAMPERED_NAME';
+assert.throws(()=>context.kurashiTrialStockVerify(),/バックアップと一致しません/);
+console.log('v98 trial stock migration, verified backup, immutable history, product CRUD/reorder, null receipt values and size persistence: OK');
