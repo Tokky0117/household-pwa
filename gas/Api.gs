@@ -638,6 +638,8 @@ function kurashiSaveItem_(user,action,payload,operationId) {
       allIds.add(key);
     }
     const found=entries.find(x=>String(x.value.operation_id)===operationId);
+    if(kurashiStockReady_(book)&&!found)
+      kurashiFail_('CLIENT_UPGRADE_REQUIRED','旧在庫方式の新規保存はできません。試作画面を更新してください');
     if (found && String(found.value.household_id)!==hid)
       kurashiFail_('RECOVERY_CONFLICT','保存操作IDが重複しています');
     if (found && String(found.value.request_hash)!==hash)
@@ -802,6 +804,8 @@ function kurashiReorderItems_(user,payload,operationId){
     const book=kurashiBook_();
     const history=kurashiRows_('processed_operations',book);
     const found=history.filter(x=>String(x.value.operation_id)===operationId);
+    if(kurashiStockReady_(book)&&!found.length)
+      kurashiFail_('CLIENT_UPGRADE_REQUIRED','旧在庫方式の並び替えはできません。試作画面を更新してください');
     if(found.length>1)kurashiFail_('RECOVERY_CONFLICT','保存操作IDが重複しています');
     if(found[0]&&String(found[0].value.household_id)!==hid)
       kurashiFail_('RECOVERY_CONFLICT','保存操作IDが別家庭で使用されています');
@@ -1194,6 +1198,8 @@ function kurashiSaveProduct_(user,action,payload,operationId){
     if((updatingStock||creating&&keys===createStockKeys)&&!stockReady)
       kurashiFail_('STOCK_MIGRATION_REQUIRED','商品単位の在庫管理は未移行です');
     const found=history.filter(x=>String(x.value.operation_id)===operationId);
+    if(stockReady&&action==='product.update'&&!found.length)
+      kurashiFail_('CLIENT_UPGRADE_REQUIRED','商品編集は新しい商品マスタから行ってください');
     if(found.length>1)kurashiFail_('RECOVERY_CONFLICT','保存操作IDが重複しています');
     if(found[0]&&String(found[0].value.household_id)!==hid)
       kurashiFail_('RECOVERY_CONFLICT','別家庭の保存操作IDです');
@@ -1370,6 +1376,8 @@ function kurashiReorderProducts_(user,payload,operationId){
     const book=kurashiBook_();
     const history=kurashiRows_('processed_operations',book);
     const found=history.filter(x=>String(x.value.operation_id)===operationId);
+    if(kurashiStockReady_(book)&&!found.length)
+      kurashiFail_('CLIENT_UPGRADE_REQUIRED','旧商品の並び替えはできません。試作画面を更新してください');
     if(found.length>1)kurashiFail_('RECOVERY_CONFLICT','商品並び替えの操作IDが重複しています');
     if(found[0]&&String(found[0].value.household_id)!==hid)
       kurashiFail_('RECOVERY_CONFLICT','操作IDが別家庭で使用されています');
