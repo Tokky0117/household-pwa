@@ -38,7 +38,8 @@ class MockBook{
 const trial=new MockBook('trial');
 for(const [name,headers] of Object.entries(schema)){
  trial.tables.set(name,[deep(name==='household_items'?[...headers.slice(0,-1),'stock_management_enabled']:
-  name==='products'?[...headers,'merged_into_product_id']:headers)]);
+  name==='products'?[...headers,'merged_into_product_id']:
+  name==='record_items'?[...headers,'purchase_package_quantity','purchase_package_unit','price_eligible']:headers)]);
 }
 function add(name,obj){const h=trial.tables.get(name)[0];trial.tables.get(name).push(h.map(k=>obj[k]??''))}
 add('households',{household_id:'h1',display_name:'試作',version:1});
@@ -56,7 +57,8 @@ for(const [id,name,item,qty,unit] of [['product-1','アタックZERO','item-1',5
 add('records',{record_id:'record-1',household_id:'h1',record_type:'receipt',chain_id:'chain1',
  record_date:'2026-11-21',version:1});
 add('record_items',{record_item_id:'recorditem-1',record_id:'record-1',line_order:1,linked_product_id:'product-1',
- quantity:1,line_total_tax_included:400,version:1,non_ocr_name:'アタックZERO'});
+ quantity:1,line_total_tax_included:400,version:1,non_ocr_name:'アタックZERO',
+ purchase_package_quantity:580,purchase_package_unit:'g',price_eligible:true});
 const backups=new Map(),books=new Map([['trial',trial]]);
 let uuid=0,locked=false;
 const props={SPREADSHEET_ID:'trial',KURASHI_NEW_WORKBOOK_ID:'trial',KURASHI_SCHEMA_VERSION:'1'};
@@ -88,6 +90,10 @@ assert.equal(migrated.orphan_products_created,1);
 assert.equal(trial.tables.get('products')[0][schema.products.length],'merged_into_product_id');
 assert.equal(trial.tables.get('products')[0][schema.products.length+1],'category_id',
  'new stock columns must follow the existing merge metadata, not overwrite it');
+assert.equal(trial.tables.get('record_items')[0][schema.record_items.length],'purchase_package_quantity');
+assert.equal(trial.tables.get('record_items')[0][schema.record_items.length+2],'price_eligible');
+assert.equal(trial.tables.get('record_items')[0][schema.record_items.length+3],'purchase_size_quantity',
+ 'v98 receipt size columns must follow the old trial package and eligibility fields');
 assert.equal(props.KURASHI_PRODUCT_STOCK_VERSION,'2');
 assert.ok(props.KURASHI_STOCK_BACKUP_ID&&backups.has(props.KURASHI_STOCK_BACKUP_ID));
 assert.equal(props.KURASHI_STOCK_BACKUP_VERIFIED,'yes');
@@ -99,6 +105,9 @@ assert.equal(context.kurashiTrialStockMigrate().status,'ALREADY_READY','replay n
 const bootstrap=call('bootstrap',{}).data;
 assert.equal(bootstrap.capabilities.product_stock_v2,true);
 assert.equal(bootstrap.record_items[0].linked_product_id,'product-1');
+assert.equal(bootstrap.record_items[0].purchase_package_quantity,580);
+assert.equal(bootstrap.record_items[0].purchase_size_quantity,580,
+ 'legacy receipt package size must appear through the canonical v98 size field');
 assert.equal(bootstrap.products.length,4);
 assert.equal(bootstrap.products.find(x=>x.product_id==='product-1').display_group,'洗濯洗剤');
 assert.equal(bootstrap.products.find(x=>x.product_id==='product-2').in_stock,true);
