@@ -185,6 +185,8 @@ let items=load(),expandedItemGroups=new Set(),tab='items',page='list',selected=n
 let editingInventory=false,inventoryGroupSheet=false,selectedInventoryIds=new Set();
 let editingPrice=false,priceGroupSheet=false,selectedPriceIds=new Set(),expandedPriceGroups=new Set();
 let priceQuery='',selectedProductId=null,priceReturn='price';
+let stockManageSheet=false;
+let masterProductReturn='settings';
 const app=document.getElementById('app');
 // Native iPhone chooser: Photo Library, Take Photo, or Files. Photos stay in memory.
 let scanPhotos=[],scanIndex=0,scanBusy=false,scanDraft=null,scanStatus='',scanAiChanges=[],scanAssistMessage='',scanToken=0,scanError='',scanReadFailed=false,scanNewStoreMode=false,scanReturnScrollY=null;
@@ -1784,7 +1786,7 @@ function itemCardHtml(i,cat,child=false){
  return `<div class="item swipe-item ${child?'item-group-child-row':'item-top-row'} ${editingInventory?'inventory-edit-item':''} ${!editingInventory&&openSwipeId===i.id?'swipe-open':''}" data-item-id="${esc(i.id)}" data-category-id="${cat}" data-group-key="${esc(groupKey)}" ${child?'':'data-list-top="true"'}>
    ${editingInventory?'':`<div class="swipe-actions">
     <button type="button" class="swipe-edit" data-list-edit="${esc(i.id)}" tabindex="${openSwipeId===i.id?0:-1}" aria-label="${esc(label)}を編集">${miniIcon('pencil')}<span>編集</span></button>
-    <button type="button" class="swipe-delete" data-list-hide="${esc(i.id)}" tabindex="${openSwipeId===i.id?0:-1}" aria-label="${esc(label)}を削除">${miniIcon('trash')}<span>削除</span></button>
+    <button type="button" class="swipe-delete" data-list-hide="${esc(i.id)}" tabindex="${openSwipeId===i.id?0:-1}" aria-label="${esc(label)}を${stockV2()?'在庫管理から解除':'削除'}">${miniIcon('trash')}<span>${stockV2()?'解除':'削除'}</span></button>
    </div>`}
    <div class="swipe-front">
     ${editingInventory?`<input type="checkbox" class="inventory-select" data-select-item="${esc(i.id)}" aria-label="${esc(label)}を選択" ${chosen?'checked':''}>`:''}
@@ -1882,10 +1884,10 @@ function listHelpView(){
  const helpLines=[
   '「あり／なし」を押して在庫を切り替え',
   '商品名を押して登録商品の価格情報を確認',
-  '左スワイプで編集・削除',
+  ...(stockV2()?['在庫管理する商品は価格タブの商品詳細から設定','左スワイプで商品情報を確認・在庫管理を解除']:['左スワイプで編集・削除']),
   '長押しして上下に並び替え',
   '右上の「編集」で複数選択し、グループ化',
-  '右上の＋で在庫品目を追加'
+  ...(!stockV2()?['右上の＋で在庫品目を追加']:[])
  ];
  return `<section class="list-help" aria-label="日用品リストの使い方">
  <button type="button" class="list-help-toggle" data-act="toggleListHelp" aria-controls="list-help-content" aria-expanded="${listHelpOpen}">
@@ -1901,10 +1903,10 @@ function listView(){
    s.queued?'未反映の操作 '+s.queued+'件（自動で保存します）':
    s.cached?'前回取得した内容を表示中。Google Sheetsと再接続しています。':
    s.busy&&!s.loaded?'家庭の日用品を読み込み中…':''):'';
- const add=UI.iconButton({label:'商品を追加',action:'add',iconHtml:miniIcon('plus'),title:'商品を追加'});
+ const add=stockV2()?'':UI.iconButton({label:'商品を追加',action:'add',iconHtml:miniIcon('plus'),title:'商品を追加'});
  const edit=`<button type="button" class="inventory-mode-action" data-act="inventoryEditMode">${editingInventory?'完了':'編集'}</button>`;
  const foot=editingInventory?`<div class="inventory-bulk-bar"><span>${selectedInventoryIds.size}件を選択</span>${UI.button({label:'グループ化',action:'inventoryGroupOpen',disabled:selectedInventoryIds.size===0})}${UI.button({label:'解除',action:'inventoryUngroup',disabled:selectedInventoryIds.size===0,variant:'tertiary'})}</div>`:'';
- return `${head('在庫','くらしストック',false,editingInventory?edit:add+edit)}<main>${liveMode&&!stockV2()?UI.statusMessage({text:'商品単位の在庫管理は試作データの移行前です。現在は旧データを表示しています。'}):''}${UI.searchField({id:'search',label:'商品を検索',placeholder:'商品を検索',value:query,extra:'autocomplete="off"'})}<div class="filterrow"><label class="switchlabel"><input type="checkbox" id="onlyOut" ${onlyOut?'checked':''}>在庫なしのみ表示</label></div><div id="item-results">${listResults()}</div>${liveMode?'<p id="list-sync-status" class="hint" role="status" '+(notice?'':'hidden')+'>'+esc(notice)+'</p>':''}${editingInventory?'':listHelpView()}</main>${foot}${nav()}`;
+ return `${head('在庫','くらしストック',false,editingInventory?edit:add+edit)}<main>${liveMode&&!stockV2()?UI.statusMessage({text:'商品単位の在庫管理は試作データの移行前です。現在は旧データを表示しています。'}):''}${UI.searchField({id:'search',label:'商品を検索',placeholder:'商品を検索',value:query,extra:'autocomplete="off"'})}<div class="filterrow"><label class="switchlabel"><input type="checkbox" id="onlyOut" ${onlyOut?'checked':''}>在庫なしのみ表示</label></div><div id="item-results">${listResults()}</div>${stockV2()&&!items.length?'<p class="hint">在庫管理する商品は「価格」の商品詳細から追加できます。</p>':''}${liveMode?'<p id="list-sync-status" class="hint" role="status" '+(notice?'':'hidden')+'>'+esc(notice)+'</p>':''}${editingInventory?'':listHelpView()}</main>${foot}${nav()}`;
 }
 
 const STANDARD_BASES=[['g',100,'100g'],['mL',100,'100mL'],['個',1,'1個'],['枚',1,'1枚'],['本',1,'1本']];
