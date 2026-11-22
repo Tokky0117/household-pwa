@@ -1895,6 +1895,31 @@ function listView(){
 
 const STANDARD_BASES=[['g',100,'100g'],['mL',100,'100mL'],['個',1,'1個'],['枚',1,'1枚'],['本',1,'1本']];
 function standardizedMinima(products,periodValue){
+ if(stockV2()){
+  const available=new Map(products.map(p=>[p.id,p]));
+  const records=priceCandidates(allPreviewRecords(),allPreviewItems(),periodValue)
+   .filter(r=>available.has(r.linked_product_id));
+  const winners=[];
+  for(const [unit,baseQty,label] of STANDARD_BASES){
+   let best=null;
+   for(const line of records){
+    const p=available.get(line.linked_product_id);
+    const amount=line.purchase_size_quantity!==null&&line.purchase_size_quantity!==undefined&&line.purchase_size_quantity!==''?
+     Number(line.purchase_size_quantity):p.packageQuantity;
+    const sizeUnit=line.purchase_size_unit||p.packageUnit;
+    const normalized=convertQuantity(Number(amount),sizeUnit,unit);
+    if(!normalized)continue;
+    const value=(line.line_total_tax_included/line.quantity)*baseQty/normalized;
+    if(!Number.isFinite(value))continue;
+    const date=line.record.record_date;
+    if(!best||value<best.price||value===best.price&&date>best.date)
+     best={label,price:value,productName:p.name,chainId:line.record.chain_id,
+      productId:p.id,date};
+   }
+   if(best)winners.push(best);
+  }
+  return winners;
+ }
  const winners=[];
  for(const [unit,qty,label] of STANDARD_BASES){
   let winning=null;
@@ -1916,7 +1941,12 @@ function standardizedMinima(products,periodValue){
 }
 function normalizedPriceSummary(products,periodValue){
  const winners=standardizedMinima(products,periodValue);
- const unset=products.filter(p=>p.packageQuantity==null||p.packageQuantity===''||!p.packageUnit).length;
+ const unset=stockV2()?priceCandidates(allPreviewRecords(),allPreviewItems(),periodValue)
+  .filter(r=>products.some(p=>p.id===r.linked_product_id)&&
+   !(r.purchase_size_quantity&&r.purchase_size_unit||
+     catalogue.products.find(p=>p.id===r.linked_product_id)?.packageQuantity&&
+     catalogue.products.find(p=>p.id===r.linked_product_id)?.packageUnit)).length:
+  products.filter(p=>p.packageQuantity==null||p.packageQuantity===''||!p.packageUnit).length;
  if(!winners.length&&!unset)return '';
  return '<section class="normalized-price-summary" aria-label="内容量換算の最安値">'+
   '<h3>内容量換算の最安値</h3>'+
@@ -1924,7 +1954,7 @@ function normalizedPriceSummary(products,periodValue){
    esc(yen(w.price))+'</strong><small>'+esc(w.productName+' ／ '+chainLabel(w.chainId))+
    '</small></div>').join('')+
   (unset?'<p class="normalized-price-exclusion">内容量未設定の'+unset+
-   '商品は換算比較対象外です。購入価格は下に表示します。</p>':'')+'</section>';
+   (stockV2()?'件の購入記録':'商品')+'は換算比較対象外です。購入価格は下に表示します。</p>':'')+'</section>';
 }
 function priceCompareView(){
  const i=current();if(!i){page='list';return listView()}
@@ -2253,7 +2283,7 @@ function productPriceView(){
      open:periodMenu,options:[{value:'3m',label:'直近3か月'},{value:'1y',label:'直近1年'}]})})}
   <div class="normalized-price-slot">${normalizedPriceSummary([p],period)}</div>
   ${prices.length?`<p class="price-product-best">購入価格の最安値：<strong>${esc(yen(prices[0].price))}</strong> ／ ${esc(chainLabel(prices[0].chainId))}</p>`:'<p class="hint">対象期間の購入記録はありません。</p>'}
-  ${UI.sectionHeading({title:'チェーン別の最安値',subtitle:'税込・購入1点あたり'})}
+  ${UI.sectionHeading({title:stockV2()?'チェーン別の購入価格':'チェーン別の最安値',subtitle:stockV2()?'税込・購入1点あたり（容量違いは上の換算価格で比較）':'税込・購入1点あたり'})}
   <div class="chain-price-list">${rows}</div>
  </main>`;
 }
