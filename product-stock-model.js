@@ -44,7 +44,8 @@
    // Never claim stock is shared after migrating. Old values only seed each
    // product. Every subsequent stock toggle targets that product ID alone.
    const manualStock=p.stock_enabled!==undefined&&p.stock_enabled!==''?
-    bool(p.stock_enabled):valid&&!bool(old.is_hidden);
+    bool(p.stock_enabled):valid&&(old.stock_management_enabled!==undefined&&old.stock_management_enabled!==''?
+     bool(old.stock_management_enabled):!bool(old.is_hidden));
    const manualState=p.in_stock!==undefined&&p.in_stock!==''?
     bool(p.in_stock):valid&&bool(old.in_stock);
    const row={
@@ -67,7 +68,8 @@
    missing.push({
     household_item_id:old.household_item_id,name:String(old.name||''),
     category_id:cat(old.category_id),memo:String(old.sub_name||''),
-    in_stock:bool(old.in_stock),stock_enabled:!bool(old.is_hidden),
+    in_stock:bool(old.in_stock),stock_enabled:old.stock_management_enabled!==undefined&&old.stock_management_enabled!==''?
+     bool(old.stock_management_enabled):!bool(old.is_hidden),
     sort_order:Number(old.sort_order)||0,
     display_group:''
    });
