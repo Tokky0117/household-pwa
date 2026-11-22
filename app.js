@@ -3605,7 +3605,44 @@ if(action==='productAddToInventory'){
   .then(()=>render()).catch(err=>inlineActionNotice(el,err.message||'在庫に追加できませんでした'));
  return;
 }
-if(action==='inventoryEditMode'){
+if(action==='priceSelectProduct'){
+  if(!editingPrice)return;
+  const id=el.dataset.productId;
+  if(!catalogue.products.some(p=>p.id===id))return;
+  if(selectedPriceIds.has(id))selectedPriceIds.delete(id);else selectedPriceIds.add(id);
+  render();return;
+ }
+ if(action==='priceEditMode'){
+  editingPrice=!editingPrice;selectedPriceIds.clear();priceGroupSheet=false;menu=false;
+  render();return;
+ }
+ if(action==='priceGroupOpen'){
+  if(!editingPrice||!selectedPriceIds.size)return;
+  const targets=[...selectedPriceIds].map(id=>catalogue.products.find(p=>p.id===id));
+  if(targets.some(x=>!x)||new Set(targets.map(x=>x.category)).size!==1){
+   say('同じカテゴリの商品を選択してください');return;
+  }
+  priceGroupSheet=true;render();return;
+ }
+ if(action==='priceUngroup'){
+  if(!editingPrice||!selectedPriceIds.size)return;
+  const targets=[...selectedPriceIds].map(id=>catalogue.products.find(p=>p.id===id))
+   .filter(p=>p&&p.displayGroup);
+  if(!targets.length){say('グループに所属する商品を選択してください');return;}
+  if(new Set(targets.map(x=>x.category)).size!==1){
+   say('同じカテゴリの商品を選択してください');return;
+  }
+  if(liveMode){
+   window.KurashiLive.groupStockItems(targets[0].category,targets.map(p=>p.id),'')
+    .then(()=>{selectedPriceIds.clear();editingPrice=false;render()})
+    .catch(err=>say(err.message||'グループを解除できませんでした'));
+  }else{
+   for(const p of targets){p.displayGroup='';p.version=(p.version||0)+1}
+   persistCatalogue();selectedPriceIds.clear();editingPrice=false;render();
+  }
+  return;
+ }
+ if(action==='inventoryEditMode'){
  editingInventory=!editingInventory;selectedInventoryIds.clear();inventoryGroupSheet=false;
  if(editingInventory){query='';onlyOut=false;collapsed.clear();openSwipeId=null}
  render();return;
