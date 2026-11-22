@@ -669,9 +669,10 @@
    if(groupId!==null&&!snap.household_items.some(i=>i.household_item_id===groupId&&!i.deleted_at))
     throw Error('登録先の日用品が見つかりません');
    if(products.some(p=>p.name.normalize('NFKC')===fields.name.normalize('NFKC')&&
-     Number(p.package_quantity||0)===Number(fields.quantity||0)&&
-     (p.package_unit||null)===fields.unit))
-    throw Error('同じ商品・内容量が既にあります');
+     (snap?.capabilities?.product_stock_v2===true||
+      Number(p.package_quantity||0)===Number(fields.quantity||0)&&
+      (p.package_unit||null)===fields.unit)))
+    throw Error(snap?.capabilities?.product_stock_v2===true?'同じ商品名が既にあります':'同じ商品・内容量が既にあります');
    return {id:operationId(),kind:'product-create',clientId:'local-'+uid(),
     groupId,...fields,stockFields:snap?.capabilities?.product_stock_v2===true?{
      stock_enabled:payload.stock_enabled===true,
@@ -692,9 +693,10 @@
   const fields=productFields(payload);
   if(products.some(p=>p.product_id!==targetId&&
     p.name.normalize('NFKC')===fields.name.normalize('NFKC')&&
-    Number(p.package_quantity||0)===Number(fields.quantity||0)&&
-    (p.package_unit||null)===fields.unit))
-   throw Error('同じ商品・内容量が既にあります');
+    (snap?.capabilities?.product_stock_v2===true||
+     Number(p.package_quantity||0)===Number(fields.quantity||0)&&
+     (p.package_unit||null)===fields.unit)))
+   throw Error('同じ商品名が既にあります');
   return {id:operationId(),kind:'product-edit',targetId,...fields,retries:0};
  }
  function makeOperation(action,payload,doc){
@@ -1168,8 +1170,16 @@
    for(const row of plan){
     let productId=row.product_id;
     if(!productId){
-     const key=receiptSizedKey(row.proposed_name,receiptSize(row.proposed_name,
-      row.package_quantity,row.package_unit));
+     const v2=doc.base?.capabilities?.product_stock_v2===true;
+     const key=v2?receiptProductKey(row.proposed_name):
+      receiptSizedKey(row.proposed_name,receiptSize(row.proposed_name,
+       row.package_quantity,row.package_unit));
+     if(v2&&!names.has(key)){
+      const candidates=project(doc)?.products.filter(p=>!p.deleted_at&&
+       receiptProductKey(p.name)===key)||[];
+      if(candidates.length>1)throw Error('同名商品が複数あります。個別に確認してください');
+      if(candidates.length===1)names.set(key,candidates[0].product_id);
+     }
      if(!names.has(key)){
       const capacity=window.KurashiProductPackage?.candidate(row.proposed_name,{
       packageQuantity:row.package_quantity,packageUnit:row.package_unit});
