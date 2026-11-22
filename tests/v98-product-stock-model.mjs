@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import vm from 'node:vm';
-const model=vm.runInNewContext(readFileSync(new URL('../product-stock-model.js',import.meta.url),'utf8')+';KurashiProductStockModel',{window:{}});
+const model=vm.runInNewContext(readFileSync(new URL('../product-stock-model.js',import.meta.url),'utf8')+';window.KurashiProductStockModel',{window:{}});
 const snapshot={household_items:[
  {household_item_id:'a',name:'洗濯洗剤',sub_name:'詰替を優先',category_id:3,in_stock:true,sort_order:10,is_hidden:false},
  {household_item_id:'b',name:'キャベツ',sub_name:'野菜室',category_id:0,in_stock:false,sort_order:11,is_hidden:false},
