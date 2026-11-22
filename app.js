@@ -358,6 +358,17 @@ function recordProductLine(){
 }
 function recordBulkView(){
  const candidates=window.KurashiLive?.previewBulkReceiptProducts?.(recordDetailId)||[];
+ if(stockV2()){
+  return head('商品候補の一括登録','',true)+
+   '<main class="manage-main bulk-household-main">'+
+   '<p class="hint">保存済み明細の商品名候補を確認して登録します。在庫管理には自動追加しません。</p>'+
+   candidates.map(row=>'<section class="panel bulk-household-row"><strong>'+
+    esc(row.proposed_name)+'</strong><p class="hint">購入時の内容量：'+
+    esc(row.package_quantity&&row.package_unit?row.package_quantity+row.package_unit:'不明')+
+    '</p></section>').join('')+
+   UI.button({label:candidates.length+'件の商品候補を登録',variant:'primary',
+    action:'recordBulkConfirm',disabled:!candidates.length||recordBulkSaving})+'</main>';
+ }
  const rows=candidates.map(row=>{
   const item=items.find(i=>i.id===recordBulkAssignments.get(row.record_item_id));
   const top=householdCandidates(row.proposed_name)[0];
@@ -411,9 +422,10 @@ function recordProductChoices(){
  }).sort((a,b)=>q?candidateScore(q,b.name)-candidateScore(q,a.name)||
   a.name.localeCompare(b.name,'ja'):a.name.localeCompare(b.name,'ja'));
  const list=matches.slice(0,50).map(p=>{
-  const available=!recordProductGroupId||!p.householdItemId||
+  const available=stockV2()||!recordProductGroupId||!p.householdItemId||
    p.householdItemId===recordProductGroupId;
-  return UI.choiceRow({title:productTitle(p),subtitle:available?
+  return UI.choiceRow({title:stockV2()?p.name:productTitle(p),subtitle:stockV2()?
+   (p.stockEnabled?'在庫管理中':'価格記録のみ'):available?
    '日用品：'+linkedItemName(p):'別の日用品に登録済み：'+linkedItemName(p),
    action:available?'recordProductChoose':'',productId:p.id,disabled:!available,
    selected:line.linked_product_id===p.id});
@@ -545,6 +557,7 @@ function updateRecordProductSheet(direction='forward'){
 }
 function openRecordProductPicker(id,mode='household'){
  if(recordProductItemId||page!=='recordDetail'||!liveMode)return;
+ if(stockV2())mode='select';
  const found=allPreviewItems().find(x=>x.record_item_id===id&&!x.deleted_at);
  if(!found||!allPreviewRecords().some(r=>r.record_id===found.record_id &&
   r.record_type==='receipt'&&!r.deleted_at))return;
@@ -2973,14 +2986,16 @@ app.addEventListener('submit',e=>{e.preventDefault();const form=e.target;const d
   const line=recordProductLine(),name=String(d.get('name')||'').trim();
   if(!line||recordProductSaving||
     !(page==='recordDetail'&&recordProductMode==='create'||page==='receiptProductCreate'))return;
-  if(!recordProductGroupId||!name||name.length>80){
-   fieldNotice(form,'日用品と商品名を確認してください','record-product-name');return;
+  if((!stockV2()&&!recordProductGroupId)||!name||name.length>80){
+   fieldNotice(form,'商品名を確認してください','record-product-name');return;
   }
   const capacity=productPackageValues(d);
   if(!capacity){fieldNotice(form,'内容量と単位を確認してください','record-product-quantity');return;}
   recordProductSaving=true;
   const button=form.querySelector('[type="submit"]');if(button)button.disabled=true;
-  window.KurashiLive.linkReceiptToHouseholdItem(line.record_item_id,recordProductGroupId,name,capacity)
+  (stockV2()?
+   window.KurashiLive.registerReceiptItemProduct(line.record_item_id,name,capacity):
+   window.KurashiLive.linkReceiptToHouseholdItem(line.record_item_id,recordProductGroupId,name,capacity))
    .then(()=>{closeRecordProductPicker();page='recordDetail';render();})
    .catch(err=>{
     recordProductSaving=false;if(button?.isConnected)button.disabled=false;
@@ -3260,10 +3275,12 @@ if(action==='confirmScanAiProduct'&&p&&Number.isInteger(p.row)){
   createScanAiProduct(row,p.name);
  renderDialogOnly();return;
 }
-if(action==='confirmRecordBulk'&&p?.bulkReceiptId&&Array.isArray(p.itemIds)&&Array.isArray(p.groupIds)){
+if(action==='confirmRecordBulk'&&p?.bulkReceiptId&&Array.isArray(p.itemIds)&&
+ (stockV2()||Array.isArray(p.groupIds))){
   renderDialogOnly();if(recordBulkSaving)return;
   recordBulkSaving=true;
-  window.KurashiLive.bulkRegisterReceiptHouseholds(p.bulkReceiptId,p.itemIds,p.groupIds)
+  (stockV2()?window.KurashiLive.bulkRegisterReceiptProducts(p.bulkReceiptId,p.itemIds):
+   window.KurashiLive.bulkRegisterReceiptHouseholds(p.bulkReceiptId,p.itemIds,p.groupIds))
    .then(()=>{recordBulkSaving=false;recordBulkAssignments.clear();recordBulkActiveId=null;
     page='recordDetail';render();})
    .catch(err=>{recordBulkSaving=false;
@@ -3626,6 +3643,13 @@ if(action==='recordBulkChooseGroup'&&page==='receiptBulk'&&recordBulkActiveId!==
 }
 if(action==='recordBulkConfirm'&&page==='receiptBulk'&&!recordBulkSaving){
  const rows=window.KurashiLive.previewBulkReceiptProducts(recordDetailId);
+ if(stockV2()){
+  dialog={title:'商品候補をまとめて登録しますか？',
+   message:'商品名候補を商品マスタと購入履歴に反映します。内容が不明な場合はキャンセルして個別に確認してください。',
+   buttons:[{id:'cancel',label:'キャンセル'},{id:'confirmRecordBulk',label:'登録する',primary:true}],
+   pending:{bulkReceiptId:recordDetailId,itemIds:rows.map(x=>x.record_item_id),groupIds:[]}};
+  renderDialogOnly();return;
+ }
  const selection=rows.map(x=>recordBulkAssignments.get(x.record_item_id)||'');
  const count=selection.filter(Boolean).length;
  if(!count)return;
@@ -3639,7 +3663,7 @@ if(action==='recordBulkConfirm'&&page==='receiptBulk'&&!recordBulkSaving){
 if(action==='recordProductOpen'||action==='recordProductNew'){
  const line=allPreviewItems().find(x=>x.record_item_id===el.dataset.recordItemId);
  const product=catalogue.products.find(p=>p.id===line?.linked_product_id);
- openRecordProductPicker(el.dataset.recordItemId,product?.householdItemId?'edit':'household');return;
+ openRecordProductPicker(el.dataset.recordItemId,stockV2()?'select':product?.householdItemId?'edit':'household');return;
 }
 if(action==='recordPurchaseConfirm'&&recordProductMode==='purchaseConfirm'){
  const line=recordProductLine(),product=catalogue.products.find(p=>p.id===el.dataset.productId);
