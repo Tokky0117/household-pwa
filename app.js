@@ -1846,10 +1846,12 @@ async function saveInventoryGroups(ids,name){
  if(typeof name!=='string'||!name||name.length>80||/^[=+@\-]/.test(name))
   throw Error('グループ名を確認してください');
  if(liveMode){
-  for(const i of targets){
+  if(stockV2())await window.KurashiLive.groupStockItems(targets[0].category,
+   targets.map(i=>i.id),name);
+  else for(const i of targets){
    if(i.displayGroup===name)continue;
-   await window.KurashiLive.save(stockV2()?'product.stock.update':'item.update',
-    stockV2()?{product_id:i.id,display_group:name}:{household_item_id:i.id,version:i.version,display_group:name});
+   await window.KurashiLive.save('item.update',
+    {household_item_id:i.id,version:i.version,display_group:name});
   }
  }else{
   targets.forEach(i=>{i.displayGroup=name;i.version=(i.version||0)+1});
@@ -3561,9 +3563,15 @@ if(action==='inventoryUngroup'){
  const targets=[...selectedInventoryIds].filter(id=>items.find(i=>i.id===id)?.displayGroup);
  if(!targets.length){say('グループに所属する商品を選択してください');return}
  if(liveMode){
-  (async()=>{for(const id of targets){const i=items.find(x=>x.id===id);if(i)
-   await window.KurashiLive.save(stockV2()?'product.stock.update':'item.update',
-    stockV2()?{product_id:i.id,display_group:''}:{household_item_id:i.id,version:i.version,display_group:''});}
+  (async()=>{
+   if(stockV2()){
+    const category=items.find(i=>i.id===targets[0])?.category;
+    if(targets.some(id=>items.find(i=>i.id===id)?.category!==category))
+     throw Error('同じカテゴリの商品を選択してください');
+    await window.KurashiLive.groupStockItems(category,targets,'');
+   }else for(const id of targets){const i=items.find(x=>x.id===id);if(i)
+    await window.KurashiLive.save('item.update',
+     {household_item_id:i.id,version:i.version,display_group:''});}
    selectedInventoryIds.clear();editingInventory=false;render();})()
    .catch(err=>say(err.message||'グループを解除できませんでした'));
  }else{
