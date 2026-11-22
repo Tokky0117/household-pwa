@@ -426,7 +426,7 @@ function kurashiProductStockColumns_(book) {
   const heads=sheet.getRange(1,1,1,sheet.getLastColumn()).getValues()[0];
   if(JSON.stringify(heads)===JSON.stringify(base))return base;
   if(JSON.stringify(heads)===JSON.stringify(all))return all;
-  kurashiFail_('SCHEMA_ERROR','商品の列構成が想定と異なります');
+  kurashiFail_('SCHEMA_ERROR','商品の列構成が想定と異なります（列数'+heads.length+'/'+base.length+'、追加列='+heads.slice(base.length).map(x=>/^[a-z][a-z0-9_]{0,39}$/.test(String(x))?x:'非公開').join('|')+'）');
 }
 function kurashiRecordItemColumns_(book) {
  const base=KURASHI_NEW_SCHEMA.record_items,sheet=book.getSheetByName('record_items');
@@ -435,7 +435,7 @@ function kurashiRecordItemColumns_(book) {
  if(JSON.stringify(heads)===JSON.stringify(base))return base;
  const all=[...base,...KURASHI_V98_RECORD_FIELDS];
  if(JSON.stringify(heads)===JSON.stringify(all))return all;
- kurashiFail_('SCHEMA_ERROR','明細シートの列構成が想定外です');
+ kurashiFail_('SCHEMA_ERROR','明細シートの列構成が想定外です（列数'+heads.length+'/'+base.length+'、追加列='+heads.slice(base.length).map(x=>/^[a-z][a-z0-9_]{0,39}$/.test(String(x))?x:'非公開').join('|')+'）');
 }
 function kurashiStockReady_(book){
  const props=PropertiesService.getScriptProperties();
