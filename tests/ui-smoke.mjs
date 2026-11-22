@@ -109,8 +109,9 @@ assert.ok(deleteToolStyles.some(body=>body.includes('font-size:var(--ui-action-f
 assert.ok(source.includes('class="detail-candidate-origin" role="img" aria-label="生成AIによる候補"')&&
  source.includes("<span>商品名候補：${esc(line.product_name_candidate)}")&&
  !source.includes('<span>生成AIの商品名候補：'),'Saved receipt AI attribution uses an icon, not a text label');
-assert.ok(source.includes("label:'候補の日用品をまとめて設定（'")&&source.includes("icon:'sparkles'"),
- 'Bulk household assignment entry uses the shared sparkle icon');
+assert.ok(source.includes("stockV2()?'商品候補をまとめて登録（':'候補の日用品をまとめて設定（'")&&
+ source.includes("icon:'sparkles'"),
+ 'Receipt bulk entry keeps the common sparkle icon with stock-v2 product-specific wording');
 assert.ok(!css.includes('grid-template-areas:"name value" "name date"'),'Obsolete two-row price CSS removed');
 assert.ok(ui.listView().includes('data-stock=')&&ui.listView().includes('data-list-edit='),'Stock and swipe list preserved');
 // v0.89.7: OCR-only rule-based normalization. No word/product dictionary,
