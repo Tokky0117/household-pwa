@@ -31,7 +31,7 @@ jobs:
         run: npm install --no-save --no-package-lock --ignore-scripts fake-indexeddb@6.2.4 jsdom@26.1.0
 
       - name: Validate v1.8 preview behavior
-        if: ${{ github.ref_name != 'preview-v95-household-link-flow' && github.ref_name != 'preview-v97-product-stock-groups' }}
+        if: ${{ github.ref_name != 'preview-v95-household-link-flow' && github.ref_name != 'preview-v97-product-stock-groups' && github.ref_name != 'preview-v98-product-stock-model' }}
         run: |
           node tests/ui-smoke.mjs
           node tests/no-login-household.mjs
@@ -77,7 +77,7 @@ jobs:
       # the obsolete tab structure; do not pretend it validates this preview.
       # v95 receipt journaling plus the focused UI smoke suite remain active.
       - name: Validate v97 isolated product/inventory UI preview
-        if: ${{ github.ref_name == 'preview-v97-product-stock-groups' }}
+        if: ${{ github.ref_name == 'preview-v97-product-stock-groups' || github.ref_name == 'preview-v98-product-stock-model' }}
         run: |
           node tests/ui-smoke.mjs
           node tests/v95-household-flow.mjs
@@ -87,6 +87,10 @@ jobs:
           node tests/receipt-prompt-p3.mjs
           node tests/trial-sheet-schema-cutover.mjs
           node tests/gas-execution-result.mjs
+
+      - name: Validate v98 pure product stock migration model
+        if: ${{ github.ref_name == 'preview-v98-product-stock-model' }}
+        run: node tests/v98-product-stock-model.mjs
 
       - name: Build verified prior PaddleOCR for the main receipt screen
         shell: bash
@@ -107,7 +111,7 @@ jobs:
           set -euo pipefail
           git fetch --prune origin '+refs/heads/*:refs/remotes/origin/*'
           mkdir -p _site/previews
-          files=(index.html app.js styles.css manifest.webmanifest icon.svg sw.js live-client.js japanese-reading.js receipt-chatgpt-import.js product-package.js receipt-validation.js receipt-review-model.js)
+          files=(index.html app.js styles.css manifest.webmanifest icon.svg sw.js live-client.js japanese-reading.js receipt-chatgpt-import.js product-package.js product-stock-model.js receipt-validation.js receipt-review-model.js)
 
           copy_site() {
             local ref="$1"
