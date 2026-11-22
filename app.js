@@ -3074,21 +3074,22 @@ app.addEventListener('submit',e=>{e.preventDefault();const form=e.target;const d
     linked_product_id:scanDraft.recordType!=='price_tag'?
      (chosenProductId||matchedBeforeSave||aiExistingId||null):
      String(d.get('product-'+i)||'')||null,
-    quantity:scanDraft.recordType==='price_tag'?1:Number(d.get('qty-'+i)),
-    line_total_tax_included:String(d.get('amount-'+i)||'').trim()===''?NaN:Number(d.get('amount-'+i)),
+    quantity:scanDraft.recordType==='price_tag'?1:
+     String(d.get('qty-'+i)??'').trim()===''?null:Number(d.get('qty-'+i)),
+    line_total_tax_included:String(d.get('amount-'+i)??'').trim()===''?null:Number(d.get('amount-'+i)),
    };
   });
   const codeOnlyRow=scanDraft.items.findIndex(item=>!item.pendingDeletion&&isUnconfirmedBarcodeLine(item));
   if(codeOnlyRow>=0){
    formSaveFeedback(form,'商品コードだけの明細を確認するか、不要な明細を削除してください。',{row:codeOnlyRow});return;
   }
-  const badRow=lines.findIndex((x,i)=>(!x.raw_name&&!x.non_ocr_name&&activeItems[i].item.inputOrigin!=='manual')||
-     !Number.isSafeInteger(x.quantity)||x.quantity<1||
-     !Number.isSafeInteger(x.line_total_tax_included)||x.line_total_tax_included<0);
+  const badRow=lines.findIndex((x,i)=>(!stockV2()&&!x.raw_name&&!x.non_ocr_name&&activeItems[i].item.inputOrigin!=='manual')||
+     !(stockV2()&&x.quantity===null)&&(!Number.isSafeInteger(x.quantity)||x.quantity<1)||
+     !(stockV2()&&x.line_total_tax_included===null)&&(!Number.isSafeInteger(x.line_total_tax_included)||x.line_total_tax_included<0));
   if(badRow>=0){
    const x=lines[badRow],item=activeItems[badRow].item;
-   const badName=!x.raw_name&&!x.non_ocr_name&&item.inputOrigin!=='manual';
-   const badQty=!Number.isSafeInteger(x.quantity)||x.quantity<1;
+   const badName=!stockV2()&&!x.raw_name&&!x.non_ocr_name&&item.inputOrigin!=='manual';
+   const badQty=!(stockV2()&&x.quantity===null)&&(!Number.isSafeInteger(x.quantity)||x.quantity<1);
    formSaveFeedback(form,'赤い項目を修正してください。',{
     fieldName:(badName?'name-':badQty?'qty-':'amount-')+activeItems[badRow].i
    });return;
@@ -3921,7 +3922,9 @@ if(liveMode)window.KurashiLive.subscribe((state,data)=>{
  items=nextItems;
  catalogue=window.KurashiLive.catalogueOf(data);
  liveRecords={records:data.records||[],record_items:(data.record_items||[]).map(line=>({
-  ...line,quantity:Number(line.quantity),line_total_tax_included:Number(line.line_total_tax_included)
+  ...line,quantity:line.quantity===''||line.quantity==null?null:Number(line.quantity),
+  line_total_tax_included:line.line_total_tax_included===''||line.line_total_tax_included==null?
+    null:Number(line.line_total_tax_included)
  }))};
  if(page==='aliasManage'&&aliasPickerId)return;
  if(inventoryGroupSheet)return;

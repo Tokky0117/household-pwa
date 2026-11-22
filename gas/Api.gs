@@ -1603,7 +1603,8 @@ function kurashiCreateRecord_(user,payload,id){
         if(prod!==null&&(typeof prod!=='string'||!productIds.has(prod)))
           kurashiFail_('NOT_FOUND','商品が見つかりません');
         const qty=line.quantity,amount=line.line_total_tax_included;
-        if(!Number.isSafeInteger(qty)||qty<=0||!Number.isSafeInteger(amount)||amount<0)
+        if(!(kurashiStockReady_(book)&&qty===null)&&(!Number.isSafeInteger(qty)||qty<=0)||
+           !(kurashiStockReady_(book)&&amount===null)&&(!Number.isSafeInteger(amount)||amount<0))
           kurashiFail_('BAD_REQUEST','数量・税込金額を確認してください');
         const confirmed=line.non_ocr_name===undefined?'':kurashiRawName_(line.non_ocr_name);
         if(line.non_ocr_name!==undefined&&(!confirmed||String(line.raw_name||'').trim()))
@@ -1706,8 +1707,10 @@ function kurashiMutateRecord_(user,action,payload,id){
      const prod=line.linked_product_id;
      if(prod!==null&&(!known.has(prod)||typeof prod!=='string'))
        kurashiFail_('NOT_FOUND','商品がありません');
-     if(!Number.isSafeInteger(line.quantity)||line.quantity<=0||
-        !Number.isSafeInteger(line.line_total_tax_included)||line.line_total_tax_included<0)
+     if(!(kurashiStockReady_(book)&&line.quantity===null)&&
+        (!Number.isSafeInteger(line.quantity)||line.quantity<=0)||
+        !(kurashiStockReady_(book)&&line.line_total_tax_included===null)&&
+        (!Number.isSafeInteger(line.line_total_tax_included)||line.line_total_tax_included<0))
        kurashiFail_('BAD_REQUEST','数量・税込金額を確認してください');
      const confirmed=line.non_ocr_name===undefined?'':kurashiRawName_(line.non_ocr_name);
      if(line.non_ocr_name!==undefined&&(!confirmed||String(line.raw_name||'').trim()))

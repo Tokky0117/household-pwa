@@ -803,8 +803,10 @@
     throw Error('明細の商品名を確認してください');
    if(productId!==null&&!snap.products.some(p=>p.product_id===productId&&!p.deleted_at))
     throw Error('商品が見つかりません');
-   if(!Number.isSafeInteger(line.quantity)||line.quantity<=0||
-      !Number.isSafeInteger(line.line_total_tax_included)||line.line_total_tax_included<0)
+   const v2=snap.capabilities?.product_stock_v2===true;
+   if(!(v2&&line.quantity===null)&&(!Number.isSafeInteger(line.quantity)||line.quantity<=0)||
+      !(v2&&line.line_total_tax_included===null)&&
+       (!Number.isSafeInteger(line.line_total_tax_included)||line.line_total_tax_included<0))
     throw Error('数量・税込金額を確認してください');
    const sizeQty=line.candidate_package_quantity,sizeUnit=line.candidate_package_unit;
    const size=window.KurashiProductPackage?.valid(sizeQty,sizeUnit)?
