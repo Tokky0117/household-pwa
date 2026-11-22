@@ -2269,28 +2269,63 @@ function detailHistoryRows(records){
 }
 function priceProductRows(){
  const q=norm(priceQuery);
- return catalogue.products.filter(p=>!q||productMatches(p,priceQuery))
-  .sort((a,b)=>a.name.localeCompare(b.name,'ja'))
-  .map(p=>{
-   const best=chainMinima(p.id,'1y')[0];
-   const sub=best?`${yen(best.price)} ／ ${chainLabel(best.chainId)}`:'価格記録なし';
-   return UI.catalogueRow({title:p.name,lines:[sub],action:'priceProductDetail',
-    data:{'data-product-id':p.id},className:'panel'});
-  }).join('')||'<div class="empty">該当する商品はありません</div>';
+ const products=catalogue.products.filter(p=>!q||productMatches(p,priceQuery)||
+  norm(p.displayGroup||'').includes(q));
+ const row=p=>{
+  const best=chainMinima(p.id,'1y')[0];
+  const sub=best?`${yen(best.price)} ／ ${chainLabel(best.chainId)}`:'価格記録なし';
+  if(!editingPrice)return UI.catalogueRow({title:p.name,lines:[sub],action:'priceProductDetail',
+   data:{'data-product-id':p.id},className:'panel'});
+  const chosen=selectedPriceIds.has(p.id);
+  return `<div class="price-edit-item">
+   <input type="checkbox" class="inventory-select" data-select-price-product="${esc(p.id)}" aria-label="${esc(p.name)}を選択" ${chosen?'checked':''}>
+   ${UI.catalogueRow({title:p.name,lines:[CATS[p.category]||'その他',sub],
+    action:'priceSelectProduct',data:{'data-product-id':p.id},className:'panel',
+    ariaLabel:p.name+'を選択'})}</div>`;
+ };
+ const all=products.slice().sort((a,b)=>a.name.localeCompare(b.name,'ja'));
+ const groups=new Map();
+ for(const p of catalogue.products){
+  if(!p.displayGroup)continue;
+  const key=p.category+':group:'+norm(p.displayGroup);
+  if(!groups.has(key))groups.set(key,[]);
+  groups.get(key).push(p);
+ }
+ const rendered=new Set(),result=[];
+ for(const p of all){
+  const key=p.category+':group:'+norm(p.displayGroup||'');
+  const group=groups.get(key);
+  if(!p.displayGroup||!group||group.length<2){result.push(row(p));continue;}
+  if(rendered.has(key))continue;rendered.add(key);
+  const matched=all.filter(x=>x.displayGroup&&x.category===p.category&&
+   norm(x.displayGroup)===norm(p.displayGroup));
+  const open=editingPrice||!!q||expandedPriceGroups.has(key);
+  result.push(`<section class="price-group-row">
+   <button type="button" class="price-group-header" data-price-group-toggle="${esc(key)}" aria-expanded="${open}">
+    ${chevron(open?'down':'right')}
+    <strong>${esc(p.displayGroup)}</strong>
+    <span>${group.length}商品</span>
+   </button>
+   ${open?`<div class="price-group-children">${matched.map(row).join('')}</div>`:''}
+   </section>`);
+ }
+ return result.join('')||'<div class="empty">該当する商品はありません</div>';
 }
 function priceHomeView(){
- const actions=UI.iconButton({label:'レシート履歴・入力',action:'menu',iconHtml:'⋯'})+
-  (menu?commonMenu([
+ const actions=(stockV2()?`<button type="button" class="inventory-mode-action" data-act="priceEditMode">${editingPrice?'完了':'編集'}</button>`:'')+
+  (editingPrice?'':UI.iconButton({label:'レシート履歴・入力',action:'menu',iconHtml:'⋯'}))+
+  (!editingPrice&&menu?commonMenu([
    {label:'レシート履歴',action:'detailAll',icon:'receiptText'},
    {label:'手入力',action:'newReceipt',icon:'pencil'},
    {label:'値札入力',action:'newShelf',icon:'tag'}
   ],{label:'価格メニュー'}):'');
+ const bulk=editingPrice?`<div class="inventory-bulk-bar"><span>${selectedPriceIds.size}件を選択</span>${UI.button({label:'グループ化',action:'priceGroupOpen',disabled:selectedPriceIds.size===0})}${UI.button({label:'解除',action:'priceUngroup',disabled:selectedPriceIds.size===0,variant:'tertiary'})}</div>`:'';
  return `${head('価格','くらしストック',false,actions)}<main class="price-home">
   ${UI.searchField({id:'price-product-search',label:'商品名を検索',placeholder:'商品を検索',value:priceQuery,extra:'autocomplete="off"'})}
   <div class="price-receipt-action">${scanDraftAvailable?UI.button({label:'下書きを再開',action:'resumeScanDraft',icon:'receiptText',variant:'secondary'}):UI.button({label:'レシートを読み取る',action:'receiptScan',icon:'camera',variant:'secondary',disabled:!liveMode})}</div>
   ${UI.sectionHeading({title:'商品一覧'})}
   <div id="price-product-results" class="price-product-results">${priceProductRows()}</div>
- </main>${nav()}`;
+ </main>${bulk}${nav()}`;
 }
 function productPriceView(){
  const p=catalogue.products.find(x=>x.id===selectedProductId);
@@ -2302,7 +2337,7 @@ function productPriceView(){
   <strong class="chain-price-value">${esc(yen(x.price))}</strong>
   <time class="chain-price-date" datetime="${esc(x.date)}">${esc(x.date.slice(2).replace(/-/g,'/'))}</time>
  </div>`).join('')||'<div class="chain-price-empty">価格記録はありません</div>';
- const stockInfo=stock?`<div class="product-price-stock"><span>在庫：${stock.inStock?'あり':'なし'}</span>${stock.subName?`<span>メモ：${esc(stock.subName)}</span>`:''}</div>`:stockV2()?`<div class="product-price-stock">${UI.button({label:'在庫に追加',action:'productAddToInventory',variant:'secondary'})}</div>`:'';
+ const stockInfo=stock?`<div class="product-price-stock"><span>在庫</span>${stockV2()?UI.stock(stock):`<span>${stock.inStock?'あり':'なし'}</span>`}${stock.subName?`<span>メモ：${esc(stock.subName)}</span>`:''}</div>`:stockV2()?`<div class="product-price-stock">${UI.button({label:'在庫に追加',action:'productAddToInventory',variant:'secondary'})}</div>`:'';
  return `${head(p.name,'商品別の価格情報',true)}<main class="detail-main comparison-main">
   ${stockInfo}
   ${UI.sectionHeading({title:'最安値',subtitle:'税込・直近の購入履歴から計算',
