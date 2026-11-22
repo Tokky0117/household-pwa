@@ -211,7 +211,7 @@ jobs:
             const key=norm(item.name);
             orphanCounts.set(key,(orphanCounts.get(key)||0)+1);
           }
-          const orphanMissingSubLabels=plan.createProductsForOrphanItems.filter(x=>
+          const orphanGenericBaseNamesPreserved=plan.createProductsForOrphanItems.filter(x=>
             orphanCounts.get(norm(x.name))>1&&!String(x.memo||'').trim()).length;
           const proposedNames=plan.createProductsForOrphanItems.map(x=>norm(x.proposed_name));
           const orphanRepeatedProposedNames=proposedNames.length-new Set(proposedNames).size;
@@ -236,7 +236,7 @@ jobs:
             orphan_products_with_disambiguated_names:plan.createProductsForOrphanItems.filter(x=>
               x.proposed_name!==x.name).length,
             orphan_name_review_required:warnings.ORPHAN_NAME_REVIEW||0,
-            orphan_missing_sub_labels:orphanMissingSubLabels,
+            orphan_generic_base_names_preserved:orphanGenericBaseNamesPreserved,
             orphan_repeated_proposed_names:orphanRepeatedProposedNames,
             orphan_proposed_product_name_conflicts:orphanProposedProductConflicts,
             orphan_overlong_generated_names:orphanOverlongGeneratedNames,
