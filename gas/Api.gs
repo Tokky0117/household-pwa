@@ -2255,17 +2255,38 @@ function kurashiTrialStockPlan_(book){
  for(const ids of existingNames.values())
   if(ids.length>1)
    kurashiFail_('STOCK_MIGRATION_REVIEW','同じ名前の容量違い商品があります。商品統合を確認してから移行してください');
- for(const {value} of items){
+ // Different legacy household items can intentionally share a short name,
+ // distinguished by sub_name (e.g. 袋 / 野菜用 and 袋 / 生ごみ用).
+ // Treat those as separate stock products, never as a price-only product match.
+ const orphans=items.filter(x=>!related.has(String(x.value.household_item_id)));
+ const orphanNameCounts=new Map();
+ for(const {value} of orphans){
+  const key=kurashiNormalize_(value.name);
+  orphanNameCounts.set(key,(orphanNameCounts.get(key)||0)+1);
+ }
+ const proposedNames=new Set(existingNames.keys());
+ for(const {value} of orphans){
   const originalId=String(value.household_item_id);
-  if(related.has(originalId))continue;
-  if(!String(value.name||'').trim())kurashiFail_('STOCK_MIGRATION_REVIEW','名前のない日用品があります');
-  // If a price-only product shares the name, ownership cannot be inferred.
-  // Never silently merge, copy or reassign historical receipt product IDs.
-  const normalized=String(value.name).normalize('NFKC').trim().toLocaleLowerCase('ja');
-  if(existingNames.has(normalized))
+  const baseName=String(value.name||'').trim();
+  if(!baseName)kurashiFail_('STOCK_MIGRATION_REVIEW','名前のない日用品があります');
+  const baseKey=kurashiNormalize_(baseName);
+  // A price-only product with the original name is ambiguous. Keep its
+  // historical product ID and all receipt links untouched until reviewed.
+  if(existingNames.has(baseKey))
    kurashiFail_('STOCK_MIGRATION_REVIEW','未紐付けの商品と同名の日用品があります');
-  creates.push({source_item_id:originalId,source:value});
-  existingNames.set(normalized,[originalId]);
+  const repeated=(orphanNameCounts.get(baseKey)||0)>1;
+  const subName=String(value.sub_name||'').trim();
+  if(repeated&&!subName)
+   kurashiFail_('STOCK_MIGRATION_REVIEW','同名の日用品にサブ情報がないため商品を区別できません');
+  const productName=repeated?baseName+'（'+subName+'）':baseName;
+  if(productName.length>80)
+   kurashiFail_('STOCK_MIGRATION_REVIEW','商品名が長すぎる日用品があります');
+  const productKey=kurashiNormalize_(productName);
+  if(proposedNames.has(productKey))
+   kurashiFail_('STOCK_MIGRATION_REVIEW','移行先の商品名が重複します。サブ情報を確認してください');
+  creates.push({source_item_id:originalId,source:value,product_name:productName,
+   display_group:repeated?baseName:''});
+  proposedNames.add(productKey);
  }
  return {book,planned,creates,existing_count:products.length,
   to_create:creates.length,split_groups:[...related.values()].filter(v=>v.length>1).length,
@@ -2330,13 +2351,13 @@ function kurashiTrialStockMigrate(){
    if(recovered.has(item.source_item_id))continue;
    const i=item.source;
    kurashiAppend_('products',{product_id:'product-'+Utilities.getUuid(),household_id:household,
-     household_item_id:item.source_item_id,name:String(i.name),
-     normalized_name:kurashiNormalize_(String(i.name)),
+     household_item_id:item.source_item_id,name:item.product_name,
+     normalized_name:kurashiNormalize_(item.product_name),
      package_quantity:'',package_unit:'',household_item_order:'',
      version:1,created_at:now,updated_at:now,deleted_at:'',
      category_id:Number(i.category_id),stock_enabled:kurashiLegacyStockEnabled_(i),
      in_stock:Boolean(i.in_stock===true||String(i.in_stock)==='true'),
-     memo:String(i.sub_name||''),display_group:'',sort_order:Number(i.sort_order)||1,
+     memo:String(i.sub_name||''),display_group:item.display_group,sort_order:Number(i.sort_order)||1,
      is_hidden:i.is_hidden===true||String(i.is_hidden).toLowerCase()==='true',
      migrated_from_household_item_id:item.source_item_id},book);
    recovered.add(item.source_item_id);created++;
