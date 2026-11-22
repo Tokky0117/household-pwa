@@ -503,9 +503,9 @@ function receiptProductCreateForm(){
    maxlength:80,required:true,placeholder:'商品名を入力'})+
   productPackageFields({name,quantityId:'record-product-quantity',
    unitId:'record-product-unit',suggestion})+
-  '<p class="hint">日用品：'+esc(item?itemLabel(item):'未選択')+'</p>'+
+  (stockV2()?'': '<p class="hint">日用品：'+esc(item?itemLabel(item):'未選択')+'</p>')+
   UI.button({label:'登録して設定',variant:'primary',type:'submit',
-   disabled:!item||recordProductSaving})+'</form>';
+   disabled:(!stockV2()&&!item)||recordProductSaving})+'</form>';
 }
 function recordProductView(){
  const line=recordProductLine();if(!line)return '';
@@ -525,7 +525,7 @@ function recordProductView(){
   '<p class="hint">日用品：'+esc(linkedItemName(product))+'</p>'+
   UI.button({label:'この明細の設定を解除',action:'recordProductUnlink',variant:'tertiary'})+'</div>':
   '<p class="scan-setting-source"><span>対象の明細</span><strong>'+esc(source)+'</strong></p>'+
-  (chooseProduct?'<p class="hint">日用品：'+
+  (chooseProduct&&!stockV2()?'<p class="hint">日用品：'+
     esc(itemLabel(items.find(i=>i.id===recordProductGroupId))||'未選択')+'</p>':'')+
   UI.searchField({id:'record-product-search',
     label:chooseProduct?'商品を検索':'日用品を検索',
@@ -2094,7 +2094,7 @@ function setMasterGroupField(groupId){
  field.classList.remove('ui-field-error');
 }
 function chooseMasterGroup(groupId){
- if(!masterGroupPickerOpen||masterGroupChanging)return;
+ if(stockV2()||!masterGroupPickerOpen||masterGroupChanging)return;
  const form=document.getElementById('masterProductForm');
  const input=form?.elements.namedItem('group');
  if(!input||!['masterProductEdit','masterProductNew'].includes(page))return;
@@ -2216,6 +2216,14 @@ function masterProductEditorView(){
  const editing=page==='masterProductEdit';
  const p=editing?catalogue.products.find(x=>x.id===masterProductId):null;
  if(editing&&!p)return masterProductsView();
+ if(stockV2()){
+  const fields=UI.formField({id:'master-product-name',name:'name',
+    label:'商品名',value:p?.name||'',required:true,maxlength:80});
+  return head(editing?'商品を編集':'商品を追加','',true)+
+   '<main class="manage-main"><form id="masterProductForm">'+fields+
+   '<div class="formactions">'+UI.button({label:editing?'変更を保存':'商品を登録',
+     variant:'primary',type:'submit'})+'</div></form></main>';
+ }
  const fields=UI.formField({id:'master-product-name',name:'name',
   label:'商品マスタの正式商品名',value:p?.name||'',required:true,maxlength:80})+
   productPackageFields({name:p?.name||'',quantityId:'master-product-quantity',
@@ -2233,9 +2241,11 @@ function masterProductEditorView(){
 
 function getRecordSummary(record){
  const details=allPreviewItems().filter(x=>x.record_id===record.record_id&&!x.deleted_at);
+ const complete=details.every(x=>typeof x.line_total_tax_included==='number'&&
+  Number.isFinite(x.line_total_tax_included));
  return {id:record.record_id,title:chainLabel(record.chain_id),
   subtitle:`${record.record_date} · ${record.record_type==='receipt'?'レシート':'値札'} · ${details.length}明細`,
-  amount:details.reduce((sum,x)=>sum+Number(x.line_total_tax_included||0),0)};
+  amount:complete?details.reduce((sum,x)=>sum+x.line_total_tax_included,0):null};
 }
 function detailHistoryRows(records){
  return records.map(r=>UI.recordRow(getRecordSummary(r))).join('');
@@ -3146,6 +3156,28 @@ app.addEventListener('submit',e=>{e.preventDefault();const form=e.target;const d
 }
 if(form.id==='itemForm'){const i=page==='edit'?current():null;saveItem(String(d.get('name')??i?.name??'').trim(),Number(d.get('category')??i?.category??0),String(d.get('sub_name')??i?.subName??'').trim())}
 if(form.id==='masterProductForm'){
+ if(stockV2()){
+  const name=String(d.get('name')||'').trim();
+  const p=masterProductId?catalogue.products.find(x=>x.id===masterProductId):null;
+  if(!name||name.length>80||/^[=+@\-]/.test(name)){
+   fieldNotice(form,'商品名を確認してください','master-product-name');return;
+  }
+  if(catalogue.products.some(x=>x.id!==p?.id&&norm(x.name)===norm(name))){
+   fieldNotice(form,'同じ商品名が登録済みです','master-product-name');return;
+  }
+  const submit=form.querySelector('[type="submit"]');if(submit?.disabled)return;
+  if(submit)submit.disabled=true;
+  const action=p?'product.stock.update':'product.create';
+  const payload=p?{product_id:p.id,name}:
+   {household_item_id:null,name,package_quantity:null,package_unit:null};
+  window.KurashiLive.save(action,payload).then(()=>{
+   masterProductId=null;page='masterProducts';render();
+  }).catch(err=>{
+   if(submit)submit.disabled=false;
+   fieldNotice(form,err.message||'商品を保存できませんでした','master-product-name');
+  });
+  return;
+ }
  if(masterGroupChanging){fieldNotice(form,'日用品との紐付けを保存中です','master-product-group');return;}
  const name=String(d.get('name')||'').trim(),qt=String(d.get('quantity')||'').trim();
  const parsed=productPackageValues(d);
@@ -3334,7 +3366,7 @@ if(action==='confirmRecordBulk'&&p?.bulkReceiptId&&Array.isArray(p.itemIds)&&
   }).finally(()=>{aliasLinkSaving=false;});
  return;
 }
-if(action==='confirmMasterGroupChange'&&p&&Object.prototype.hasOwnProperty.call(p,'groupId')){
+if(!stockV2()&&action==='confirmMasterGroupChange'&&p&&Object.prototype.hasOwnProperty.call(p,'groupId')){
  const product=catalogue.products.find(x=>x.id===p.productId);
  if(!product||page!=='masterProductEdit'||masterProductId!==p.productId)return;
  renderDialogOnly(); // Dismiss confirmation, keeping the edited form DOM unchanged.
@@ -3567,7 +3599,7 @@ if(action==='restoreItem'||action==='showExistingItem'){
 if(action==='back'){if(inventoryGroupSheet){inventoryGroupSheet=false;render();return}if(recordProductItemId){closeRecordProductPicker();return}if(aliasPickerId){closeAliasProductPicker();return}if(masterGroupPickerOpen){closeMasterGroupPicker();return}if(storePickerTarget){closeStorePicker();return}back();return}
 if(action==='aliasMore'){aliasVisibleLimit+=100;const rows=document.getElementById('alias-results');if(rows)rows.innerHTML=aliasManageRows();return}
 if(action==='aliasPickerOpen'){openAliasProductPicker(el.dataset.aliasId);return}
-if(action==='masterGroupPickerOpen'){openMasterGroupPicker();return}
+if(action==='masterGroupPickerOpen'){if(!stockV2())openMasterGroupPicker();return}
 if(action==='storePickerOpen'){openStorePicker();return}
 if(action==='storePickerShowNew'){if(liveMode)showStorePickerMode(true);return}
 if(action==='storePickerShowList'){showStorePickerMode(false);return}if(action==='add'){duplicateItemId=null;selected=null;menu=false;openSwipeId=null;page='add'}if(action==='menu'){menu=!menu}if(['edit','products'].includes(action)){menu=false;editReturnPage=page;page=action}
