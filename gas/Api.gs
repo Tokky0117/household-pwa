@@ -471,7 +471,7 @@ function kurashiSheet_(name,book) {
       name==='receipt_name_mappings'?extension===1:
       false;
     if(first<0||!allowed||actual.slice(first).some(value=>value!==''))
-      kurashiFail_('SCHEMA_ERROR',name+': 保存先の列構成が不正です');
+      kurashiFail_('SCHEMA_ERROR',name+': 保存先の列構成が不正です（列数'+sheet.getLastColumn()+'/'+headers.length+'、不一致列'+(first+1)+'）');
     for(let i=first;i<headers.length;i++)
       sheet.getRange(1,i+1,1,1).setValues([[headers[i]]]);
   }
