@@ -671,7 +671,9 @@ function recordDetailView(){
  const isShelf=record.record_type==='price_tag';
  const detail=allPreviewItems().filter(x=>x.record_id===recordDetailId&&!x.deleted_at)
   .sort((a,b)=>Number(a.line_order)-Number(b.line_order));
- const total=detail.reduce((sum,x)=>sum+Number(x.line_total_tax_included||0),0);
+ const total=detail.every(x=>typeof x.line_total_tax_included==='number'&&
+  Number.isFinite(x.line_total_tax_included))?
+  detail.reduce((sum,x)=>sum+x.line_total_tax_included,0):null;
  const bulkCandidates=!isShelf&&liveMode?
   window.KurashiLive.previewBulkReceiptProducts?.(record.record_id)||[]:[];
  return `${head(isShelf?'値札詳細':'レシート詳細','くらしストック',true)}
@@ -684,21 +686,21 @@ function recordDetailView(){
    </div>
   </section>
 
- ${bulkCandidates.length?'<div class="record-detail-bulk">'+UI.button({label:'候補の日用品をまとめて設定（'+bulkCandidates.length+'件）',icon:'sparkles',variant:'secondary',action:'recordBulkPreview',disabled:recordBulkSaving})+'</div>':''}
+ ${bulkCandidates.length?'<div class="record-detail-bulk">'+UI.button({label:(stockV2()?'商品候補をまとめて登録（':'候補の日用品をまとめて設定（')+bulkCandidates.length+'件）',icon:'sparkles',variant:'secondary',action:'recordBulkPreview',disabled:recordBulkSaving})+'</div>':''}
   <section class="detail-record-lines" aria-label="${isShelf?'価格情報':'購入明細'}">
    ${UI.sectionHeading({title:isShelf?'価格情報':'購入明細',subtitle:detail.length+'件'})}
-   ${!isShelf&&detail.some(line=>!line.linked_product_id)?'<p class="record-detail-benefit">日用品を設定すると、購入履歴を価格比較に活用できます。</p>':''}
+   ${!isShelf&&detail.some(line=>!line.linked_product_id)?'<p class="record-detail-benefit">'+(stockV2()?'商品を設定すると、購入履歴を価格比較に活用できます。':'日用品を設定すると、購入履歴を価格比較に活用できます。')+'</p>':''}
    ${detail.map(line=>`<div class="panel detail-record-line">
     <div class="detail-record-line-main">
      <strong class="detail-record-line-name">${esc(isShelf?detailLineName(line):aliasNameFor(line)||"明細名なし")}</strong>
-     <strong class="detail-record-line-amount">${yen(Number(line.line_total_tax_included||0))}</strong>
+     <strong class="detail-record-line-amount">${yen(line.line_total_tax_included)}</strong>
     </div>
     ${!isShelf&&line.non_ocr_name&&rawReceiptName(line)&&rawReceiptName(line)!==line.non_ocr_name?`<div class="detail-record-line-meta"><span>読み取り名：${esc(rawReceiptName(line))}</span></div>`:''}
     <div class="detail-record-product-row">
-     <div class="detail-record-line-meta"><span>${isShelf?'販売個数':'数量'} ${esc(line.quantity)}</span>
-      ${line.linked_product_id?`<span>日用品：${esc(linkedItemName(catalogue.products.find(p=>p.id===line.linked_product_id)||{}))}</span>`:
-       '<span>日用品未設定</span>'}</div>
-     ${!isShelf&&liveMode?UI.button({label:line.linked_product_id&&catalogue.products.find(p=>p.id===line.linked_product_id)?.householdItemId?'変更':'日用品を設定',
+     <div class="detail-record-line-meta"><span>${isShelf?'販売個数':'数量'} ${esc(line.quantity??'—')}</span>
+      ${line.linked_product_id?`<span>${stockV2()?'商品：':'日用品：'}${esc(stockV2()?catalogue.products.find(p=>p.id===line.linked_product_id)?.name||'登録商品不明':linkedItemName(catalogue.products.find(p=>p.id===line.linked_product_id)||{}))}</span>`:
+       `<span>${stockV2()?'商品未設定':'日用品未設定'}</span>`}</div>
+     ${!isShelf&&liveMode?UI.button({label:stockV2()?(line.linked_product_id?'変更':'商品を設定'):line.linked_product_id&&catalogue.products.find(p=>p.id===line.linked_product_id)?.householdItemId?'変更':'日用品を設定',
        variant:'tertiary',action:'recordProductOpen',recordItemId:line.record_item_id,
        className:'record-product-setting-button'}):''}
     </div>
