@@ -278,6 +278,13 @@
     snap.record_items=snap.record_items.filter(i=>i.record_id!==op.targetId);
     continue;
    }
+   if(op.kind==='product-stock-group'){
+    for(const id of op.product_ids){
+     const target=snap.products.find(p=>p.product_id===id&&!p.deleted_at);
+     if(target)target.display_group=op.groupName;
+    }
+    continue;
+   }
    if(op.kind==='product-stock-reorder'){
     const rows=snap.products.filter(p=>p.stock_enabled===true&&Number(p.category_id)===op.category_id&&!p.is_hidden&&!p.deleted_at);
     const byId=new Map(rows.map(p=>[p.product_id,p]));
@@ -1267,6 +1274,26 @@
     household_item_ids:ids,retries:0};
   });
  }
+ async function groupStockItems(categoryId,selectedIds,groupName){
+  return enqueue(doc=>{
+   const snapshot=project(doc),cat=Number(categoryId),
+    ids=Array.isArray(selectedIds)?selectedIds.slice():[];
+   if(snapshot?.capabilities?.product_stock_v2!==true)
+    throw Error('商品在庫の移行が必要です');
+   if(typeof groupName!=='string'||groupName.length>80||groupName.trim()!==groupName||
+      (groupName&&/^[=+@\-]/.test(groupName)))
+    throw Error('グループ名を確認してください');
+   const active=snapshot.products.filter(p=>Number(p.category_id)===cat&&
+    toBoolean(p.stock_enabled)&&!toBoolean(p.is_hidden)&&!p.deleted_at);
+   const valid=new Set(active.map(p=>p.product_id));
+   if(!Number.isInteger(cat)||cat<0||cat>5||ids.length<1||
+      new Set(ids).size!==ids.length||ids.some(id=>!valid.has(id)))
+    throw Error('同じカテゴリの商品を選択してください');
+   if(ids.every(id=>active.find(p=>p.product_id===id)?.display_group===groupName))return null;
+   return {id:operationId(),kind:'product-stock-group',category_id:cat,
+    product_ids:ids,groupName,retries:0};
+  });
+ }
  async function reorderStockItems(categoryId,orderedIds){
   return enqueue(doc=>{
    const snapshot=project(doc),cat=Number(categoryId),ids=Array.isArray(orderedIds)?orderedIds:[];
@@ -1407,6 +1434,16 @@
     items:op.items.map(({candidate_package_quantity,candidate_package_unit,...line})=>line)
    }};
   }
+  if(op.kind==='product-stock-group'){
+   const rows=(base?.products||[]).filter(p=>Number(p.category_id)===op.category_id&&
+    toBoolean(p.stock_enabled)&&!toBoolean(p.is_hidden)&&!p.deleted_at);
+   const sorted=op.product_ids.filter(id=>rows.some(p=>p.product_id===id));
+   if(sorted.length!==op.product_ids.length)throw Error('グループの対象が変更されています');
+   const byId=new Map(rows.map(p=>[p.product_id,p]));
+   return {operationId:op.id,action:'product.stock.group',payload:{
+    category_id:op.category_id,display_group:op.groupName,product_ids:sorted,
+    versions:sorted.map(id=>Number(byId.get(id).version))}};
+  }
   if(op.kind==='product-stock-reorder'){
    const rows=(base?.products||[]).filter(p=>
     Number(p.category_id)===op.category_id&&toBoolean(p.stock_enabled)&&!toBoolean(p.is_hidden)&&!p.deleted_at);
@@ -1533,6 +1570,12 @@
    if(!result.entity||typeof result.entity.chain_id!=='string'||
       result.entity.chain_id!==plan.payload.chain_id)
     throw Error('RESPONSE_INVALID');
+  }else if(plan.action==='product.stock.group'){
+   if(!Array.isArray(result.entities)||
+      result.entities.length!==plan.payload.product_ids.length||
+      result.entities.some((p,i)=>p?.product_id!==plan.payload.product_ids[i]||
+       String(p.display_group||'')!==plan.payload.display_group||!positiveVersion(p.version)))
+    throw Error('RESPONSE_INVALID');
   }else if(plan.action==='product.stock.reorder'){
    if(!Array.isArray(result.entities)||
       result.entities.length!==plan.payload.product_ids.length||
@@ -1564,7 +1607,7 @@
    if(!ws.base)throw Error('HOUSEHOLD_CHANGED');
    const recordAction=['record.create','record.update','record.delete'].includes(plan.action);
    const entities=recordAction?[result.record,...result.items]:
-    ['item.reorder','product.reorder','product.stock.reorder'].includes(plan.action)?
+    ['item.reorder','product.reorder','product.stock.reorder','product.stock.group'].includes(plan.action)?
      result.entities:[result.entity];
    if(entities.some(e=>e.household_id!==undefined&&
        e.household_id!==ws.base.household_id))
@@ -2131,7 +2174,7 @@
   previewBulkReceiptProducts,bulkRegisterReceiptProducts,bulkRegisterReceiptHouseholds,receiptProductKey,
   resolveRecordId:id=>workspace.recordIdMap?.[id]||id,
   resolveRecordItemId:id=>workspace.recordItemIdMap?.[id]||id,blockedReceiptChange,discardBlockedReceipt,blockedProductChange,resolveBlockedProduct,refreshBlockedProducts,pendingOperationReview,beginPendingOperationReview,endPendingOperationReview,discardPendingOperations,confirmedProductId,learnAliases,linkAlias,learnStoreAlias,
-  saveReceiptDraft,loadReceiptDraft,saveOcrCorrections,loadOcrCorrections,toggleStock,reorderItems,reorderProducts,reorderStockItems,retry,logout,renderLogin,
+  saveReceiptDraft,loadReceiptDraft,saveOcrCorrections,loadOcrCorrections,toggleStock,reorderItems,reorderProducts,reorderStockItems,groupStockItems,retry,logout,renderLogin,
   subscribe:fn=>{listeners.add(fn);return()=>listeners.delete(fn)},itemsOf,catalogueOf};
  window.addEventListener('kurashi-gis-ready',initialize);
  window.addEventListener('online',kick);

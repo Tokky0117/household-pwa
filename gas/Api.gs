@@ -42,6 +42,8 @@ function doPost(e) {
       return kurashiReply_({ok:true,data:kurashiReorderProducts_(user,payload,input.operation_id)});
     if (action === 'product.stock.reorder')
       return kurashiReply_({ok:true,data:kurashiReorderStockProducts_(user,payload,input.operation_id)});
+    if (action === 'product.stock.group')
+      return kurashiReply_({ok:true,data:kurashiGroupStockProducts_(user,payload,input.operation_id)});
     if (action === 'store.create')
       return kurashiReply_({ok:true,data:kurashiCreateStore_(user,payload,input.operation_id)});
     if (action === 'record.create')
@@ -1013,6 +1015,129 @@ function kurashiReorderStockProducts_(user,payload,operationId){
     return complete;
   }finally{lock.releaseLock()}
 }
+
+
+// Atomic, replayable multi-selection grouping on product-owned inventory.
+function kurashiGroupStockProducts_(user,payload,operationId){
+  if(typeof operationId!=='string'||!/^[A-Za-z0-9_-]{16,110}$/.test(operationId))
+    kurashiFail_('BAD_REQUEST','保存操作IDが不正です');
+  if(Object.keys(payload).sort().join(',')!=='category_id,display_group,product_ids,versions')
+    kurashiFail_('BAD_REQUEST','並び順の形式が不正です');
+  const cat=Number(payload.category_id),ids=payload.product_ids,versions=payload.versions,groupName=payload.display_group;
+  if(typeof groupName!=='string'||groupName.length>80||groupName.trim()!==groupName||
+     (groupName&&/^[=+@\-]/.test(groupName)))kurashiFail_('BAD_REQUEST','グループ名を確認してください');
+  if(!Number.isInteger(cat)||cat<0||cat>5||
+     !Array.isArray(ids)||!Array.isArray(versions)||ids.length<1||
+     ids.length>500||versions.length!==ids.length||
+     ids.some(id=>typeof id!=='string'||!/^product-[A-Za-z0-9_-]{1,110}$/.test(id))||
+     versions.some(v=>!Number.isSafeInteger(v)||v<1)||
+     new Set(ids).size!==ids.length)
+    kurashiFail_('BAD_REQUEST','並び順を確認してください');
+  const action='product.stock.group',hid=user.householdId,hash=kurashiDigest_(action,payload);
+  const lock=LockService.getScriptLock();
+  if(!lock.tryLock(20000))kurashiFail_('BUSY','保存が混み合っています');
+  try{
+    const book=kurashiBook_();
+    if(!kurashiStockReady_(book))kurashiFail_('STOCK_MIGRATION_REQUIRED','商品在庫は未移行です');
+    const history=kurashiRows_('processed_operations',book);
+    const found=history.filter(x=>String(x.value.operation_id)===operationId);
+    if(found.length>1)kurashiFail_('RECOVERY_CONFLICT','保存操作IDが重複しています');
+    if(found[0]&&String(found[0].value.household_id)!==hid)
+      kurashiFail_('RECOVERY_CONFLICT','保存操作IDが別家庭で使用されています');
+    if(found[0]&&String(found[0].value.request_hash)!==hash)
+      kurashiFail_('OPERATION_REUSED','異なる内容で同じ操作IDを使用できません');
+    for(const row of history.filter(x=>String(x.value.household_id)===hid)){
+      let state;
+      try{state=JSON.parse(String(row.value.result))}catch(_){
+        kurashiFail_('RECOVERY_CONFLICT','保存履歴が不正です');
+      }
+      if(state.status==='prepared'&&String(row.value.operation_id)!==operationId)
+        kurashiFail_('RECOVERY_REQUIRED','前回の保存を先に確認してください');
+    }
+    let plan;
+    if(found[0]){
+      try{plan=JSON.parse(String(found[0].value.result))}catch(_){
+        kurashiFail_('RECOVERY_CONFLICT','保存履歴が不正です');
+      }
+      if(!plan||plan.action!==action||!['prepared','completed'].includes(plan.status)||
+         !Array.isArray(plan.entities)||plan.entities.length!==ids.length)
+        kurashiFail_('RECOVERY_CONFLICT','並び替えの保存履歴が不正です');
+      if(plan.status==='completed')return kurashiPublic_(plan);
+      if(!Array.isArray(plan.before)||plan.before.length!==ids.length)
+        kurashiFail_('RECOVERY_CONFLICT','並び替えの準備履歴が不正です');
+    }else{
+      const visible=kurashiRows_('products',book).filter(x=>
+        String(x.value.household_id)===hid&&Number(x.value.category_id)===cat&&
+        x.value.stock_enabled===true&&!x.value.is_hidden&&!x.value.deleted_at&&
+        ids.includes(String(x.value.product_id)));
+      if(visible.length!==ids.length)
+        kurashiFail_('VERSION_CONFLICT','別の端末で一覧が変更されています');
+      const byId=new Map(visible.map(x=>[String(x.value.product_id),x.value]));
+      if(ids.some((id,i)=>!byId.has(id)||Number(byId.get(id).version)!==versions[i]))
+        kurashiFail_('VERSION_CONFLICT','別の端末で一覧が変更されています');
+      const now=new Date().toISOString();
+      const before=ids.map(id=>kurashiPublic_(byId.get(id)));
+      const entities=before.map((base,i)=>{
+        const next=Object.assign({},base);
+        if(String(next.display_group||'')!==groupName){
+          next.display_group=groupName;next.version=Number(next.version)+1;
+          next.updated_at=now;
+        }
+        return next;
+      });
+      plan={status:'prepared',action,category_id:cat,before,entities,
+        sequence_no:kurashiSequence_(hid,book)+1,updated_at:now};
+      kurashiAppend_('processed_operations',{
+        household_id:hid,operation_id:operationId,request_hash:hash,
+        result:JSON.stringify(plan),processed_at:now
+      },book);
+    }
+    const rows=kurashiRows_('products',book);
+    const byRowId=new Map(rows.map(x=>[String(x.value.product_id),x]));
+    for(let i=0;i<ids.length;i++){
+      const foundRow=byRowId.get(ids[i]);
+      if(!foundRow||String(foundRow.value.household_id)!==hid||
+         Number(foundRow.value.category_id)!==cat||
+         foundRow.value.is_hidden||foundRow.value.deleted_at)
+        kurashiFail_('RECOVERY_CONFLICT','並び替え対象が変更されています');
+      const prior=plan.before[i],next=plan.entities[i];
+      if(!prior||!next||String(prior.product_id)!==ids[i]||
+         String(next.product_id)!==ids[i])
+        kurashiFail_('RECOVERY_CONFLICT','並び替え履歴が不正です');
+      if(kurashiSameProduct_(foundRow.value,next))continue;
+      if(!kurashiSameProduct_(foundRow.value,prior))
+        kurashiFail_('RECOVERY_CONFLICT','保存途中に日用品が変更されました');
+      kurashiReplace_('products',foundRow.row,next,book);
+    }
+    const changes=kurashiRows_('change_log',book);
+    const logs=changes.filter(x=>String(x.value.change_id)===operationId);
+    const entityId='group:'+cat+':'+ids.join(',');
+    if(logs.length>1||logs.some(x=>String(x.value.household_id)!==hid||
+       String(x.value.entity_id)!==entityId||String(x.value.action)!==action||
+       Number(x.value.sequence_no)!==Number(plan.sequence_no)))
+      kurashiFail_('RECOVERY_CONFLICT','並び替え履歴が不正です');
+    if(!logs.length){
+      if(changes.some(x=>String(x.value.household_id)===hid&&
+         Number(x.value.sequence_no)>=Number(plan.sequence_no)))
+        kurashiFail_('RECOVERY_CONFLICT','変更履歴が競合しています');
+      kurashiAppend_('change_log',{
+        change_id:operationId,sequence_no:plan.sequence_no,household_id:hid,
+        entity_type:'products',entity_id:entityId,action,occurred_at:plan.updated_at
+      },book);
+    }
+    const complete={status:'completed',action,entities:plan.entities,
+      category_id:cat,sequence_no:plan.sequence_no};
+    const journal=kurashiRows_('processed_operations',book).filter(x=>
+      String(x.value.household_id)===hid&&String(x.value.operation_id)===operationId);
+    if(journal.length!==1)kurashiFail_('RECOVERY_CONFLICT','保存履歴が見つかりません');
+    kurashiReplace_('processed_operations',journal[0].row,{
+      household_id:hid,operation_id:operationId,request_hash:hash,
+      result:JSON.stringify(complete),processed_at:plan.updated_at
+    },book);
+    return complete;
+  }finally{lock.releaseLock()}
+}
+
 
 
 /* A product is a globally searchable household master, optionally linked to
