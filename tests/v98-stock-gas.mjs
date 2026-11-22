@@ -50,6 +50,8 @@ add('household_items',{household_item_id:'item-1',household_id:'h1',category_id:
  in_stock:true,sort_order:1,is_hidden:false,sub_name:'詰替用優先',stock_management_enabled:true,version:1});
 add('household_items',{household_item_id:'item-2',household_id:'h1',category_id:1,name:'袋',normalized_name:'袋',
  in_stock:false,sort_order:1,is_hidden:false,sub_name:'野菜用',stock_management_enabled:false,version:1});
+add('household_items',{household_item_id:'item-3',household_id:'h1',category_id:1,name:'袋',normalized_name:'袋',
+ in_stock:true,sort_order:2,is_hidden:false,sub_name:'生ごみ用',stock_management_enabled:true,version:1});
 for(const [id,name,item,qty,unit] of [['product-1','アタックZERO','item-1',580,'g'],['product-2','NANOX','item-1',900,'g'],['product-3','キットカット','',null,null]]){
  add('products',{product_id:id,household_id:'h1',household_item_id:item,name,normalized_name:name,
   package_quantity:qty??'',package_unit:unit??'',household_item_order:item?1:'',version:1});
@@ -80,13 +82,13 @@ const call=(action,payload,operation_id)=>JSON.parse(context.doPost({postData:{
 const dry=context.kurashiTrialStockPreflight();
 assert.equal(dry.status,'DRY_RUN_OK');
 assert.equal(dry.product_count,3);
-assert.equal(dry.orphan_items_to_create,1);
+assert.equal(dry.orphan_items_to_create,2);
 assert.equal(dry.former_shared_groups,1);
 assert.equal(props.KURASHI_PRODUCT_STOCK_VERSION,undefined,'preflight never edits Sheets');
 assert.equal(call('bootstrap',{}).data.capabilities.product_stock_v2,false);
 const migrated=context.kurashiTrialStockMigrate();
 assert.equal(migrated.status,'PRODUCT_STOCK_V2_READY');
-assert.equal(migrated.orphan_products_created,1);
+assert.equal(migrated.orphan_products_created,2);
 assert.equal(trial.tables.get('products')[0][schema.products.length],'merged_into_product_id');
 assert.equal(trial.tables.get('products')[0][schema.products.length+1],'category_id',
  'new stock columns must follow the existing merge metadata, not overwrite it');
@@ -108,13 +110,17 @@ assert.equal(bootstrap.record_items[0].linked_product_id,'product-1');
 assert.equal(bootstrap.record_items[0].purchase_package_quantity,580);
 assert.equal(bootstrap.record_items[0].purchase_size_quantity,580,
  'legacy receipt package size must appear through the canonical v98 size field');
-assert.equal(bootstrap.products.length,4);
+assert.equal(bootstrap.products.length,5);
 assert.equal(bootstrap.products.find(x=>x.product_id==='product-1').display_group,'洗濯洗剤');
 assert.equal(bootstrap.products.find(x=>x.product_id==='product-2').in_stock,true);
 assert.equal(bootstrap.products.find(x=>x.product_id==='product-3').stock_enabled,false);
-assert.ok(bootstrap.products.find(x=>x.name==='袋'&&x.memo==='野菜用'));
-assert.equal(bootstrap.products.find(x=>x.name==='袋').stock_enabled,false,
+assert.ok(bootstrap.products.find(x=>x.name==='袋（野菜用）'&&x.memo==='野菜用'));
+assert.ok(bootstrap.products.find(x=>x.name==='袋（生ごみ用）'&&x.memo==='生ごみ用'));
+assert.ok(bootstrap.products.filter(x=>x.display_group==='袋').length===2);
+assert.equal(bootstrap.products.find(x=>x.name==='袋（野菜用）').stock_enabled,false,
  'legacy stock_management_enabled=false must be preserved');
+assert.equal(bootstrap.products.find(x=>x.name==='袋（生ごみ用）').in_stock,true,
+ 'same name + different sub-name must preserve independent stock state');
 const updated=call('product.stock.update',{product_id:'product-2',version:1,in_stock:false},
  'op-v98-stock-test-012345678901');
 assert.equal(updated.ok,true,JSON.stringify(updated.error));
