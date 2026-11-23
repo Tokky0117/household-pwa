@@ -190,7 +190,7 @@ let productListQuery='',productCreateMode='stock';
 let productAddQuery='',productModePending=new Set();
 let productUnmanagedExpanded=false,unmanagedCollapsed=new Set();
 let productManageCategorySheet=null,productBatchSaving=false;
-let unifiedGroupEditor=null,unifiedGroupBusy=false;
+let unifiedGroupEditor=null,unifiedGroupBusy=false,unifiedGroupQuery='';
 let stockManageSheet=false;
 let masterProductReturn='settings';
 const app=document.getElementById('app');
@@ -2376,7 +2376,7 @@ function unifiedGroupSheetView(){
  return UI.sheet({title,variant:'unified-group-sheet',
   body:`<form id="unifiedGroupForm">
    ${field}
-   ${UI.searchField({id:'unified-group-search',label:'商品を検索',placeholder:'商品名で絞り込む',extra:'autocomplete="off"'})}
+   ${UI.searchField({id:'unified-group-search',label:'商品を検索',placeholder:'商品名で絞り込む',value:unifiedGroupQuery,extra:'autocomplete="off"'})}
    <div class="unified-group-choices">${rows}</div>
    <div class="formactions">${UI.button({label:state.kind==='add'?'追加する':'保存',variant:'primary',type:'submit',disabled:unifiedGroupBusy})}</div>
    ${state.kind==='edit'?UI.button({label:'グループを解除',variant:'tertiary',action:'unifiedGroupRemove',disabled:unifiedGroupBusy}):''}
@@ -2392,14 +2392,14 @@ async function unifiedSaveGroup(state,name,selectedIds){
  const checked=new Set(selectedIds);
  const add=selectedIds.filter(id=>norm(byId.get(id).displayGroup)!==norm(name));
  const remove=original.filter(p=>!checked.has(p.id)).map(p=>p.id);
- if(!add.length&&!remove.length){unifiedGroupEditor=null;render();return}
+ if(!add.length&&!remove.length){unifiedGroupEditor=null;unifiedGroupQuery='';render();return}
  unifiedGroupBusy=true;
  try{
   if(add.length)await window.KurashiLive.groupStockItems(state.category,add,name);
   if(remove.length)await window.KurashiLive.groupStockItems(state.category,remove,'');
   const key=unifiedGroupKey(state.category,name);
   (state.mode==='stock'?expandedItemGroups:expandedPriceGroups).add(key);
-  unifiedGroupEditor=null;render();
+  unifiedGroupEditor=null;unifiedGroupQuery='';render();
  }finally{unifiedGroupBusy=false}
 }
 function unifiedCategoryResults(mode){
@@ -2997,7 +2997,7 @@ function goBack(){
   render();
 }
 function back(){
-  if(unifiedGroupEditor){unifiedGroupEditor=null;render();return;}if(productManageCategorySheet){productManageCategorySheet=null;render();return;}if(stockManageSheet){stockManageSheet=false;render();return;}if(priceGroupSheet){priceGroupSheet=false;render();return;}if(inventoryGroupSheet){inventoryGroupSheet=false;render();return;}
+  if(unifiedGroupEditor){unifiedGroupEditor=null;unifiedGroupQuery='';render();return;}if(productManageCategorySheet){productManageCategorySheet=null;render();return;}if(stockManageSheet){stockManageSheet=false;render();return;}if(priceGroupSheet){priceGroupSheet=false;render();return;}if(inventoryGroupSheet){inventoryGroupSheet=false;render();return;}
   if(aliasPickerId){closeAliasProductPicker();return;}
   if(masterGroupPickerOpen){closeMasterGroupPicker();return;}
   if(page==='aliasManage'){page='list';tab='settings';render();return;}
@@ -3152,7 +3152,10 @@ app.addEventListener('input',e=>{
  }
 });
 function updateSearchResults(){const target=document.getElementById('item-results');if(target){target.innerHTML=listResults();if(openSwipeId)setOpenSwipe(openSwipeId)}}
-const searchBindings={'unified-product-search':{set:v=>{productListQuery=v;if(v){onlyOut=false;const f=document.getElementById('onlyOut');if(f)f.checked=false;}},update:()=>{
+const searchBindings={'unified-group-search':{set:v=>{unifiedGroupQuery=v},update:()=>{
+ const form=document.getElementById('unifiedGroupForm'),q=norm(unifiedGroupQuery);
+ form?.querySelectorAll('[data-group-lookup]').forEach(row=>{row.hidden=!!q&&!norm(row.dataset.groupLookup).includes(q)});
+}},'unified-product-search':{set:v=>{productListQuery=v;if(v){onlyOut=false;const f=document.getElementById('onlyOut');if(f)f.checked=false;}},update:()=>{
  const target=document.getElementById('unified-product-results');
  if(target)target.innerHTML=unifiedProductResults();
 }},'unified-add-search':{set:v=>{productAddQuery=v},update:()=>{
@@ -3170,10 +3173,6 @@ function syncSearch(input,refresh=true){const binding=searchBindings[input.id];i
 app.addEventListener('compositionstart',e=>{if(searchBindings[e.target.id])composing=true});
 app.addEventListener('compositionend',e=>{if(searchBindings[e.target.id]){composing=false;syncSearch(e.target)}});
 app.addEventListener('input',e=>{
- if(e.target.id==='unified-group-search'){
-  const q=norm(e.target.value);e.target.closest('#unifiedGroupForm')
-   ?.querySelectorAll('[data-group-lookup]').forEach(row=>{row.hidden=!!q&&!norm(row.dataset.groupLookup).includes(q)});
- }
  if(searchBindings[e.target.id])syncSearch(e.target,!composing&&!e.isComposing);if(e.target.id==='name'&&duplicateItemId){duplicateItemId=null;document.getElementById('item-duplicate-notice')?.replaceChildren()}if(e.target.id==='compare-quantity'){const raw=e.target.value.trim().replace(',','.');compareQuantity=raw!==''&&Number.isFinite(Number(raw))&&Number(raw)>0?Number(raw):null;updateComparisonPrices()}});
 function updateComparisonPrices(){
  const main=document.querySelector('.comparison-list');
@@ -3722,7 +3721,7 @@ if(productListsReady()&&(el.dataset.unifiedGroupCreate!==undefined||
   el.dataset.unifiedGroupAdd!==undefined?'add':'edit';
  const name=kind==='create'?'':String(el.dataset.groupName||'');
  if(kind!=='create'&&!unifiedGroupNames(cat,mode).some(group=>group===name))return;
- unifiedGroupEditor={category:cat,mode,kind,name};setOpenSwipe(null);render();return;
+ unifiedGroupEditor={category:cat,mode,kind,name};unifiedGroupQuery='';setOpenSwipe(null);render();return;
 }
 if(el.dataset.unifiedGroup!==undefined){
  const scope=el.closest('.unified-unmanaged-section')?expandedPriceGroups:expandedItemGroups,key=el.dataset.unifiedGroup;
@@ -3823,7 +3822,7 @@ if(action==='confirmUnifiedGroupRemove'&&p?.unifiedGroupRemove&&unifiedGroupEdit
  if(ids.length&&!unifiedGroupBusy){
   unifiedGroupBusy=true;
   window.KurashiLive.groupStockItems(state.category,ids,'')
-   .then(()=>{unifiedGroupEditor=null;render()})
+   .then(()=>{unifiedGroupEditor=null;unifiedGroupQuery='';render()})
    .catch(err=>say(err.message||'グループを解除できませんでした'))
    .finally(()=>{unifiedGroupBusy=false});
  }
@@ -4162,7 +4161,7 @@ if(action==='restoreItem'||action==='showExistingItem'){
  }item.hidden=false;item.version=(item.version||0)+1}
  revealItem(item);return;
 }
-if(action==='back'){if(unifiedGroupEditor){unifiedGroupEditor=null;render();return}if(productManageCategorySheet){productManageCategorySheet=null;render();return}if(stockManageSheet){stockManageSheet=false;render();return}if(priceGroupSheet){priceGroupSheet=false;render();return}if(inventoryGroupSheet){inventoryGroupSheet=false;render();return}if(recordProductItemId){closeRecordProductPicker();return}if(aliasPickerId){closeAliasProductPicker();return}if(masterGroupPickerOpen){closeMasterGroupPicker();return}if(storePickerTarget){closeStorePicker();return}back();return}
+if(action==='back'){if(unifiedGroupEditor){unifiedGroupEditor=null;unifiedGroupQuery='';render();return}if(productManageCategorySheet){productManageCategorySheet=null;render();return}if(stockManageSheet){stockManageSheet=false;render();return}if(priceGroupSheet){priceGroupSheet=false;render();return}if(inventoryGroupSheet){inventoryGroupSheet=false;render();return}if(recordProductItemId){closeRecordProductPicker();return}if(aliasPickerId){closeAliasProductPicker();return}if(masterGroupPickerOpen){closeMasterGroupPicker();return}if(storePickerTarget){closeStorePicker();return}back();return}
 if(action==='aliasMore'){aliasVisibleLimit+=100;const rows=document.getElementById('alias-results');if(rows)rows.innerHTML=aliasManageRows();return}
 if(action==='aliasPickerOpen'){openAliasProductPicker(el.dataset.aliasId);return}
 if(action==='masterGroupPickerOpen'){if(!stockV2())openMasterGroupPicker();return}
