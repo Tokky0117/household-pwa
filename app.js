@@ -187,7 +187,7 @@ let editingInventory=false,inventoryGroupSheet=false,selectedInventoryIds=new Se
 let editingPrice=false,priceGroupSheet=false,selectedPriceIds=new Set(),expandedPriceGroups=new Set();
 let priceQuery='',selectedProductId=null,priceReturn='price';
 let productListTab='stock',productListQuery='',productCreateMode='none';
-let productAddQuery='',productModePending=new Set(),productModeUndo=null;
+let productAddQuery='',productModePending=new Set();
 let productUnmanagedExpanded=false,productDisplayPins=new Map();
 let stockManageSheet=false;
 let masterProductReturn='settings';
@@ -2325,16 +2325,10 @@ function priceProductRows(){
 
 // v0.99: One product list, three mutually exclusive display categories.
 // The existing v0.98 views remain for unmigrated trial Sheets.
-const PRODUCT_LIST_TABS=[
- {id:'stock',name:'在庫管理',icon:'package'},
- {id:'price',name:'価格確認',icon:'tag'},
- {id:'all',name:'すべて',icon:'list'}
-];
 function productListMode(p){
  return ['stock','price','none'].includes(p?.listMode)?p.listMode:(p?.stockEnabled?'stock':'none');
 }
-function productModeIcon(mode){return miniIcon(mode==='stock'?'package':mode==='price'?'tag':'list')}
-function productModeName(mode){return mode==='stock'?'在庫管理':mode==='price'?'価格確認':'一覧のみ'}
+function productModeName(mode){return mode==='stock'?'在庫管理中':'在庫管理なし'}
 function unifiedProductRow(p,mode,child=false){
  const managing=productListMode(p)==='stock';
  const checked=mode==='stock'?selectedInventoryIds.has(p.id):selectedPriceIds.has(p.id);
@@ -2410,23 +2404,6 @@ function unifiedCategoryResults(mode){
   </section>`;
  }).join('')||'<div class="empty">該当する商品はありません</div>';
 }
-function unifiedAllResults(){
- const q=norm(productListQuery);
- const products=catalogue.products.filter(p=>!p.hidden&&(!q||
-    productMatches(p,q)||norm(p.memo||'').includes(q)||norm(p.displayGroup||'').includes(q)))
-   .sort((a,b)=>a.name.localeCompare(b.name,'ja'));
- return products.map(p=>{
-  const mode=productListMode(p),next=mode==='stock'?'price':mode==='price'?'none':'stock';
-  const busy=productModePending.has(p.id);
-  return `<div class="unified-all-row">
-   <button type="button" class="unified-mode-icon mode-${mode}" data-unified-cycle="${esc(p.id)}"
-    aria-label="${esc(p.name)}：${productModeName(mode)}。押すと${productModeName(next)}へ変更"
-    title="${productModeName(mode)}" ${busy?'disabled':''}>${productModeIcon(mode)}</button>
-   ${UI.catalogueRow({title:p.name,lines:p.memo?[p.memo]:[],action:'priceProductDetail',
-      data:{'data-product-id':p.id},className:'unified-all-detail'})}
-  </div>`;
- }).join('')||'<div class="empty">該当する商品はありません</div>';
-}
 function unifiedProductResults(){
  const hasQuery=!!norm(productListQuery),unmanagedOpen=hasQuery||productUnmanagedExpanded;
  const hasUnmanaged=catalogue.products.some(p=>!p.hidden&&
@@ -2438,7 +2415,7 @@ function unifiedProductResults(){
   <section class="unified-unmanaged-section">
    <div class="unified-unmanaged-controls">
     <button type="button" class="unified-unmanaged-heading"
-      data-unified-unmanaged-toggle aria-expanded="${unmanagedOpen}">
+      data-unified-unmanaged-toggle aria-expanded="${unmanagedOpen}" ${hasQuery?'disabled aria-disabled="true"':''}>
       <span>在庫管理していない商品</span>
       ${chevron(unmanagedOpen?'up':'down')}
     </button>
@@ -3679,7 +3656,7 @@ if(el.dataset.listEdit){
 }if(el.dataset.listHide){selected=el.dataset.listHide;setOpenSwipe(null);dialog=stockV2()?
  {title:'在庫管理から外しますか？',message:'購入履歴と価格情報は残ります。',buttons:[{id:'cancel',label:'キャンセル'},{id:'confirmHide',label:'在庫管理から外す',critical:true}]}:
  {title:'日用品を削除',message:'日用品リストから削除します。',buttons:[{id:'cancel',label:'キャンセル'},{id:'confirmHide',label:'削除',critical:true}]};render();return}
-if(el.dataset.tab){tab=el.dataset.tab;page='list';openSwipeId=null;menu=false;editingInventory=false;selectedInventoryIds.clear();inventoryGroupSheet=false;editingPrice=false;selectedPriceIds.clear();priceGroupSheet=false;selectedProductId=null;render();return}if(el.dataset.cat!==undefined){if(onlyOut)return;const c=Number(el.dataset.cat);collapsed.has(c)?collapsed.delete(c):collapsed.add(c);render();return}if(el.dataset.stock){const i=items.find(x=>x.id===el.dataset.stock);if(!i)return;
+if(el.dataset.tab){productDisplayPins.clear();tab=el.dataset.tab;page='list';openSwipeId=null;menu=false;editingInventory=false;selectedInventoryIds.clear();inventoryGroupSheet=false;editingPrice=false;selectedPriceIds.clear();priceGroupSheet=false;selectedProductId=null;render();return}if(el.dataset.cat!==undefined){if(onlyOut)return;const c=Number(el.dataset.cat);collapsed.has(c)?collapsed.delete(c):collapsed.add(c);render();return}if(el.dataset.stock){const i=items.find(x=>x.id===el.dataset.stock);if(!i)return;
  if(liveMode){
    window.KurashiLive.toggleStock(i.id).catch(err=>{
     const cause=err.message==='RECOVERY_REQUIRED'
