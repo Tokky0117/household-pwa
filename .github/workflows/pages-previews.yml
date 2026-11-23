@@ -221,6 +221,11 @@ jobs:
           name: github-pages-${{ github.run_id }}-${{ github.run_attempt }}
           path: _site
 
+      # GitHub's artifact listing is eventually consistent. Deploying immediately
+      # after upload can return "No artifacts named ..." even on a successful upload.
+      - name: Allow Pages artifact metadata to become available
+        run: sleep 25
+
       - name: Deploy previews and main
         id: deployment
         uses: actions/deploy-pages@v4
