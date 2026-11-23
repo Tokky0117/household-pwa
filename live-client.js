@@ -291,7 +291,7 @@
    }
    if(op.kind==='product-stock-reorder'){
     const rows=snap.products.filter(p=>
-      (op.listMode?String(p.list_mode)===op.listMode:p.stock_enabled===true)&&
+      (op.listMode?(op.listMode==='unmanaged'?String(p.list_mode)!=='stock':String(p.list_mode)===op.listMode):p.stock_enabled===true)&&
       Number(p.category_id)===op.category_id&&!p.is_hidden&&!p.deleted_at);
     const byId=new Map(rows.map(p=>[p.product_id,p]));
     const ids=op.product_ids.filter(id=>byId.has(id));
@@ -1321,11 +1321,11 @@
   return enqueue(doc=>{
    const snapshot=project(doc),cat=Number(categoryId),ids=Array.isArray(orderedIds)?orderedIds:[];
    if(snapshot?.capabilities?.product_stock_v2!==true)throw Error('商品在庫の移行が必要です');
-   if(listMode!==null&&(!['stock','price'].includes(listMode)||
+   if(listMode!==null&&(!['stock','price','unmanaged'].includes(listMode)||
       snapshot.capabilities?.product_list_modes!==true))
     throw Error('商品区分を確認してください');
    const active=snapshot.products.filter(p=>Number(p.category_id)===cat&&
-    (listMode?String(p.list_mode)===listMode:toBoolean(p.stock_enabled))&&
+    (listMode?(listMode==='unmanaged'?String(p.list_mode)!=='stock':String(p.list_mode)===listMode):toBoolean(p.stock_enabled))&&
     !toBoolean(p.is_hidden)&&!p.deleted_at);
    const valid=new Set(active.map(p=>p.product_id));
    if(!Number.isInteger(cat)||cat<0||cat>5||ids.length<2||

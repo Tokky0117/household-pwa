@@ -4537,8 +4537,8 @@ function startPending(row,e,inputType){
  p.timer=setTimeout(()=>startDrag(p),420);pendingDrag=p;
 }
 function dragRowSelector(kind){return kind==='product'?'.comparison-product[data-product-id],.catalogue-row[data-product-id]':'[data-list-top],.item-group-child-row[data-item-id]'}
-function orderedItemIds(category){
- const selector=(productListsReady()?'.unified-stock-section ':'')+
+function orderedItemIds(category,mode='stock'){
+ const selector=(productListsReady()?(mode==='unmanaged'?'.unified-unmanaged-section ':'.unified-stock-section '):'')+
   '.category-items[data-category-id="'+category+'"] > [data-list-top]';
  const roots=[...document.querySelectorAll(selector)];
  const ids=[],seen=new Set();
@@ -4547,7 +4547,7 @@ function orderedItemIds(category){
   const key=root.dataset.groupKey;
   const members=productListsReady()?
    catalogue.products.filter(p=>p.category===Number(category)&&!p.hidden&&
-     productListMode(p)==='stock'&&
+     (mode==='unmanaged'?productListMode(p)!=='stock':productListMode(p)==='stock')&&
      (p.displayGroup?Number(category)+':group:'+norm(p.displayGroup):Number(category)+':single:'+p.id)===key)
     .sort((a,b)=>(a.sortOrder||0)-(b.sortOrder||0)).map(p=>({id:p.id})):
    items.filter(i=>i.category===Number(category)&&!i.hidden&&groupKeyOfItem(i)===key)
@@ -4560,8 +4560,7 @@ function orderedItemIds(category){
 }
 app.addEventListener('pointerdown',e=>{
  if(e.pointerType==='touch'||e.button!==0||dialog||!['list','products','compare'].includes(page))return;
- if(productListsReady()&&page==='list'&&(
-  e.target.closest('.unified-unmanaged-section')))return;
+ 
  if(page==='list'&&(productListsReady()?
    !!productListQuery||onlyOut||editingInventory:
    query||onlyOut||editingInventory))return;
@@ -4576,7 +4575,11 @@ function moveDrag(e){
  d.ghost.style.top=(e.clientY-d.offsetY)+'px';d.ghost.style.left=(e.clientX-d.offsetX)+'px';
  const selector=d.kind==='item'?(d.row.classList.contains('item-group-child-row')?'.item-group-child-row[data-item-id]':'[data-list-top]'):dragRowSelector(d.kind);
  const target=document.elementFromPoint(e.clientX,e.clientY)?.closest(selector);
- if(!target||target===d.row||(d.kind==='item'&&(target.dataset.categoryId!==d.category||(d.row.classList.contains('item-group-child-row')&&target.dataset.groupKey!==d.row.dataset.groupKey))))return;
+ if(!target||target===d.row||
+  (productListsReady()&&d.kind==='item'&&
+   Boolean(target.closest('.unified-unmanaged-section'))!==
+   Boolean(d.row.closest('.unified-unmanaged-section')))||
+  (d.kind==='item'&&(target.dataset.categoryId!==d.category||(d.row.classList.contains('item-group-child-row')&&target.dataset.groupKey!==d.row.dataset.groupKey))))return;
  const rect=target.getBoundingClientRect();
  target.parentNode.insertBefore(d.row,e.clientY<rect.top+rect.height/2?target:target.nextSibling);
  d.moved=true;
@@ -4591,8 +4594,9 @@ function endDrag(e,cancel=false){
  if(!d.moved){render();return}
  if(liveMode){
   if(d.kind==='item'){
-   const ids=orderedItemIds(d.category);
-   (productListsReady()?window.KurashiLive.reorderStockItems(Number(d.category),ids,'stock'):
+   const mode=productListsReady()&&d.row.closest('.unified-unmanaged-section')?'unmanaged':'stock';
+   const ids=orderedItemIds(d.category,mode);
+   (productListsReady()?window.KurashiLive.reorderStockItems(Number(d.category),ids,mode):
      stockV2()?window.KurashiLive.reorderStockItems(Number(d.category),ids):
      window.KurashiLive.reorderItems(Number(d.category),ids)).catch(err=>
     inlineActionNotice(document.querySelector('.category'),
@@ -4626,8 +4630,6 @@ app.addEventListener('pointercancel',e=>endDrag(e,true));
 app.addEventListener('contextmenu',e=>{if(activeDrag||pendingDrag&&e.target.closest('[data-item-id],[data-product-id]'))e.preventDefault()});
 app.addEventListener('touchstart',e=>{
  if(e.touches.length!==1||dialog||!['list','products','compare'].includes(page)||
-  productListsReady()&&page==='list'&&(
-    e.target.closest('.unified-unmanaged-section'))||
   page==='list'&&(productListsReady()?
    !!productListQuery||onlyOut||editingInventory:
    query||onlyOut||editingInventory))return;

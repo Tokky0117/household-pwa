@@ -944,7 +944,7 @@ function kurashiReorderStockProducts_(user,payload,operationId){
   const newMode=Object.prototype.hasOwnProperty.call(payload,'list_mode');
   if(!['category_id,product_ids,versions','category_id,list_mode,product_ids,versions']
       .includes(Object.keys(payload).sort().join(','))||
-      (newMode&&!['stock','price'].includes(payload.list_mode)))
+      (newMode&&!['stock','price','unmanaged'].includes(payload.list_mode)))
     kurashiFail_('BAD_REQUEST','並び順の形式が不正です');
   const cat=Number(payload.category_id),ids=payload.product_ids,versions=payload.versions;
   if(!Number.isInteger(cat)||cat<0||cat>5||
@@ -991,7 +991,7 @@ function kurashiReorderStockProducts_(user,payload,operationId){
     }else{
       const visible=kurashiRows_('products',book).filter(x=>
         String(x.value.household_id)===hid&&Number(x.value.category_id)===cat&&
-        (newMode?String(x.value.list_mode)===payload.list_mode:x.value.stock_enabled===true)&&
+        (newMode?(payload.list_mode==='unmanaged'?String(x.value.list_mode)!=='stock':String(x.value.list_mode)===payload.list_mode):x.value.stock_enabled===true)&&
         !x.value.is_hidden&&!x.value.deleted_at);
       if(visible.length!==ids.length)
         kurashiFail_('VERSION_CONFLICT','別の端末で一覧が変更されています');
