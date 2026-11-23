@@ -3042,8 +3042,6 @@ html,body{touch-action:pan-x pan-y}
 /* Group-centric editing: extend existing group/category rows, not the card design. */
 .unified-category-bar{display:flex;align-items:center;gap:8px}
 .unified-category-bar>.cathead{flex:1;min-width:0}
-.unified-category-create{flex:none;border:0;background:none;color:var(--accent);
- font-size:12px;font-weight:650;min-height:44px;padding:0 6px;white-space:nowrap}
 .unified-group-header{padding:0 3px 0 0;gap:0}
 .unified-group-toggle{flex:1;display:flex;align-items:center;min-width:0;gap:9px;
  min-height:52px;padding:6px 6px 6px 12px;border:0;background:transparent;

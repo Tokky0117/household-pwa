@@ -3699,7 +3699,7 @@ if(exposedItem&&!e.target.closest('.swipe-actions')){
  // The revealed front can be inert, so its row can receive the click instead.
  e.preventDefault();setOpenSwipe(null);return;
 }
-const clear=e.target.closest('[data-search-clear]');if(clear){const input=document.getElementById(clear.dataset.searchClear);if(input){input.value='';syncSearch(input);input.focus()}return}const el=e.target.closest('[data-tab],[data-cat],[data-group-toggle],[data-price-group-toggle],[data-stock],[data-open],[data-select-item],[data-select-price-product],[data-act],[data-ui-toggle],[data-ui-choice],[data-dialog],[data-premove],[data-pedit],[data-pick],[data-product-menu],[data-list-edit],[data-list-hide],[data-unified-category],[data-unified-group],[data-unified-group-create],[data-unified-group-add],[data-unified-group-edit],[data-unified-select],[data-unified-detail],[data-unified-edit],[data-unified-group-product],[data-unified-unmanaged-toggle]');if(!el)return;
+const clear=e.target.closest('[data-search-clear]');if(clear){const input=document.getElementById(clear.dataset.searchClear);if(input){input.value='';syncSearch(input);input.focus()}return}const el=e.target.closest('[data-tab],[data-cat],[data-group-toggle],[data-price-group-toggle],[data-stock],[data-open],[data-select-item],[data-select-price-product],[data-act],[data-ui-toggle],[data-ui-choice],[data-dialog],[data-premove],[data-pedit],[data-pick],[data-product-menu],[data-list-edit],[data-list-hide],[data-unified-category],[data-unified-group],[data-unified-group-add],[data-unified-group-edit],[data-unified-select],[data-unified-detail],[data-unified-edit],[data-unified-group-product],[data-unified-unmanaged-toggle]');if(!el)return;
 if(el.dataset.uiChoice!==undefined&&el.closest('.product-package-details .ui-select')){
  const details=el.closest('.product-package-details');
  details.dataset.packageMode='manual';
@@ -3755,14 +3755,13 @@ if(el.dataset.unifiedCategory!==undefined){
  if(onlyOut||!CAT_ORDER.includes(cat))return;
  scope.has(cat)?scope.delete(cat):scope.add(cat);render();return;
 }
-if(productListsReady()&&(el.dataset.unifiedGroupCreate!==undefined||
-  el.dataset.unifiedGroupAdd!==undefined||el.dataset.unifiedGroupEdit!==undefined)){
+if(productListsReady()&&(el.dataset.unifiedGroupAdd!==undefined||
+  el.dataset.unifiedGroupEdit!==undefined)){
  const cat=Number(el.dataset.category),mode=el.dataset.listMode;
  if(!CAT_ORDER.includes(cat)||!['stock','unmanaged'].includes(mode))return;
- const kind=el.dataset.unifiedGroupCreate!==undefined?'create':
-  el.dataset.unifiedGroupAdd!==undefined?'add':'edit';
- const name=kind==='create'?'':String(el.dataset.groupName||'');
- if(kind!=='create'&&!unifiedGroupNames(cat,mode).some(group=>group===name))return;
+ const kind=el.dataset.unifiedGroupAdd!==undefined?'add':'edit';
+ const name=String(el.dataset.groupName||'');
+ if(!unifiedGroupNames(cat,mode).some(group=>group===name))return;
  unifiedGroupEditor={category:cat,mode,kind,name};unifiedGroupQuery='';setOpenSwipe(null);render();return;
 }
 if(el.dataset.unifiedGroup!==undefined){
@@ -4715,7 +4714,7 @@ app.addEventListener('pointerdown',e=>{
  if(page==='list'&&(productListsReady()?
    !!productListQuery||onlyOut||editingInventory:
    query||onlyOut||editingInventory))return;
- if(e.target.closest('input,textarea,select,[data-stock],[data-unified-edit],[data-unified-group-product],[data-unified-group-create],[data-unified-group-add],[data-unified-group-edit],[data-unified-category],[data-list-edit],[data-list-hide],[data-premove],[data-product-menu],[data-pedit],[data-cat]'))return;
+ if(e.target.closest('input,textarea,select,[data-stock],[data-unified-edit],[data-unified-group-product],[data-unified-group-add],[data-unified-group-edit],[data-unified-category],[data-list-edit],[data-list-hide],[data-premove],[data-product-menu],[data-pedit],[data-cat]'))return;
  const row=e.target.closest(dragRowSelector(page==='compare'||page==='products'?'product':'item'));
  if(row&&(page!=='compare'||e.target.closest('.comparison-product-header')))startPending(row,{pointerId:e.pointerId,clientX:e.clientX,clientY:e.clientY},'mouse');
 });
@@ -4784,7 +4783,7 @@ app.addEventListener('touchstart',e=>{
   page==='list'&&(productListsReady()?
    !!productListQuery||onlyOut||editingInventory:
    query||onlyOut||editingInventory))return;
- if(e.target.closest('input,textarea,select,[data-stock],[data-unified-edit],[data-unified-group-product],[data-unified-group-create],[data-unified-group-add],[data-unified-group-edit],[data-unified-category],[data-list-edit],[data-list-hide],[data-premove],[data-product-menu],[data-pedit],[data-cat]'))return;
+ if(e.target.closest('input,textarea,select,[data-stock],[data-unified-edit],[data-unified-group-product],[data-unified-group-add],[data-unified-group-edit],[data-unified-category],[data-list-edit],[data-list-hide],[data-premove],[data-product-menu],[data-pedit],[data-cat]'))return;
  const row=e.target.closest(dragRowSelector(page==='compare'||page==='products'?'product':'item'));
  if(!row||(page==='compare'&&!e.target.closest('.comparison-product-header')))return;
  const t=e.touches[0];startPending(row,{pointerId:t.identifier,clientX:t.clientX,clientY:t.clientY},'touch');
