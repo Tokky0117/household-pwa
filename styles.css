@@ -3022,65 +3022,19 @@ html,body{touch-action:pan-x pan-y}
 .stock-manage-sheet #stockManageForm{display:flex;flex-direction:column;gap:10px}
 .stock-manage-sheet #stockManageForm>.hint{margin:0;line-height:1.55}
 
-/* Product-owned single catalogue: mutually exclusive stock / price / all views. */
-.unified-product-main{padding-bottom:18px}
-.unified-product-tabs{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:5px;margin:10px 0 14px}
-.unified-product-tab{min-width:0;border:1px solid var(--line);border-radius:10px;
- background:var(--card);color:var(--muted);padding:9px 3px;display:flex;
- align-items:center;justify-content:center;gap:4px;font-size:12px;font-weight:600}
-.unified-product-tab svg{flex:none;width:17px;height:17px}
-.unified-product-tab.active{color:var(--ink);background:var(--surface,#f5f5f5);
- border-color:var(--accent);box-shadow:inset 0 -2px var(--accent)}
-.unified-product-card{border:1px solid var(--line);border-radius:11px;overflow:hidden;
- background:var(--card);margin-bottom:4px;touch-action:pan-y}
-.unified-product-card .swipe-front{display:flex;align-items:center;min-height:62px}
-.unified-product-card .itemname{display:flex;flex:1 1 0;min-width:0;align-items:flex-start;
- padding:9px 12px;gap:3px;border:0;background:transparent;text-align:left}
-.unified-product-card .item-title{display:block;max-width:100%;font-size:15px;font-weight:600;
- overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.unified-product-card .item-stock-area{flex:0 0 60px;display:flex;justify-content:center;
- padding:0 4px}
-.unified-product-card .stock{min-width:0;width:48px;min-height:44px;padding:0;
- background:transparent;border:0;display:grid;place-items:center}
-.unified-list-price{flex:0 1 40%;font-size:12px;color:var(--muted);text-align:right;
- padding:0 12px 0 3px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
-.unified-all-row{display:flex;align-items:center;gap:9px;margin:0 0 8px}
-.unified-all-row .catalogue-candidate{flex:1 1 0;min-width:0;margin:0}
-.unified-mode-icon{display:grid;place-items:center;flex:0 0 44px;width:44px;
- height:48px;background:var(--card);border:1px solid var(--line);border-radius:10px;
- color:var(--ink);cursor:pointer}
-.unified-mode-icon svg{width:21px;height:21px}
-.unified-mode-icon.mode-stock{color:var(--accent)}
-.unified-mode-icon.mode-price{color:var(--accent)}
-.unified-mode-icon.mode-none{color:var(--muted)}
-.unified-mode-icon:disabled{opacity:.5}
-.unified-mode-undo{display:flex;align-items:center;justify-content:space-between;gap:8px;
- font-size:12px;color:var(--muted);padding:6px 2px}
-.unified-mode-undo button{flex-shrink:0}
-.unified-add-page .ui-search{margin-bottom:18px}
-.unified-add-page .catalogue-candidate{margin-bottom:7px}
-@media(max-width:350px){.unified-product-tab{font-size:11px;gap:2px}.unified-product-tab svg{width:15px;height:15px}}
 
-/* Stock-first catalogue, fixed search and card-level inventory membership. */
-.unified-product-main{padding-top:0}
-.unified-search-sticky{position:sticky;top:calc(72px + env(safe-area-inset-top));z-index:9;
- margin:0 -16px 12px;padding:10px 16px;background:var(--bg);border-bottom:1px solid var(--line)}
-.unified-search-sticky .ui-search{margin:0}
-.unified-section-heading{margin:16px 0 12px;font-size:15px;font-weight:700}
-.unified-unmanaged-section{margin:18px 0 24px;border-top:1px solid var(--line)}
-.unified-unmanaged-controls{display:flex;align-items:center;gap:8px}
-.unified-unmanaged-heading{display:flex;flex:1;align-items:center;justify-content:space-between;gap:12px;
- min-width:0;min-height:54px;background:transparent;color:var(--ink);border:0;padding:9px 2px;
- text-align:left;font-size:15px;font-weight:650;cursor:pointer}
-.unified-unmanaged-heading svg{width:18px;height:18px;color:var(--muted)}
+/* One product screen: preserve original swipe item cards and shared section styles. */
+.unified-sticky-head{position:sticky;top:0;z-index:10;background:var(--bg)}
+.unified-sticky-head .top{position:static;backdrop-filter:none}
+.unified-search-block{padding:8px 16px 12px;border-bottom:1px solid var(--line)}
+.unified-product-main{padding-top:12px}
+.unified-stock-section>.ui-section-heading{margin-bottom:12px}
+.unified-unmanaged-section{margin-top:18px;border-top:1px solid var(--line)}
+.unified-unmanaged-heading{min-height:52px;padding:10px 2px}
+.unified-unmanaged-heading:disabled{opacity:1;color:var(--ink)}
 .unified-unmanaged-content{padding-top:6px}
-.unified-unmanaged-content .category{margin-bottom:10px}
-.unified-no-products{font-size:12px;color:var(--muted);padding:0 2px}
-.unified-manage-toggle{display:grid;place-items:center;flex:0 0 40px;width:40px;min-height:44px;
- margin-left:4px;border:0;border-radius:8px;background:transparent;color:var(--muted)}
-.unified-manage-toggle svg{width:19px;height:19px}
-.unified-manage-toggle.is-managed{color:var(--accent);background:var(--ui-stock-off-background,var(--card))}
-.unified-manage-toggle:disabled{opacity:.5}
-.unified-product-card .itemname{padding-left:5px}
-.unified-product-card .unified-list-price{display:flex;align-items:center;justify-content:flex-end}
-.unified-product-card .unified-list-price svg{width:17px;height:17px}
+.unified-unmanaged-chevron{display:grid;place-items:center;color:var(--muted)}
+.unified-unmanaged-chevron svg{width:18px;height:18px}
+.unified-bulk-bar{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px}
+.unified-bulk-bar>span{grid-column:1/-1}
+.unified-bulk-bar button{min-height:44px;padding:7px 3px;font-size:12px;line-height:1.3;white-space:normal}

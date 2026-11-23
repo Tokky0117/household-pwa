@@ -186,9 +186,10 @@ let items=load(),expandedItemGroups=new Set(),tab='items',page='list',selected=n
 let editingInventory=false,inventoryGroupSheet=false,selectedInventoryIds=new Set();
 let editingPrice=false,priceGroupSheet=false,selectedPriceIds=new Set(),expandedPriceGroups=new Set();
 let priceQuery='',selectedProductId=null,priceReturn='price';
-let productListTab='stock',productListQuery='',productCreateMode='none';
+let productListQuery='',productCreateMode='stock';
 let productAddQuery='',productModePending=new Set();
-let productUnmanagedExpanded=false,productDisplayPins=new Map();
+let productUnmanagedExpanded=false,unmanagedCollapsed=new Set();
+let productManageCategorySheet=null,productBatchSaving=false;
 let stockManageSheet=false;
 let masterProductReturn='settings';
 const app=document.getElementById('app');
@@ -1785,23 +1786,26 @@ function head(title,sub='',back=false,right='',left=''){return `<header class="t
 function nav(){return `<nav class="bottom" aria-label="メインメニュー"><div class="tabs">${[['items',productListsReady()?'商品':'在庫'],['receipt',productListsReady()?'明細':'価格'],['settings','設定']].map(([k,v])=>`<button class="tab ${tab===k?'active':''}" data-tab="${k}" ${tab===k?'aria-current="page"':''}>${svg(k)}<span>${v}</span></button>`).join('')}</div></nav>`}
 function groupKeyOfItem(i){return i.displayGroup?i.category+':group:'+norm(i.displayGroup):i.category+':single:'+i.id;}
 function itemLabel(i){return i?i.name+(i.subName?'（メモ：'+i.subName+'）':''):'';}
-function itemCardHtml(i,cat,child=false){
- const label=itemLabel(i),groupKey=groupKeyOfItem(i),chosen=selectedInventoryIds.has(i.id);
+function itemCardHtml(i,cat,child=false,unifiedMode=''){
+ const unified=!!unifiedMode,unmanaged=unifiedMode==='unmanaged';
+ const chosen=selectedInventoryIds.has(i.id),label=itemLabel(i),groupKey=groupKeyOfItem(i);
+ const editData=unified?`data-unified-edit="${esc(i.id)}"`:`data-list-edit="${esc(i.id)}"`;
+ const manageData=unified?`data-unified-select-edit="${esc(i.id)}"`:`data-list-hide="${esc(i.id)}"`;
+ const nameData=unified?`data-unified-detail="${esc(i.id)}"`:`data-open="${esc(i.id)}"`;
  return `<div class="item swipe-item ${child?'item-group-child-row':'item-top-row'} ${editingInventory?'inventory-edit-item':''} ${!editingInventory&&openSwipeId===i.id?'swipe-open':''}" data-item-id="${esc(i.id)}" data-category-id="${cat}" data-group-key="${esc(groupKey)}" ${child?'':'data-list-top="true"'}>
-   ${editingInventory?'':`<div class="swipe-actions">
-    <button type="button" class="swipe-edit" data-list-edit="${esc(i.id)}" tabindex="${openSwipeId===i.id?0:-1}" aria-label="${esc(label)}を編集">${miniIcon('pencil')}<span>編集</span></button>
-    <button type="button" class="swipe-delete" data-list-hide="${esc(i.id)}" tabindex="${openSwipeId===i.id?0:-1}" aria-label="${esc(label)}を${stockV2()?'在庫管理から解除':'削除'}">${miniIcon('trash')}<span>${stockV2()?'解除':'削除'}</span></button>
-   </div>`}
-   <div class="swipe-front">
-    ${editingInventory?`<input type="checkbox" class="inventory-select" data-select-item="${esc(i.id)}" aria-label="${esc(label)}を選択" ${chosen?'checked':''}>`:''}
-    <button type="button" class="itemname" ${editingInventory?`data-select-item="${esc(i.id)}" aria-pressed="${chosen}"`:`data-open="${esc(i.id)}" aria-label="${esc(label)}の価格情報を開く"`}>
-     <span class="item-title">${esc(i.name)}</span>
-     ${i.subName?`<span class="list-memo">${esc(i.subName)}</span>`:''}
-    </button>
-    ${editingInventory?'':`<div class="item-stock-area">${UI.stock(i)}</div>`}
-    <span class="swipe-peek" aria-hidden="true"></span>
-   </div>
- </div>`;
+ ${editingInventory?'':`<div class="swipe-actions">
+  <button type="button" class="swipe-edit" ${editData} tabindex="${openSwipeId===i.id?0:-1}" aria-label="${esc(label)}を編集">${miniIcon('pencil')}<span>編集</span></button>
+  <button type="button" class="swipe-delete" ${manageData} tabindex="${openSwipeId===i.id?0:-1}" aria-label="${esc(label)}を${unified?'管理設定':stockV2()?'在庫管理から解除':'削除'}">${miniIcon(unified?'package':'trash')}<span>${unified?'管理':stockV2()?'解除':'削除'}</span></button>
+ </div>`}
+ <div class="swipe-front">
+  ${editingInventory?`<input type="checkbox" class="inventory-select" ${unified?`data-unified-select="${esc(i.id)}"`:`data-select-item="${esc(i.id)}"`} aria-label="${esc(label)}を選択" ${chosen?'checked':''}>`:''}
+  <button type="button" class="itemname" ${editingInventory?`${unified?`data-unified-select="${esc(i.id)}"`:`data-select-item="${esc(i.id)}"`} aria-pressed="${chosen}"`:`${nameData} aria-label="${esc(label)}の価格情報を開く"`}>
+   <span class="item-title">${esc(i.name)}</span>
+   ${i.subName?`<span class="list-memo">${esc(i.subName)}</span>`:''}
+  </button>
+  ${editingInventory?'':unmanaged?`<div class="item-stock-area"><span class="unified-unmanaged-chevron" aria-hidden="true">${chevron('right')}</span></div>`:`<div class="item-stock-area">${UI.stock(i)}</div>`}
+  <span class="swipe-peek" aria-hidden="true"></span>
+ </div></div>`;
 }
 function listResults(){
  const q=norm(query),matches=i=>(!q||norm(itemLabel(i)).includes(q)||norm(i.subName||'').includes(q)||norm(CATS[i.category]||'').includes(q))&&(!onlyOut||!i.inStock);
@@ -2329,125 +2333,93 @@ function productListMode(p){
  return ['stock','price','none'].includes(p?.listMode)?p.listMode:(p?.stockEnabled?'stock':'none');
 }
 function productModeName(mode){return mode==='stock'?'在庫管理中':'在庫管理なし'}
-function unifiedProductRow(p,mode,child=false){
- const managing=productListMode(p)==='stock';
- const checked=mode==='stock'?selectedInventoryIds.has(p.id):selectedPriceIds.has(p.id);
- const editing=mode==='stock'?editingInventory:editingPrice;
- const stock=items.find(i=>i.id===p.id);
- const best=managing?null:chainMinima(p.id,'1y')[0];
- const price=best?yen(best.price)+' ／ '+chainLabel(best.chainId):'';
- const groupKey=p.displayGroup?p.category+':group:'+norm(p.displayGroup):p.category+':single:'+p.id;
- return `<div class="item unified-product-card ${child?'item-group-child-row':'item-top-row'} ${editing?'inventory-edit-item':''}"
-  data-item-id="${esc(p.id)}" data-category-id="${p.category}" data-group-key="${esc(groupKey)}" ${child?'':'data-list-top="true"'}>
-  <div class="swipe-front">
-   ${editing?`<input type="checkbox" class="inventory-select" data-unified-select="${esc(p.id)}"
-     aria-label="${esc(p.name)}を選択" ${checked?'checked':''}>`:
-    `<button type="button" class="unified-manage-toggle ${managing?'is-managed':''}"
-      data-unified-manage="${esc(p.id)}" aria-pressed="${managing}"
-      aria-label="${esc(p.name)}の在庫管理を${managing?'解除':'開始'}"
-      title="在庫管理を${managing?'解除':'開始'}" ${productModePending.has(p.id)?'disabled':''}>${miniIcon('package')}</button>`}
-   <button class="itemname" type="button" ${editing?`data-unified-select="${esc(p.id)}"`:
-     `data-unified-detail="${esc(p.id)}"`} aria-label="${esc(p.name)}の価格情報を開く">
-    <span class="item-title">${esc(p.name)}</span>
-    ${p.memo?`<span class="list-memo">${esc(p.memo)}</span>`:''}
-   </button>
-   ${editing?'':managing&&stock?`<div class="item-stock-area">${UI.stock(stock)}</div>`:
-     `<span class="unified-list-price">${price?esc(price):chevron('right')}</span>`}
-  </div>
- </div>`;
+function unifiedItemModel(p,mode){
+ if(mode==='stock'){const stock=items.find(i=>i.id===p.id);if(stock)return stock;}
+ return {id:p.id,name:p.name,subName:p.memo||'',category:p.category,
+  displayGroup:p.displayGroup||'',inStock:!!p.inStock,order:p.sortOrder||0,
+  hidden:!!p.hidden,version:p.version};
 }
 function unifiedCategoryResults(mode){
  const q=norm(productListQuery),stockOnly=mode==='stock'&&onlyOut;
- const products=catalogue.products.filter(p=>!p.hidden&&
- (productDisplayPins.get(p.id)||(productListMode(p)==='stock'?'stock':'unmanaged'))===mode);
+ const pool=catalogue.products.filter(p=>!p.hidden&&
+  (mode==='stock'?productListMode(p)==='stock':productListMode(p)!=='stock'));
+ const collapses=mode==='stock'?collapsed:unmanagedCollapsed;
  return CAT_ORDER.map(cat=>{
-  const ordered=products.filter(p=>p.category===cat).sort((a,b)=>
-    (a.sortOrder||0)-(b.sortOrder||0)||a.name.localeCompare(b.name,'ja'));
-  const matches=p=>(!q||productMatches(p,q)||norm(p.memo||'').includes(q)||
-    norm(p.displayGroup||'').includes(q))&&(!stockOnly||!p.inStock);
-  const visible=ordered.filter(matches);
-  if(!visible.length)return '';
-  const editing=mode==='stock'?editingInventory:editingPrice;
-  const closed=!q&&!stockOnly&&!editing&&collapsed.has(cat);
-  const seen=new Set(),parts=[],groupSet=new Map();
-  for(const p of ordered){
-   const key=p.displayGroup?cat+':group:'+norm(p.displayGroup):cat+':single:'+p.id;
-   if(!groupSet.has(key))groupSet.set(key,[]);
-   groupSet.get(key).push(p);
-  }
-  for(const p of ordered){
+  const all=pool.filter(p=>p.category===cat).sort((a,b)=>
+   (a.sortOrder||0)-(b.sortOrder||0)||a.name.localeCompare(b.name,'ja'));
+  const matching=all.filter(p=>(!q||productMatches(p,q)||norm(p.memo||'').includes(q)||
+   norm(p.displayGroup||'').includes(q)||norm(CATS[p.category]||'').includes(q))&&
+   (!stockOnly||!p.inStock));
+  if(!matching.length)return '';
+  const closed=!q&&!stockOnly&&!editingInventory&&collapses.has(cat);
+  const groups=new Map();
+  for(const p of all){const key=p.displayGroup?cat+':group:'+norm(p.displayGroup):cat+':single:'+p.id;
+   if(!groups.has(key))groups.set(key,[]);groups.get(key).push(p)}
+  const seen=new Set(),parts=[];
+  for(const p of all){
    const key=p.displayGroup?cat+':group:'+norm(p.displayGroup):cat+':single:'+p.id;
    if(seen.has(key))continue;seen.add(key);
-   const members=groupSet.get(key),found=members.filter(matches);
+   const members=groups.get(key),found=members.filter(x=>matching.includes(x));
    if(!found.length)continue;
-   if(!p.displayGroup||members.length<2){parts.push(unifiedProductRow(p,mode));continue}
-   const open=editing||!!q||stockOnly||
-     (mode==='stock'?expandedItemGroups:expandedPriceGroups).has(key);
-   const missing=mode==='stock'?members.filter(x=>productListMode(x)==='stock'&&!x.inStock).length:0;
-   parts.push(`<div class="item-group-row" data-list-top="true"
-      data-category-id="${cat}" data-group-key="${esc(key)}">
-     <button type="button" class="item-group-header" data-unified-group="${esc(key)}" aria-expanded="${open}">
-      ${chevron(open?'down':'right')}<span class="item-group-title">${esc(p.displayGroup)}</span>
-      <span class="item-group-count">${members.length}商品</span>
-      ${missing?`<span class="stock-pill item-group-stock item-group-stock-off">在庫なし${missing}件</span>`:''}
-     </button>
-     ${open?`<div class="item-group-children">${found.map(x=>unifiedProductRow(x,mode,true)).join('')}</div>`:''}
-    </div>`);
+   if(!p.displayGroup||members.length===1){
+    parts.push(itemCardHtml(unifiedItemModel(found[0],mode),cat,false,mode));continue;
+   }
+   const open=editingInventory||!!q||stockOnly||
+    (mode==='stock'?expandedItemGroups:expandedPriceGroups).has(key);
+   const missing=mode==='stock'?members.filter(x=>!x.inStock).length:0;
+   parts.push(`<div class="item-group-row" data-list-top="true" data-category-id="${cat}" data-group-key="${esc(key)}">
+    <button class="item-group-header" type="button" data-unified-group="${esc(key)}" aria-expanded="${open}">
+     ${chevron(open?'down':'right')}<span class="item-group-title">${esc(p.displayGroup)}</span>
+     <span class="item-group-count">${members.length}商品</span>
+     ${missing?`<span class="stock-pill item-group-stock item-group-stock-off">在庫なし${missing}件</span>`:''}
+    </button>${open?`<div class="item-group-children">${found.map(x=>itemCardHtml(unifiedItemModel(x,mode),cat,true,mode)).join('')}</div>`:''}
+   </div>`);
   }
-  return `<section class="category">
-   <button class="cathead" data-cat="${cat}" type="button" aria-expanded="${!closed}"
-    ${stockOnly?'disabled aria-disabled="true"':''}>
-    <strong>${esc(CATS[cat])}</strong>
-    <span class="cat-arrow-slot">${closed?chevron('down'):chevron('up')}</span>
-   </button>
-   ${closed?'':`<div class="category-items" data-category-id="${cat}">${parts.join('')||'<div class="empty">商品はありません</div>'}</div>`}
-  </section>`;
- }).join('')||'<div class="empty">該当する商品はありません</div>';
+  return `<section class="category"><button class="cathead" data-unified-category="${cat}" type="button" aria-expanded="${!closed}" ${stockOnly?'disabled aria-disabled="true"':''}>
+   <strong>${esc(CATS[cat])}</strong><span class="count">${matching.length}点</span>
+   <span class="cat-arrow-slot" aria-hidden="true">${stockOnly?'':chevron(closed?'down':'up')}</span>
+  </button>${closed?'':parts.length?`<div class="category-items" data-category-id="${cat}">${parts.join('')}</div>`:'<div class="empty">該当する商品はありません</div>'}</section>`;
+ }).join('');
 }
 function unifiedProductResults(){
- const hasQuery=!!norm(productListQuery),unmanagedOpen=hasQuery||productUnmanagedExpanded;
- const hasUnmanaged=catalogue.products.some(p=>!p.hidden&&
-  (productDisplayPins.get(p.id)||(productListMode(p)==='stock'?'stock':'unmanaged'))==='unmanaged');
+ const hasQuery=!!norm(productListQuery),unmanagedOpen=hasQuery||productUnmanagedExpanded||editingInventory;
  return `<section class="unified-stock-section">
-   <h2 class="unified-section-heading">在庫管理中の商品</h2>
-   ${unifiedCategoryResults('stock')||'<div class="empty">在庫管理中の商品はありません</div>'}
-  </section>
-  <section class="unified-unmanaged-section">
-   <div class="unified-unmanaged-controls">
-    <button type="button" class="unified-unmanaged-heading"
-      data-unified-unmanaged-toggle aria-expanded="${unmanagedOpen}" ${hasQuery?'disabled aria-disabled="true"':''}>
-      <span>在庫管理していない商品</span>
-      ${chevron(unmanagedOpen?'up':'down')}
-    </button>
-    ${unmanagedOpen?`<button type="button" class="inventory-mode-action"
-      data-act="priceEditMode">${editingPrice?'完了':'編集'}</button>`:''}
-   </div>
-   ${unmanagedOpen?`<div class="unified-unmanaged-content">
-    ${unifiedCategoryResults('unmanaged')||'<div class="empty">該当する商品はありません</div>'}
-    </div>`:(!hasUnmanaged?'<div class="unified-no-products">登録商品はありません</div>':'')}
-  </section>`;
+  ${UI.sectionHeading({title:'在庫管理中の商品'})}
+  ${unifiedCategoryResults('stock')||'<div class="empty">該当する商品はありません</div>'}
+ </section>
+ ${onlyOut?'':`<section class="unified-unmanaged-section">
+  <button type="button" class="cathead unified-unmanaged-heading" data-unified-unmanaged-toggle
+   aria-expanded="${unmanagedOpen}" ${hasQuery||editingInventory?'disabled aria-disabled="true"':''}>
+   <strong>在庫管理していない商品</strong>
+   <span class="cat-arrow-slot">${chevron(unmanagedOpen?'up':'down')}</span>
+  </button>
+  ${unmanagedOpen?`<div class="unified-unmanaged-content">${unifiedCategoryResults('unmanaged')||'<div class="empty">該当する商品はありません</div>'}</div>`:''}
+ </section>`}
+ `;
 }
 function unifiedProductHomeView(){
- const editing=editingInventory||editingPrice;
  const action=UI.iconButton({label:'商品を追加',action:'unifiedAddOpen',iconHtml:miniIcon('plus')});
  const edit=`<button type="button" class="inventory-mode-action"
-  data-act="inventoryEditMode">${editingInventory?'完了':'編集'}</button>`;
- const stockFilter=`<div class="filterrow"><label class="switchlabel">
-   <input type="checkbox" id="onlyOut" ${onlyOut?'checked':''}>在庫なしのみ表示</label></div>`;
- const count=editingInventory?selectedInventoryIds.size:selectedPriceIds.size;
- const bulk=editing?`<div class="inventory-bulk-bar"><span>${count}件を選択</span>
-    ${UI.button({label:'グループ化',action:editingInventory?'inventoryGroupOpen':'priceGroupOpen',disabled:!count})}
-    ${UI.button({label:'解除',action:editingInventory?'inventoryUngroup':'priceUngroup',
-      disabled:!count,variant:'tertiary'})}</div>`:'';
- return `${head('商品','くらしストック',false,(editing?'':action)+edit)}
-   <main class="unified-product-main">
-    <div class="unified-search-sticky">
-     ${UI.searchField({id:'unified-product-search',label:'商品を検索',placeholder:'すべての商品から検索',
-       value:productListQuery,extra:'autocomplete="off"'})}
-    </div>
-    ${stockFilter}
-    <div id="unified-product-results">${unifiedProductResults()}</div>
-   </main>${bulk}${nav()}`;
+  data-act="inventoryEditMode" ${productBatchSaving?'disabled':''}>${editingInventory?'完了':'編集'}</button>`;
+ const filter=`<div class="filterrow"><label class="switchlabel">
+  <input type="checkbox" id="onlyOut" ${onlyOut?'checked':''} ${editingInventory?'disabled':''}>在庫なしのみ表示</label></div>`;
+ const count=selectedInventoryIds.size;
+ const bulk=editingInventory?`<div class="inventory-bulk-bar unified-bulk-bar">
+  <span>${count}件を選択</span>
+  ${UI.button({label:'グループ化',action:'unifiedGroupOpen',disabled:!count||productBatchSaving,variant:'secondary'})}
+  ${UI.button({label:'グループ解除',action:'unifiedUngroup',disabled:!count||productBatchSaving,variant:'tertiary'})}
+  ${UI.button({label:'在庫管理する',action:'unifiedManageOn',disabled:!count||productBatchSaving,variant:'secondary'})}
+  ${UI.button({label:'在庫管理から外す',action:'unifiedManageOff',disabled:!count||productBatchSaving,variant:'tertiary'})}
+ </div>`:'';
+ return `<div class="unified-sticky-head">
+   ${head('商品','くらしストック',false,(editingInventory?'':action)+edit)}
+   <div class="unified-search-block">
+    ${UI.searchField({id:'unified-product-search',label:'商品を検索',placeholder:'すべての商品から検索',value:productListQuery,extra:'autocomplete="off"'})}
+   </div>
+  </div>
+  <main class="unified-product-main">${filter}
+   <div id="unified-product-results">${unifiedProductResults()}</div>
+  </main>${bulk}${nav()}`;
 }
 function unifiedAddView(){
  const mode=productCreateMode,q=norm(productAddQuery);
