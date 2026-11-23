@@ -4482,7 +4482,9 @@ function startPending(row,e,inputType){
 }
 function dragRowSelector(kind){return kind==='product'?'.comparison-product[data-product-id],.catalogue-row[data-product-id]':'[data-list-top],.item-group-child-row[data-item-id]'}
 function orderedItemIds(category){
- const roots=[...document.querySelectorAll('.category-items[data-category-id="'+category+'"] > [data-list-top]')];
+ const selector=(productListsReady()?'.unified-stock-section ':'')+
+  '.category-items[data-category-id="'+category+'"] > [data-list-top]';
+ const roots=[...document.querySelectorAll(selector)];
  const ids=[],seen=new Set();
  for(const root of roots){
   if(root.dataset.itemId){ids.push(root.dataset.itemId);continue;}
@@ -4502,11 +4504,13 @@ function orderedItemIds(category){
 }
 app.addEventListener('pointerdown',e=>{
  if(e.pointerType==='touch'||e.button!==0||dialog||!['list','products','compare'].includes(page))return;
+ if(productListsReady()&&page==='list'&&(productDisplayPins.size||
+  e.target.closest('.unified-unmanaged-section')))return;
  if(page==='list'&&(productListsReady()?
    productListTab==='all'||!!productListQuery||onlyOut||
    (productListTab==='stock'?editingInventory:editingPrice):
    query||onlyOut||editingInventory))return;
- if(e.target.closest('input,textarea,select,[data-stock],[data-list-edit],[data-list-hide],[data-premove],[data-product-menu],[data-pedit],[data-cat]'))return;
+ if(e.target.closest('input,textarea,select,[data-stock],[data-unified-manage],[data-unified-detail],[data-list-edit],[data-list-hide],[data-premove],[data-product-menu],[data-pedit],[data-cat]'))return;
  const row=e.target.closest(dragRowSelector(page==='compare'||page==='products'?'product':'item'));
  if(row&&(page!=='compare'||e.target.closest('.comparison-product-header')))startPending(row,{pointerId:e.pointerId,clientX:e.clientX,clientY:e.clientY},'mouse');
 });
@@ -4567,11 +4571,13 @@ app.addEventListener('pointercancel',e=>endDrag(e,true));
 app.addEventListener('contextmenu',e=>{if(activeDrag||pendingDrag&&e.target.closest('[data-item-id],[data-product-id]'))e.preventDefault()});
 app.addEventListener('touchstart',e=>{
  if(e.touches.length!==1||dialog||!['list','products','compare'].includes(page)||
+  productListsReady()&&page==='list'&&(productDisplayPins.size||
+    e.target.closest('.unified-unmanaged-section'))||
   page==='list'&&(productListsReady()?
    productListTab==='all'||!!productListQuery||onlyOut||
    (productListTab==='stock'?editingInventory:editingPrice):
    query||onlyOut||editingInventory))return;
- if(e.target.closest('input,textarea,select,[data-stock],[data-list-edit],[data-list-hide],[data-premove],[data-product-menu],[data-pedit],[data-cat]'))return;
+ if(e.target.closest('input,textarea,select,[data-stock],[data-unified-manage],[data-unified-detail],[data-list-edit],[data-list-hide],[data-premove],[data-product-menu],[data-pedit],[data-cat]'))return;
  const row=e.target.closest(dragRowSelector(page==='compare'||page==='products'?'product':'item'));
  if(!row||(page==='compare'&&!e.target.closest('.comparison-product-header')))return;
  const t=e.touches[0];startPending(row,{pointerId:t.identifier,clientX:t.clientX,clientY:t.clientY},'touch');
