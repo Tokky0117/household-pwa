@@ -3856,7 +3856,7 @@ if(action==='saveScanDraftAndExit'){void leaveScanAsDraft();return}
 if(action==='discardScan'){resetScan();page='list';tab='receipt';render();return}
 if(action==='discardChanges'){goBack();return}if(action==='confirmHide'){if(liveMode){const i=current();if(i)
    window.KurashiLive.save(stockV2()?'product.stock.update':'item.update',
-    stockV2()?{product_id:i.id,stock_enabled:false,in_stock:false}:{household_item_id:i.id,version:i.version,is_hidden:true})
+    stockV2()?(productListsReady()?{product_id:i.id,list_mode:'none'}:{product_id:i.id,stock_enabled:false,in_stock:false}):{household_item_id:i.id,version:i.version,is_hidden:true})
    .then(()=>{page='list';openSwipeId=null;render()})
    .catch(err=>inlineActionNotice(document.querySelector('[data-list-hide="'+i.id+'"]'),err.message||'削除できませんでした'));
    render();return}
@@ -4294,6 +4294,10 @@ if(action==='unifiedCreateNew'&&productListsReady()){
 if(action==='unifiedAddExisting'&&productListsReady()){
  const p=catalogue.products.find(x=>x.id===el.dataset.productId);
  if(!p||productModePending.has(p.id)||productListMode(p)===productCreateMode)return;
+ if(p.category===4&&productCreateMode==='stock'){
+  page='list';tab='items';editingInventory=true;selectedInventoryIds=new Set([p.id]);
+  productManageCategorySheet={ids:[p.id]};render();return;
+ }
  productModePending.add(p.id);
  window.KurashiLive.save('product.stock.update',{product_id:p.id,list_mode:productCreateMode})
   .then(()=>{page='list';productListQuery='';})
