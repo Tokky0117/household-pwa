@@ -1791,12 +1791,12 @@ function itemCardHtml(i,cat,child=false,unifiedMode=''){
  const unified=!!unifiedMode,unmanaged=unifiedMode==='unmanaged';
  const chosen=selectedInventoryIds.has(i.id),label=itemLabel(i),groupKey=groupKeyOfItem(i);
  const editData=unified?`data-unified-edit="${esc(i.id)}"`:`data-list-edit="${esc(i.id)}"`;
- const manageData=unified?`data-unified-select-edit="${esc(i.id)}"`:`data-list-hide="${esc(i.id)}"`;
+ const manageData=unified?`data-unified-group-product="${esc(i.id)}"`:`data-list-hide="${esc(i.id)}"`;
  const nameData=unified?`data-unified-detail="${esc(i.id)}"`:`data-open="${esc(i.id)}"`;
  return `<div class="item swipe-item ${child?'item-group-child-row':'item-top-row'} ${editingInventory?'inventory-edit-item':''} ${!editingInventory&&openSwipeId===i.id?'swipe-open':''}" data-item-id="${esc(i.id)}" data-category-id="${cat}" data-group-key="${esc(groupKey)}" ${child?'':'data-list-top="true"'}>
  ${editingInventory?'':`<div class="swipe-actions">
   <button type="button" class="swipe-edit" ${editData} tabindex="${openSwipeId===i.id?0:-1}" aria-label="${esc(label)}を編集">${miniIcon('pencil')}<span>編集</span></button>
-  <button type="button" class="swipe-delete" ${manageData} tabindex="${openSwipeId===i.id?0:-1}" aria-label="${esc(label)}を${unified?'管理設定':stockV2()?'在庫管理から解除':'削除'}">${miniIcon(unified?'package':'trash')}<span>${unified?'管理':stockV2()?'解除':'削除'}</span></button>
+  <button type="button" class="${unified?'swipe-group':'swipe-delete'}" ${manageData} tabindex="${openSwipeId===i.id?0:-1}" aria-label="${esc(label)}を${unified?'グループ化':stockV2()?'在庫管理から解除':'削除'}">${miniIcon(unified?'list':'trash')}<span>${unified?'グループ':stockV2()?'解除':'削除'}</span></button>
  </div>`}
  <div class="swipe-front">
   ${editingInventory?`<input type="checkbox" class="inventory-select" ${unified?`data-unified-select="${esc(i.id)}"`:`data-select-item="${esc(i.id)}"`} aria-label="${esc(label)}を選択" ${chosen?'checked':''}>`:''}
@@ -2357,25 +2357,62 @@ function unifiedGroupOptions(cat,mode){
  return [{value:'',label:'グループなし'},...unifiedGroupNames(cat,mode)
   .map(name=>({value:name,label:name}))];
 }
+function unifiedGroupDestinationName(state,value){
+ if(!/^g\d+$/.test(value||''))return null;
+ const index=Number(value.slice(1)),names=unifiedGroupNames(state.category,state.mode);
+ return Number.isInteger(index)&&index>=0&&index<names.length?names[index]:null;
+}
+function refreshUnifiedGroupSheet(form){
+ if(!form||!unifiedGroupEditor)return;
+ const state=unifiedGroupEditor,q=norm(form.querySelector('#unified-group-search')?.value||'');
+ const dest=state.kind==='product'?
+  unifiedGroupDestinationName(state,form.querySelector('[name="destination"]')?.value):null;
+ const fresh=form.querySelector('[data-unified-group-new-name]');
+ if(fresh)fresh.hidden=!!dest;
+ const note=form.querySelector('[data-unified-existing-note]');
+ if(note)note.hidden=!dest;
+ for(const row of form.querySelectorAll('[data-group-lookup]')){
+  const inDestination=!!dest&&norm(row.dataset.groupSource||'')===norm(dest)&&
+   row.dataset.groupProduct!==state.productId;
+  row.hidden=inDestination||!!q&&!norm(row.dataset.groupLookup||'').includes(q);
+  const choice=row.querySelector('input[name="product_id"]');
+  if(choice)choice.disabled=inDestination;
+ }
+}
 function unifiedGroupSheetView(){
  const state=unifiedGroupEditor;if(!state)return '';
  const current=unifiedGroupCandidates(state.category,state.mode);
  const matched=p=>state.name&&norm(p.displayGroup)===norm(state.name);
  const candidates=(state.kind==='add'?current.filter(p=>!matched(p)):current)
-  .slice().sort((a,b)=>a.name.localeCompare(b.name,'ja'));
- const title=state.kind==='create'?'グループを作成':state.kind==='add'?'商品を追加':'グループを編集';
+  .slice().sort((a,b)=>state.kind==='product'&&a.id===state.productId?-1:
+   state.kind==='product'&&b.id===state.productId?1:a.name.localeCompare(b.name,'ja'));
+ const title=state.kind==='create'?'グループを作成':state.kind==='add'?'商品を追加':
+  state.kind==='product'?'商品をグループ化':'グループを編集';
+ const existingNames=state.kind==='product'?unifiedGroupNames(state.category,state.mode):[];
+ const destination=state.kind==='product'&&existingNames.length?
+  UI.formField({id:'unified-group-destination',name:'destination',label:'まとめるグループ',
+   control:'select',value:'new',options:[{value:'new',label:'新しいグループ'},
+    ...existingNames.map((name,index)=>({value:'g'+index,label:name}))]}):'';
  const field=state.kind==='add'?'<p class="hint">'+esc(state.name)+'に追加する商品を選択</p>':
-  UI.formField({id:'unified-group-name',name:'group_name',label:'グループ名',
+  state.kind==='product'?
+   destination+'<div data-unified-group-new-name>'+
+    UI.formField({id:'unified-group-name',name:'group_name',label:'新しいグループ名',
+      value:'',maxlength:80,placeholder:'例：洗濯洗剤'})+'</div>':
+   UI.formField({id:'unified-group-name',name:'group_name',label:'グループ名',
     value:state.name,maxlength:80,required:true,placeholder:'例：洗濯洗剤'});
- const rows=candidates.map(p=>`<label class="unified-group-choice" data-group-lookup="${esc(norm(p.name)+' '+norm(p.displayGroup||''))}">
+ const rows=candidates.map(p=>`<label class="unified-group-choice"
+   data-group-product="${esc(p.id)}" data-group-source="${esc(p.displayGroup||'')}"
+   data-group-lookup="${esc(norm(p.name)+' '+norm(p.displayGroup||''))}">
   <input type="checkbox" name="product_id" value="${esc(p.id)}"
-   ${state.kind==='edit'&&matched(p)?'checked':''}>
+   ${(state.kind==='edit'&&matched(p))||(state.kind==='product'&&p.id===state.productId)?'checked':''}>
   <span class="unified-group-choice-name">${esc(p.name)}
-  ${p.displayGroup&&!matched(p)?`<small>現在：${esc(p.displayGroup)}</small>`:''}</span>
+  ${state.kind==='product'&&p.id===state.productId?'<small>この商品からグループを作成</small>':
+    p.displayGroup&&!matched(p)?`<small>現在：${esc(p.displayGroup)}</small>`:''}</span>
  </label>`).join('')||'<p class="hint">追加できる商品はありません。</p>';
  return UI.sheet({title,variant:'unified-group-sheet',
   body:`<form id="unifiedGroupForm">
    ${field}
+   <p class="hint" data-unified-existing-note hidden>既存グループの商品はそのまま残ります。</p>
    ${UI.searchField({id:'unified-group-search',label:'商品を検索',placeholder:'商品名で絞り込む',value:unifiedGroupQuery,extra:'autocomplete="off"'})}
    <div class="unified-group-choices">${rows}</div>
    <div class="formactions">${UI.button({label:state.kind==='add'?'追加する':'保存',variant:'primary',type:'submit',disabled:unifiedGroupBusy})}</div>
@@ -2451,9 +2488,6 @@ function unifiedCategoryResults(mode){
     <strong>${esc(CATS[cat])}</strong><span class="count">${matching.length}点</span>
     <span class="cat-arrow-slot" aria-hidden="true">${stockOnly?'':chevron(closed?'down':'up')}</span>
    </button>
-   ${!q&&!stockOnly&&!editingInventory?`<button type="button" class="unified-category-create"
-     data-unified-group-create data-category="${cat}" data-list-mode="${mode}"
-     aria-label="${esc(CATS[cat])}にグループを作成">＋ グループ</button>`:''}
   </div>${closed?'':parts.length?`<div class="category-items" data-category-id="${cat}">${parts.join('')}</div>`:'<div class="empty">該当する商品はありません</div>'}</section>`;
  }).join('');
 }
@@ -2771,6 +2805,12 @@ function syncSheetScrollLock(){
 }
 function render(){
  if(!window.document)return; // A closed iOS page/session must not re-render.
+ // Preserve the same DOM sheet through sync and form-content changes.
+ // The list is refreshed after the sheet closes, not while it is being edited.
+ if(unifiedGroupEditor&&app.querySelector('.sheet-back.unified-group-sheet')){
+  if(dialog)renderDialogOnly();
+  return;
+ }
  // Preserve the entire open receipt sheet while background data changes.
  // Detaching and reinserting it would restart iOS Safari's entrance animation,
  // reset search focus and cause an unsolicited flicker. The latest snapshot is
@@ -3153,8 +3193,7 @@ app.addEventListener('input',e=>{
 });
 function updateSearchResults(){const target=document.getElementById('item-results');if(target){target.innerHTML=listResults();if(openSwipeId)setOpenSwipe(openSwipeId)}}
 const searchBindings={'unified-group-search':{set:v=>{unifiedGroupQuery=v},update:()=>{
- const form=document.getElementById('unifiedGroupForm'),q=norm(unifiedGroupQuery);
- form?.querySelectorAll('[data-group-lookup]').forEach(row=>{row.hidden=!!q&&!norm(row.dataset.groupLookup).includes(q)});
+ refreshUnifiedGroupSheet(document.getElementById('unifiedGroupForm'));
 }},'unified-product-search':{set:v=>{productListQuery=v;if(v){onlyOut=false;const f=document.getElementById('onlyOut');if(f)f.checked=false;}},update:()=>{
  const target=document.getElementById('unified-product-results');
  if(target)target.innerHTML=unifiedProductResults();
@@ -3355,14 +3394,17 @@ app.addEventListener('submit',e=>{e.preventDefault();const form=e.target;const d
 }
 if(form.id==='unifiedGroupForm'&&unifiedGroupEditor){
  const state={...unifiedGroupEditor};
- const name=(state.kind==='add'?state.name:String(d.get('group_name')||'').trim());
+ const destination=state.kind==='product'?
+  unifiedGroupDestinationName(state,String(d.get('destination')||'new')):null;
+ const name=(state.kind==='add'?state.name:destination||String(d.get('group_name')||'').trim());
  const ids=d.getAll('product_id').map(String);
  if(!name||name.length>80||/^[=+@\-]/.test(name)){
   fieldNotice(form,'グループ名を確認してください','unified-group-name');return;
  }
  if(!ids.length){fieldNotice(form,'商品を選択してください','unified-group-search');return}
- if(state.kind!=='add'&&unifiedGroupNames(state.category,state.mode)
-  .some(other=>norm(other)===norm(name)&&norm(other)!==norm(state.name))){
+ if(!destination&&state.kind!=='add'&&unifiedGroupNames(state.category,state.mode)
+  .some(other=>norm(other)===norm(name)&&
+    (state.kind!=='edit'||norm(other)!==norm(state.name)))){
   fieldNotice(form,'同じ名前のグループがあります','unified-group-name');return;
  }
  const submit=form.querySelector('[type="submit"]');if(submit?.disabled)return;
@@ -3657,7 +3699,7 @@ if(exposedItem&&!e.target.closest('.swipe-actions')){
  // The revealed front can be inert, so its row can receive the click instead.
  e.preventDefault();setOpenSwipe(null);return;
 }
-const clear=e.target.closest('[data-search-clear]');if(clear){const input=document.getElementById(clear.dataset.searchClear);if(input){input.value='';syncSearch(input);input.focus()}return}const el=e.target.closest('[data-tab],[data-cat],[data-group-toggle],[data-price-group-toggle],[data-stock],[data-open],[data-select-item],[data-select-price-product],[data-act],[data-ui-toggle],[data-ui-choice],[data-dialog],[data-premove],[data-pedit],[data-pick],[data-product-menu],[data-list-edit],[data-list-hide],[data-unified-category],[data-unified-group],[data-unified-group-create],[data-unified-group-add],[data-unified-group-edit],[data-unified-select],[data-unified-detail],[data-unified-edit],[data-unified-select-edit],[data-unified-unmanaged-toggle]');if(!el)return;
+const clear=e.target.closest('[data-search-clear]');if(clear){const input=document.getElementById(clear.dataset.searchClear);if(input){input.value='';syncSearch(input);input.focus()}return}const el=e.target.closest('[data-tab],[data-cat],[data-group-toggle],[data-price-group-toggle],[data-stock],[data-open],[data-select-item],[data-select-price-product],[data-act],[data-ui-toggle],[data-ui-choice],[data-dialog],[data-premove],[data-pedit],[data-pick],[data-product-menu],[data-list-edit],[data-list-hide],[data-unified-category],[data-unified-group],[data-unified-group-create],[data-unified-group-add],[data-unified-group-edit],[data-unified-select],[data-unified-detail],[data-unified-edit],[data-unified-group-product],[data-unified-unmanaged-toggle]');if(!el)return;
 if(el.dataset.uiChoice!==undefined&&el.closest('.product-package-details .ui-select')){
  const details=el.closest('.product-package-details');
  details.dataset.packageMode='manual';
@@ -3733,10 +3775,12 @@ if(el.dataset.unifiedSelect!==undefined&&productListsReady()){
  selectedInventoryIds.has(id)?selectedInventoryIds.delete(id):selectedInventoryIds.add(id);
  render();return;
 }
-if(el.dataset.unifiedSelectEdit!==undefined&&productListsReady()){
- const p=catalogue.products.find(x=>x.id===el.dataset.unifiedSelectEdit);if(!p)return;
- editingInventory=true;editingPrice=false;selectedInventoryIds.clear();selectedInventoryIds.add(p.id);
- onlyOut=false;setOpenSwipe(null);render();return;
+if(el.dataset.unifiedGroupProduct!==undefined&&productListsReady()){
+ const p=catalogue.products.find(x=>x.id===el.dataset.unifiedGroupProduct&&!x.hidden);
+ if(!p||unifiedGroupBusy)return;
+ const mode=productListMode(p)==='stock'?'stock':'unmanaged';
+ unifiedGroupEditor={category:p.category,mode,kind:'product',productId:p.id,name:''};
+ unifiedGroupQuery='';setOpenSwipe(null);render();return;
 }
 if(el.dataset.unifiedEdit!==undefined&&productListsReady()){
  const p=catalogue.products.find(x=>x.id===el.dataset.unifiedEdit);if(!p)return;
@@ -4671,7 +4715,7 @@ app.addEventListener('pointerdown',e=>{
  if(page==='list'&&(productListsReady()?
    !!productListQuery||onlyOut||editingInventory:
    query||onlyOut||editingInventory))return;
- if(e.target.closest('input,textarea,select,[data-stock],[data-unified-edit],[data-unified-select-edit],[data-unified-group-create],[data-unified-group-add],[data-unified-group-edit],[data-unified-category],[data-list-edit],[data-list-hide],[data-premove],[data-product-menu],[data-pedit],[data-cat]'))return;
+ if(e.target.closest('input,textarea,select,[data-stock],[data-unified-edit],[data-unified-group-product],[data-unified-group-create],[data-unified-group-add],[data-unified-group-edit],[data-unified-category],[data-list-edit],[data-list-hide],[data-premove],[data-product-menu],[data-pedit],[data-cat]'))return;
  const row=e.target.closest(dragRowSelector(page==='compare'||page==='products'?'product':'item'));
  if(row&&(page!=='compare'||e.target.closest('.comparison-product-header')))startPending(row,{pointerId:e.pointerId,clientX:e.clientX,clientY:e.clientY},'mouse');
 });
@@ -4740,7 +4784,7 @@ app.addEventListener('touchstart',e=>{
   page==='list'&&(productListsReady()?
    !!productListQuery||onlyOut||editingInventory:
    query||onlyOut||editingInventory))return;
- if(e.target.closest('input,textarea,select,[data-stock],[data-unified-edit],[data-unified-select-edit],[data-unified-group-create],[data-unified-group-add],[data-unified-group-edit],[data-unified-category],[data-list-edit],[data-list-hide],[data-premove],[data-product-menu],[data-pedit],[data-cat]'))return;
+ if(e.target.closest('input,textarea,select,[data-stock],[data-unified-edit],[data-unified-group-product],[data-unified-group-create],[data-unified-group-add],[data-unified-group-edit],[data-unified-category],[data-list-edit],[data-list-hide],[data-premove],[data-product-menu],[data-pedit],[data-cat]'))return;
  const row=e.target.closest(dragRowSelector(page==='compare'||page==='products'?'product':'item'));
  if(!row||(page==='compare'&&!e.target.closest('.comparison-product-header')))return;
  const t=e.touches[0];startPending(row,{pointerId:t.identifier,clientX:t.clientX,clientY:t.clientY},'touch');
@@ -4790,7 +4834,7 @@ app.addEventListener('pointerdown',e=>{
  if(!['list','compare'].includes(page)||dialog||activeDrag)return;
  if(e.pointerType!=='mouse'||e.button!==0)return;
  if(e.target.closest('[data-list-edit],[data-list-hide],[data-pedit],[data-premove]'))return;
- if(e.target.closest('[data-unified-edit],[data-unified-select-edit]'))return;
+ if(e.target.closest('[data-unified-edit],[data-unified-group-product]'))return;
  const row=e.target.closest('.swipe-item');
  if(!row)return;
  swipeGesture={row,id:e.pointerId,x:e.clientX,y:e.clientY,axis:null,swiped:false};
@@ -4820,7 +4864,7 @@ let listTouchSwipe=null;
 app.addEventListener('touchstart',e=>{
  if(!['list','compare'].includes(page)||dialog||e.touches.length!==1||activeDrag)return;
  if(e.target.closest('[data-list-edit],[data-list-hide],[data-pedit],[data-premove]'))return;
- if(e.target.closest('[data-unified-edit],[data-unified-select-edit]'))return;
+ if(e.target.closest('[data-unified-edit],[data-unified-group-product]'))return;
  const row=e.target.closest('.swipe-item');if(!row)return;
  const t=e.touches[0];
  listTouchSwipe={id:t.identifier,row,x:t.clientX,y:t.clientY,lastX:t.clientX,lastY:t.clientY,axis:null};
@@ -4999,6 +5043,9 @@ app.addEventListener('input',e=>{
 });
 // Only structured receipt draft fields are stored, never raw OCR or photos.
 app.addEventListener('change',e=>{
+ if(e.target.name==='destination'&&e.target.closest('#unifiedGroupForm')){
+  refreshUnifiedGroupSheet(e.target.closest('#unifiedGroupForm'));
+ }
  if(e.target.name==='category_id'&&e.target.closest('#masterProductForm')&&productListsReady()){
   const cat=Number(e.target.value),p=catalogue.products.find(x=>x.id===masterProductId);
   const wrapper=document.querySelector('[data-ui-select="master-product-display-group"]');
