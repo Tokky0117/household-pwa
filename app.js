@@ -2366,7 +2366,7 @@ function unifiedCategoryResults(mode){
   const matches=p=>(!q||productMatches(p,q)||norm(p.memo||'').includes(q)||
     norm(p.displayGroup||'').includes(q))&&(!stockOnly||!p.inStock);
   const visible=ordered.filter(matches);
-  if((q||stockOnly||mode==='unmanaged')&&!visible.length)return '';
+  if(!visible.length)return '';
   const editing=mode==='stock'?editingInventory:editingPrice;
   const closed=!q&&!stockOnly&&!editing&&collapsed.has(cat);
   const seen=new Set(),parts=[],groupSet=new Map();
@@ -2410,7 +2410,7 @@ function unifiedProductResults(){
   (productDisplayPins.get(p.id)||(productListMode(p)==='stock'?'stock':'unmanaged'))==='unmanaged');
  return `<section class="unified-stock-section">
    <h2 class="unified-section-heading">在庫管理中の商品</h2>
-   ${unifiedCategoryResults('stock')}
+   ${unifiedCategoryResults('stock')||'<div class="empty">在庫管理中の商品はありません</div>'}
   </section>
   <section class="unified-unmanaged-section">
    <div class="unified-unmanaged-controls">
