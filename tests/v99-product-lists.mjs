@@ -10,7 +10,7 @@ for(const [name,source] of [['app',app],['live',live],['gas',gas]]){
 assert.match(app,/function itemCardHtml\(i,cat,child=false,unifiedMode=''/);
 assert.match(app,/itemCardHtml\(unifiedItemModel\(/);
 assert.match(app,/class="item swipe-item/);
-assert.match(app,/data-unified-select-edit/);
+assert.match(app,/data-unified-group-product/);
 assert.match(app,/data-unified-edit/);
 assert.match(app,/data-unified-select/);
 assert.match(app,/data-unified-unmanaged-toggle/);
@@ -24,16 +24,21 @@ assert.match(app,/unifiedManageCategoryForm/);
 assert.match(app,/groupStockItems/);
 assert.match(app,/data-unified-group-add/);
 assert.match(app,/data-unified-group-edit/);
-assert.match(app,/data-unified-group-create/);
+assert.doesNotMatch(app,/data-unified-group-create data-category=/,'category-level group create button is removed');
 assert.match(app,/function unifiedGroupSheetView\(\)/);
 assert.match(app,/function unifiedGroupOptions\(cat,mode\)/);
 assert.match(app,/function unifiedSaveGroup\(state,name,selectedIds\)/);
 assert.match(app,/UI\.formField\(\{id:'master-product-display-group'/);
+assert.match(app,/function unifiedGroupDestinationName\(state,value\)/);
+assert.match(app,/function refreshUnifiedGroupSheet\(form\)/);
+assert.match(app,/if\(unifiedGroupEditor&&app\.querySelector\('\.sheet-back\.unified-group-sheet'\)\)/);
+assert.match(app,/state\.kind==='product'&&p\.id===state\.productId/);
 assert.match(app,/\['unified-group-search'\]|'unified-group-search':/);
 const dragHandlers=app.slice(app.indexOf("app.addEventListener('pointerdown',e=>{",app.indexOf('function orderedItemIds(')),
  app.indexOf('function endDrag('));
 assert.doesNotMatch(dragHandlers,/\[data-unified-detail\]/,'product names must allow long-press reordering');
 assert.match(dragHandlers,/data-unified-group-add/,'group plus button must not drag');
+assert.match(dragHandlers,/data-unified-group-product/,'swipe group button must not start drag');
 
 assert.match(app,/orderedItemIds\(d\.category,mode\)/);
 assert.match(app,/mode==='unmanaged'\?'\.unified-unmanaged-section '/);
@@ -116,4 +121,34 @@ const groupSheet=vm.runInNewContext(card+product+';unifiedGroupSheetView()',cont
 assert.match(groupSheet,/洗濯洗剤/);
 assert.match(groupSheet,/name="product_id"/);
 assert.match(groupSheet,/checked/);
-console.log('v101 shared group editor, preserved singleton groups, long-press sorting: OK');
+context.unifiedGroupEditor={category:3,mode:'stock',kind:'product',productId:'s2',name:''};
+context.UI.formField=({id,name=id,value='',control})=>'<input id="'+id+'" name="'+name+'" value="'+value+'">';
+const productGroupSheet=vm.runInNewContext(card+product+';unifiedGroupSheetView()',context);
+assert.match(productGroupSheet,/商品をグループ化/);
+assert.match(productGroupSheet,/name="destination"/);
+assert.match(productGroupSheet,/value="s2"[^>]*checked/,'product swipe preselects the chosen product');
+assert.match(productGroupSheet,/unified-group-name/);
+assert.match(productGroupSheet,/unified-group-search/);
+assert.match(app,/data-unified-group-product="\$\{esc\(i\.id\)\}"/,'swipe action is rooted in original product card');
+const domSheet={dataset:{groupSource:'洗濯洗剤',groupProduct:'s1',groupLookup:'洗剤A'},
+ hidden:false,querySelector:()=>({disabled:false})};
+const origin={dataset:{groupSource:'',groupProduct:'s2',groupLookup:'洗剤B'},
+ hidden:false,querySelector:()=>({disabled:false})};
+const fresh={hidden:false},note={hidden:true};
+let dest='g0';
+const form={querySelector:s=>s==='[name="destination"]'?{value:dest}:
+ s==='[data-unified-group-new-name]'?fresh:
+ s==='[data-unified-existing-note]'?note:
+ s==='#unified-group-search'?{value:''}:null,
+ querySelectorAll:()=>[domSheet,origin]};
+const refresh=vm.runInNewContext(card+product+';refreshUnifiedGroupSheet',context);
+refresh(form);
+assert.equal(fresh.hidden,true,'existing destination hides only new group name');
+assert.equal(domSheet.hidden,true,'existing members do not appear in add choices');
+assert.equal(origin.hidden,false,'starting product remains visible');
+assert.equal(note.hidden,false,'existing group description appears without remount');
+dest='new';refresh(form);
+assert.equal(fresh.hidden,false,'new group name appears without modal recreation');
+assert.equal(domSheet.hidden,false,'all product candidates return for a new group');
+
+console.log('product-origin grouping, existing group selection, stable half-sheet and reorder: OK');
