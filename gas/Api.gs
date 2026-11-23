@@ -1337,7 +1337,6 @@ function kurashiSaveProduct_(user,action,payload,operationId){
           }
           if(Object.prototype.hasOwnProperty.call(payload,'list_mode')){
             entity.stock_enabled=payload.list_mode==='stock';
-            if(payload.list_mode!=='stock')entity.in_stock=false;
             if(String(before.list_mode||'')!==payload.list_mode){
               entity.sort_order=Math.max(0,...scoped.filter(x=>
                 String(x.value.product_id)!==productId&&
@@ -1348,7 +1347,6 @@ function kurashiSaveProduct_(user,action,payload,operationId){
           }else if(Object.prototype.hasOwnProperty.call(payload,'stock_enabled')&&
             kurashiProductListsReady_(book)){
             entity.list_mode=payload.stock_enabled?'stock':'none';
-            if(!payload.stock_enabled)entity.in_stock=false;
           }
           if(Object.prototype.hasOwnProperty.call(entity,'name')&&
              Object.prototype.hasOwnProperty.call(payload,'name')){

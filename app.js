@@ -188,6 +188,7 @@ let editingPrice=false,priceGroupSheet=false,selectedPriceIds=new Set(),expanded
 let priceQuery='',selectedProductId=null,priceReturn='price';
 let productListTab='stock',productListQuery='',productCreateMode='none';
 let productAddQuery='',productModePending=new Set(),productModeUndo=null;
+let productUnmanagedExpanded=false,productDisplayPins=new Map();
 let stockManageSheet=false;
 let masterProductReturn='settings';
 const app=document.getElementById('app');
@@ -2335,37 +2336,43 @@ function productListMode(p){
 function productModeIcon(mode){return miniIcon(mode==='stock'?'package':mode==='price'?'tag':'list')}
 function productModeName(mode){return mode==='stock'?'在庫管理':mode==='price'?'価格確認':'一覧のみ'}
 function unifiedProductRow(p,mode,child=false){
+ const managing=productListMode(p)==='stock';
  const checked=mode==='stock'?selectedInventoryIds.has(p.id):selectedPriceIds.has(p.id);
  const editing=mode==='stock'?editingInventory:editingPrice;
  const stock=items.find(i=>i.id===p.id);
- const best=mode==='price'?chainMinima(p.id,'1y')[0]:null;
- const price=best?yen(best.price)+' ／ '+chainLabel(best.chainId):'価格記録なし';
+ const best=managing?null:chainMinima(p.id,'1y')[0];
+ const price=best?yen(best.price)+' ／ '+chainLabel(best.chainId):'';
  const groupKey=p.displayGroup?p.category+':group:'+norm(p.displayGroup):p.category+':single:'+p.id;
  return `<div class="item unified-product-card ${child?'item-group-child-row':'item-top-row'} ${editing?'inventory-edit-item':''}"
   data-item-id="${esc(p.id)}" data-category-id="${p.category}" data-group-key="${esc(groupKey)}" ${child?'':'data-list-top="true"'}>
   <div class="swipe-front">
    ${editing?`<input type="checkbox" class="inventory-select" data-unified-select="${esc(p.id)}"
-     aria-label="${esc(p.name)}を選択" ${checked?'checked':''}>`:''}
+     aria-label="${esc(p.name)}を選択" ${checked?'checked':''}>`:
+    `<button type="button" class="unified-manage-toggle ${managing?'is-managed':''}"
+      data-unified-manage="${esc(p.id)}" aria-pressed="${managing}"
+      aria-label="${esc(p.name)}の在庫管理を${managing?'解除':'開始'}"
+      title="在庫管理を${managing?'解除':'開始'}" ${productModePending.has(p.id)?'disabled':''}>${miniIcon('package')}</button>`}
    <button class="itemname" type="button" ${editing?`data-unified-select="${esc(p.id)}"`:
      `data-unified-detail="${esc(p.id)}"`} aria-label="${esc(p.name)}の価格情報を開く">
     <span class="item-title">${esc(p.name)}</span>
     ${p.memo?`<span class="list-memo">${esc(p.memo)}</span>`:''}
    </button>
-   ${editing?'':mode==='stock'&&stock?`<div class="item-stock-area">${UI.stock(stock)}</div>`:
-     `<span class="unified-list-price">${esc(price)}</span>`}
+   ${editing?'':managing&&stock?`<div class="item-stock-area">${UI.stock(stock)}</div>`:
+     `<span class="unified-list-price">${price?esc(price):chevron('right')}</span>`}
   </div>
  </div>`;
 }
 function unifiedCategoryResults(mode){
  const q=norm(productListQuery),stockOnly=mode==='stock'&&onlyOut;
- const products=catalogue.products.filter(p=>!p.hidden&&productListMode(p)===mode);
+ const products=catalogue.products.filter(p=>!p.hidden&&
+ (productDisplayPins.get(p.id)||(productListMode(p)==='stock'?'stock':'unmanaged'))===mode);
  return CAT_ORDER.map(cat=>{
   const ordered=products.filter(p=>p.category===cat).sort((a,b)=>
     (a.sortOrder||0)-(b.sortOrder||0)||a.name.localeCompare(b.name,'ja'));
   const matches=p=>(!q||productMatches(p,q)||norm(p.memo||'').includes(q)||
     norm(p.displayGroup||'').includes(q))&&(!stockOnly||!p.inStock);
   const visible=ordered.filter(matches);
-  if((q||stockOnly)&&!visible.length)return '';
+  if((q||stockOnly||mode==='unmanaged')&&!visible.length)return '';
   const editing=mode==='stock'?editingInventory:editingPrice;
   const closed=!q&&!stockOnly&&!editing&&collapsed.has(cat);
   const seen=new Set(),parts=[],groupSet=new Map();
@@ -2382,7 +2389,7 @@ function unifiedCategoryResults(mode){
    if(!p.displayGroup||members.length<2){parts.push(unifiedProductRow(p,mode));continue}
    const open=editing||!!q||stockOnly||
      (mode==='stock'?expandedItemGroups:expandedPriceGroups).has(key);
-   const missing=mode==='stock'?members.filter(x=>!x.inStock).length:0;
+   const missing=mode==='stock'?members.filter(x=>productListMode(x)==='stock'&&!x.inStock).length:0;
    parts.push(`<div class="item-group-row" data-list-top="true"
       data-category-id="${cat}" data-group-key="${esc(key)}">
      <button type="button" class="item-group-header" data-unified-group="${esc(key)}" aria-expanded="${open}">
@@ -2396,7 +2403,7 @@ function unifiedCategoryResults(mode){
   return `<section class="category">
    <button class="cathead" data-cat="${cat}" type="button" aria-expanded="${!closed}"
     ${stockOnly?'disabled aria-disabled="true"':''}>
-    <strong>${esc(CATS[cat])}</strong><span class="count">${visible.length}点</span>
+    <strong>${esc(CATS[cat])}</strong>
     <span class="cat-arrow-slot">${closed?chevron('down'):chevron('up')}</span>
    </button>
    ${closed?'':`<div class="category-items" data-category-id="${cat}">${parts.join('')||'<div class="empty">商品はありません</div>'}</div>`}
@@ -2420,33 +2427,50 @@ function unifiedAllResults(){
   </div>`;
  }).join('')||'<div class="empty">該当する商品はありません</div>';
 }
+function unifiedProductResults(){
+ const hasQuery=!!norm(productListQuery),unmanagedOpen=hasQuery||productUnmanagedExpanded;
+ const hasUnmanaged=catalogue.products.some(p=>!p.hidden&&
+  (productDisplayPins.get(p.id)||(productListMode(p)==='stock'?'stock':'unmanaged'))==='unmanaged');
+ return `<section class="unified-stock-section">
+   <h2 class="unified-section-heading">在庫管理中の商品</h2>
+   ${unifiedCategoryResults('stock')}
+  </section>
+  <section class="unified-unmanaged-section">
+   <div class="unified-unmanaged-controls">
+    <button type="button" class="unified-unmanaged-heading"
+      data-unified-unmanaged-toggle aria-expanded="${unmanagedOpen}">
+      <span>在庫管理していない商品</span>
+      ${chevron(unmanagedOpen?'up':'down')}
+    </button>
+    ${unmanagedOpen?`<button type="button" class="inventory-mode-action"
+      data-act="priceEditMode">${editingPrice?'完了':'編集'}</button>`:''}
+   </div>
+   ${unmanagedOpen?`<div class="unified-unmanaged-content">
+    ${unifiedCategoryResults('unmanaged')||'<div class="empty">該当する商品はありません</div>'}
+    </div>`:(!hasUnmanaged?'<div class="unified-no-products">登録商品はありません</div>':'')}
+  </section>`;
+}
 function unifiedProductHomeView(){
- const mode=productListTab,all=mode==='all',
-  editing=mode==='stock'?editingInventory:mode==='price'?editingPrice:false,
-  selectedIds=mode==='stock'?selectedInventoryIds:selectedPriceIds;
+ const editing=editingInventory||editingPrice;
  const action=UI.iconButton({label:'商品を追加',action:'unifiedAddOpen',iconHtml:miniIcon('plus')});
- const edit=all?'':`<button type="button" class="inventory-mode-action"
-  data-act="${mode==='stock'?'inventoryEditMode':'priceEditMode'}">${editing?'完了':'編集'}</button>`;
- const tabs=`<div class="unified-product-tabs" role="tablist" aria-label="商品の表示区分">${PRODUCT_LIST_TABS.map(t=>
-  `<button type="button" role="tab" class="unified-product-tab ${mode===t.id?'active':''}"
-    aria-selected="${mode===t.id}" data-unified-tab="${t.id}">
-    ${miniIcon(t.icon)}<span>${t.name}</span></button>`).join('')}</div>`;
- const stockFilter=mode==='stock'?`<div class="filterrow"><label class="switchlabel">
-  <input type="checkbox" id="onlyOut" ${onlyOut?'checked':''}>在庫なしのみ表示</label></div>`:'';
- const content=all?unifiedAllResults():unifiedCategoryResults(mode);
- const undo=productModeUndo?
-  `<div class="unified-mode-undo" role="status"><span>${esc(productModeUndo.name)}を${productModeName(productModeUndo.newMode)}に変更</span>
-  ${UI.button({label:'元に戻す',action:'unifiedUndoMode',variant:'tertiary'})}</div>`:'';
- const bulk=editing?`<div class="inventory-bulk-bar"><span>${selectedIds.size}件を選択</span>
-  ${UI.button({label:'グループ化',action:mode==='stock'?'inventoryGroupOpen':'priceGroupOpen',disabled:!selectedIds.size})}
-  ${UI.button({label:'解除',action:mode==='stock'?'inventoryUngroup':'priceUngroup',
-      disabled:!selectedIds.size,variant:'tertiary'})}</div>`:'';
+ const edit=`<button type="button" class="inventory-mode-action"
+  data-act="inventoryEditMode">${editingInventory?'完了':'編集'}</button>`;
+ const stockFilter=`<div class="filterrow"><label class="switchlabel">
+   <input type="checkbox" id="onlyOut" ${onlyOut?'checked':''}>在庫なしのみ表示</label></div>`;
+ const count=editingInventory?selectedInventoryIds.size:selectedPriceIds.size;
+ const bulk=editing?`<div class="inventory-bulk-bar"><span>${count}件を選択</span>
+    ${UI.button({label:'グループ化',action:editingInventory?'inventoryGroupOpen':'priceGroupOpen',disabled:!count})}
+    ${UI.button({label:'解除',action:editingInventory?'inventoryUngroup':'priceUngroup',
+      disabled:!count,variant:'tertiary'})}</div>`:'';
  return `${head('商品','くらしストック',false,(editing?'':action)+edit)}
-  <main class="unified-product-main">${tabs}
-   ${UI.searchField({id:'unified-product-search',label:'商品を検索',placeholder:'商品を検索',
-     value:productListQuery,extra:'autocomplete="off"'})}
-   ${stockFilter}${undo}<div id="unified-product-results">${content}</div>
-  </main>${bulk}${nav()}`;
+   <main class="unified-product-main">
+    <div class="unified-search-sticky">
+     ${UI.searchField({id:'unified-product-search',label:'商品を検索',placeholder:'すべての商品から検索',
+       value:productListQuery,extra:'autocomplete="off"'})}
+    </div>
+    ${stockFilter}
+    <div id="unified-product-results">${unifiedProductResults()}</div>
+   </main>${bulk}${nav()}`;
 }
 function unifiedAddView(){
  const mode=productCreateMode,q=norm(productAddQuery);
@@ -2898,6 +2922,7 @@ function goBack(){
   }
   menu=false;
   if(page==='productPrice'){
+  productDisplayPins.clear();
    if(priceReturn==='compare'){page='compare';tab='items';}
    else{page='list';tab=priceReturn==='inventory'?'items':'receipt';}
    selectedProductId=null;openSwipeId=null;
@@ -2908,7 +2933,7 @@ function goBack(){
   else if(page==='productEdit'){page='compare';initializeCompare();}
   else if(page==='productPick'){page='compare';initializeCompare();}
   else if(page==='edit')page=editReturnPage;
-  else if(page==='unifiedAdd'){page='list';tab='items';}
+  else if(page==='unifiedAdd'){page='list';tab='items';productDisplayPins.clear();}
    else if(page==='masterProductEdit'||page==='masterProductNew'){
    if(productListsReady()&&masterProductReturn==='unified'){page='list';tab='items';}
     else if(stockV2()&&masterProductReturn!=='settings'){
@@ -3079,7 +3104,7 @@ app.addEventListener('input',e=>{
 function updateSearchResults(){const target=document.getElementById('item-results');if(target){target.innerHTML=listResults();if(openSwipeId)setOpenSwipe(openSwipeId)}}
 const searchBindings={'unified-product-search':{set:v=>{productListQuery=v},update:()=>{
  const target=document.getElementById('unified-product-results');
- if(target)target.innerHTML=productListTab==='all'?unifiedAllResults():unifiedCategoryResults(productListTab);
+ if(target){productDisplayPins.clear();target.innerHTML=unifiedProductResults();}
 }},'unified-add-search':{set:v=>{productAddQuery=v},update:()=>{
  const target=document.getElementById('unified-add-results');
  if(target){const q=norm(productAddQuery);target.innerHTML=catalogue.products.filter(p=>
@@ -3546,7 +3571,7 @@ if(exposedItem&&!e.target.closest('.swipe-actions')){
  // The revealed front can be inert, so its row can receive the click instead.
  e.preventDefault();setOpenSwipe(null);return;
 }
-const clear=e.target.closest('[data-search-clear]');if(clear){const input=document.getElementById(clear.dataset.searchClear);if(input){input.value='';syncSearch(input);input.focus()}return}const el=e.target.closest('[data-tab],[data-cat],[data-group-toggle],[data-price-group-toggle],[data-stock],[data-open],[data-select-item],[data-select-price-product],[data-act],[data-ui-toggle],[data-ui-choice],[data-dialog],[data-premove],[data-pedit],[data-pick],[data-product-menu],[data-list-edit],[data-list-hide],[data-unified-tab],[data-unified-group],[data-unified-select],[data-unified-detail],[data-unified-cycle]');if(!el)return;
+const clear=e.target.closest('[data-search-clear]');if(clear){const input=document.getElementById(clear.dataset.searchClear);if(input){input.value='';syncSearch(input);input.focus()}return}const el=e.target.closest('[data-tab],[data-cat],[data-group-toggle],[data-price-group-toggle],[data-stock],[data-open],[data-select-item],[data-select-price-product],[data-act],[data-ui-toggle],[data-ui-choice],[data-dialog],[data-premove],[data-pedit],[data-pick],[data-product-menu],[data-list-edit],[data-list-hide],[data-unified-tab],[data-unified-group],[data-unified-select],[data-unified-detail],[data-unified-cycle],[data-unified-manage],[data-unified-unmanaged-toggle]');if(!el)return;
 if(el.dataset.uiChoice!==undefined&&el.closest('.product-package-details .ui-select')){
  const details=el.closest('.product-package-details');
  details.dataset.packageMode='manual';
@@ -3594,18 +3619,17 @@ if(el.dataset.uiChoice!==undefined){
  wrapper.querySelector('.ui-select-trigger')?.focus();return;
 }
 
-if(el.dataset.unifiedTab!==undefined&&productListsReady()){
- productListTab=el.dataset.unifiedTab;productListQuery='';onlyOut=false;collapsed.clear();
- editingInventory=false;editingPrice=false;selectedInventoryIds.clear();selectedPriceIds.clear();
- productModeUndo=null;render();return;
+if(el.dataset.unifiedUnmanagedToggle!==undefined&&productListsReady()){
+ productUnmanagedExpanded=!productUnmanagedExpanded;productDisplayPins.clear();render();return;
 }
 if(el.dataset.unifiedGroup!==undefined){
- const scope=productListTab==='stock'?expandedItemGroups:expandedPriceGroups,key=el.dataset.unifiedGroup;
+ const scope=el.closest('.unified-unmanaged-section')?expandedPriceGroups:expandedItemGroups,key=el.dataset.unifiedGroup;
  scope.has(key)?scope.delete(key):scope.add(key);render();return;
 }
 if(el.dataset.unifiedSelect!==undefined){
- const selection=productListTab==='stock'?selectedInventoryIds:selectedPriceIds;
- if(!(productListTab==='stock'?editingInventory:editingPrice))return;
+ const unmanaged=!!el.closest('.unified-unmanaged-section');
+ const selection=unmanaged?selectedPriceIds:selectedInventoryIds;
+ if(!(unmanaged?editingPrice:editingInventory))return;
  const id=el.dataset.unifiedSelect;
  selection.has(id)?selection.delete(id):selection.add(id);render();return;
 }
@@ -3615,14 +3639,14 @@ if(el.dataset.unifiedDetail!==undefined){
  priceReturn='inventory';selectedProductId=p.id;page='productPrice';
  period='1y';periodMenu=false;render();return;
 }
-if(el.dataset.unifiedCycle!==undefined&&productListsReady()){
- const p=catalogue.products.find(x=>x.id===el.dataset.unifiedCycle);
+if(el.dataset.unifiedManage!==undefined&&productListsReady()){
+ const p=catalogue.products.find(x=>x.id===el.dataset.unifiedManage);
  if(!p||productModePending.has(p.id))return;
- const prior=productListMode(p),next=prior==='stock'?'price':prior==='price'?'none':'stock';
+ const managing=productListMode(p)==='stock';
+ if(!productDisplayPins.has(p.id))productDisplayPins.set(p.id,managing?'stock':'unmanaged');
  productModePending.add(p.id);render();
- window.KurashiLive.save('product.stock.update',{product_id:p.id,list_mode:next})
-  .then(()=>{productModeUndo={id:p.id,name:p.name,oldMode:prior,newMode:next};})
-  .catch(err=>say(err.message||'商品区分を変更できませんでした'))
+ window.KurashiLive.save('product.stock.update',{product_id:p.id,list_mode:managing?'none':'stock'})
+  .catch(err=>{productDisplayPins.delete(p.id);say(err.message||'在庫管理の設定を変更できませんでした')})
   .finally(()=>{productModePending.delete(p.id);render()});
  return;
 }
@@ -3912,6 +3936,7 @@ if(action==='priceSelectProduct'){
   render();return;
  }
  if(action==='priceEditMode'){
+ editingInventory=false;selectedInventoryIds.clear();
   editingPrice=!editingPrice;selectedPriceIds.clear();priceGroupSheet=false;menu=false;
   render();return;
  }
@@ -3942,7 +3967,7 @@ if(action==='priceSelectProduct'){
   return;
  }
  if(action==='inventoryEditMode'){
- editingInventory=!editingInventory;selectedInventoryIds.clear();inventoryGroupSheet=false;
+ editingPrice=false;selectedPriceIds.clear();editingInventory=!editingInventory;selectedInventoryIds.clear();inventoryGroupSheet=false;
  if(editingInventory){query='';onlyOut=false;collapsed.clear();openSwipeId=null}
  render();return;
 }
@@ -4231,10 +4256,9 @@ if(action==='scanExistingToNew'){
 if(action==='aliasManage'){aliasQuery='';aliasVisibleLimit=100;aliasPickerId=null;tab='settings';page='aliasManage';render();return;}
 if(action==='masterProducts'){masterQuery='';masterProductId=null;masterProductReturn='settings';tab='settings';page='masterProducts';render();return;}
 if(action==='unifiedAddOpen'&&productListsReady()){
- productCreateMode=productListTab==='all'?'none':productListTab;
- productAddQuery='';productModeUndo=null;
+ productCreateMode='stock';productAddQuery='';productDisplayPins.clear();
  masterProductId=null;masterProductReturn='unified';
- page=productListTab==='all'?'masterProductNew':'unifiedAdd';render();return;
+ page='unifiedAdd';render();return;
 }
 if(action==='unifiedCreateNew'&&productListsReady()){
  masterProductId=null;masterProductReturn='unified';page='masterProductNew';render();return;
@@ -4244,18 +4268,8 @@ if(action==='unifiedAddExisting'&&productListsReady()){
  if(!p||productModePending.has(p.id)||productListMode(p)===productCreateMode)return;
  productModePending.add(p.id);
  window.KurashiLive.save('product.stock.update',{product_id:p.id,list_mode:productCreateMode})
-  .then(()=>{page='list';productListTab=productCreateMode;productListQuery='';})
+  .then(()=>{page='list';productListQuery='';productDisplayPins.clear();})
   .catch(err=>say(err.message||'追加できませんでした'))
-  .finally(()=>{productModePending.delete(p.id);render()});
- return;
-}
-if(action==='unifiedUndoMode'&&productListsReady()&&productModeUndo){
- const info=productModeUndo,p=catalogue.products.find(x=>x.id===info.id);
- productModeUndo=null;
- if(!p||productModePending.has(p.id)||productListMode(p)!==info.newMode){render();return}
- productModePending.add(p.id);
- window.KurashiLive.save('product.stock.update',{product_id:p.id,list_mode:info.oldMode})
-  .catch(err=>say(err.message||'元に戻せませんでした'))
   .finally(()=>{productModePending.delete(p.id);render()});
  return;
 }

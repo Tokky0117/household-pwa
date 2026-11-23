@@ -329,7 +329,6 @@
       Object.assign(p,op.fields);
       if(op.fields.list_mode){
        p.stock_enabled=op.fields.list_mode==='stock';
-       if(op.fields.list_mode!=='stock')p.in_stock=false;
       }
       if(typeof op.fields.name==='string')
        p.normalized_name=op.fields.name.normalize('NFKC').toLocaleLowerCase('ja');

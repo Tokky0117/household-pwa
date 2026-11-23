@@ -3060,3 +3060,27 @@ html,body{touch-action:pan-x pan-y}
 .unified-add-page .ui-search{margin-bottom:18px}
 .unified-add-page .catalogue-candidate{margin-bottom:7px}
 @media(max-width:350px){.unified-product-tab{font-size:11px;gap:2px}.unified-product-tab svg{width:15px;height:15px}}
+
+/* Stock-first catalogue, fixed search and card-level inventory membership. */
+.unified-product-main{padding-top:0}
+.unified-search-sticky{position:sticky;top:calc(72px + env(safe-area-inset-top));z-index:9;
+ margin:0 -16px 12px;padding:10px 16px;background:var(--bg);border-bottom:1px solid var(--line)}
+.unified-search-sticky .ui-search{margin:0}
+.unified-section-heading{margin:16px 0 12px;font-size:15px;font-weight:700}
+.unified-unmanaged-section{margin:18px 0 24px;border-top:1px solid var(--line)}
+.unified-unmanaged-controls{display:flex;align-items:center;gap:8px}
+.unified-unmanaged-heading{display:flex;flex:1;align-items:center;justify-content:space-between;gap:12px;
+ min-width:0;min-height:54px;background:transparent;color:var(--ink);border:0;padding:9px 2px;
+ text-align:left;font-size:15px;font-weight:650;cursor:pointer}
+.unified-unmanaged-heading svg{width:18px;height:18px;color:var(--muted)}
+.unified-unmanaged-content{padding-top:6px}
+.unified-unmanaged-content .category{margin-bottom:10px}
+.unified-no-products{font-size:12px;color:var(--muted);padding:0 2px}
+.unified-manage-toggle{display:grid;place-items:center;flex:0 0 40px;width:40px;min-height:44px;
+ margin-left:4px;border:0;border-radius:8px;background:transparent;color:var(--muted)}
+.unified-manage-toggle svg{width:19px;height:19px}
+.unified-manage-toggle.is-managed{color:var(--accent);background:var(--ui-stock-off-background,var(--card))}
+.unified-manage-toggle:disabled{opacity:.5}
+.unified-product-card .itemname{padding-left:5px}
+.unified-product-card .unified-list-price{display:flex;align-items:center;justify-content:flex-end}
+.unified-product-card .unified-list-price svg{width:17px;height:17px}
