@@ -88,6 +88,10 @@ jobs:
           node tests/trial-sheet-schema-cutover.mjs
           node tests/gas-execution-result.mjs
 
+      - name: Validate unified product lists
+        if: ${{ github.ref_name == 'preview-v98-product-stock-model' }}
+        run: node tests/v99-product-lists.mjs
+
       - name: Validate v98 pure product stock migration model
         if: ${{ github.ref_name == 'preview-v98-product-stock-model' }}
         run: |

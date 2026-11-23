@@ -223,6 +223,43 @@ const recordSnapshot=call('bootstrap',{}).data;
 assert.ok(recordSnapshot.record_items.some(x=>x.purchase_size_quantity===580&&x.purchase_size_unit==='g'));
 assert.equal(recordSnapshot.record_items.find(x=>x.record_item_id===record.data.items[0].record_item_id).quantity,'',
  'unknown quantity must remain blank rather than becoming 0 or 1');
+// v0.99 migration preserves existing stock and receipt IDs and does not classify
+// non-stock products into price checking without an explicit user action.
+const beforeLists=call('bootstrap',{}).data;
+assert.equal(beforeLists.capabilities.product_list_modes,false);
+const beforeListsHistory=JSON.stringify(beforeLists.record_items);
+const listMigration=context.kurashiTrialProductListsMigrate();
+assert.equal(listMigration.status,'PRODUCT_LISTS_READY');
+assert.equal(listMigration.products,beforeLists.products.length);
+assert.equal(context.kurashiTrialProductListsMigrate().status,'ALREADY_READY');
+assert.equal(context.kurashiTrialProductListsVerify().status,'VERIFIED');
+const listSnapshot=call('bootstrap',{}).data;
+assert.equal(listSnapshot.capabilities.product_list_modes,true);
+assert.equal(JSON.stringify(listSnapshot.record_items),beforeListsHistory);
+assert.ok(listSnapshot.products.every(p=>p.list_mode===(p.stock_enabled?'stock':'none')));
+const transitionBefore=listSnapshot.products.find(p=>p.product_id==='product-3');
+const priceSwitch=call('product.stock.update',{
+ product_id:'product-3',version:transitionBefore.version,list_mode:'price'
+},'op-v99-price-switch-0123456789');
+assert.equal(priceSwitch.ok,true,JSON.stringify(priceSwitch.error));
+assert.equal(priceSwitch.data.entity.list_mode,'price');
+assert.equal(priceSwitch.data.entity.stock_enabled,false);
+const addedPrice=call('product.create',{
+ household_item_id:null,name:'追加した価格確認商品',package_quantity:null,package_unit:null,
+ category_id:1,stock_enabled:false,in_stock:false,memo:'',display_group:'',list_mode:'price'
+},'op-v99-price-new-0123456789');
+assert.equal(addedPrice.ok,true,JSON.stringify(addedPrice.error));
+const twoPrices=call('bootstrap',{}).data.products.filter(p=>p.category_id===1&&p.list_mode==='price');
+assert.equal(twoPrices.length,2);
+const newOrder=twoPrices.map(p=>p.product_id).reverse();
+const priceOrder=call('product.stock.reorder',{
+ category_id:1,list_mode:'price',product_ids:newOrder,
+ versions:newOrder.map(id=>twoPrices.find(p=>p.product_id===id).version)
+},'op-v99-price-order-0123456789');
+assert.equal(priceOrder.ok,true,JSON.stringify(priceOrder.error));
+assert.equal(priceOrder.data.entities[0].sort_order,1);
+assert.equal(JSON.stringify(call('bootstrap',{}).data.record_items),beforeListsHistory);
+console.log('v99 trial product lists: migration, price assignment, scoped ordering and receipt integrity: OK');
 // A changed original cell must be detected, rather than declared restorable.
 backup.tables.get('products')[1][3]='TAMPERED_NAME';
 assert.throws(()=>context.kurashiTrialStockVerify(),/バックアップと一致しません/);

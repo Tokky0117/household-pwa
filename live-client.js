@@ -49,6 +49,7 @@
   householdId:workspace.base?.household_id||null,
   groupingReady:workspace.base?.capabilities?.explicit_display_groups===true,
   productStockV2:workspace.base?.capabilities?.product_stock_v2===true,
+   productListModes:workspace.base?.capabilities?.product_list_modes===true,
   busy:!!refreshPromise||!!flushPromise,
   syncing:!!flushPromise,queued:workspace.queue.length,
   blocked:!!workspace.blocked,
@@ -289,7 +290,9 @@
     continue;
    }
    if(op.kind==='product-stock-reorder'){
-    const rows=snap.products.filter(p=>p.stock_enabled===true&&Number(p.category_id)===op.category_id&&!p.is_hidden&&!p.deleted_at);
+    const rows=snap.products.filter(p=>
+      (op.listMode?String(p.list_mode)===op.listMode:p.stock_enabled===true)&&
+      Number(p.category_id)===op.category_id&&!p.is_hidden&&!p.deleted_at);
     const byId=new Map(rows.map(p=>[p.product_id,p]));
     const ids=op.product_ids.filter(id=>byId.has(id));
     [...ids,...rows.filter(p=>!ids.includes(p.product_id)).sort((a,b)=>Number(a.sort_order)-Number(b.sort_order)).map(p=>p.product_id)]
@@ -318,8 +321,19 @@
    }
    if(op.kind==='product-stock-update'){
     const p=snap.products.find(x=>x.product_id===op.targetId);
-    if(p){Object.assign(p,op.fields);if(typeof op.fields.name==='string')
-     p.normalized_name=op.fields.name.normalize('NFKC').toLocaleLowerCase('ja');}
+    if(p){
+      const changing=op.fields.list_mode&&op.fields.list_mode!==(p.list_mode||'none');
+      if(changing)p.sort_order=1+Math.max(0,...snap.products.filter(other=>
+        other.product_id!==p.product_id&&Number(other.category_id)===Number(p.category_id)&&
+        String(other.list_mode||'none')===op.fields.list_mode).map(other=>Number(other.sort_order)||0));
+      Object.assign(p,op.fields);
+      if(op.fields.list_mode){
+       p.stock_enabled=op.fields.list_mode==='stock';
+       if(op.fields.list_mode!=='stock')p.in_stock=false;
+      }
+      if(typeof op.fields.name==='string')
+       p.normalized_name=op.fields.name.normalize('NFKC').toLocaleLowerCase('ja');
+     }
     continue;
    }
    if(op.kind==='product-edit'||op.kind==='product-link'){
@@ -658,12 +672,16 @@
    const product=products.find(p=>p.product_id===targetId&&!p.deleted_at);
    if(!product)throw Error('商品が見つかりません');
    const keys=Object.keys(payload).filter(k=>!['product_id','version'].includes(k));
-   if(!keys.length||keys.some(k=>!['in_stock','stock_enabled','memo','display_group','category_id','is_hidden','name'].includes(k)))
+   if(!keys.length||keys.some(k=>!['in_stock','stock_enabled','list_mode','memo','display_group','category_id','is_hidden','name'].includes(k)))
     throw Error('商品の保存内容を確認してください');
    const fields={};
    for(const key of keys){
     const value=payload[key];
-    if(['in_stock','stock_enabled','is_hidden'].includes(key)){
+    if(key==='list_mode'){
+      if(!['stock','price','none'].includes(value)||
+        snap?.capabilities?.product_list_modes!==true)
+       throw Error('商品の区分を確認してください');
+     }else if(['in_stock','stock_enabled','is_hidden'].includes(key)){
      if(typeof value!=='boolean')throw Error('在庫状態を確認してください');
     }else if(key==='category_id'){
      if(!Number.isInteger(value)||value<0||value>5)throw Error('カテゴリを確認してください');
@@ -690,6 +708,9 @@
    return {id:operationId(),kind:'product-create',clientId:'local-'+uid(),
     groupId,...fields,stockFields:snap?.capabilities?.product_stock_v2===true?{
      stock_enabled:payload.stock_enabled===true,
+     ...(snap.capabilities?.product_list_modes===true?{
+      list_mode:['stock','price','none'].includes(payload.list_mode)?payload.list_mode:'none'
+     }:{}),
      in_stock:false,category_id:Number.isInteger(payload.category_id)?payload.category_id:4,
      memo:String(payload.memo||''),display_group:''
     }:null,retries:0};
@@ -1297,18 +1318,22 @@
     product_ids:ids,groupName,retries:0};
   });
  }
- async function reorderStockItems(categoryId,orderedIds){
+ async function reorderStockItems(categoryId,orderedIds,listMode=null){
   return enqueue(doc=>{
    const snapshot=project(doc),cat=Number(categoryId),ids=Array.isArray(orderedIds)?orderedIds:[];
    if(snapshot?.capabilities?.product_stock_v2!==true)throw Error('商品在庫の移行が必要です');
+   if(listMode!==null&&(!['stock','price'].includes(listMode)||
+      snapshot.capabilities?.product_list_modes!==true))
+    throw Error('商品区分を確認してください');
    const active=snapshot.products.filter(p=>Number(p.category_id)===cat&&
-    toBoolean(p.stock_enabled)&&!toBoolean(p.is_hidden)&&!p.deleted_at);
+    (listMode?String(p.list_mode)===listMode:toBoolean(p.stock_enabled))&&
+    !toBoolean(p.is_hidden)&&!p.deleted_at);
    const valid=new Set(active.map(p=>p.product_id));
    if(!Number.isInteger(cat)||cat<0||cat>5||ids.length<2||
       ids.length!==active.length||new Set(ids).size!==ids.length||
       ids.some(id=>!valid.has(id)))throw Error('並び順を確認できません');
    return {id:operationId(),kind:'product-stock-reorder',category_id:cat,
-     product_ids:ids.slice(),retries:0};
+     listMode,product_ids:ids.slice(),retries:0};
   });
  }
  async function reorderProducts(itemId,orderedIds){
@@ -1449,13 +1474,15 @@
   }
   if(op.kind==='product-stock-reorder'){
    const rows=(base?.products||[]).filter(p=>
-    Number(p.category_id)===op.category_id&&toBoolean(p.stock_enabled)&&!toBoolean(p.is_hidden)&&!p.deleted_at);
+    Number(p.category_id)===op.category_id&&
+     (op.listMode?String(p.list_mode)===op.listMode:toBoolean(p.stock_enabled))&&
+     !toBoolean(p.is_hidden)&&!p.deleted_at);
    const sorted=op.product_ids.filter(id=>rows.some(p=>p.product_id===id));
    if(rows.length!==sorted.length)throw Error('並び替え対象が変更されています');
    const byId=new Map(rows.map(p=>[p.product_id,p]));
    return {operationId:op.id,action:'product.stock.reorder',payload:{
-    category_id:op.category_id,product_ids:sorted,
-    versions:sorted.map(id=>Number(byId.get(id).version))}};
+    category_id:op.category_id,...(op.listMode?{list_mode:op.listMode}:{}),
+    product_ids:sorted,versions:sorted.map(id=>Number(byId.get(id).version))}};
   }
   if(op.kind==='product-reorder'){
    const active=(base?.products||[]).filter(p=>
@@ -2159,7 +2186,7 @@
    return String(value||'').split(/[,、\n]/).map(x=>x.trim()).filter(Boolean);
   };
   return {receiptNameMappings,products:(data?.products||[]).map(p=>({
-   id:p.product_id,name:p.name,category:Number(p.category_id)||0,stockEnabled:toBoolean(p.stock_enabled),inStock:toBoolean(p.in_stock),memo:p.memo||'',displayGroup:p.display_group||'',packageQuantity:p.package_quantity===''?null:p.package_quantity,
+   id:p.product_id,name:p.name,category:Number(p.category_id)||0,stockEnabled:toBoolean(p.stock_enabled),listMode:['stock','price','none'].includes(p.list_mode)?p.list_mode:(toBoolean(p.stock_enabled)?'stock':'none'),sortOrder:Number(p.sort_order)||0,hidden:toBoolean(p.is_hidden),inStock:toBoolean(p.in_stock),memo:p.memo||'',displayGroup:p.display_group||'',packageQuantity:p.package_quantity===''?null:p.package_quantity,
    packageUnit:p.package_unit||null,householdItemId:p.household_item_id||null,
    householdItemOrder:p.household_item_order===''?null:Number(p.household_item_order),
    version:Number(p.version),aliases:receiptNameMappings.filter(a=>a.productId===p.product_id)

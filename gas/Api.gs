@@ -418,6 +418,8 @@ function kurashiBook_() {
 const KURASHI_V98_RECORD_FIELDS = ['purchase_size_quantity','purchase_size_unit'];
 const KURASHI_V98_PRODUCT_FIELDS = ['category_id','stock_enabled','in_stock',
   'memo','display_group','sort_order','is_hidden','migrated_from_household_item_id'];
+const KURASHI_PRODUCT_LIST_FIELD = 'list_mode';
+const KURASHI_PRODUCT_LIST_MODES = ['stock','price','none'];
 function kurashiProductStockColumns_(book) {
   const base=KURASHI_NEW_SCHEMA.products;
   const sheet=book.getSheetByName('products');
@@ -425,8 +427,10 @@ function kurashiProductStockColumns_(book) {
   const legacy=[...base,'merged_into_product_id'];
   const all=[...base,...KURASHI_V98_PRODUCT_FIELDS];
   const allLegacy=[...legacy,...KURASHI_V98_PRODUCT_FIELDS];
+  const listAll=[...all,KURASHI_PRODUCT_LIST_FIELD];
+  const listLegacy=[...allLegacy,KURASHI_PRODUCT_LIST_FIELD];
   const heads=sheet.getRange(1,1,1,sheet.getLastColumn()).getValues()[0];
-  for(const allowed of [base,legacy,all,allLegacy])
+  for(const allowed of [base,legacy,all,allLegacy,listAll,listLegacy])
    if(JSON.stringify(heads)===JSON.stringify(allowed))return allowed;
   kurashiFail_('SCHEMA_ERROR','商品の列構成が想定と異なります（列数'+heads.length+'/'+base.length+'、追加列='+heads.slice(base.length).map(x=>/^[a-z][a-z0-9_]{0,39}$/.test(String(x))?x:'非公開').join('|')+'）');
 }
@@ -446,6 +450,10 @@ function kurashiStockReady_(book){
  return props.getProperty('KURASHI_PRODUCT_STOCK_VERSION')==='2' &&
   KURASHI_V98_PRODUCT_FIELDS.every(h=>kurashiProductStockColumns_(book).includes(h)) &&
   KURASHI_V98_RECORD_FIELDS.every(h=>kurashiRecordItemColumns_(book).includes(h));
+}
+function kurashiProductListsReady_(book){
+ return PropertiesService.getScriptProperties().getProperty('KURASHI_PRODUCT_LISTS_VERSION')==='1' &&
+   kurashiProductStockColumns_(book).includes(KURASHI_PRODUCT_LIST_FIELD);
 }
 function kurashiColumnNames_(name,book){
  if(name==='products')return kurashiProductStockColumns_(book);
@@ -550,7 +558,7 @@ function kurashiBootstrap_(user) {
     return {
       household_id:hid,
       capabilities:{explicit_display_groups:kurashiColumnNames_('household_items',book).includes('display_group'),
-       product_stock_v2:kurashiStockReady_(book)},
+       product_stock_v2:kurashiStockReady_(book),product_list_modes:kurashiProductListsReady_(book)},
       categories:kurashiRows_('categories',book).map(x=>kurashiPublic_(x.value)),
       household_items:kurashiRows_('household_items',book)
         .filter(x=>String(x.value.household_id)===hid)
@@ -933,7 +941,10 @@ function kurashiReorderItems_(user,payload,operationId){
 function kurashiReorderStockProducts_(user,payload,operationId){
   if(typeof operationId!=='string'||!/^[A-Za-z0-9_-]{16,110}$/.test(operationId))
     kurashiFail_('BAD_REQUEST','保存操作IDが不正です');
-  if(Object.keys(payload).sort().join(',')!=='category_id,product_ids,versions')
+  const newMode=Object.prototype.hasOwnProperty.call(payload,'list_mode');
+  if(!['category_id,product_ids,versions','category_id,list_mode,product_ids,versions']
+      .includes(Object.keys(payload).sort().join(','))||
+      (newMode&&!['stock','price'].includes(payload.list_mode)))
     kurashiFail_('BAD_REQUEST','並び順の形式が不正です');
   const cat=Number(payload.category_id),ids=payload.product_ids,versions=payload.versions;
   if(!Number.isInteger(cat)||cat<0||cat>5||
@@ -949,6 +960,8 @@ function kurashiReorderStockProducts_(user,payload,operationId){
   try{
     const book=kurashiBook_();
     if(!kurashiStockReady_(book))kurashiFail_('STOCK_MIGRATION_REQUIRED','商品在庫は未移行です');
+    if(newMode&&!kurashiProductListsReady_(book))
+      kurashiFail_('PRODUCT_LIST_MIGRATION_REQUIRED','商品一覧の移行が必要です');
     const history=kurashiRows_('processed_operations',book);
     const found=history.filter(x=>String(x.value.operation_id)===operationId);
     if(found.length>1)kurashiFail_('RECOVERY_CONFLICT','保存操作IDが重複しています');
@@ -978,7 +991,8 @@ function kurashiReorderStockProducts_(user,payload,operationId){
     }else{
       const visible=kurashiRows_('products',book).filter(x=>
         String(x.value.household_id)===hid&&Number(x.value.category_id)===cat&&
-        x.value.stock_enabled===true&&!x.value.is_hidden&&!x.value.deleted_at);
+        (newMode?String(x.value.list_mode)===payload.list_mode:x.value.stock_enabled===true)&&
+        !x.value.is_hidden&&!x.value.deleted_at);
       if(visible.length!==ids.length)
         kurashiFail_('VERSION_CONFLICT','別の端末で一覧が変更されています');
       const byId=new Map(visible.map(x=>[String(x.value.product_id),x.value]));
@@ -1176,7 +1190,7 @@ function kurashiGroupStockProducts_(user,payload,operationId){
  * old group's household_item_order are harmless and existing relative order stays.
  * Prepared journal + before/after row enable exact-operation crash recovery. */
 function kurashiSameProduct_(a,b){
-  return [...KURASHI_NEW_SCHEMA.products,...KURASHI_V98_PRODUCT_FIELDS]
+  return [...KURASHI_NEW_SCHEMA.products,...KURASHI_V98_PRODUCT_FIELDS,KURASHI_PRODUCT_LIST_FIELD]
     .every(k=>String(a[k]??'')===String(b[k]??''));
 }
 function kurashiProductFields_(payload){
@@ -1206,15 +1220,16 @@ function kurashiSaveProduct_(user,action,payload,operationId){
   const creating=action==='product.create',keys=Object.keys(payload).sort().join(',');
   const createKeys='household_item_id,name,package_quantity,package_unit';
   const createStockKeys='category_id,display_group,household_item_id,in_stock,memo,name,package_quantity,package_unit,stock_enabled';
+  const createListKeys='category_id,display_group,household_item_id,in_stock,list_mode,memo,name,package_quantity,package_unit,stock_enabled';
   const editKeys='name,package_quantity,package_unit,product_id,version';
   const linkKeys='household_item_id,product_id,version';
   const updatingStock=action==='product.stock.update';
-  const stockAllowed=['product_id','version','in_stock','stock_enabled','memo',
+  const stockAllowed=['product_id','version','in_stock','stock_enabled','list_mode','memo',
     'display_group','category_id','is_hidden','name'];
   const stockKeys=Object.keys(payload).filter(k=>!['product_id','version'].includes(k));
   if(updatingStock?
       (stockKeys.length===0||Object.keys(payload).some(k=>!stockAllowed.includes(k))) :
-      creating?![createKeys,createStockKeys].includes(keys):keys!==editKeys&&keys!==linkKeys)
+      creating?![createKeys,createStockKeys,createListKeys].includes(keys):keys!==editKeys&&keys!==linkKeys)
     kurashiFail_('BAD_REQUEST','商品の保存内容を確認してください');
   const hid=user.householdId,hash=kurashiDigest_(action,payload);
   const lock=LockService.getScriptLock();
@@ -1222,9 +1237,12 @@ function kurashiSaveProduct_(user,action,payload,operationId){
   try{
     const book=kurashiBook_(),history=kurashiRows_('processed_operations',book);
     const stockReady=kurashiStockReady_(book);
-    if((updatingStock||creating&&keys===createStockKeys)&&!stockReady)
+    if((updatingStock||creating&&(keys===createStockKeys||keys===createListKeys))&&!stockReady)
       kurashiFail_('STOCK_MIGRATION_REQUIRED','商品単位の在庫管理は未移行です');
     const found=history.filter(x=>String(x.value.operation_id)===operationId);
+    if((updatingStock&&Object.prototype.hasOwnProperty.call(payload,'list_mode')||
+        creating&&keys===createListKeys)&&!kurashiProductListsReady_(book))
+      kurashiFail_('PRODUCT_LIST_MIGRATION_REQUIRED','商品一覧の移行が必要です');
     if(stockReady&&action==='product.update'&&!found.length)
       kurashiFail_('CLIENT_UPGRADE_REQUIRED','商品編集は新しい商品マスタから行ってください');
     if(found.length>1)kurashiFail_('RECOVERY_CONFLICT','保存操作IDが重複しています');
@@ -1267,16 +1285,20 @@ function kurashiSaveProduct_(user,action,payload,operationId){
         entity={product_id:'product-'+Utilities.getUuid(),household_id:hid,
           household_item_id:group||'',...fields,household_item_order:group?order:'',version:1,
           created_at:now,updated_at:now,deleted_at:'',
-          ...(stockReady?{category_id:keys===createStockKeys?Number(payload.category_id):4,
-            stock_enabled:keys===createStockKeys?payload.stock_enabled:false,
-            in_stock:false,memo:keys===createStockKeys?String(payload.memo||''):'',
-            display_group:'',sort_order:Math.max(0,...scoped.map(p=>Number(p.value.sort_order)||0))+1,
+          ...(stockReady?{category_id:(keys===createStockKeys||keys===createListKeys)?Number(payload.category_id):4,
+            stock_enabled:(keys===createStockKeys||keys===createListKeys)?payload.stock_enabled:false,
+            in_stock:false,memo:(keys===createStockKeys||keys===createListKeys)?String(payload.memo||''):'',
+            display_group:'',...(kurashiProductListsReady_(book)?{
+              list_mode:keys===createListKeys?payload.list_mode:'none'}:{}),sort_order:Math.max(0,...scoped.map(p=>Number(p.value.sort_order)||0))+1,
             is_hidden:false,migrated_from_household_item_id:''}:{})};
-        if(stockReady&&keys===createStockKeys&&(
+        if(stockReady&&(keys===createStockKeys||keys===createListKeys)&&(
           !Number.isInteger(payload.category_id)||payload.category_id<0||payload.category_id>5||
           typeof payload.stock_enabled!=='boolean'||payload.in_stock!==false||
           typeof payload.memo!=='string'||payload.memo.length>80||
-          payload.display_group!==''))kurashiFail_('BAD_REQUEST','在庫商品の登録情報を確認してください');
+          payload.display_group!==''||
+          (keys===createListKeys&&(!KURASHI_PRODUCT_LIST_MODES.includes(payload.list_mode)||
+            payload.stock_enabled!==(payload.list_mode==='stock')))))
+          kurashiFail_('BAD_REQUEST','在庫商品の登録情報を確認してください');
       }else{
         const productId=String(payload.product_id||'');
         const match=records.filter(x=>String(x.value.product_id)===productId);
@@ -1299,7 +1321,10 @@ function kurashiSaveProduct_(user,action,payload,operationId){
         }else if(updatingStock){
           for(const field of stockKeys){
             const value=payload[field];
-            if(['stock_enabled','in_stock','is_hidden'].includes(field)){
+            if(field==='list_mode'){
+              if(!KURASHI_PRODUCT_LIST_MODES.includes(value))
+                kurashiFail_('BAD_REQUEST','商品一覧の区分を確認してください');
+            }else if(['stock_enabled','in_stock','is_hidden'].includes(field)){
               if(typeof value!=='boolean')kurashiFail_('BAD_REQUEST','在庫状態を確認してください');
             }else if(field==='category_id'){
               if(!Number.isInteger(value)||value<0||value>5)
@@ -1309,6 +1334,21 @@ function kurashiSaveProduct_(user,action,payload,operationId){
               ((field==='name'||field==='display_group')&&value.trim()&&/^[=+@\-]/.test(value.trim())))
               kurashiFail_('BAD_REQUEST','商品名またはメモを確認してください');
             entity[field]=typeof value==='string'?value.trim():value;
+          }
+          if(Object.prototype.hasOwnProperty.call(payload,'list_mode')){
+            entity.stock_enabled=payload.list_mode==='stock';
+            if(payload.list_mode!=='stock')entity.in_stock=false;
+            if(String(before.list_mode||'')!==payload.list_mode){
+              entity.sort_order=Math.max(0,...scoped.filter(x=>
+                String(x.value.product_id)!==productId&&
+                Number(x.value.category_id)===Number(entity.category_id)&&
+                String(x.value.list_mode||'none')===payload.list_mode)
+                .map(x=>Number(x.value.sort_order)||0))+1;
+            }
+          }else if(Object.prototype.hasOwnProperty.call(payload,'stock_enabled')&&
+            kurashiProductListsReady_(book)){
+            entity.list_mode=payload.stock_enabled?'stock':'none';
+            if(!payload.stock_enabled)entity.in_stock=false;
           }
           if(Object.prototype.hasOwnProperty.call(entity,'name')&&
              Object.prototype.hasOwnProperty.call(payload,'name')){
@@ -2190,6 +2230,74 @@ function kurashiTrialStockVerify(){
  return {status:'VERIFIED',products:active.length,
   record_items:history.original_record_items,historical_products:history.original_products,
   historical_data_preserved:true};
+}
+// Explicit one-time migration for the existing TRIAL workbook only.
+// Appending list_mode leaves every legacy column and receipt record unchanged.
+function kurashiTrialProductListsMigrate(){
+ const lock=LockService.getScriptLock();
+ if(!lock.tryLock(20000))kurashiFail_('BUSY','保存処理中のため移行しません');
+ try{
+  const book=kurashiTrialNamingBook_(),props=PropertiesService.getScriptProperties();
+  if(!kurashiStockReady_(book))
+   kurashiFail_('STOCK_MIGRATION_REQUIRED','v0.98の商品在庫移行が必要です');
+  if(kurashiProductListsReady_(book))return {status:'ALREADY_READY'};
+  const journal=kurashiRows_('processed_operations',book);
+  if(journal.some(x=>{let p;try{p=JSON.parse(String(x.value.result||''))}
+    catch(_){kurashiFail_('RECOVERY_CONFLICT','操作履歴を確認してください')}
+    return p?.status==='prepared';}))
+   kurashiFail_('RECOVERY_REQUIRED','未確定操作があるため移行しません');
+  const sheet=book.getSheetByName('products'),headers=kurashiProductStockColumns_(book);
+  const hadColumn=headers.includes(KURASHI_PRODUCT_LIST_FIELD);
+  const backupId=props.getProperty('KURASHI_PRODUCT_LISTS_BACKUP_ID');
+  if(!backupId){
+   const backup=SpreadsheetApp.create('くらしストック_試作_商品一覧移行前_'+new Date().toISOString());
+   const empty=backup.getSheets()[0];empty.setName('__temporary__');
+   for(const old of book.getSheets())old.copyTo(backup).setName(old.getName());
+   backup.deleteSheet(empty);
+   for(const old of book.getSheets()){
+    const copy=backup.getSheetByName(old.getName());
+    if(!copy||copy.getLastRow()!==old.getLastRow()||
+       JSON.stringify(copy.getRange(1,1,old.getLastRow(),old.getLastColumn()).getValues())!==
+       JSON.stringify(old.getRange(1,1,old.getLastRow(),old.getLastColumn()).getValues()))
+     kurashiFail_('BACKUP_MISMATCH','移行バックアップを確認できません');
+   }
+   props.setProperty('KURASHI_PRODUCT_LISTS_BACKUP_ID',backup.getId());
+  }else if(!SpreadsheetApp.openById(backupId).getSheetByName('products'))
+   kurashiFail_('BACKUP_REQUIRED','商品バックアップを確認できません');
+  if(!hadColumn)sheet.getRange(1,headers.length+1,1,1)
+    .setValues([[KURASHI_PRODUCT_LIST_FIELD]]);
+  const current=kurashiRows_('products',book);
+  const col=kurashiProductStockColumns_(book).indexOf(KURASHI_PRODUCT_LIST_FIELD)+1;
+  let changed=0;
+  for(const {row,value} of current){
+   const existing=String(value.list_mode||'');
+   if(KURASHI_PRODUCT_LIST_MODES.includes(existing))continue;
+   if(existing)kurashiFail_('PRODUCT_LIST_MIGRATION_CONFLICT','未知の商品区分があります');
+   const mode=value.stock_enabled===true||String(value.stock_enabled).toLowerCase()==='true'?'stock':'none';
+   sheet.getRange(row,col,1,1).setValues([[mode]]);changed++;
+  }
+  const after=kurashiRows_('products',book);
+  if(after.length!==current.length||after.some(x=>
+      !KURASHI_PRODUCT_LIST_MODES.includes(String(x.value.list_mode))||
+      (String(x.value.list_mode)==='stock')!==
+        (x.value.stock_enabled===true||String(x.value.stock_enabled).toLowerCase()==='true')))
+   kurashiFail_('PRODUCT_LIST_MIGRATION_INCOMPLETE','一覧区分の移行結果を確認してください');
+  props.setProperty('KURASHI_PRODUCT_LISTS_VERSION','1');
+  return {status:'PRODUCT_LISTS_READY',products:after.length,updated:changed,
+    history_preserved:true,backup_created:true};
+ }finally{lock.releaseLock()}
+}
+function kurashiTrialProductListsVerify(){
+ const book=kurashiTrialNamingBook_();
+ if(!kurashiProductListsReady_(book))
+  kurashiFail_('PRODUCT_LIST_MIGRATION_REQUIRED','商品一覧の移行が未完了です');
+ const rows=kurashiRows_('products',book);
+ if(rows.some(x=>!KURASHI_PRODUCT_LIST_MODES.includes(String(x.value.list_mode))))
+  kurashiFail_('PRODUCT_LIST_MIGRATION_INCOMPLETE','商品区分を確認してください');
+ return {status:'VERIFIED',products:rows.length,
+  stock:rows.filter(x=>x.value.list_mode==='stock').length,
+  price:rows.filter(x=>x.value.list_mode==='price').length,
+  none:rows.filter(x=>x.value.list_mode==='none').length};
 }
 function kurashiLegacyStockEnabled_(item){
  const old=item.stock_management_enabled;

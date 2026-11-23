@@ -41,6 +41,7 @@ jobs:
           node --check "$RUNNER_TEMP/Setup.js"
           node tests/v98-stock-gas.mjs
           node tests/v98-product-stock-model.mjs
+          node tests/v99-product-lists.mjs
 
       - name: Prepare trial-only clasp credentials
         env:
