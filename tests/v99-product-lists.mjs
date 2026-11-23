@@ -101,6 +101,7 @@ let out=ui.unifiedProductResults();
 assert.doesNotMatch(out,/キットカット/);
 assert.match(out,/洗剤B/);
 assert.doesNotMatch(out,/data-stock="s1"/);
+context.onlyOut=false;
 context.catalogue.products[0].displayGroup='洗濯洗剤';
 const singleton=ui.unifiedProductResults();
 assert.match(singleton,/data-unified-group-add/,'single-product group must retain a group header');
