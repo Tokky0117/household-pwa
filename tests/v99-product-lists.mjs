@@ -31,7 +31,10 @@ assert.match(app,/function unifiedSaveGroup\(state,name,selectedIds\)/);
 assert.match(app,/UI\.formField\(\{id:'master-product-display-group'/);
 assert.match(app,/function unifiedGroupDestinationName\(state,value\)/);
 assert.match(app,/function refreshUnifiedGroupSheet\(form\)/);
-assert.match(app,/if\(unifiedGroupEditor&&app\.querySelector\('\.sheet-back\.unified-group-sheet'\)\)/);
+assert.match(app,/variant:'unified-group-sheet'/);
+assert.doesNotMatch(app,/app\.querySelector\('\.sheet-back\.unified-group-sheet'\)/,
+ 'sheet variant belongs to the inner section, not the backdrop');
+assert.match(app,/if\(unifiedGroupEditor&&app\.querySelector\('\.sheet-back \.unified-group-sheet'\)\)/);
 assert.match(app,/state\.kind==='product'&&p\.id===state\.productId/);
 assert.match(app,/\['unified-group-search'\]|'unified-group-search':/);
 const dragHandlers=app.slice(app.indexOf("app.addEventListener('pointerdown',e=>{",app.indexOf('function orderedItemIds(')),

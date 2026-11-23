@@ -2807,7 +2807,7 @@ function render(){
  if(!window.document)return; // A closed iOS page/session must not re-render.
  // Preserve the same DOM sheet through sync and form-content changes.
  // The list is refreshed after the sheet closes, not while it is being edited.
- if(unifiedGroupEditor&&app.querySelector('.sheet-back.unified-group-sheet')){
+ if(unifiedGroupEditor&&app.querySelector('.sheet-back .unified-group-sheet')){
   if(dialog)renderDialogOnly();
   return;
  }
