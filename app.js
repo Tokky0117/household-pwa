@@ -1835,7 +1835,7 @@ function listResults(){
 }
 function inventoryGroupSheetView(priceMode=false){
  const ids=priceMode?[...selectedPriceIds]:[...selectedInventoryIds];
- const source=priceMode?(productListsReady()?catalogue.products.filter(p=>productListMode(p)==='price'):catalogue.products):items;
+ const source=priceMode?(productListsReady()?catalogue.products.filter(p=>productListMode(p)!=='stock'):catalogue.products):items;
  const members=ids.map(id=>source.find(i=>i.id===id)).filter(Boolean);
  const cat=members[0]?.category;
  const existing=[...new Set(source.filter(i=>!i.hidden&&i.category===cat&&i.displayGroup).map(i=>i.displayGroup))].sort((a,b)=>a.localeCompare(b,'ja'));
@@ -1848,7 +1848,7 @@ function inventoryGroupSheetView(priceMode=false){
   <div class="formactions">${UI.button({label:'グループ化',variant:'primary',type:'submit'})}</div></form>`});
 }
 async function saveInventoryGroups(ids,name,priceMode=false){
- const source=priceMode?(productListsReady()?catalogue.products.filter(p=>productListMode(p)==='price'):catalogue.products):items;
+ const source=priceMode?(productListsReady()?catalogue.products.filter(p=>productListMode(p)!=='stock'):catalogue.products):items;
  const targets=ids.map(id=>source.find(i=>i.id===id&&!i.hidden));
  if(liveMode&&!stockV2()&&!window.KurashiLive.state().groupingReady)
   throw Error('グループ機能は試作データの更新後に利用できます');
