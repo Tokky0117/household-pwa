@@ -730,7 +730,7 @@ assert.ok(indexHtml.includes('src="receipt-validation.js?v=71-p2"'),
  'P2 validator is loaded before app entry on the iPhone preview');
 assert.ok(indexHtml.indexOf('src="receipt-validation.js')<indexHtml.indexOf('src="app.js'),
  'P2 validator initializes before app.js');
-assert.ok(previewWorkflow.includes('receipt-chatgpt-import.js product-package.js receipt-validation.js receipt-review-model.js)'),
+assert.ok(previewWorkflow.includes('receipt-chatgpt-import.js product-package.js receipt-validation.js receipt-review-model.js'),
  'P2 validator and P4 review adapter are copied into each static preview');
 assert.ok(indexHtml.indexOf('src="receipt-review-model.js')<indexHtml.indexOf('src="app.js'),
  'P4 review adapter loads before app.js');
