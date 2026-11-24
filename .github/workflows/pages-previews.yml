@@ -170,6 +170,10 @@ jobs:
           name: github-pages-${{ github.run_id }}-${{ github.run_attempt }}
           path: _site
 
+      # GitHub Pages may take a moment to expose a freshly uploaded artifact.
+      - name: Wait for Pages artifact indexing
+        run: sleep 25
+
       - name: Deploy previews and main
         id: deployment
         uses: actions/deploy-pages@v4
