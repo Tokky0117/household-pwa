@@ -5,6 +5,7 @@ const liveMode=!!window.KurashiLive; // Data source only; original Preview v46 U
 const SEED=[['牛乳',0,true],['麦茶',0,false],['コーヒー',0,true],['卵',0,false],['キッチンペーパー',1,false],['ラップ',1,true],['食器用洗剤',1,true],['シャンプー',2,false],['歯磨き粉',2,true],['ハンドソープ',2,false],['洗濯洗剤',3,false],['柔軟剤',3,true],['トイレットペーパー',3,false],['乾電池',4,true],['ティッシュ',4,true]];
 const makeSeed=()=>SEED.map(([name,category,inStock],i)=>({id:`demo-${i+1}`,name,subName:'',category,inStock,hidden:false,order:i,version:1}));
 const key='household_pwa_v99_household_items';
+const householdFirstPreview=window.location?.pathname?.includes('/previews/preview-v99-household-first/')===true;
 // 商品・チェーンは仮データ。今後はproducts / retail_chainsへの照会に置き換える。
 
 const UNIT_OPTIONS=['個','本','枚','g','kg','mL','L'];
@@ -21,7 +22,7 @@ const sampleCatalogue=()=>({
  ],
  chains:[{id:'c-a',name:'スーパー青空'},{id:'c-b',name:'ドラッグひかり'},{id:'c-c',name:'スーパーみどり'},{id:'c-life',name:'ライフ'},{id:'c-konomiya',name:'コノミヤ'},{id:'c-mandai',name:'万代'},{id:'c-aeon',name:'イオン'},{id:'c-sugi',name:'スギ薬局'}]
 });
-function loadCatalogue(){if(liveMode)return {products:[],chains:[]};try{const o=JSON.parse(localStorage.getItem(catalogueKey));if(o&&Array.isArray(o.products)&&Array.isArray(o.chains)){for(const c of sampleCatalogue().chains)if(!o.chains.some(x=>x.id===c.id))o.chains.push(c);return o}}catch{}return {...sampleCatalogue(),products:[]}}
+function loadCatalogue(){if(liveMode)return {products:[],chains:[]};try{const o=JSON.parse(localStorage.getItem(catalogueKey));if(o&&Array.isArray(o.products)&&Array.isArray(o.chains)){for(const c of sampleCatalogue().chains)if(!o.chains.some(x=>x.id===c.id))o.chains.push(c);return o}}catch{}return householdFirstPreview?{...sampleCatalogue(),products:[]}:sampleCatalogue()}
 let catalogue=loadCatalogue(),pickQuery='',pickKind='product',pickerAll=false,editingProductId=null;
 const persistCatalogue=()=>{if(!liveMode)localStorage.setItem(catalogueKey,JSON.stringify(catalogue))};
 const productTitle=p=>{
@@ -178,7 +179,8 @@ function convertQuantity(amount,from,to){
 }
 function load(){if(liveMode)return [];
  try{const d=JSON.parse(localStorage.getItem(key));
-  return Array.isArray(d)?d:[];}catch{return [];}
+  return Array.isArray(d)?d:(householdFirstPreview?[]:makeSeed());}
+ catch{return householdFirstPreview?[]:makeSeed();}
 }
 let items=load(),expandedItemGroups=new Set(),tab='items',page='list',selected=null,query='',onlyOut=false,collapsed=new Set(),menu=false,dialog=null,toast='',period='1y',priceScope='product',periodMenu=false;
 let productCreateOrigin='productPick';
