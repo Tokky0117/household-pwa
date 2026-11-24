@@ -1542,7 +1542,7 @@ function listResults(){
   return `<section class="category"><button class="cathead" data-cat="${idx}" aria-expanded="${!closed}" ${onlyOut?'disabled aria-disabled="true"':''}><strong>${cat}</strong><span class="count">${matching.length}点</span><span class="cat-arrow-slot" aria-hidden="true">${onlyOut?'':chevron(closed?'down':'up')}</span></button>${closed?'':parts.length?`<div class="category-items" data-category-id="${idx}">${parts.join('')}</div>`:'<div class="empty">該当する日用品はありません</div>'}</section>`;
  }).join('')||'<div class="empty">一致する日用品はありません</div>';
 }
-const helpOpenKey='household_pwa_v99_list_help_open';
+const helpOpenKey='household_pwa_list_help_open_v1';
 function readListHelpOpen(){
  try{return localStorage.getItem(helpOpenKey)!=='false'}catch{return true}
 }

@@ -33,6 +33,7 @@ jobs:
       - name: Validate v1.8 preview behavior
         run: |
           node tests/ui-smoke.mjs
+          node tests/v99-household-first.mjs
           node tests/no-login-household.mjs
           node tests/receipt-baseline.mjs
           node tests/receipt-seven-case-acceptance.mjs
