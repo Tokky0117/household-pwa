@@ -76,7 +76,7 @@ const demoRecordItems=priceFixtures.map((r,n)=>({
  created_at:null,updated_at:null,version:1,deleted_at:null
 }));
 // Manual preview records remain only on this browser; never sent to a server.
-const previewRecordsKey='household_pwa_records_preview_v1';
+const previewRecordsKey=householdFirstPreview?'household_pwa_v99_preview_records':'household_pwa_records_preview_v1';
 function loadPreviewRecords(){
  try{const v=JSON.parse(localStorage.getItem(previewRecordsKey));
  if(v&&Array.isArray(v.records)&&Array.isArray(v.record_items))return v;
@@ -85,8 +85,10 @@ function loadPreviewRecords(){
 }
 let previewRecords=loadPreviewRecords();
 let liveRecords={records:[],record_items:[]};
-const allPreviewRecords=()=>liveMode?liveRecords.records:demoRecords.concat(previewRecords.records);
-const allPreviewItems=()=>liveMode?liveRecords.record_items:demoRecordItems.concat(previewRecords.record_items);
+const allPreviewRecords=()=>liveMode?liveRecords.records:
+ (householdFirstPreview?[]:demoRecords).concat(previewRecords.records);
+const allPreviewItems=()=>liveMode?liveRecords.record_items:
+ (householdFirstPreview?[]:demoRecordItems).concat(previewRecords.record_items);
 function savePreviewRecord(input){
  if(liveMode)return false; // Never save locally in the Sheets-connected app.
  const amount=Number(input.amount),quantity=Number(input.quantity);
