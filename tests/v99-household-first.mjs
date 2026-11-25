@@ -7,7 +7,7 @@ const html=readFileSync(new URL('../index.html',import.meta.url),'utf8');
 const live=readFileSync(new URL('../live-client.js',import.meta.url),'utf8');
 const gas=readFileSync(new URL('../gas/Api.gs',import.meta.url),'utf8');
 
-assert.match(app,/const APP_VERSION='0\.99\.1'/);
+assert.match(app,/const APP_VERSION='0\.99\.2'/);
 assert.match(app,/const key='household_pwa_v99_household_items'/);
 assert.match(app,/const catalogueKey='household_pwa_v99_products'/);
 assert.match(app,/householdFirstPreview\?'household_pwa_v99_preview_records'/);
@@ -41,6 +41,9 @@ new vm.Script(app,{filename:'app.js'});
 console.log('v99 household-first flow, old linkage model and guarded trial backend: OK');
 
 assert.match(app,/function receiptStockCandidates/);
+assert.doesNotMatch(app,/expandedItemGroups|groupKeyOfItem|data-group-toggle|item-group-child-row/);
+assert.match(app,/price.textContent=listPriceText\(next\)/);
+assert.match(app,/dialog.pending\?\.stockItemIds\?' dialog-receipt-bulk'/);
 assert.match(app,/confirmReceiptStock/);
 assert.match(live,/function setItemsInStock/);
 assert.match(live,/household_flat_ready/);

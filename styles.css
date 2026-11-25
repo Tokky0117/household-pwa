@@ -167,23 +167,9 @@ main {
   color: var(--muted);
 }
 
-.category {
+.household-list {
   border-radius: 15px;
   margin: 0 0 13px;
-}
-
-.cathead {
-  width: 100%;
-  border: 0;
-  color: var(--ink);
-  display: flex;
-  align-items: center;
-  text-align: left;
-  gap: 10px;
-}
-
-.cathead strong {
-  flex: 1;
 }
 
 .count {
@@ -681,14 +667,6 @@ main {
   }
 }
 
-.cathead strong {
-  letter-spacing: .015em;
-}
-
-.cathead .count {
-  font-weight: 600;
-}
-
 .ui-chevron {
   width: 20px;
   height: 20px;
@@ -770,27 +748,11 @@ body.reordering,body.reordering * {
   color: var(--muted);
 }
 
-.category {
+.household-list {
   background: transparent;
   border: 0;
   box-shadow: none;
   overflow: visible;
-}
-
-.cathead {
-  background: transparent;
-  border-left: 0;
-}
-
-.cathead strong {
-  color: var(--muted);
-  font-weight: 750;
-}
-
-.cathead .count {
-  background: transparent;
-  color: #999;
-  padding: 0;
 }
 
 .item {
@@ -831,10 +793,6 @@ body.reordering,body.reordering * {
     --red: #efb475;
     --red-soft: #4b3624;
     --shadow: none;
-  }
-
-  .cathead .count {
-    color: #a5a5a5;
   }
 
   .stock {
@@ -1112,17 +1070,8 @@ html,body {
   margin-bottom: 7px;
 }
 
-.category {
+.household-list {
   margin-bottom: 4px;
-}
-
-.cathead {
-  padding: 6px 6px;
-  min-height: 44px;
-}
-
-.cathead strong {
-  font-size: 15px;
 }
 
 .item {
@@ -1420,15 +1369,6 @@ html,body {
   }
 }
 
-.cathead[disabled] {
-  cursor: default;
-  opacity: 1;
-}
-
-.cathead[disabled] strong,.cathead[disabled] .count {
-  opacity: 1;
-}
-
 .settings-main {
   padding: 15px 16px;
 }
@@ -1498,18 +1438,6 @@ html,body {
   font-family: Arial,sans-serif;
   font-style: normal;
   font-size: 12px;
-}
-
-.cat-arrow-slot {
-  display: grid;
-  place-items: center;
-  flex: none;
-  width: 20px;
-  height: 20px;
-}
-
-.cat-arrow-slot .ui-chevron {
-  display: block;
 }
 
 .detail-main .price-unit-label {
@@ -2767,18 +2695,6 @@ html,body{touch-action:pan-x pan-y}
 }
 
 /* KS-006: group same-name household items while retaining individual IDs. */
-.item-group-row{margin-bottom:3px;border:1px solid var(--line);border-radius:11px;overflow:hidden;background:var(--card)}
-.item-group-header{display:flex;align-items:center;gap:9px;width:100%;min-height:52px;padding:6px 12px;border:0;background:inherit;color:inherit;text-align:left;cursor:pointer}
-.item-group-header .ui-chevron{flex:0 0 18px}
-.item-group-title{flex:1 1 auto;min-width:0;font-size:var(--ui-list-name-font-size,15px);font-weight:650;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.item-group-count{flex:0 0 auto;font-size:11px;color:var(--muted)}
-.item-group-stock{flex:0 0 auto;min-width:40px;text-align:center;font-size:12px;font-weight:600;padding:4px 7px;border:1px solid var(--line);border-radius:100px}
-.item-group-stock-off{background:var(--ui-stock-off-background)!important;color:var(--ui-stock-off-text)!important;border-color:var(--ui-stock-off-border)!important}
-.item-group-children{padding-left:12px;border-top:1px solid var(--line)}
-.item-group-child-row{margin-left:0!important}
-.item-group-row.drag-ghost{position:fixed!important;z-index:150;pointer-events:none;box-shadow:0 8px 20px #0002}
-.item-group-row.drag-placeholder{opacity:.3}
-
 /* Searchable household sub-item selection on the full-page receipt product form. */
 .scan-product-page{padding-bottom:calc(24px + env(safe-area-inset-bottom))}
 .scan-product-page .scan-product-group-field{min-width:0}

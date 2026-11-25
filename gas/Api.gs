@@ -531,9 +531,8 @@ function kurashiSubName_(value) {
   return name;
 }
 function kurashiSameItemLabel_(item,name,cat,subName) {
-  return Number(item.category_id)===cat &&
-    kurashiNormalize_(item.name)===kurashiNormalize_(name) &&
-    kurashiNormalize_(item.sub_name||'')===kurashiNormalize_(subName||'');
+  const label=(n,s)=>kurashiNormalize_(String(n)+(s?' ／ '+s:''));
+  return label(item.name,item.sub_name)===label(name,subName);
 }
 function kurashiEnsureCategories_(book) {
   const sheet=kurashiSheet_('categories',book);
@@ -652,13 +651,9 @@ function kurashiSaveItem_(user,action,payload,operationId) {
             kurashiFail_('BAD_REQUEST','カテゴリを確認してください');
           entity.category_id=cat;
           entity.normalized_name=kurashiNormalize_(entity.name);
-          if (cat!==Number(record.category_id)) {
-            const orders=scoped.filter(x=>Number(x.value.category_id)===cat)
-              .map(x=>Number(x.value.sort_order)||0);
-            entity.sort_order=Math.max(0,...orders)+1;
-          }
+          // Category remains stored metadata; changing it never changes global order.
         }
-        if (scoped.some(x=>String(x.value.household_item_id)!==itemId &&
+        if (!kurashiSameItemLabel_(record,entity.name,Number(entity.category_id),entity.sub_name) && scoped.some(x=>String(x.value.household_item_id)!==itemId &&
             !x.value.deleted_at && kurashiSameItemLabel_(x.value,entity.name,Number(entity.category_id),entity.sub_name)))
           kurashiFail_('DUPLICATE','同じ日用品が登録済みです');
         entity.version=Number(record.version)+1;

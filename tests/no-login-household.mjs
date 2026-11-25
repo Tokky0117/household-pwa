@@ -100,6 +100,7 @@ assert.equal(create.data.entity.in_stock,false,'new items initially not in stock
 const id=create.data.entity.household_item_id;
 assert.equal(temp.call('item.create',{name:'牛乳',category_id:0},'op-create-abcdefghijklmn').data.entity.household_item_id,id,'no duplicate replay');
 assert.equal(temp.call('item.create',{name:'牛乳',category_id:0},'op-other-abcdefghijklmn').error.code,'DUPLICATE','same name cannot be created again');
+assert.equal(temp.call('item.create',{name:'牛乳',category_id:4},'op-cross-cat-abcdefghijklmn').error.code,'DUPLICATE','same display name cannot repeat across categories');
 const stockUpdate=temp.call('item.update',{household_item_id:id,version:1,in_stock:true},'op-stock-abcdefghijklmn');
 if(!stockUpdate.ok)console.error('SCHEMA_NAME_DEBUG_STOCK',JSON.stringify(stockUpdate));
 assert.equal(stockUpdate.ok,true,'anonymous stock update');
@@ -126,6 +127,7 @@ assert.equal(groupFixture.call('item.update',{household_item_id:vegetable.househ
  'one child stock updates separately');
 assert.equal(groupFixture.call('bootstrap').data.household_items.find(i=>
  i.household_item_id===garbage.household_item_id).in_stock,false,'sibling remains out of stock');
+assert.equal(groupFixture.call('item.create',{name:'袋 ／ 野菜用',category_id:4},'op-combined-label-abcdefghijkl').error.code,'DUPLICATE','legacy sub-name and combined display label agree');
 const tiedProduct=groupFixture.call('product.create',{name:'野菜用保存袋50枚',
  package_quantity:50,package_unit:'枚',household_item_id:vegetable.household_item_id},
  'op-sub-product-abcdefghijkl');
@@ -534,7 +536,7 @@ try{
  throw err;
 }
 const displayed=dom=>[...dom.window.document.querySelectorAll('.swipe-item[data-item-id]')]
- .filter(row=>row.dataset.categoryId==='-1').map(row=>row.dataset.itemId);
+ .map(row=>row.dataset.itemId);
 assert.deepEqual(displayed(e),order2,'optimistic reorder matches rendered list');
 e.window.close();online=true;
 let f=appSession();
@@ -645,7 +647,7 @@ const fresh=await pendingCreate.window.KurashiLive.save('item.create',{
 });
 assert.match(fresh.household_item_id,/^local-/);
 const remaining=[...pendingCreate.window.document.querySelectorAll('.swipe-item[data-item-id]')]
- .filter(row=>row.dataset.categoryId==='-1'&&row.dataset.itemId!==fresh.household_item_id)
+ .filter(row=>row.dataset.itemId!==fresh.household_item_id)
  .map(row=>row.dataset.itemId);
 const wanted=[fresh.household_item_id,...remaining];
 await pendingCreate.window.KurashiLive.reorderItems(-1,wanted);
@@ -662,7 +664,18 @@ await waitFor(()=>freshApp.window.KurashiLive.state().queued===0&&
 const itemCreated=temp.call('bootstrap').data.household_items.find(i=>i.name==='作成前並び替えテスト');
 assert.ok(itemCreated.household_item_id.startsWith('item-'),'server generated permanent ID');
 assert.equal(displayed(freshApp)[0],itemCreated.household_item_id,'rendered list uses permanent first item ID');
-freshApp.window.close();
+// Confirm batch stock updates persist offline, deduplicate IDs and recover after a lost response.
+online=false;
+const stockIds=[extraA.data.entity.household_item_id,extraB.data.entity.household_item_id];
+await freshApp.window.KurashiLive.setItemsInStock([...stockIds,stockIds[0]]);
+assert.equal(freshApp.window.KurashiLive.state().queued,2,'one durable set-stock operation per out-of-stock item');
+assert.ok(stockIds.every(id=>freshApp.window.document.querySelector('[data-stock="'+id+'"]').getAttribute('aria-pressed')==='true'));
+freshApp.window.close();online=true;loseOneWriteResponse=true;
+let batchApp=appSession();
+await waitFor(()=>batchApp.window.KurashiLive.state().queued===0&&stockIds.every(id=>temp.call('bootstrap').data.household_items.find(x=>x.household_item_id===id).in_stock===true),'batch stock converges after restart and lost response',15000);
+await batchApp.window.KurashiLive.setItemsInStock(stockIds);
+assert.equal(batchApp.window.KurashiLive.state().queued,0,'already stocked items never toggle back');
+batchApp.window.close();
 console.log('v46 UI forms + IndexedDB reorder + queued create/reorder + crash recovery: OK');
 
 

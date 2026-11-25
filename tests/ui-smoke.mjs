@@ -19,7 +19,7 @@ const doc={
  addEventListener(type,fn){(documentHandlers[type]??=[]).push(fn)},
  getElementById:k=>k==='app'?app:null,
  querySelector(){return null},
- querySelectorAll(s){return s.includes('.category-items[data-category-id=')?mockTopRows:s.includes('.swipe-item:not(.drag-ghost)')?mockSwipeRows:[]},
+ querySelectorAll(s){return s.includes('.household-list >')?mockTopRows:s.includes('.swipe-item:not(.drag-ghost)')?mockSwipeRows:[]},
  createElement:()=>({innerHTML:'',querySelector:()=>null}),
  body:{append(){}}
 };
@@ -30,7 +30,7 @@ const packageAPI=ctx.window.KurashiProductPackage;
 const ui=vm.runInNewContext(source+`
 ({UI,listView,priceCompareView,pickerView,pickerResults,masterProductsView,masterProductRows,masterProductEditorView,masterGroupPickerView,masterGroupPickerRows,aliasManageView,aliasManageRows,aliasProductPickerView,aliasProductPickerRows,detailHomeView,detailAllView,receiptScanView,receiptChatGptView,recordDetailView,scanStoreNameIssue,scanValidPurchaseDate,scanReadableError,floatingActionPlacement,applyChatGptOcrAssistance,receiptOcrReference,receiptOcrRows,isUnconfirmedBarcodeLine,makeChatGptReceiptRebuildDraft,scanProductView,scanProductGroupChoices,scanExistingProductView,scanExistingProductResults,scanChainForStore,scanStoreHeaderMatch,scanAutolinkUnmatched,scanMatchProduct,scanSimilarProducts,normalizeOcrProductName,normalizedOcrItemName,render,initializeCompare,
  setProductGroup,reorderProducts,registeredProducts,convertQuantity,setOpenSwipe,storePickerChoices,scrollNewItemIfOffscreen,
- getItems(){return items},setItems(v){items=v},orderedItemIds,expandItemGroup(k){expandedItemGroups.add(k)},collapseItemGroup(k){expandedItemGroups.delete(k)},
+ getItems(){return items},setItems(v){items=v},orderedItemIds,
  chainMinima,priceCandidates,standardizedMinima,savePreviewRecord,periodStart,
  demoRecords,demoRecordItems,allPreviewRecords,allPreviewItems,
  setSelected(v){selected=v},setMasterProductId(v){masterProductId=v},setAliasPickerId(v){aliasPickerId=v},setAliasQuery(v){aliasQuery=v;aliasVisibleLimit=100},setAliasVisibleLimit(v){aliasVisibleLimit=v},setPage(v){page=v},setMode(v){priceScope=v},setDock(v){shopExpanded=v},
@@ -51,7 +51,7 @@ function minPixels(body,key){
  const m=body.match(new RegExp(key+'\\s*:\\s*(\\d+)px'));
  return m?Number(m[1]):null;
 }
-for(const selector of ['.iconbtn','.headrow .iconbtn','.sheet-close','.cathead','.ui-select-compact .ui-select-trigger','.stock,.detail-main .detail-stock-row .stock','.swipe-item .stock']){
+for(const selector of ['.iconbtn','.headrow .iconbtn','.sheet-close','.ui-select-compact .ui-select-trigger','.stock,.detail-main .detail-stock-row .stock','.swipe-item .stock']){
  const declarations=ruleBody(selector);
  assert.ok(declarations.length>0,'Touch rule exists: '+selector);
  const values=declarations.map(body=>minPixels(body,'min-height')??minPixels(body,'height')).filter(x=>x!==null);
@@ -418,7 +418,7 @@ for(const selector of ['.comparison-main .comparison-list','.comparison-main .co
 
 assert.equal(ui.getListHelpOpen(),true,'Guide is initially expanded on an unset device');
 let listWithHelp=ui.listView();
-assert.ok(listWithHelp.indexOf('class="list-help"')>listWithHelp.indexOf('id="item-results"'),'Usage guide follows category list');
+assert.ok(listWithHelp.indexOf('class="list-help"')>listWithHelp.indexOf('id="item-results"'),'Usage guide follows inventory list');
 assert.ok(listWithHelp.includes('aria-expanded="true"')&&listWithHelp.includes('id="list-help-content"'),'Guide accessible expanded state');
 assert.ok(listWithHelp.includes('日用品名を押して価格情報を確認')&&listWithHelp.includes('左スワイプで編集・削除')&&listWithHelp.includes('長押しして上下に並び替え'),'Guide covers non-obvious actions');
 assert.ok(listWithHelp.includes('右上の＋で日用品を追加')&&!listWithHelp.includes('在庫なしをコピー'),'Guide explains the add action but not removed copying');
@@ -427,7 +427,7 @@ storage.set('household_pwa_list_help_open_v1','false');
 assert.equal(ui.readListHelpOpen(),false,'Collapsed state is restored from device storage');
 storage.set('household_pwa_list_help_open_v1','true');
 assert.equal(ui.readListHelpOpen(),true,'Expanded state is restored from device storage');
-assert.equal((ui.listView().match(/class="item swipe-item /g)||[]).length,15,'Five fixed categories, 15 demo items');
+assert.equal((ui.listView().match(/class="item swipe-item /g)||[]).length,15,'Flat list, 15 demo items');
 assert.ok(ui.listView().includes('298円／おいしい牛乳／コノミヤ'),'List shows first product cheapest chain');
 assert.ok(!ui.listView().includes('（割引）'),'No normal/discount labels in list');
 assert.equal(ui.getPeriod(),'1y','One-year initial period');

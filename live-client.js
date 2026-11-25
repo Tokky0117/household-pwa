@@ -14,7 +14,7 @@
  const OLD_SNAPSHOT='kurashi-new-confirmed-snapshot-v1';
  const OLD_OPERATION='kurashi-new-write-v1-temporary-household';
  const listeners=new Set();
- const blank=()=>({base:null,queue:[],blocked:null,productIdMap:{},recordIdMap:{},recordItemIdMap:{}});
+ const blank=()=>({base:null,queue:[],blocked:null,productIdMap:{},householdItemIdMap:{},recordIdMap:{},recordItemIdMap:{}});
  let dbPromise=null,bootPromise=null,workspace=blank();
  let refreshPromise=null,flushPromise=null,retryTimer=null,retryMs=3000,stockFlushTimer=null;
  let error='',lastSync=0,authRequired=false,token=null,subject='temporary-household',expiry=0,gisReady=false;
@@ -172,6 +172,7 @@
   const base=doc.base?upgradeV46Snapshot(doc.base):null;
   return {base,queue:doc.queue,blocked:doc.blocked||null,
    productIdMap:doc.productIdMap&&typeof doc.productIdMap==='object'?doc.productIdMap:{},
+   householdItemIdMap:doc.householdItemIdMap&&typeof doc.householdItemIdMap==='object'?doc.householdItemIdMap:{},
    recordIdMap:doc.recordIdMap&&typeof doc.recordIdMap==='object'?doc.recordIdMap:{},
    recordItemIdMap:doc.recordItemIdMap&&typeof doc.recordItemIdMap==='object'?doc.recordItemIdMap:{}};
  };
@@ -1064,8 +1065,9 @@
  }
  async function setItemsInStock(itemIds){
   await boot();if(!workspace.base)await load();
-  const ids=new Set(itemIds);
+  if(!Array.isArray(itemIds))throw Error('在庫更新対象を確認してください');
   await modify(doc=>{
+   const ids=new Set(itemIds.map(id=>doc.householdItemIdMap?.[id]||id));
    for(const item of project(doc).household_items){
     if(ids.has(item.household_item_id)&&!item.deleted_at&&!toBoolean(item.is_hidden)&&!toBoolean(item.in_stock))
      doc.queue.push({id:operationId(),kind:'set-stock',targetId:item.household_item_id,stock:true,retries:0});
@@ -1363,6 +1365,7 @@
     }
    }
    if(op.kind==='create'){
+    ws.householdItemIdMap={...(ws.householdItemIdMap||{}),[op.clientId]:result.entity.household_item_id};
     for(const rest of ws.queue){
      if(rest.targetId===op.clientId)rest.targetId=result.entity.household_item_id;
      if(rest.groupId===op.clientId)rest.groupId=result.entity.household_item_id;
@@ -1855,6 +1858,7 @@
  };
  window.KurashiLive={state,load,save,saveRecord,updateRecord,deleteRecord,linkRecordItem,registerReceiptItemProduct,
   previewBulkReceiptProducts,bulkRegisterReceiptProducts,receiptProductKey,
+  resolveHouseholdItemId:id=>workspace.householdItemIdMap?.[id]||id,
   resolveRecordId:id=>workspace.recordIdMap?.[id]||id,
   resolveRecordItemId:id=>workspace.recordItemIdMap?.[id]||id,blockedReceiptChange,discardBlockedReceipt,blockedProductChange,resolveBlockedProduct,refreshBlockedProducts,pendingOperationReview,beginPendingOperationReview,endPendingOperationReview,discardPendingOperations,confirmedProductId,learnAliases,linkAlias,learnStoreAlias,
   saveReceiptDraft,loadReceiptDraft,saveOcrCorrections,loadOcrCorrections,toggleStock,setItemsInStock,reorderItems,reorderProducts,retry,logout,renderLogin,
