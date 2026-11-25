@@ -38,7 +38,7 @@ assert.match(gas,/function kurashiCreateRecord_\(/);
 assert.doesNotMatch(app,/function unifiedGroupCandidates\(/,'product-v2 grouping must not be present');
 // The actual render function should be valid JS, not only static text.
 new vm.Script(app,{filename:'app.js'});
-console.log('v99 household-first flow, old linkage model and backend isolation: OK');
+console.log('v99 household-first flow, old linkage model and guarded trial backend: OK');
 
 assert.match(app,/function receiptStockCandidates/);
 assert.match(app,/confirmReceiptStock/);

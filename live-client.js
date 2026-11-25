@@ -8,7 +8,8 @@
  const householdFlatPreview=window.location?.pathname?.includes('/previews/preview-v99-household-first/')===true;
  const ENDPOINT='https://script.google.com/macros/s/AKfycbwn-SfXqRBIjJWVUUIKEsJuaUR6DLAEWbMVR-_rEB3iVZy2zi0ZNSA7JjNmyykvKjvdoQ/exec';
  const CLIENT_ID='290567395833-cdemend3itmapsgsounu8pf72hgvm315.apps.googleusercontent.com';
- const DB_NAME=householdFlatPreview?'kurashi-stock-operations-v99-flat':'kurashi-stock-operations-v1',STORE='workspace',KEY='primary';
+ const DB_NAME='kurashi-stock-operations-v1',STORE='workspace',KEY='primary';
+ const WORKSPACE_DB=householdFlatPreview?'kurashi-stock-operations-v99-flat':DB_NAME;
  const RECEIPT_DRAFT_KEY='receipt-draft-1',OCR_CORRECTIONS_KEY='ocr-corrections-1';
  const OLD_SNAPSHOT='kurashi-new-confirmed-snapshot-v1';
  const OLD_OPERATION='kurashi-new-write-v1-temporary-household';
@@ -341,7 +342,7 @@
   if(dbPromise)return dbPromise;
   dbPromise=new Promise((resolve,reject)=>{
    if(!window.indexedDB){reject(Error('INDEXEDDB_UNAVAILABLE'));return}
-   const req=window.indexedDB.open(DB_NAME,1);
+   const req=window.indexedDB.open(WORKSPACE_DB,1);
    req.onupgradeneeded=()=>{if(!req.result.objectStoreNames.contains(STORE))
     req.result.createObjectStore(STORE)};
    req.onerror=()=>reject(req.error||Error('INDEXEDDB_UNAVAILABLE'));
