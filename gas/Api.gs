@@ -472,6 +472,7 @@ function kurashiBootstrap_(user) {
     // relabel an existing production workbook as a trial workbook.
     return {
       household_id:hid,
+      household_flat_ready:PropertiesService.getScriptProperties().getProperty('KURASHI_HOUSEHOLD_FLAT_READY')==='yes',
       categories:kurashiRows_('categories',book).map(x=>kurashiPublic_(x.value)),
       household_items:kurashiRows_('household_items',book)
         .filter(x=>String(x.value.household_id)===hid)
@@ -618,7 +619,7 @@ function kurashiSaveItem_(user,action,payload,operationId) {
         if (scoped.some(x=>!x.value.deleted_at &&
             kurashiSameItemLabel_(x.value,name,cat,kurashiSubName_(payload.sub_name))))
           kurashiFail_('DUPLICATE','同じ日用品が登録済みです');
-        const orders=scoped.filter(x=>Number(x.value.category_id)===cat)
+        const orders=scoped
           .map(x=>Number(x.value.sort_order)||0);
         entity={
           household_item_id:'item-'+Utilities.getUuid(),household_id:hid,category_id:cat,
@@ -731,7 +732,7 @@ function kurashiReorderItems_(user,payload,operationId){
   if(Object.keys(payload).sort().join(',')!=='category_id,household_item_ids,versions')
     kurashiFail_('BAD_REQUEST','並び順の形式が不正です');
   const cat=Number(payload.category_id),ids=payload.household_item_ids,versions=payload.versions;
-  if(!Number.isInteger(cat)||cat<0||cat>5||
+  if(!Number.isInteger(cat)||cat< -1||cat>5||
      !Array.isArray(ids)||!Array.isArray(versions)||ids.length<2||
      ids.length>500||versions.length!==ids.length||
      ids.some(id=>typeof id!=='string'||!/^item-[A-Za-z0-9_-]{1,110}$/.test(id))||
@@ -771,7 +772,7 @@ function kurashiReorderItems_(user,payload,operationId){
         kurashiFail_('RECOVERY_CONFLICT','並び替えの準備履歴が不正です');
     }else{
       const visible=kurashiRows_('household_items',book).filter(x=>
-        String(x.value.household_id)===hid&&Number(x.value.category_id)===cat&&
+        String(x.value.household_id)===hid&&(cat===-1||Number(x.value.category_id)===cat)&&
         !x.value.is_hidden&&!x.value.deleted_at);
       if(visible.length!==ids.length)
         kurashiFail_('VERSION_CONFLICT','別の端末で一覧が変更されています');
@@ -800,7 +801,7 @@ function kurashiReorderItems_(user,payload,operationId){
     for(let i=0;i<ids.length;i++){
       const foundRow=byRowId.get(ids[i]);
       if(!foundRow||String(foundRow.value.household_id)!==hid||
-         Number(foundRow.value.category_id)!==cat||
+         (cat!==-1&&Number(foundRow.value.category_id)!==cat)||
          foundRow.value.is_hidden||foundRow.value.deleted_at)
         kurashiFail_('RECOVERY_CONFLICT','並び替え対象が変更されています');
       const prior=plan.before[i],next=plan.entities[i];
@@ -1740,4 +1741,45 @@ function kurashiUpsertStoreAlias_(user,payload,id){
       sequence_no:plan.sequence_no
     },'retail_chains',plan.entity.chain_id);
   }finally{lock.releaseLock()}
+}
+
+/** Owner-run trial cutover. Refuses any workbook not explicitly marked v98 trial.
+ * Preserve all v98 rows and extra columns; backup first, then restore flat order.
+ * Stop use of older previews and clear pending operations before running.
+ */
+function kurashiTrialHouseholdFlatMigrate(){
+ const lock=LockService.getScriptLock();lock.waitLock(30000);
+ try{
+  const props=PropertiesService.getScriptProperties();
+  if(props.getProperty('KURASHI_PRODUCT_STOCK_VERSION')!=='2'||
+     props.getProperty('KURASHI_STOCK_BACKUP_VERIFIED')!=='yes')
+    throw Error('v98試作環境でのみ実行できます');
+  const book=kurashiTrialNamingBook_();
+  if(props.getProperty('KURASHI_HOUSEHOLD_FLAT_READY')==='yes')return {status:'ALREADY_READY'};
+  const pending=kurashiRows_('processed_operations',book).some(x=>JSON.parse(String(x.value.result)).status==='prepared');
+  if(pending)throw Error('未完了のサーバー操作があります');
+  Object.keys(KURASHI_NEW_SCHEMA).forEach(name=>kurashiSheet_(name,book));
+  const oldBackup=SpreadsheetApp.openById(props.getProperty('KURASHI_STOCK_BACKUP_ID'));
+  if(oldBackup.getId()===book.getId())throw Error('移行前バックアップが不正です');
+  const backup=SpreadsheetApp.create('くらしストック_試作_v99移行前_'+new Date().toISOString());
+  const empty=backup.getSheets()[0];empty.setName('__v99_tmp__');
+  for(const sheet of book.getSheets())sheet.copyTo(backup).setName(sheet.getName());
+  backup.deleteSheet(empty);
+  for(const sheet of book.getSheets()){
+   const copied=backup.getSheetByName(sheet.getName());
+   if(!copied||JSON.stringify(sheet.getDataRange().getValues())!==JSON.stringify(copied.getDataRange().getValues()))
+    throw Error('バックアップ検証失敗');
+  }
+  props.setProperty('KURASHI_HOUSEHOLD_FLAT_BACKUP_ID',backup.getId());
+  const rows=kurashiRows_('household_items',book).filter(x=>!x.value.deleted_at);
+  const rank=[0,5,1,2,3,4];
+  rows.sort((a,b)=>rank.indexOf(Number(a.value.category_id))-rank.indexOf(Number(b.value.category_id))||
+   Number(a.value.sort_order)-Number(b.value.sort_order)||a.row-b.row);
+  rows.forEach((x,n)=>{if(Number(x.value.sort_order)!==n+1){
+   kurashiReplace_('household_items',x.row,{...x.value,sort_order:n+1,version:Number(x.value.version)+1,updated_at:new Date().toISOString()},book);
+  }});
+  props.setProperty('KURASHI_HOUSEHOLD_FLAT_READY','yes');
+  const result={status:'HOUSEHOLD_FLAT_READY',household_items:rows.length,backup_created:true,receipt_history_preserved:true};
+  console.log(JSON.stringify(result));return result;
+ }finally{lock.releaseLock()}
 }

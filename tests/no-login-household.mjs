@@ -534,7 +534,7 @@ try{
  throw err;
 }
 const displayed=dom=>[...dom.window.document.querySelectorAll('.swipe-item[data-item-id]')]
- .filter(row=>row.dataset.categoryId==='0').map(row=>row.dataset.itemId);
+ .filter(row=>row.dataset.categoryId==='-1').map(row=>row.dataset.itemId);
 assert.deepEqual(displayed(e),order2,'optimistic reorder matches rendered list');
 e.window.close();online=true;
 let f=appSession();
@@ -545,7 +545,7 @@ assert.deepEqual(displayed(f),order2,'server reorder and PWA order agree after r
 // Response loss AFTER server completed the entire reorder: exact-ID replay.
 loseOneWriteResponse=true;
 const order3=[id,extraA.data.entity.household_item_id,extraB.data.entity.household_item_id];
-await f.window.KurashiLive.reorderItems(0,order3);
+await f.window.KurashiLive.reorderItems(-1,order3);
 await waitFor(()=>f.window.KurashiLive.state().queued===1 &&
  temp.call('bootstrap').data.household_items.find(x=>x.household_item_id===order3[0]).sort_order===1,
  'server committed reorder but response was dropped');
@@ -645,10 +645,10 @@ const fresh=await pendingCreate.window.KurashiLive.save('item.create',{
 });
 assert.match(fresh.household_item_id,/^local-/);
 const remaining=[...pendingCreate.window.document.querySelectorAll('.swipe-item[data-item-id]')]
- .filter(row=>row.dataset.categoryId==='0'&&row.dataset.itemId!==fresh.household_item_id)
+ .filter(row=>row.dataset.categoryId==='-1'&&row.dataset.itemId!==fresh.household_item_id)
  .map(row=>row.dataset.itemId);
 const wanted=[fresh.household_item_id,...remaining];
-await pendingCreate.window.KurashiLive.reorderItems(0,wanted);
+await pendingCreate.window.KurashiLive.reorderItems(-1,wanted);
 assert.equal(pendingCreate.window.KurashiLive.state().queued,2,
  'unsynced creation and reorder are two separately durable commands');
 assert.deepEqual(displayed(pendingCreate),wanted,

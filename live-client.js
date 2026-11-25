@@ -5,9 +5,10 @@
  */
 (function(){
  'use strict';
+ const householdFlatPreview=window.location?.pathname?.includes('/previews/preview-v99-household-first/')===true;
  const ENDPOINT='https://script.google.com/macros/s/AKfycbwn-SfXqRBIjJWVUUIKEsJuaUR6DLAEWbMVR-_rEB3iVZy2zi0ZNSA7JjNmyykvKjvdoQ/exec';
  const CLIENT_ID='290567395833-cdemend3itmapsgsounu8pf72hgvm315.apps.googleusercontent.com';
- const DB_NAME='kurashi-stock-operations-v1',STORE='workspace',KEY='primary';
+ const DB_NAME=householdFlatPreview?'kurashi-stock-operations-v99-flat':'kurashi-stock-operations-v1',STORE='workspace',KEY='primary';
  const RECEIPT_DRAFT_KEY='receipt-draft-1',OCR_CORRECTIONS_KEY='ocr-corrections-1';
  const OLD_SNAPSHOT='kurashi-new-confirmed-snapshot-v1';
  const OLD_OPERATION='kurashi-new-write-v1-temporary-household';
@@ -301,7 +302,7 @@
    }
    if(op.kind==='reorder'){
     const list=snap.household_items.filter(i=>
-     Number(i.category_id)===op.category_id&&!i.deleted_at&&!toBoolean(i.is_hidden));
+     (op.category_id===-1||Number(i.category_id)===op.category_id)&&!i.deleted_at&&!toBoolean(i.is_hidden));
     const byId=new Map(list.map(i=>[i.household_item_id,i]));
     const ids=op.household_item_ids.filter(id=>byId.has(id));
     const extras=list.filter(i=>!ids.includes(i.household_item_id))
@@ -314,7 +315,7 @@
     snap.household_items.push({household_item_id:op.clientId,
       household_id:snap.household_id,category_id:op.category_id,
       name:op.name,sub_name:op.subName||'',in_stock:false,is_hidden:false,
-      sort_order:Math.max(0,...snap.household_items.filter(i=>Number(i.category_id)===op.category_id)
+      sort_order:Math.max(0,...snap.household_items
        .map(i=>Number(i.sort_order)||0))+1,version:1,deleted_at:''});
     continue;
    }
@@ -472,14 +473,14 @@
    await modify(ws=>{
     if(!ws.base){
      try{
-      const cached=localStorage.getItem(OLD_SNAPSHOT);
+      const cached=householdFlatPreview?null:localStorage.getItem(OLD_SNAPSHOT);
       if(cached)ws.base=upgradeV46Snapshot(JSON.parse(cached));
      }catch(_){}
     }
     // Existing one-operation journal: copy the unchanged ID and payload to
     // IndexedDB BEFORE removing the old copy, so an ambiguous GAS write is safe.
     try{
-     const text=localStorage.getItem(OLD_OPERATION);
+     const text=householdFlatPreview?null:localStorage.getItem(OLD_OPERATION);
      if(text){
       const old=JSON.parse(text);
       if(old&&old.operationId&&old.action&&old.payload&&
@@ -501,7 +502,7 @@
    });
    // The old key is only cleared after the IndexedDB transaction completed.
    try{
-    const old=localStorage.getItem(OLD_OPERATION);
+    const old=householdFlatPreview?null:localStorage.getItem(OLD_OPERATION);
     if(old){
      const id=JSON.parse(old).operationId;
      if(workspace.queue.some(q=>q.id===id))localStorage.removeItem(OLD_OPERATION);
@@ -567,7 +568,9 @@
  }
  async function remoteBootstrap(){
   const serial=loginSerial;
-  const data=validateSnapshot(await request('bootstrap'),'server');
+  const raw=await request('bootstrap');
+  if(householdFlatPreview&&raw?.household_flat_ready!==true)throw Error('試作サーバーの切替が必要です');
+  const data=validateSnapshot(raw,'server');
   if(serial!==loginSerial)throw Error('LOGIN_CHANGED');
   if(workspace.base&&workspace.base.household_id!==data.household_id)
    throw Error('HOUSEHOLD_CHANGED');
@@ -1032,9 +1035,9 @@
   return enqueue(doc=>{
    const category=Number(categoryId),ids=Array.isArray(orderedIds)?[...orderedIds]:[];
    const active=project(doc)?.household_items.filter(i=>
-    Number(i.category_id)===category&&!i.deleted_at&&!toBoolean(i.is_hidden))||[];
+    (category===-1||Number(i.category_id)===category)&&!i.deleted_at&&!toBoolean(i.is_hidden))||[];
    const available=new Set(active.map(i=>i.household_item_id));
-   if(!Number.isInteger(category)||category<0||category>5||ids.length<2||
+   if(!Number.isInteger(category)||category< -1||category>5||ids.length<2||
       ids.length!==active.length||new Set(ids).size!==ids.length||
       ids.some(id=>typeof id!=='string'||!available.has(id)))
     throw Error('並び順を確認できません。画面を更新してください');
@@ -1057,6 +1060,18 @@
    return {id:operationId(),kind:'product-reorder',
     groupId,product_ids:ids,retries:0};
   });
+ }
+ async function setItemsInStock(itemIds){
+  await boot();if(!workspace.base)await load();
+  const ids=new Set(itemIds);
+  await modify(doc=>{
+   for(const item of project(doc).household_items){
+    if(ids.has(item.household_item_id)&&!item.deleted_at&&!toBoolean(item.is_hidden)&&!toBoolean(item.in_stock))
+     doc.queue.push({id:operationId(),kind:'set-stock',targetId:item.household_item_id,stock:true,retries:0});
+   }
+   return doc;
+  });
+  void flush();
  }
  async function toggleStock(itemId){
   await boot();if(!workspace.base)await load();
@@ -1200,7 +1215,7 @@
    payload:{name:op.name,category_id:op.category_id,...(op.subName!==undefined?{sub_name:op.subName}:{})}};
   if(op.kind==='reorder'){
    const active=(base?.household_items||[]).filter(i=>
-    Number(i.category_id)===op.category_id&&!i.deleted_at&&!toBoolean(i.is_hidden));
+    (op.category_id===-1||Number(i.category_id)===op.category_id)&&!i.deleted_at&&!toBoolean(i.is_hidden));
    const byId=new Map(active.map(i=>[i.household_item_id,i]));
    const ids=op.household_item_ids.filter(id=>byId.has(id));
    const extras=active.filter(i=>!ids.includes(i.household_item_id))
@@ -1841,7 +1856,7 @@
   previewBulkReceiptProducts,bulkRegisterReceiptProducts,receiptProductKey,
   resolveRecordId:id=>workspace.recordIdMap?.[id]||id,
   resolveRecordItemId:id=>workspace.recordItemIdMap?.[id]||id,blockedReceiptChange,discardBlockedReceipt,blockedProductChange,resolveBlockedProduct,refreshBlockedProducts,pendingOperationReview,beginPendingOperationReview,endPendingOperationReview,discardPendingOperations,confirmedProductId,learnAliases,linkAlias,learnStoreAlias,
-  saveReceiptDraft,loadReceiptDraft,saveOcrCorrections,loadOcrCorrections,toggleStock,reorderItems,reorderProducts,retry,logout,renderLogin,
+  saveReceiptDraft,loadReceiptDraft,saveOcrCorrections,loadOcrCorrections,toggleStock,setItemsInStock,reorderItems,reorderProducts,retry,logout,renderLogin,
   subscribe:fn=>{listeners.add(fn);return()=>listeners.delete(fn)},itemsOf,catalogueOf};
  window.addEventListener('kurashi-gis-ready',initialize);
  window.addEventListener('online',kick);

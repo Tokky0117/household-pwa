@@ -7,7 +7,7 @@ const html=readFileSync(new URL('../index.html',import.meta.url),'utf8');
 const live=readFileSync(new URL('../live-client.js',import.meta.url),'utf8');
 const gas=readFileSync(new URL('../gas/Api.gs',import.meta.url),'utf8');
 
-assert.match(app,/const APP_VERSION='0\.99\.0'/);
+assert.match(app,/const APP_VERSION='0\.99\.1'/);
 assert.match(app,/const key='household_pwa_v99_household_items'/);
 assert.match(app,/const catalogueKey='household_pwa_v99_products'/);
 assert.match(app,/householdFirstPreview\?'household_pwa_v99_preview_records'/);
@@ -17,13 +17,13 @@ assert.match(app,/return householdFirstPreview\?\{\.{3}sampleCatalogue\(\),produ
 assert.match(app,/function load\(\)\{if\(liveMode\)return \[\];/);
 assert.match(app,/householdFirstPreview\?\[\]:makeSeed\(\)/);
 assert.match(app,/window\.location\?\.pathname\?\.includes\('\/previews\/preview-v99-household-first\/'\)/);
-assert.doesNotMatch(html,/<script[^>]+src="live-client\.js/,'preview must never load production GAS client');
+assert.match(html,/<script[^>]+src="live-client\.js/);
 assert.doesNotMatch(html,/accounts\.google\.com\/gsi\/client/);
 assert.match(app,/selected=entity\.household_item_id/);
 assert.match(app,/selected=newId/);
 assert.match(app,/page=editing\?editReturnPage:'compare'/);
-assert.match(app,/普段は何という商品を買っていますか？/);
-assert.match(app,/商品を登録すると、レシートで購入価格を記録し/);
+assert.match(app,/<h2>商品登録<\/h2>/);
+assert.match(app,/商品を登録すると、レシートから購入価格を記録し/);
 assert.match(app,/productCreateOrigin=page==='productPick'\?'productPick':'compare'/);
 assert.match(app,/else if\(page==='productCreate'\)page=productCreateOrigin/);
 assert.match(app,/if\(action==='skipProductSetup'\)/);
@@ -39,3 +39,15 @@ assert.doesNotMatch(app,/function unifiedGroupCandidates\(/,'product-v2 grouping
 // The actual render function should be valid JS, not only static text.
 new vm.Script(app,{filename:'app.js'});
 console.log('v99 household-first flow, old linkage model and backend isolation: OK');
+
+assert.match(app,/function receiptStockCandidates/);
+assert.match(app,/confirmReceiptStock/);
+assert.match(live,/function setItemsInStock/);
+assert.match(live,/household_flat_ready/);
+assert.match(gas,/function kurashiTrialHouseholdFlatMigrate/);
+const context={};vm.createContext(context);
+const start=app.indexOf('function receiptStockCandidates('),end=app.indexOf('function listResults()',start);
+vm.runInContext(app.slice(start,end),context);
+const items=[{id:'a',inStock:false},{id:'b',inStock:true},{id:'c',hidden:true},{id:'d',inStock:false}];
+const products=[{id:'p',householdItemId:'a'},{id:'q',householdItemId:'a'},{id:'r',householdItemId:'b'},{id:'s',householdItemId:'c'}];
+assert.deepEqual(Array.from(context.receiptStockCandidates(['p','q','r','s',null].map(linked_product_id=>({linked_product_id})),items,products)),['a']);

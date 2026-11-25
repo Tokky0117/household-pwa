@@ -195,35 +195,12 @@ const preservedItems=ui.getItems();
 ui.setItems([...preservedItems,
  {id:'bag-vegetable',name:'袋',subName:'野菜用',category:1,inStock:true,hidden:false,order:100,version:1},
  {id:'bag-garbage',name:'袋',subName:'生ごみ用',category:1,inStock:false,hidden:false,order:101,version:1}]);
-const groupedClosed=ui.listView();
-assert.ok(groupedClosed.includes('data-group-toggle="1:袋"')&&
- groupedClosed.includes('2種類')&&groupedClosed.includes('item-group-stock-off'),
- 'two items with same category/name show one collapsed group with aggregate out-of-stock');
-assert.ok(!groupedClosed.includes('data-item-id="bag-vegetable"'),
- 'collapsed group hides child rows rather than deleting them');
-ui.expandItemGroup('1:袋');
-const groupedOpen=ui.listView();
-assert.ok(groupedOpen.includes('data-item-id="bag-vegetable"')&&
- groupedOpen.includes('data-item-id="bag-garbage"')&&
- groupedOpen.includes('野菜用')&&groupedOpen.includes('生ごみ用'),
- 'expanded group renders independently accessible stock and price rows');
-assert.ok(groupedOpen.includes('data-list-top="true"')&&groupedOpen.includes('ラップ'),
- 'ordinary items and grouped rows are in the same category order');
-// Group moves as one peer of an ungrouped item; collapsed children still
-// participate in the complete Sheets reorder payload.
-mockTopRows=[{dataset:{itemId:'demo-6'}},
- {dataset:{groupKey:'1:袋'},querySelectorAll(){return []}}];
-assert.deepEqual(Array.from(ui.orderedItemIds(1)),
- ['demo-6','bag-vegetable','bag-garbage'],
- 'normal item may precede a collapsed group; both child IDs remain in the queue');
-mockTopRows=[{dataset:{groupKey:'1:袋'},querySelectorAll(){return [
-  {dataset:{itemId:'bag-garbage'}},{dataset:{itemId:'bag-vegetable'}}]}},
- {dataset:{itemId:'demo-6'}}];
-assert.deepEqual(Array.from(ui.orderedItemIds(1)),
- ['bag-garbage','bag-vegetable','demo-6'],
- 'expanded children can reorder within their group before the ordinary item');
+const flat=ui.listView();
+assert.ok(flat.includes('data-item-id="bag-vegetable"')&&flat.includes('data-item-id="bag-garbage"'));
+assert.ok(!flat.includes('data-group-toggle=')&&!flat.includes('class="cathead"'));
+mockTopRows=[{dataset:{itemId:'demo-6'}},{dataset:{itemId:'bag-vegetable'}},{dataset:{itemId:'bag-garbage'}}];
+assert.deepEqual(Array.from(ui.orderedItemIds(-1)),['demo-6','bag-vegetable','bag-garbage']);
 mockTopRows=[];
-ui.collapseItemGroup('1:袋');
 ui.setItems(preservedItems);
 
 assert.ok(ui.listView().includes('class="ui-search"')&&ui.listView().includes('id="search"'),'Daily list uses shared search component');
