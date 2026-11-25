@@ -16,9 +16,13 @@ const trialEnd='function kurashiBook_()';
 const a=api.indexOf(trialStart),b=api.indexOf(trialEnd);
 if(a<0||b<=a||api.indexOf(trialStart,a+1)!==-1||api.indexOf(trialEnd,b+1)!==-1)
  throw Error('UNRECOGNIZED_TRIAL_MIGRATION_BOUNDARIES');
+const trialFlatStart='/** Owner-run trial cutover.';
+const flat=api.indexOf(trialFlatStart);
+if(flat!==-1&&(flat<=b||api.indexOf(trialFlatStart,flat+1)!==-1||!api.slice(flat).includes('function kurashiTrialHouseholdFlatMigrate()')))
+ throw Error('UNRECOGNIZED_TRIAL_FLAT_BOUNDARY');
 const productionApi=api.slice(0,a)+
  '// Trial schema migration code is excluded from the production GAS bundle.\n'+
- api.slice(b);
+ (flat===-1?api.slice(b):api.slice(b,flat));
 const setupBoundary='function setupNewWorkbook()';
 const c=setup.indexOf(setupBoundary);
 if(c<0||setup.indexOf(setupBoundary,c+1)!==-1)
