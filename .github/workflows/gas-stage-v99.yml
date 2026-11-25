@@ -1,4 +1,4 @@
-name: Stage v99 trial GAS (no deployment)
+name: Deploy v99 trial GAS only
 
 on:
   push:
@@ -143,8 +143,30 @@ jobs:
               throw Error('GAS push verification failed');
           }
           NODE
-      - name: Require owner migration and deployment
-        run: echo 'Trial GAS source staged only. Run kurashiTrialHouseholdFlatMigrate in the editor, then update the existing trial web app deployment.' >> "$GITHUB_STEP_SUMMARY"
+      - name: Verify previously migrated trial and update existing deployment
+        shell: bash
+        run: |
+          set -euo pipefail
+          endpoint="https://script.google.com/macros/s/$TARGET_DEPLOYMENT_ID/exec"
+          check_ready() {
+            curl --fail --silent --show-error --location --max-time 35 \
+              -H 'Content-Type: text/plain;charset=utf-8' \
+              --data '{"action":"bootstrap","payload":{}}' "$endpoint" \
+              --output "$RUNNER_TEMP/v99-bootstrap.json"
+            node - <<'NODE'
+          const fs=require('node:fs');
+          const x=JSON.parse(fs.readFileSync(process.env.RUNNER_TEMP+'/v99-bootstrap.json','utf8'));
+          if(x?.ok!==true||x.data?.household_flat_ready!==true||!Array.isArray(x.data.household_items))
+            throw Error('Trial is not migrated or pending server recovery. Owner action required.');
+          NODE
+          }
+          check_ready
+          cd "$RUNNER_TEMP/new-gas/stage"
+          npx --yes @google/clasp@3 update-deployment "$TARGET_DEPLOYMENT_ID"
+          npx --yes @google/clasp@3 list-deployments "$GAS_SCRIPT_ID_NEW" > "$RUNNER_TEMP/deployments-after.txt"
+          grep -Fq "$TARGET_DEPLOYMENT_ID" "$RUNNER_TEMP/deployments-after.txt"
+          check_ready
+          echo 'Existing migrated trial GAS deployment updated and bootstrap verified. No workbook migration was run.' >> "$GITHUB_STEP_SUMMARY"
       - name: Remove local credentials
         if: always()
         shell: bash
