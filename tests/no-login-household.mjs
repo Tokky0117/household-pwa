@@ -594,9 +594,9 @@ assert.ok(form,'v46 item create sheet opens');
 form.querySelector('#name').value='実機動作テスト品';
 form.dispatchEvent(new h.window.Event('submit',{bubbles:true,cancelable:true}));
 await waitFor(()=>h.window.KurashiLive.state().queued===1 &&
- !!h.window.document.querySelector('[data-act="skipProductSetup"]'),
+ !!h.window.document.querySelector('[data-act="productPick"]'),
  'new household item offers optional product registration before returning to list');
-h.window.document.querySelector('[data-act="skipProductSetup"]').click();
+h.window.document.querySelector('[data-act="back"]').click();
 await waitFor(()=>h.window.KurashiLive.state().queued===1 &&
  h.window.document.querySelector('.item-title')?.textContent!==undefined,
  'create through item form commits to offline queue');

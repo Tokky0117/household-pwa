@@ -446,8 +446,8 @@ ui.setSelected('demo-1');ui.setPage('compare');ui.initializeCompare();
 assert.equal(ui.getCompare()[0],null,'Empty initial compare quantity');
 assert.equal(ui.getCompare()[1],'mL','First product unit preselected');
 let view=ui.priceCompareView();
-assert.ok(view.includes('登録商品')&&view.includes('税込・安い順'));
-assert.ok(view.includes('内容量換算の最安値')&&view.includes('100mLあたり'),
+assert.ok(view.includes('登録商品')&&view.includes('税込・店舗別最安値'));
+assert.ok(view.includes('商品間の最安値')&&view.includes('100mLあたり'),
  'Per-item view compares all registered products by compatible standardized capacity');
 const winners=ui.standardizedMinima(ui.catalogue().products.filter(p=>p.householdItemId==='demo-1'),'1y');
 assert.ok(winners.some(w=>w.label==='100mL'&&w.price>0&&w.productName),
@@ -468,13 +468,13 @@ assert.ok(!view.includes('割引時')&&!view.includes('>最安値</span>'),'Old 
 assert.ok(view.includes('data-product-id="p-milk-1"')&&view.includes('data-pedit="p-milk-1"')&&view.includes('data-premove="p-milk-1"'),'Product swipe preserved');
 assert.ok(view.includes('class="tertiary manage-add product-register-action"'),'Tertiary add action preserved');
 assert.ok(view.includes('shop-compare-dock')&&view.includes('data-act="shopToggle"'),'Fixed comparison trigger visible');
-assert.ok(view.includes('目の前の商品と同じ内容量で価格を比較'),'Purpose is clear');
+assert.ok(!view.includes('目の前の商品と同じ内容量で価格を比較'),'Redundant dock description removed');
 assert.ok(!view.includes('data-scope="product"'),'Comparison tabs removed');
 assert.ok(view.includes('id="shop-compare-fields" hidden'),'Dock collapsed initially');
 ui.setDock(true);ui.setMode('unit');view=ui.priceCompareView();
-assert.ok(view.includes('内容量を入力'),'Missing amount clearly stated when comparing');
+assert.ok(view.includes('税込・店舗別最安値')&&view.includes('298円'),'No conversion before valid input');
 assert.ok(view.includes('id="compare-quantity"')&&view.includes('id="compare-unit"'),'Comparison fields exist in dock');
-assert.ok(view.includes('店頭商品の内容量を入力'),'Input instruction exists');
+assert.ok(!view.includes('店頭商品の内容量を入力'),'Redundant input instruction removed');
 ui.setQty(900);view=ui.priceCompareView();
 assert.ok(view.includes('900mLあたりの換算価格'),'Comparison basis is displayed');
 assert.ok(view.includes('298円'),'Same-unit conversion');
@@ -484,7 +484,7 @@ assert.equal(ui.convertQuantity(2,'個','本'),null);
 assert.ok(view.includes('placeholder="例：1100"')&&view.includes('inputmode="decimal"'),'Comparison uses numeric keyboard');
 ui.setUnit('g');view=ui.priceCompareView();
 assert.ok(view.includes('比較不可'),'Incompatible measurement families cannot be compared');
-assert.ok(view.includes('購入価格 '),'Original purchase price remains visible during normalized comparison');
+assert.ok(view.includes('298円'),'Original purchase price remains visible for incompatible units');
 ui.setUnit('mL');view=ui.priceCompareView();
 assert.ok(css.includes('.shop-compare-dock{')&&css.includes('position:fixed'),'Dock remains fixed');
 const picker=ui.pickerView();
@@ -2161,8 +2161,8 @@ assert.equal(standardizedWakame.find(x=>x.label==='100g').productId,'test-wakame
  'unknown-capacity 80-yen product cannot be the normalized-price winner');
 ui.setSelected('demo-wakame');ui.setPage('compare');ui.setMode('product');ui.setDock(false);
 const wakameView=ui.priceCompareView();
-assert.ok(wakameView.includes('内容量未設定の1商品')&&
- !wakameView.includes('内容量を登録')&&
+assert.ok(wakameView.includes('内容量を設定')&&
+ wakameView.includes('商品間の最安値')&&
  wakameView.includes('80円')&&wakameView.includes('300円')&&
  wakameView.includes('data-pedit="test-wakame-unknown"')&&
  wakameView.includes('class="swipe-unlink"')&&

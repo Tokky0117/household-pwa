@@ -1,4 +1,4 @@
-const APP_VERSION='0.99.3';
+const APP_VERSION='0.99.4';
 const CATS=['食品・飲料','キッチン','洗面・風呂','洗濯・掃除','その他','調味料'];
 const liveMode=!!window.KurashiLive; // Data source only; original Preview v46 UI components remain.
 const SEED=[['牛乳',0,true],['麦茶',0,false],['コーヒー',0,true],['卵',0,false],['キッチンペーパー',1,false],['ラップ',1,true],['食器用洗剤',1,true],['シャンプー',2,false],['歯磨き粉',2,true],['ハンドソープ',2,false],['洗濯洗剤',3,false],['柔軟剤',3,true],['トイレットペーパー',3,false],['乾電池',4,true],['ティッシュ',4,true]];
@@ -164,10 +164,10 @@ const listPriceText=item=>{
  return best?[yen(best.price),first.name,chainLabel(best.chainId)].join('／'):'価格記録なし';
 };
 function initializeCompare(){
- const first=registeredProducts(selected)[0];
+ const first=registeredProducts(selected).find(p=>p.packageQuantity>0&&p.packageUnit);
  compareQuantity=null;
  compareUnit=first?.packageUnit||'';
- shopExpanded=false;
+ priceScope='product';shopExpanded=false;
 }
 
 const yen=v=>v===null?'—':Number(v).toLocaleString('ja-JP',{maximumFractionDigits:2})+'円';
@@ -1443,7 +1443,7 @@ function guessedPackage(name,suggestion=null){
 }
 function productPackageFields({name,quantityId,unitId,quantity=null,unit=null,
    suggestion=null,editing=false}){
- const suggested=editing?null:guessedPackage(name,suggestion);
+ const suggested=editing&&quantity!=null?null:guessedPackage(name,suggestion);
  const value=quantity??suggested?.quantity??'';
  const unitValue=unit||suggested?.unit||'g';
  const origin=suggested?'auto':editing||quantity!==null?'manual':'empty';
@@ -1588,58 +1588,68 @@ function standardizedMinima(products,periodValue){
  }
  return winners;
 }
+function activeComparison(){
+ return shopExpanded&&Number.isFinite(compareQuantity)&&compareQuantity>0&&UNIT_OPTIONS.includes(compareUnit);
+}
+function standardBasis(product){
+ return STANDARD_BASES.find(([unit])=>convertQuantity(product.packageQuantity,product.packageUnit,unit)>0)||null;
+}
 function normalizedPriceSummary(products,periodValue){
- const winners=standardizedMinima(products,periodValue);
- const unset=products.filter(p=>p.packageQuantity==null||p.packageQuantity===''||!p.packageUnit).length;
- if(!winners.length&&!unset)return '';
- return '<section class="normalized-price-summary" aria-label="内容量換算の最安値">'+
-  '<h3>内容量換算の最安値</h3>'+
-  winners.map(w=>'<div class="normalized-price-row"><span>'+esc(w.label)+'あたり</span><strong>'+
-   esc(yen(w.price))+'</strong><small>'+esc(w.productName+' ／ '+chainLabel(w.chainId))+
-   '</small></div>').join('')+
-  (unset?'<p class="normalized-price-exclusion">内容量未設定の'+unset+
-   '商品は換算比較対象外です。購入価格は下に表示します。</p>':'')+'</section>';
+ const active=activeComparison();
+ const bases=active?[[compareUnit,compareQuantity,compareQuantity+compareUnit]]:STANDARD_BASES;
+ const winners=[];
+ for(const [unit,qty,label] of bases){
+  const comparable=products.filter(p=>convertQuantity(p.packageQuantity,p.packageUnit,unit)>0&&chainMinima(p.id,periodValue).length);
+  if(comparable.length<2)continue;
+  let best=null;
+  for(const p of comparable){
+   const capacity=convertQuantity(p.packageQuantity,p.packageUnit,unit);
+   for(const r of chainMinima(p.id,periodValue)){
+    const price=r.price*qty/capacity;
+    if(!best||price<best.price||(price===best.price&&r.date>best.date))best={price,label,productName:p.name,chainId:r.chainId,date:r.date};
+   }
+  }
+  if(best)winners.push(best);
+ }
+ if(!winners.length)return '';
+ return '<section class="normalized-price-summary" aria-label="商品間の最安値"><h3>商品間の最安値</h3>'+
+  winners.map(w=>'<div class="normalized-price-row"><span>'+esc(w.label)+'あたり</span><strong>'+esc(yen(w.price))+'</strong><small>'+esc(w.productName+' ／ '+chainLabel(w.chainId))+'</small></div>').join('')+'</section>';
+}
+function comparisonPriceDisplay(p,r){
+ const active=activeComparison(),capacity=convertQuantity(p.packageQuantity,p.packageUnit,compareUnit);
+ const basis=standardBasis(p);
+ const actual=yen(r.price);
+ if(active&&capacity)return '<span class="chain-price-pair"><strong class="chain-price-value">'+esc(yen(r.price*compareQuantity/capacity))+'</strong><small>購入価格 '+esc(actual)+'</small></span>';
+ const secondary=active?(basis?'単位が異なるため比較不可':'内容量未設定'):basis?basis[2]+'あたり '+yen(r.price*basis[1]/convertQuantity(p.packageQuantity,p.packageUnit,basis[0])):'';
+ return '<span class="chain-price-pair"><strong class="chain-price-value">'+esc(actual)+'</strong>'+(secondary?'<small>'+esc(secondary)+'</small>':'')+'</span>';
 }
 function priceCompareView(){
  const i=current();if(!i){page='list';return listView()}
  
  const products=registeredProducts(selected);
- const unitLabel=compareQuantity&&compareUnit?`${compareQuantity}${compareUnit}あたり`:'';
+ const active=activeComparison(),unitLabel=active?`${compareQuantity}${compareUnit}あたり`:'';
+ const canCompare=products.some(p=>standardBasis(p));
  const productRows=products.map(p=>{
-  const conversion=convertQuantity(p.packageQuantity,p.packageUnit,compareUnit);
-  const sub=p.packageQuantity&&p.packageUnit?`${p.packageQuantity}${p.packageUnit}`:'内容量未設定';
+  const sub=p.packageQuantity&&p.packageUnit?'<small>'+esc(p.packageQuantity+p.packageUnit)+'</small>':'<button type="button" class="capacity-setting" data-pedit="'+esc(p.id)+'">内容量を設定</button>';
   const chains=chainMinima(p.id,period);
   const priceRows=chains.map(r=>{
-   const noQuantity=priceScope==='unit'&&!compareQuantity;
-   const incompatible=priceScope==='unit'&&!conversion;
-   const value=noQuantity?'内容量を入力':incompatible?(!p.packageQuantity?'内容量未設定・比較対象外':'比較不可'):priceScope==='unit'?yen(r.price*compareQuantity/conversion):yen(r.price);
-   const display=priceScope==='unit'?
-    '<span class="chain-price-pair"><strong class="chain-price-value '+(noQuantity||incompatible?'chain-price-unavailable':'')+'">'+esc(value)+'</strong><small>購入価格 '+esc(yen(r.price))+'</small></span>':
-    '<strong class="chain-price-value">'+esc(value)+'</strong>';
+   const display=comparisonPriceDisplay(p,r);
    return `<div class="chain-price-row"><span class="chain-name">${esc(chainLabel(r.chainId))}</span>${display}<time class="chain-price-date" datetime="${esc(r.date)}">${esc(r.date.slice(2).replace(/-/g,'/'))}</time></div>`;
   }).join('')||'<div class="chain-price-empty">—</div>';
   return `<article class="comparison-product product-sort-row" data-product-id="${esc(p.id)}"><div class="comparison-product-header swipe-item ${openSwipeId===p.id?'swipe-open':''}" data-product-id="${esc(p.id)}">
 <div class="swipe-actions">
 <button type="button" class="swipe-edit" data-pedit="${esc(p.id)}" tabindex="${openSwipeId===p.id?0:-1}" aria-label="${esc(p.name||'商品')}を編集">${miniIcon('pencil')}<span>編集</span></button>
 <button type="button" class="swipe-unlink" data-premove="${esc(p.id)}" tabindex="${openSwipeId===p.id?0:-1}" aria-label="${esc(p.name||'商品')}の登録解除">${miniIcon('unlink')}<span>解除</span></button>
-</div><div class="swipe-front comparison-product-front"><div class="comparison-product-title"><div class="comparison-name"><strong>${esc(p.name||'商品名未設定')}</strong><small>${esc(sub)}</small></div></div><span class="swipe-peek" aria-hidden="true"></span></div></div><div class="chain-price-list">${priceRows}</div></article>`;
+</div><div class="swipe-front comparison-product-front"><div class="comparison-product-title"><div class="comparison-name"><strong>${esc(p.name||'商品名未設定')}</strong>${sub}</div></div><span class="swipe-peek" aria-hidden="true"></span></div></div><div class="chain-price-list">${priceRows}</div></article>`;
  }).join('');
- const emptyProducts=products.length===0?`
-  <section class="product-registration-intro" aria-label="普段買う商品の登録">
-   <h2>商品登録</h2>
-   <p>商品を登録すると、レシートから購入価格を記録し、在庫管理にも活用できます。</p>
-   ${UI.button({label:'商品を登録する',action:'productCreate',
-      variant:'primary',className:'product-register-primary'})}
-   ${catalogue.products.length?UI.textAction({label:'登録済みの商品から選ぶ',
-      action:'productPick',arrow:false}):''}
-   ${UI.textAction({label:'今は登録しない',action:'skipProductSetup',arrow:false})}
-  </section>`: '';
+ const emptyProducts=products.length===0?`<p class="comparison-empty-note">商品を登録すると、レシートから購入価格を記録し、在庫管理にも活用できます。</p>`:'';
+ const registerAction=UI.button({label:'商品を登録',variant:'tertiary',action:'productPick',icon:'plus',className:'manage-add product-register-action'});
  const unitControls=`<section class="shop-compare-dock ${shopExpanded?'expanded':''}" aria-label="店頭商品との内容量比較">
 <button type="button" class="shop-compare-toggle" data-act="shopToggle" aria-expanded="${shopExpanded}" aria-controls="shop-compare-fields">
-<span class="shop-compare-heading"><strong>店頭の商品と比較</strong><small>目の前の商品と同じ内容量で価格を比較</small></span>${chevron(shopExpanded?'down':'up')}</button>
-<div id="shop-compare-fields" ${shopExpanded?'':'hidden'}><p class="shop-compare-instruction">店頭商品の内容量を入力</p>${UI.quantityUnitFields({quantityId:"compare-quantity",unitId:"compare-unit",quantity:compareQuantity??"",unit:compareUnit||UNIT_OPTIONS[0],placeholder:"例：1100",extra:'inputmode="decimal"'})}</div></section>`;
- return `${head('価格情報',itemLabel(i),true)}<main class="detail-main comparison-main">${products.length?`<p class="price-purpose">登録した商品の、お店ごとの最安値を確認</p>${UI.sectionHeading({title:"登録商品",subtitle:priceScope==='unit'&&unitLabel?unitLabel+"の換算価格":"税込・安い順",className:"detail-section-heading price-heading",trailing:UI.dropdown({id:"price-period",value:period,label:"期間",compact:true,open:periodMenu,options:[{value:"3m",label:"直近3か月"},{value:"1y",label:"直近1年"}]})})}<div class="normalized-price-slot">${normalizedPriceSummary(products,period)}</div><div class="comparison-list">${productRows}</div>
- ${UI.button({label:'商品を登録',variant:'tertiary',action:'productPick',icon:'plus',className:'manage-add product-register-action'})}`:emptyProducts}</main>${products.length?unitControls:''}`;
+<span class="shop-compare-heading"><strong>店頭の商品と比較</strong></span>${chevron(shopExpanded?'down':'up')}</button>
+<div id="shop-compare-fields" ${shopExpanded?'':'hidden'}>${UI.quantityUnitFields({quantityId:"compare-quantity",unitId:"compare-unit",quantity:compareQuantity??"",unit:compareUnit||UNIT_OPTIONS[0],placeholder:"例：1100",extra:'inputmode="decimal"'})}</div></section>`;
+ return `${head('価格情報',itemLabel(i),true)}<main class="detail-main comparison-main">${products.length?`${UI.sectionHeading({title:"登録商品",subtitle:active?unitLabel+"の換算価格":"税込・店舗別最安値",className:"detail-section-heading price-heading",trailing:UI.dropdown({id:"price-period",value:period,label:"期間",compact:true,open:periodMenu,options:[{value:"3m",label:"直近3か月"},{value:"1y",label:"直近1年"}]})})}<div class="normalized-price-slot">${normalizedPriceSummary(products,period)}</div><div class="comparison-list">${productRows}</div>
+ `:emptyProducts}${registerAction}</main>${canCompare?unitControls:''}`;
 }
 function formView(){
  const editing=page==='edit',i=editing?current():null;
@@ -3080,9 +3090,7 @@ if(action==='productCreate'){
  document.activeElement?.blur?.(); // dismiss search keyboard before leaving picker
  page='productCreate';openSwipeId=null;
 }
-if(action==='skipProductSetup'){
- page='list';selected=null;openSwipeId=null;render();return;
-}if(action==='shopToggle'){shopExpanded=!shopExpanded;priceScope=shopExpanded?'unit':'product';if(!shopExpanded)compareQuantity=null;render();return}
+if(action==='shopToggle'){shopExpanded=!shopExpanded;priceScope='product';if(!shopExpanded)compareQuantity=null;render();return}
 if(action==='catalogueList'){pickerAll=!pickerAll;const heading=document.querySelector('.catalogue-list-heading');if(heading)heading.textContent=pickerAll?'登録一覧':'候補（最大3件）';const target=document.getElementById('catalogue-results');if(target)target.innerHTML=pickerResults();el.textContent=pickerAll?'候補に戻る':'登録一覧から選ぶ';return}if(action==='hide'){menu=false;dialog={title:'日用品を削除',message:'日用品リストから削除します',buttons:[{id:'cancel',label:'キャンセル'},{id:'confirmHide',label:'削除',primary:true}]}}if(action==='receiptScan'){
  beginRecordEntry('photo');return;
 }
