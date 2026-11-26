@@ -1692,7 +1692,7 @@ bulkUI.window.document.querySelector('[data-act="recordProductOpen"]').click();
 bulkUI.window.document.querySelector('[data-act="recordProductShowNew"]').click();
 const individualForm=bulkUI.window.document.getElementById('recordProductCreateForm');
 assert.ok(individualForm,'product editor uses one shared half sheet');
-assert.equal(individualForm.querySelector('[name="group"]'),null);
+assert.ok(individualForm.querySelector('[name="group"]'),'receipt product registration offers optional household link');
 assert.ok(individualForm.querySelector('[name="quantity"]'),
  'receipt product registration offers optional package capacity');
 assert.equal(individualForm.querySelector('[name="quantity"]').value,'',

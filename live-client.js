@@ -919,7 +919,7 @@
  }
  // A single user tap durably enqueues BOTH master creation and line linking.
  // Never leave an orphan master if the app closes between separate transactions.
- async function registerReceiptItemProduct(recordItemId,name,packageValue={quantity:null,unit:null}){
+ async function registerReceiptItemProduct(recordItemId,name,packageValue={quantity:null,unit:null},householdItemId=null){
   await boot();
   if(!workspace.base)await load();
   let createdId=null;
@@ -938,7 +938,7 @@
     throw Error('同じ名前または類似した商品があります。登録済みの商品から選択してください');
    const amount=packageValue?.quantity??null,unit=packageValue?.unit??null;
    const create=makeProductOperation('product.create',{
-    household_item_id:null,name,package_quantity:amount,package_unit:unit
+    household_item_id:householdItemId?doc.householdItemIdMap?.[householdItemId]||householdItemId:null,name,package_quantity:amount,package_unit:unit
    },doc);
    doc.queue.push(create);
    const sameOcrId=line.receipt_name_id&&!line.non_ocr_name?line.receipt_name_id:null;

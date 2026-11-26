@@ -1069,10 +1069,10 @@ assert.ok(newProductHtml.includes('scan-product-name')&&
  newProductHtml.includes('キットカットコイマッチャ10フクロ'),
  'manual receipt product registration retains the captured name');
 assert.ok(!newProductHtml.includes('id="scan-group-search"')&&
- !newProductHtml.includes('name="group"')&&
+ newProductHtml.includes('name="group"')&&
  !newProductHtml.includes('name="package_quantity"')&&
  !newProductHtml.includes('name="package_unit"'),
- 'receipt product registration defers household linking and package size');
+ 'receipt product registration offers optional household linking');
 assert.ok(newProductHtml.includes('class="manage-main scan-product-page"')&&
  !newProductHtml.includes('receipt-product-modal'),
  'legacy manual fallback remains available without nested sheets');
