@@ -31,7 +31,7 @@ const ui=vm.runInNewContext(source+`
 ({UI,listView,priceCompareView,pickerView,pickerResults,masterProductsView,masterProductRows,masterProductEditorView,masterGroupPickerView,masterGroupPickerRows,aliasManageView,aliasManageRows,aliasProductPickerView,aliasProductPickerRows,detailHomeView,detailAllView,receiptScanView,receiptChatGptView,recordDetailView,scanStoreNameIssue,scanValidPurchaseDate,scanReadableError,floatingActionPlacement,applyChatGptOcrAssistance,receiptOcrReference,receiptOcrRows,isUnconfirmedBarcodeLine,makeChatGptReceiptRebuildDraft,scanProductView,scanProductGroupChoices,scanExistingProductView,scanExistingProductResults,scanChainForStore,scanStoreHeaderMatch,scanAutolinkUnmatched,scanMatchProduct,scanSimilarProducts,normalizeOcrProductName,normalizedOcrItemName,render,initializeCompare,
  setProductGroup,reorderProducts,registeredProducts,convertQuantity,setOpenSwipe,storePickerChoices,scrollNewItemIfOffscreen,
  getItems(){return items},setItems(v){items=v},orderedItemIds,
- chainMinima,priceCandidates,standardizedMinima,savePreviewRecord,periodStart,
+ chainMinima,priceCandidates,standardizedMinima,savePreviewRecord,periodStart,listPriceText,storeDisplayName,
  demoRecords,demoRecordItems,allPreviewRecords,allPreviewItems,
  setSelected(v){selected=v},setMasterProductId(v){masterProductId=v},setAliasPickerId(v){aliasPickerId=v},setAliasQuery(v){aliasQuery=v;aliasVisibleLimit=100},setAliasVisibleLimit(v){aliasVisibleLimit=v},setPage(v){page=v},setMode(v){priceScope=v},setDock(v){shopExpanded=v},
  setPeriod(v){period=v},setQty(v){compareQuantity=v},setUnit(v){compareUnit=v},
@@ -447,8 +447,8 @@ assert.equal(ui.getCompare()[0],null,'Empty initial compare quantity');
 assert.equal(ui.getCompare()[1],'mL','First product unit preselected');
 let view=ui.priceCompareView();
 assert.ok(view.includes('登録商品')&&view.includes('税込・店舗別最安値'));
-assert.ok(view.includes('商品間の最安値')&&view.includes('100mLあたり'),
- 'Per-item view compares all registered products by compatible standardized capacity');
+assert.ok(!view.includes('商品間の最安値')&&!view.includes('100mLあたり'),
+ 'Equal-size products display purchase prices only');
 const winners=ui.standardizedMinima(ui.catalogue().products.filter(p=>p.householdItemId==='demo-1'),'1y');
 assert.ok(winners.some(w=>w.label==='100mL'&&w.price>0&&w.productName),
  'Normalized minima identify the winning product while retaining its original chain');
@@ -2168,3 +2168,8 @@ assert.ok(wakameView.includes('内容量を設定')&&
  wakameView.includes('class="swipe-unlink"')&&
  !wakameView.includes('class="swipe-delete" data-premove="test-wakame-unknown"'),
  'unknown capacity remains in price comparison, without redundant button or a delete-style unlink icon');
+
+assert.equal(ui.storeDisplayName('COSTCO WHOLESALE'),'コストコ');
+assert.equal(ui.storeDisplayName('未知の店舗'),'未知の店舗');
+assert.equal(ui.storeDisplayName('コーナン商事'),'コーナン');
+assert.ok(!wakameView.includes('100gあたり 300円'),'Unit comparison only in separate summary, not repeated in purchase price rows');

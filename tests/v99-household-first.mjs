@@ -7,7 +7,7 @@ const html=readFileSync(new URL('../index.html',import.meta.url),'utf8');
 const live=readFileSync(new URL('../live-client.js',import.meta.url),'utf8');
 const gas=readFileSync(new URL('../gas/Api.gs',import.meta.url),'utf8');
 
-assert.match(app,/const APP_VERSION='0\.99\.4'/);
+assert.match(app,/const APP_VERSION='0\.99\.5'/);
 assert.match(app,/const key='household_pwa_v99_household_items'/);
 assert.match(app,/const catalogueKey='household_pwa_v99_products'/);
 assert.match(app,/householdFirstPreview\?'household_pwa_v99_preview_records'/);
@@ -23,7 +23,7 @@ assert.match(app,/selected=entity\.household_item_id/);
 assert.match(app,/selected=newId/);
 assert.match(app,/page=editing\?editReturnPage:'compare'/);
 assert.match(app,/const registerAction=UI.button/);
-assert.match(app,/商品を登録すると、レシートから購入価格を記録し/);
+assert.match(app,/普段の買い物で購入する商品を登録しましょう/);
 assert.match(app,/productCreateOrigin=page==='productPick'\?'productPick':'compare'/);
 assert.match(app,/else if\(page==='productCreate'\)page=productCreateOrigin/);
 assert.doesNotMatch(app,/skipProductSetup/);
@@ -42,7 +42,7 @@ console.log('v99 household-first flow, old linkage model and guarded trial backe
 
 assert.match(app,/function receiptStockCandidates/);
 assert.doesNotMatch(app,/expandedItemGroups|groupKeyOfItem|data-group-toggle|item-group-child-row/);
-assert.match(app,/price.textContent=listPriceText\(next\)/);
+assert.match(app,/price.innerHTML=listPriceHtml\(next\)/);
 assert.match(app,/dialog.pending\?\.stockItemIds\?' dialog-receipt-bulk'/);
 assert.match(app,/confirmReceiptStock/);
 assert.match(live,/function setItemsInStock/);

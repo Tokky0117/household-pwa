@@ -1,4 +1,4 @@
-const APP_VERSION='0.99.4';
+const APP_VERSION='0.99.5';
 const CATS=['食品・飲料','キッチン','洗面・風呂','洗濯・掃除','その他','調味料'];
 const liveMode=!!window.KurashiLive; // Data source only; original Preview v46 UI components remain.
 const SEED=[['牛乳',0,true],['麦茶',0,false],['コーヒー',0,true],['卵',0,false],['キッチンペーパー',1,false],['ラップ',1,true],['食器用洗剤',1,true],['シャンプー',2,false],['歯磨き粉',2,true],['ハンドソープ',2,false],['洗濯洗剤',3,false],['柔軟剤',3,true],['トイレットペーパー',3,false],['乾電池',4,true],['ティッシュ',4,true]];
@@ -156,13 +156,24 @@ function chainMinima(productId,periodValue,records=allPreviewRecords(),details=a
 // A saved OCR name is referenced only through its receipt_name_mappings row.
 const rawReceiptName=line=>catalogue.receiptNameMappings?.find(a=>a.receiptNameId===line?.receipt_name_id)?.ocrName||'';
 const aliasNameFor=line=>line?.non_ocr_name||rawReceiptName(line);
-const chainLabel=id=>catalogue.chains.find(c=>c.id===id)?.name||'チェーン未設定';
+// Presentation-only short names: keep original store masters, aliases and IDs intact.
+function storeDisplayName(name){
+ const text=String(name||'').trim(),key=norm(text);
+ const shortNames={'costco wholesale':'コストコ','costco':'コストコ','コストコホールセール':'コストコ','コーナン商事':'コーナン','コーナン商事株式会社':'コーナン','株式会社サンドラッグ':'サンドラッグ'};
+ return shortNames[key]||text;
+}
+const chainLabel=id=>storeDisplayName(catalogue.chains.find(c=>c.id===id)?.name)||'チェーン未設定';
 const listPriceText=item=>{
  const first=registeredProducts(item.id)[0];
- if(!first)return '価格記録なし';
+ if(!first)return ['商品未登録'];
+ const name=norm(first.name)===norm(itemLabel(item))?'':first.name;
  const best=chainMinima(first.id,'1y')[0];
- return best?[yen(best.price),first.name,chainLabel(best.chainId)].join('／'):'価格記録なし';
+ return [name,best?yen(best.price):'',best?chainLabel(best.chainId):''].filter(Boolean).length?[name,best?yen(best.price):'',best?chainLabel(best.chainId):''].filter(Boolean):['価格記録なし'];
 };
+function listPriceHtml(item){
+ const parts=listPriceText(item);
+ return parts.map((value,index)=>'<span class="list-price-part'+(index===0?' list-price-first':'')+'">'+esc(value)+'</span>').join('');
+}
 function initializeCompare(){
  const first=registeredProducts(selected).find(p=>p.packageQuantity>0&&p.packageUnit);
  compareQuantity=null;
@@ -559,10 +570,10 @@ function storePickerChoices(){
  const form=document.getElementById('scanConfirmForm');
  const selected=String(form?new FormData(form).get('chain')||'':'');
  const q=norm(storePickerQuery);
- const matches=catalogue.chains.filter(c=>!q||norm(c.name).includes(q)).sort((a,b)=>a.name.localeCompare(b.name,'ja'));
+ const matches=catalogue.chains.filter(c=>!q||[c.name,storeDisplayName(c.name),...(c.aliases||[])].some(name=>norm(name).includes(q))).sort((a,b)=>storeDisplayName(a.name).localeCompare(storeDisplayName(b.name),'ja'));
  if(!matches.length)return '<p class="hint">該当する店舗はありません。</p>';
  return matches.map(c=>UI.choiceRow({
-  title:c.name,choice:c.id,selected:c.id===selected
+  title:storeDisplayName(c.name),choice:c.id,selected:c.id===selected
  })).join('');
 }
 function storePickerBody(){
@@ -620,7 +631,7 @@ function chooseStoreFromPicker(chainId,chainName=''){
  
  chain.value=chainId;name.value=chainId==='__new__'?chainName:'';
  if(scanDraft)scanDraft.storeManuallySelected=true;
- const display=chainId==='__new__'?chainName:catalogue.chains.find(c=>c.id===chainId)?.name||'';
+ const display=chainId==='__new__'?storeDisplayName(chainName):storeDisplayName(catalogue.chains.find(c=>c.id===chainId)?.name);
  const field=chain.closest('.formfield');
  const caption=field?.querySelector('.ui-picker-value');
  if(caption){caption.textContent=display||'未選択';caption.classList.toggle('is-empty',!display)}
@@ -1036,7 +1047,7 @@ function scanFormView(){
   <div class="scan-store-picker">
    ${UI.formField({id:'scan-chain',name:'chain',label:'店舗',control:'picker',
      value:scanNewStoreMode?'__new__':scanDraft.chainId||'',
-     display:scanNewStoreMode?scanDraft.chainName||'':catalogue.chains.find(c=>c.id===scanDraft.chainId)?.name||'',
+     display:scanNewStoreMode?storeDisplayName(scanDraft.chainName):storeDisplayName(catalogue.chains.find(c=>c.id===scanDraft.chainId)?.name),
      action:'storePickerOpen',hint:true,
      fieldClass:scanAiChanges.some(x=>x.label==='店舗')?'scan-ai-updated':''})}
    <input type="hidden" name="chain_name" value="${esc(scanNewStoreMode?scanDraft.chainName||'':'')}">
@@ -1507,7 +1518,7 @@ function itemCardHtml(i){
    <div class="swipe-front">
     <button type="button" class="itemname" data-open="${esc(i.id)}" aria-label="${esc(label)}の価格情報を開く">
      <span class="item-title">${esc(label)}</span>
-     <span class="list-prices">${esc(listPriceText(i))}</span>
+     <span class="list-prices">${listPriceHtml(i)}</span>
     </button>
     <div class="item-stock-area">${UI.stock(i)}</div>
     <span class="swipe-peek" aria-hidden="true"></span>
@@ -1600,7 +1611,7 @@ function normalizedPriceSummary(products,periodValue){
  const winners=[];
  for(const [unit,qty,label] of bases){
   const comparable=products.filter(p=>convertQuantity(p.packageQuantity,p.packageUnit,unit)>0&&chainMinima(p.id,periodValue).length);
-  if(comparable.length<2)continue;
+  if(comparable.length<2||new Set(comparable.map(p=>convertQuantity(p.packageQuantity,p.packageUnit,unit))).size<2)continue;
   let best=null;
   for(const p of comparable){
    const capacity=convertQuantity(p.packageQuantity,p.packageUnit,unit);
@@ -1620,7 +1631,7 @@ function comparisonPriceDisplay(p,r){
  const basis=standardBasis(p);
  const actual=yen(r.price);
  if(active&&capacity)return '<span class="chain-price-pair"><strong class="chain-price-value">'+esc(yen(r.price*compareQuantity/capacity))+'</strong><small>購入価格 '+esc(actual)+'</small></span>';
- const secondary=active?(basis?'単位が異なるため比較不可':'内容量未設定'):basis?basis[2]+'あたり '+yen(r.price*basis[1]/convertQuantity(p.packageQuantity,p.packageUnit,basis[0])):'';
+ const secondary=active?(basis?'単位が異なるため比較不可':'内容量未設定'):'';
  return '<span class="chain-price-pair"><strong class="chain-price-value">'+esc(actual)+'</strong>'+(secondary?'<small>'+esc(secondary)+'</small>':'')+'</span>';
 }
 function priceCompareView(){
@@ -1642,14 +1653,15 @@ function priceCompareView(){
 <button type="button" class="swipe-unlink" data-premove="${esc(p.id)}" tabindex="${openSwipeId===p.id?0:-1}" aria-label="${esc(p.name||'商品')}の登録解除">${miniIcon('unlink')}<span>解除</span></button>
 </div><div class="swipe-front comparison-product-front"><div class="comparison-product-title"><div class="comparison-name"><strong>${esc(p.name||'商品名未設定')}</strong>${sub}</div></div><span class="swipe-peek" aria-hidden="true"></span></div></div><div class="chain-price-list">${priceRows}</div></article>`;
  }).join('');
- const emptyProducts=products.length===0?`<p class="comparison-empty-note">商品を登録すると、レシートから購入価格を記録し、在庫管理にも活用できます。</p>`:'';
+ const registrationNote='<p class="comparison-registration-note">普段の買い物で購入する商品を登録しましょう。</p>';
+ const emptyProducts=products.length===0?'<p class="comparison-empty-note">登録すると、価格比較や在庫管理に活用できます。</p>':'';
  const registerAction=UI.button({label:'商品を登録',variant:'tertiary',action:'productPick',icon:'plus',className:'manage-add product-register-action'});
  const unitControls=`<section class="shop-compare-dock ${shopExpanded?'expanded':''}" aria-label="店頭商品との内容量比較">
 <button type="button" class="shop-compare-toggle" data-act="shopToggle" aria-expanded="${shopExpanded}" aria-controls="shop-compare-fields">
 <span class="shop-compare-heading"><strong>店頭の商品と比較</strong></span>${chevron(shopExpanded?'down':'up')}</button>
 <div id="shop-compare-fields" ${shopExpanded?'':'hidden'}>${UI.quantityUnitFields({quantityId:"compare-quantity",unitId:"compare-unit",quantity:compareQuantity??"",unit:compareUnit||UNIT_OPTIONS[0],placeholder:"例：1100",extra:'inputmode="decimal"'})}</div></section>`;
  return `${head('価格情報',itemLabel(i),true)}<main class="detail-main comparison-main">${products.length?`${UI.sectionHeading({title:"登録商品",subtitle:active?unitLabel+"の換算価格":"税込・店舗別最安値",className:"detail-section-heading price-heading",trailing:UI.dropdown({id:"price-period",value:period,label:"期間",compact:true,open:periodMenu,options:[{value:"3m",label:"直近3か月"},{value:"1y",label:"直近1年"}]})})}<div class="normalized-price-slot">${normalizedPriceSummary(products,period)}</div><div class="comparison-list">${productRows}</div>
- `:emptyProducts}${registerAction}</main>${canCompare?unitControls:''}`;
+ `:emptyProducts}${registrationNote}${registerAction}</main>${canCompare?unitControls:''}`;
 }
 function formView(){
  const editing=page==='edit',i=editing?current():null;
@@ -2081,7 +2093,8 @@ function render(){
  // was scrolled. Previously wasModal suppressed the normal scroll reset.
  const enteringProductCreate=page==='productCreate'&&previousPage==='productPick';
  const enteringScanProduct=page==='scanProduct'&&previousPage==='scanExistingProduct';
- const scrollReset=enteringProductCreate||enteringScanProduct||
+ const enteringCompare=page==='compare'&&(selected!==previousSelected||!['compare','productEdit','productPick'].includes(previousPage));
+ const scrollReset=enteringCompare||enteringProductCreate||enteringScanProduct||
   !currentModal&&!wasModal&&(page!==previousPage||(page==='compare'&&selected!==previousSelected));
  const focus=['add','edit','products','productPick','productCreate','scanProduct','recordScan','recordChatGpt','recordDetail'].includes(page);
  const modal=page==='scanExistingProduct'?scanExistingProductView():page==='productPick'?pickerView():page==='productEdit'?productCreateView():currentModal?formView():'';
@@ -2102,8 +2115,10 @@ function render(){
  if(scrollReset&&!(page==='recordScan'&&scanReturnScrollY!==null))window.scrollTo(0,page==='list'&&previousPage==='compare'?listScrollPosition:0);
  // On iOS the search keyboard can still be dismissing after the first paint.
  // Recheck the viewport on the next frame; do not change the original v46 UI.
- if((enteringProductCreate||enteringScanProduct)&&window.requestAnimationFrame)
-  window.requestAnimationFrame(()=>window.scrollTo(0,0));
+ if((enteringCompare||enteringProductCreate||enteringScanProduct)&&window.requestAnimationFrame){
+  const targetPage=page,targetItem=selected;
+  window.requestAnimationFrame(()=>{if(page===targetPage&&selected===targetItem)window.scrollTo(0,0)});
+ }
  previousPage=page;previousSelected=selected;
  if(page==='recordScan'){
   refreshScanTotalUI();
@@ -3083,7 +3098,7 @@ if(action==='masterGroupPickerOpen'){openMasterGroupPicker();return}
 if(action==='receiptHouseholdLink'){openMasterGroupPicker(el.dataset.productId);return}
 if(action==='storePickerOpen'){openStorePicker();return}
 if(action==='storePickerShowNew'){if(liveMode)showStorePickerMode(true);return}
-if(action==='storePickerShowList'){showStorePickerMode(false);return}if(action==='add'){duplicateItemId=null;selected=null;menu=false;openSwipeId=null;page='add'}if(action==='menu'){menu=!menu}if(['edit','products'].includes(action)){menu=false;editReturnPage=page;page=action}
+if(action==='storePickerShowList'){showStorePickerMode(false);return}if(action==='add'){listScrollPosition=window.scrollY;duplicateItemId=null;selected=null;menu=false;openSwipeId=null;page='add'}if(action==='menu'){menu=!menu}if(['edit','products'].includes(action)){menu=false;editReturnPage=page;page=action}
 if(action==='productPick'){pickQuery='';pickerAll=true;openSwipeId=null;page=action}
 if(action==='productCreate'){
  productCreateOrigin=page==='productPick'?'productPick':'compare';
@@ -3397,7 +3412,7 @@ if(liveMode)window.KurashiLive.subscribe((state,data)=>{
    const pill=button.querySelector('.stock-pill');
    if(pill)pill.textContent=next.inStock?'あり':'なし';
    const price=button.closest('[data-item-id]')?.querySelector('.list-prices');
-   if(price)price.textContent=listPriceText(next);
+   if(price)price.innerHTML=listPriceHtml(next);
    patched++;
   });
   const syncLabel=document.getElementById('list-sync-status');
