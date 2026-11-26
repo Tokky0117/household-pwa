@@ -1153,7 +1153,7 @@ assert.ok(storeAction.includes('class="ui-text-action"')&&
  'store picker opens a half sheet without dropdown or navigation arrows');
 assert.ok(existingHtml.includes('class="ui-choice-row scan-existing-option')&&
  source.includes("title:productTitle(p)")&&
- source.includes("title:c.name,choice:c.id,selected:c.id===selected"),
+ source.includes("title:storeDisplayName(c.name),choice:c.id,selected:c.id===selected"),
  'product and retailer selection actually share UI.choiceRow markup and selected state');
 assert.ok(source.includes("function syncSheetScrollLock()")&&
  source.includes("syncSheetScrollLock();")&&
