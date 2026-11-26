@@ -769,24 +769,8 @@ productUI.window.document.querySelector('[data-open="'+id+'"]').click();
 assert.ok(productUI.window.document.querySelector('[data-act="productPick"]'),
  'existing v46 price comparison exposes product registration');
 productUI.window.document.querySelector('[data-act="productPick"]').click();
-assert.ok(productUI.window.document.querySelector('[data-act="productCreate"]'),
- 'original product picker remains usable in live mode');
-// Search may have the software keyboard open while the comparison page behind
-// the picker is scrolled. New full-page form must start from the top.
-const searchInsidePicker=productUI.window.document.querySelector('#catalogue-search');
-searchInsidePicker.focus();
-assert.equal(productUI.window.document.activeElement,searchInsidePicker);
-const scrollCalls=[];
-productUI.window.scrollTo=(x,y)=>scrollCalls.push([x,y]);
-productUI.window.document.querySelector('[data-act="productCreate"]').click();
-assert.ok(scrollCalls.some(([x,y])=>x===0&&y===0),
- 'new product full-page resets inherited scroll from open search modal');
-assert.notEqual(productUI.window.document.activeElement,searchInsidePicker,
- 'product picker search loses focus before new form');
-assert.equal(productUI.window.document.querySelector('.half-sheet'),null,
- 'picker modal removed when opening full-page product form');
-assert.ok(productUI.window.document.querySelector('.shell.focus main.manage-main #productCreateForm'),
- 'product form remains in canonical v46 full-page layout');
+assert.ok(productUI.window.document.querySelector('.unified-registration-sheet #productCreateForm'),
+ 'unified product registration is directly available');
 let productForm=productUI.window.document.getElementById('productCreateForm');
 assert.ok(productForm,'original new product form is reachable');
 const productNameInput=productForm.querySelector('#new-product-name');
@@ -827,6 +811,8 @@ await waitFor(()=>productUI.window.KurashiLive.state().queued===0 &&
  !temp.call('bootstrap').data.products.find(p=>p.product_id===uiSaved.product_id).household_item_id,
  'v46 product unlink saved to shared master');
 productUI.window.document.querySelector('[data-act="productPick"]').click();
+const relinkName=productUI.window.document.querySelector('#new-product-name');
+relinkName.value='UI連携商品';relinkName.dispatchEvent(new productUI.window.Event('input',{bubbles:true}));
 assert.ok(productUI.window.document.querySelector('[data-pick="'+uiSaved.product_id+'"]'),
  'unlinked product stays searchable');
 productUI.window.document.querySelector('[data-pick="'+uiSaved.product_id+'"]').click();
@@ -3664,3 +3650,12 @@ const loggedIds=batchFixture.db.processed_operations.slice(1)
 assert.equal(new Set(loggedIds).size,loggedIds.length,
  'partial retry adds no duplicate operation journal entries');
 console.log('sync optimization: batch receipt, alias mapping and partial replay OK');
+
+// Rename retains ID, old receipt spelling and idempotent journal.
+const renameFixture=fixture(api);
+const renameStore=renameFixture.call('store.create',{name:'COSTCO WHOLESALE'},'op-rename-store-create-abcdef').data.entity;
+const renamePayload={chain_id:renameStore.chain_id,name:'コストコ',previous_name:'COSTCO WHOLESALE'};
+const renamed=renameFixture.call('store.rename',renamePayload,'op-rename-store-save-abcdef');
+assert.equal(renamed.ok,true);assert.equal(renamed.data.entity.chain_id,renameStore.chain_id);
+assert.equal(renamed.data.entity.canonical_name,'コストコ');assert.ok(JSON.parse(renamed.data.entity.aliases).includes('COSTCO WHOLESALE'));
+assert.equal(renameFixture.call('store.rename',renamePayload,'op-rename-store-save-abcdef').data.entity.version,renamed.data.entity.version);

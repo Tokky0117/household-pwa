@@ -31,7 +31,7 @@ const ui=vm.runInNewContext(source+`
 ({UI,listView,priceCompareView,pickerView,pickerResults,masterProductsView,masterProductRows,masterProductEditorView,masterGroupPickerView,masterGroupPickerRows,aliasManageView,aliasManageRows,aliasProductPickerView,aliasProductPickerRows,detailHomeView,detailAllView,receiptScanView,receiptChatGptView,recordDetailView,scanStoreNameIssue,scanValidPurchaseDate,scanReadableError,floatingActionPlacement,applyChatGptOcrAssistance,receiptOcrReference,receiptOcrRows,isUnconfirmedBarcodeLine,makeChatGptReceiptRebuildDraft,scanProductView,scanProductGroupChoices,scanExistingProductView,scanExistingProductResults,scanChainForStore,scanStoreHeaderMatch,scanAutolinkUnmatched,scanMatchProduct,scanSimilarProducts,normalizeOcrProductName,normalizedOcrItemName,render,initializeCompare,
  setProductGroup,reorderProducts,registeredProducts,convertQuantity,setOpenSwipe,storePickerChoices,scrollNewItemIfOffscreen,
  getItems(){return items},setItems(v){items=v},orderedItemIds,
- chainMinima,priceCandidates,standardizedMinima,savePreviewRecord,periodStart,listPriceText,storeDisplayName,
+ chainMinima,priceCandidates,standardizedMinima,savePreviewRecord,periodStart,listPriceText,storeDisplayName,registrationCandidates,
  demoRecords,demoRecordItems,allPreviewRecords,allPreviewItems,
  setSelected(v){selected=v},setMasterProductId(v){masterProductId=v},setAliasPickerId(v){aliasPickerId=v},setAliasQuery(v){aliasQuery=v;aliasVisibleLimit=100},setAliasVisibleLimit(v){aliasVisibleLimit=v},setPage(v){page=v},setMode(v){priceScope=v},setDock(v){shopExpanded=v},
  setPeriod(v){period=v},setQty(v){compareQuantity=v},setUnit(v){compareUnit=v},
@@ -368,7 +368,7 @@ assert.ok(css.includes('.settings-overview-section{')&&
  css.includes('.settings-link-row .ui-text-action{'),
  'Settings uses sections and shared field/action tokens instead of one-off colored cards');
 
-assert.ok(ui.pickerView().includes('class="ui-search"')&&ui.pickerView().includes('id="catalogue-search"'),'Product picker reuses shared search');
+assert.ok(ui.pickerView().includes('id="new-product-name"')&&ui.pickerView().includes('id="productCreateForm"'),'Product registration uses a single name field');
 assert.ok(source.includes("variant:'item-editor-sheet'"),'Item add/edit uses shared sheet height variant');
 assert.ok(css.includes('.half-sheet.item-editor-sheet{')&&css.includes('height:min(540px'),'Item edit sheet accommodates five choices');
 assert.ok(css.includes('.formfield .ui-search input')&&css.includes('background:transparent'),'Form search has shared internal styling');
@@ -492,9 +492,10 @@ assert.ok(view.includes('298円'),'Original purchase price remains visible for i
 ui.setUnit('mL');view=ui.priceCompareView();
 assert.ok(css.includes('.shop-compare-dock{')&&css.includes('position:fixed'),'Dock remains fixed');
 const picker=ui.pickerView();
-assert.ok(picker.includes('class="half-sheet product-picker-modal"')&&picker.includes('id="catalogue-search"'));
-assert.ok(picker.includes('data-act="productCreate"')&&picker.includes('まだ買っていない商品も登録できます'),'Picker supports new product creation');
-assert.ok(ui.pickerResults().indexOf('低脂肪乳')<ui.pickerResults().indexOf('おいしい牛乳'));
+assert.ok(picker.includes('class="half-sheet product-picker-modal unified-registration-sheet"')&&picker.includes('id="new-product-name"'));
+assert.ok(picker.includes('id="productCreateForm"')&&!picker.includes('data-act="productCreate"'),'No secondary creation step');
+assert.ok(ui.registrationCandidates('牛乳').some(p=>p.name==='おいしい牛乳'));
+assert.ok(ui.registrationCandidates('ｵｲｼｲｷﾞｭｳﾆｭｳ').some(p=>p.name==='おいしい牛乳'));
 assert.ok(css.includes('height:min(72dvh,620px)'),'Stable picker height');
 assert.ok(css.includes('.comparison-main .chain-price-row{'),'Chain rows share visual hierarchy');
 assert.ok(css.includes('.swipe-item.drag-ghost,')&&css.includes('border-radius:11px!important'),'Drag styling preserved');
@@ -2173,9 +2174,9 @@ assert.ok(wakameView.includes('内容量を設定')&&
  !wakameView.includes('class="swipe-delete" data-premove="test-wakame-unknown"'),
  'unknown capacity remains in price comparison, without redundant button or a delete-style unlink icon');
 
-assert.equal(ui.storeDisplayName('COSTCO WHOLESALE'),'コストコ');
+assert.equal(ui.storeDisplayName('COSTCO WHOLESALE'),'COSTCO WHOLESALE');
 assert.equal(ui.storeDisplayName('未知の店舗'),'未知の店舗');
-assert.equal(ui.storeDisplayName('コーナン商事'),'コーナン');
+assert.equal(ui.storeDisplayName('コーナン商事'),'コーナン商事');
 assert.ok(!wakameView.includes('100gあたり 300円'),'Unit comparison only in separate summary, not repeated in purchase price rows');
 
 const inventoryTest={id:'inventory-details-test',name:'キャベツ'};

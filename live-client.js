@@ -176,6 +176,11 @@
    recordIdMap:doc.recordIdMap&&typeof doc.recordIdMap==='object'?doc.recordIdMap:{},
    recordItemIdMap:doc.recordItemIdMap&&typeof doc.recordItemIdMap==='object'?doc.recordItemIdMap:{}};
  };
+ function storeAliases(value){
+  try{const a=JSON.parse(value||'[]');if(Array.isArray(a))return a;}catch(_){}
+  return String(value||'').split(/[,、\n]/).filter(Boolean);
+ }
+ const storeNameKey=value=>String(value||'').normalize('NFKC').trim().replace(/\s+/g,' ').toLocaleLowerCase('ja');
  function project(doc=workspace){
   if(!doc.base)return null;
   const snap={...doc.base,household_items:doc.base.household_items.map(i=>({...i})),
@@ -201,6 +206,15 @@
     snap.retail_chains.push({chain_id:op.clientId,household_id:snap.household_id,
      canonical_name:op.name,normalized_name:op.name.normalize('NFKC').toLocaleLowerCase('ja'),
      aliases:'',version:1});
+    continue;
+   }
+   if(op.kind==='store-rename'){
+    const store=snap.retail_chains.find(x=>x.chain_id===op.chainId);
+    if(store){
+     const aliases=storeAliases(store.aliases).filter(x=>storeNameKey(x)!==storeNameKey(op.name));
+     if(storeNameKey(store.canonical_name)!==storeNameKey(op.name)&&!aliases.some(x=>storeNameKey(x)===storeNameKey(store.canonical_name)))aliases.push(store.canonical_name);
+     store.aliases=JSON.stringify(aliases);store.canonical_name=op.name;store.normalized_name=storeNameKey(op.name);
+    }
     continue;
    }
    if(op.kind==='store-alias'){
@@ -643,6 +657,16 @@
   return {id:operationId(),kind:'product-edit',targetId,...fields,retries:0};
  }
  function makeOperation(action,payload,doc){
+  if(action==='store.rename'){
+   const name=String(payload.name||'').trim(),chainId=String(payload.chain_id||'');
+   if(!name||name.length>80||/^[=+@\-]/.test(name)||/[\x00-\x1f\x7f<>]/.test(name))throw Error('店舗名を確認してください');
+   const chains=project(doc)?.retail_chains||[],store=chains.find(c=>c.chain_id===chainId);
+   if(!store)throw Error('店舗が見つかりません');
+   if(store.canonical_name!==payload.previous_name)throw Error('店舗名が変更されています');
+   if(store.canonical_name===name)return null;
+   if(chains.some(c=>c.chain_id!==chainId&&[c.canonical_name,...storeAliases(c.aliases)].some(x=>storeNameKey(x)===storeNameKey(name))))throw Error('別の店舗が同じ名称を使っています');
+   return {id:operationId(),kind:'store-rename',chainId,name,previousName:store.canonical_name,retries:0};
+  }
   if(action==='item.create'){
    const name=String(payload.name||'').trim(),subName=String(payload.sub_name||'').trim(),category_id=Number(payload.category_id);
    if(!name||name.length>80||subName.length>80||!Number.isInteger(category_id)||category_id<0||category_id>5)
@@ -1117,6 +1141,10 @@
   if(op.request)return op.request; // preserve exact payload for interrupted requests.
   if(op.kind==='store-create')
    return {operationId:op.id,action:'store.create',payload:{name:op.name}};
+  if(op.kind==='store-rename'){
+   if(!base?.retail_chains.some(x=>x.chain_id===op.chainId))throw Error('店舗が見つかりません');
+   return {operationId:op.id,action:'store.rename',payload:{chain_id:op.chainId,name:op.name,previous_name:op.previousName}};
+  }
   if(op.kind==='store-alias'){
    if(!base?.retail_chains.some(x=>x.chain_id===op.chainId))
     throw Error('別名のチェーンが見つかりません');
@@ -1282,6 +1310,8 @@
       (plan.action==='alias.upsert'&&result.entity.chain_id!==plan.payload.chain_id)||
       (plan.action==='alias.link'&&result.entity.receipt_name_id!==plan.payload.receipt_name_id))
     throw Error('RESPONSE_INVALID');
+  }else if(plan.action==='store.rename'){
+   if(!result.entity||result.entity.chain_id!==plan.payload.chain_id||result.entity.canonical_name!==plan.payload.name||!positiveVersion(result.entity.version))throw Error('RESPONSE_INVALID');
   }else if(plan.action==='store.alias.upsert'){
    if(!result.entity||typeof result.entity.chain_id!=='string'||
       result.entity.chain_id!==plan.payload.chain_id)
@@ -1323,7 +1353,7 @@
    ws.base={...ws.base,
     ...(['alias.upsert','alias.link'].includes(plan.action)?{receipt_name_mappings:[
       ...(ws.base.receipt_name_mappings||[]).filter(a=>a.receipt_name_id!==result.entity.receipt_name_id),result.entity]}
-     :['store.create','store.alias.upsert'].includes(plan.action)?{retail_chains:[
+     :['store.create','store.alias.upsert','store.rename'].includes(plan.action)?{retail_chains:[
       ...ws.base.retail_chains.filter(x=>x.chain_id!==result.entity.chain_id),result.entity]}
      :plan.action==='record.create'?{
        records:[...(ws.base.records||[]),result.record],
@@ -1753,6 +1783,7 @@
     case 'product-reorder':title='登録商品の並び替え：'+itemLabel(op.groupId);
      detail=(op.product_ids||[]).map(productLabel);break;
     case 'store-create':title='店舗の追加：'+op.name;break;
+    case 'store-rename':title='店舗名の変更：'+op.previousName+' → '+op.name;break;
     case 'store-alias':title='店舗名の追加：'+storeLabel(op.chainId)+'／'+op.alias;break;
     case 'alias-create':title='読み取り名の追加：'+op.alias;
      detail=['店舗：'+storeLabel(op.chainId),'商品：'+productLabel(op.productId)];break;

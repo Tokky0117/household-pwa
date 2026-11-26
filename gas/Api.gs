@@ -40,6 +40,8 @@ function doPost(e) {
       return kurashiReply_({ok:true,data:kurashiSaveProduct_(user,action,payload,input.operation_id)});
     if (action === 'product.reorder')
       return kurashiReply_({ok:true,data:kurashiReorderProducts_(user,payload,input.operation_id)});
+    if (action === 'store.rename')
+      return kurashiReply_({ok:true,data:kurashiRenameStore_(user,payload,input.operation_id)});
     if (action === 'store.create')
       return kurashiReply_({ok:true,data:kurashiCreateStore_(user,payload,input.operation_id)});
     if (action === 'record.create')
@@ -1721,6 +1723,54 @@ function kurashiUpsertStoreAlias_(user,payload,id){
       const now=new Date().toISOString();
       aliases.push(alias);
       const next={...before,aliases:JSON.stringify(aliases),
+        version:Number(before.version)+1,updated_at:now};
+      plan={status:'prepared',action,before,entity:next,
+        sequence_no:kurashiSequence_(hid,book)+1,updated_at:now};
+      kurashiPrepareOperation_(book,hid,id,check.hash,plan);
+    }
+    if(!plan.before||!plan.entity||
+       String(plan.entity.household_id)!==hid||
+       String(plan.entity.chain_id)!==String(payload.chain_id))
+      kurashiFail_('RECOVERY_CONFLICT','チェーン別名の履歴が不正です');
+    kurashiRecordTransition_('retail_chains','chain_id',plan.before,plan.entity,book);
+    return kurashiCompleteOperation_(book,hid,id,check.hash,plan,{
+      status:'completed',action,entity:plan.entity,
+      sequence_no:plan.sequence_no
+    },'retail_chains',plan.entity.chain_id);
+  }finally{lock.releaseLock()}
+}
+
+function kurashiRenameStore_(user,payload,id){
+  if(Object.keys(payload).sort().join(',')!=='chain_id,name,previous_name')
+    kurashiFail_('BAD_REQUEST','店舗名変更の形式が不正です');
+  const hid=user.householdId,action='store.rename',lock=LockService.getScriptLock();
+  if(!lock.tryLock(20000))kurashiFail_('BUSY','保存が混み合っています');
+  try{
+    const book=kurashiBook_(),check=kurashiCheckOperation_(book,hid,id,action,payload);
+    let plan=check.found;
+    if(plan?.status==='completed')return kurashiPublic_(plan);
+    if(!plan){
+      const chainId=String(payload.chain_id||'');
+      const name=kurashiName_(payload.name),normalized=kurashiNormalize_(name);
+      const chainRows=kurashiRows_('retail_chains',book).filter(x=>
+        String(x.value.household_id)===hid);
+      const chosen=chainRows.filter(x=>String(x.value.chain_id)===chainId);
+      if(chosen.length!==1)
+        kurashiFail_('NOT_FOUND','チェーンが見つかりません');
+      if(chainRows.some(row=>String(row.value.chain_id)!==chainId&&(
+        kurashiNormalize_(row.value.canonical_name)===normalized||
+        kurashiStoreAliasList_(row.value.aliases).some(x=>kurashiNormalize_(x)===normalized))))
+        kurashiFail_('DUPLICATE','この店舗表記は別チェーンに登録されています');
+      const before=kurashiPublic_(chosen[0].value);
+      if(String(before.canonical_name)!==String(payload.previous_name))
+        kurashiFail_('VERSION_CONFLICT','店舗名が他の端末で変更されています');
+      const aliases=kurashiStoreAliasList_(before.aliases).filter(x=>kurashiNormalize_(x)!==normalized);
+      if(String(before.canonical_name)===name)
+        return {status:'completed',action,entity:before,sequence_no:kurashiSequence_(hid,book)};
+      if(kurashiNormalize_(before.canonical_name)!==normalized&&!aliases.some(x=>kurashiNormalize_(x)===kurashiNormalize_(before.canonical_name)))
+        aliases.push(before.canonical_name);
+      const now=new Date().toISOString();
+      const next={...before,canonical_name:name,normalized_name:normalized,aliases:JSON.stringify(aliases),
         version:Number(before.version)+1,updated_at:now};
       plan={status:'prepared',action,before,entity:next,
         sequence_no:kurashiSequence_(hid,book)+1,updated_at:now};
