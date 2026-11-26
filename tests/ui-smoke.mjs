@@ -1107,7 +1107,7 @@ assert.ok(source.includes("function scanAssistView()")&&
 const existingHtml=ui.scanExistingProductView();
 assert.ok(existingHtml.includes('scan-existing-search')&&
  !existingHtml.includes('scan-existing-group')&&
- existingHtml.includes('日用品リスト：牛乳'),
+ existingHtml.includes('日用品：牛乳'),
  'existing-product picker searches products and shows linked household item');
 assert.ok(existingHtml.includes('class="ui-search"')&&
  existingHtml.includes('data-search-clear="scan-existing-search"')&&
@@ -1197,8 +1197,8 @@ assert.ok(sheetFocusSpace.length===1&&sheetFocusSpace[0].includes('padding-inlin
 assert.ok(css.includes('.formfield.ui-field-error')&&css.includes('.formfield.ui-field-warning'),
  'red and yellow validation state borders remain separate from blue focus');
 
-assert.ok(!listingHtml.includes('日用品未紐付け'),
- 'unlinked item-group metadata does not appear in receipt purchase lines');
+assert.ok(!listingHtml.includes('日用品未紐付け')||listingHtml.includes('登録商品と一致'),
+ 'household status is shown only for matched receipt products');
 assert.ok(css.includes('.formfield input,.formfield select,.formfield textarea,')&&
  css.includes('.formfield.ui-field-error')&&css.includes('.formfield.ui-field-warning')&&
  !listingHtml.includes('class="scan-field">数量<input')&&

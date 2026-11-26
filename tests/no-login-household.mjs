@@ -1697,12 +1697,27 @@ assert.ok(individualForm.querySelector('[name="quantity"]'),
  'receipt product registration offers optional package capacity');
 assert.equal(individualForm.querySelector('[name="quantity"]').value,'',
  'unrecognized product name leaves capacity unset');
+const linkedHousehold=temp.call('bootstrap').data.household_items.find(x=>!x.is_hidden&&!x.deleted_at);
+assert.ok(linkedHousehold);
+individualForm.querySelector('[data-act="masterGroupPickerOpen"]').click();
+const receiptGroupPicker=bulkUI.window.document.querySelector('.master-group-picker-overlay');
+assert.ok(receiptGroupPicker);
+receiptGroupPicker.querySelector('[data-ui-choice="'+linkedHousehold.household_item_id+'"]').click();
+assert.equal(individualForm.querySelector('[name="group"]').value,linkedHousehold.household_item_id);
 individualForm.dispatchEvent(new bulkUI.window.Event('submit',{bubbles:true,cancelable:true}));
 await waitFor(()=>bulkUI.window.KurashiLive.state().queued===0&&
  temp.call('bootstrap').data.products.some(p=>p.name==='レシート個別登録テスト固有')&&
  temp.call('bootstrap').data.record_items.some(x=>
   aliasText(temp,x)==='レシート個別登録テスト固有'&&x.linked_product_id),
  'product creation and saved item link reach Sheets using a durable queue');
+const individualProduct=temp.call('bootstrap').data.products.find(p=>p.name==='レシート個別登録テスト固有');
+assert.equal(individualProduct.household_item_id,linkedHousehold.household_item_id,'receipt registration saves optional household linkage');
+const receiptLinkButton=bulkUI.window.document.querySelector('[data-act="receiptHouseholdLink"][data-product-id="'+individualProduct.product_id+'"]');
+assert.ok(receiptLinkButton);
+receiptLinkButton.click();
+bulkUI.window.document.querySelector('.master-group-picker-overlay [data-ui-choice=""]').click();
+bulkUI.window.document.querySelector('[data-dialog="confirmMasterGroupChange"]').click();
+await waitFor(()=>bulkUI.window.KurashiLive.state().queued===0&&temp.call('bootstrap').data.products.find(x=>x.product_id===individualProduct.product_id).household_item_id==='', 'saved receipt can unlink household without changing stock');
 bulkUI.window.document.querySelector('[data-act="recordProductOpen"]').click();
 bulkUI.window.document.querySelector('[data-act="recordProductUnlink"]').click();
 await waitFor(()=>bulkUI.window.KurashiLive.state().queued===0&&
@@ -1832,7 +1847,7 @@ kitSession.window.document.querySelector('[data-act="recordProductShowNew"]').cl
 const kitForm=kitSession.window.document.getElementById('recordProductCreateForm');
 assert.ok(kitForm&&kitSession.window.document.querySelector('.record-product-overlay'),
  'new product editor is one shared half sheet');
-assert.equal(kitForm.querySelector('[name="group"]'),null);
+assert.ok(kitForm.querySelector('[name="group"]'));
 assert.ok(kitForm.querySelector('[name="quantity"]'),
  'KitKat saved-receipt registration supports optional package capacity');
 assert.equal(kitForm.querySelector('[name="name"]').value,kitRaw,
@@ -2123,8 +2138,8 @@ try{
 standaloneSession.window.document.querySelector('[data-act="recordProductOpen"]').click();
 standaloneSession.window.document.querySelector('[data-act="recordProductShowNew"]').click();
 const standaloneProductForm=standaloneSession.window.document.getElementById('recordProductCreateForm');
-assert.ok(standaloneProductForm&&!standaloneProductForm.querySelector('[name="group"]'),
- 'new product in shared half sheet defers optional household group');
+assert.ok(standaloneProductForm&&standaloneProductForm.querySelector('[name="group"]').value==='',
+ 'new product in shared half sheet allows leaving household link unset');
 standaloneProductForm.querySelector('[name="name"]').value=standaloneName;
 standaloneProductForm.dispatchEvent(new standaloneSession.window.Event(
  'submit',{bubbles:true,cancelable:true}));

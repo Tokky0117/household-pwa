@@ -476,7 +476,7 @@ function recordDetailView(){
        variant:'tertiary',action:'recordProductOpen',recordItemId:line.record_item_id,
        className:'record-product-setting-button'}):''}
     </div>
-    ${!isShelf&&liveMode&&catalogue.products.some(p=>p.id===line.linked_product_id)?UI.textAction({label:'日用品との紐付け',action:'receiptHouseholdLink',data:{'data-product-id':line.linked_product_id},arrow:false}):''}
+    ${!isShelf&&liveMode&&catalogue.products.some(p=>p.id===line.linked_product_id)?UI.button({label:'日用品との紐付け',variant:'tertiary',action:'receiptHouseholdLink',data:{'data-product-id':line.linked_product_id}}):''}
     ${!isShelf&&!line.linked_product_id&&line.product_name_candidate?`<div class="detail-record-line-meta detail-product-proposal"><span class="detail-candidate-origin" role="img" aria-label="生成AIによる候補">${miniIcon('sparkles')}</span><span>商品名候補：${esc(line.product_name_candidate)}${line.candidate_match_type==='new'?'（新規）':line.candidate_match_type==='existing'?'（既存）':'（未判定）'}</span></div>`:''}
    </div>`).join('')}
   </section>
@@ -1847,7 +1847,7 @@ function openAliasProductPicker(receiptNameId){
 }
 function closeAliasProductPicker(){
  app.querySelector('.alias-product-picker-overlay')?.remove();
- aliasPickerId=null;aliasPickerQuery='';syncSheetScrollLock();
+ aliasPickerId=null;aliasPickerQuery='';syncSheetScrollLock();flushDeferredRender();
 }
 function chooseAliasProduct(productId){
  const a=(catalogue.receiptNameMappings||[]).find(x=>x.receiptNameId===aliasPickerId);
@@ -2294,6 +2294,7 @@ function renderDialogOnly(){
   document.querySelector('.dialog-back')?.remove();
   if(dialog)app.insertAdjacentHTML('beforeend',dialogView());
   floatingActionUpdate?.();
+  if(!dialog)flushDeferredRender();
 }
 
 let duplicateItemId=null;
