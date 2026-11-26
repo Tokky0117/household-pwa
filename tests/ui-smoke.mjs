@@ -428,7 +428,7 @@ assert.equal(ui.readListHelpOpen(),false,'Collapsed state is restored from devic
 storage.set('household_pwa_list_help_open_v1','true');
 assert.equal(ui.readListHelpOpen(),true,'Expanded state is restored from device storage');
 assert.equal((ui.listView().match(/class="item swipe-item /g)||[]).length,15,'Flat list, 15 demo items');
-assert.ok(ui.listView().includes('298円／おいしい牛乳／コノミヤ'),'List shows first product cheapest chain');
+assert.deepEqual(Array.from(ui.listPriceText(ui.getItems().find(i=>i.id==='demo-1'))),['おいしい牛乳','298円','コノミヤ'],'List shows first product and cheapest chain in separate segments');
 assert.ok(!ui.listView().includes('（割引）'),'No normal/discount labels in list');
 assert.equal(ui.getPeriod(),'1y','One-year initial period');
 const first=ui.chainMinima('p-milk-1','1y');
@@ -447,8 +447,12 @@ assert.equal(ui.getCompare()[0],null,'Empty initial compare quantity');
 assert.equal(ui.getCompare()[1],'mL','First product unit preselected');
 let view=ui.priceCompareView();
 assert.ok(view.includes('登録商品')&&view.includes('税込・店舗別最安値'));
-assert.ok(!view.includes('商品間の最安値')&&!view.includes('100mLあたり'),
- 'Equal-size products display purchase prices only');
+assert.ok(view.includes('商品間の最安値')&&view.includes('100mLあたり')&&!view.includes('100mLあたり '),'Different-size products compare in summary only');
+const milk2=ui.catalogue().products.find(p=>p.id==='p-milk-2');
+const milkCapacity=milk2.packageQuantity,milkUnit=milk2.packageUnit;
+milk2.packageQuantity=900;milk2.packageUnit='mL';
+assert.ok(!ui.priceCompareView().includes('商品間の最安値'),'Equal-size products require no unit comparison summary');
+milk2.packageQuantity=milkCapacity;milk2.packageUnit=milkUnit;
 const winners=ui.standardizedMinima(ui.catalogue().products.filter(p=>p.householdItemId==='demo-1'),'1y');
 assert.ok(winners.some(w=>w.label==='100mL'&&w.price>0&&w.productName),
  'Normalized minima identify the winning product while retaining its original chain');
@@ -2173,3 +2177,12 @@ assert.equal(ui.storeDisplayName('COSTCO WHOLESALE'),'コストコ');
 assert.equal(ui.storeDisplayName('未知の店舗'),'未知の店舗');
 assert.equal(ui.storeDisplayName('コーナン商事'),'コーナン');
 assert.ok(!wakameView.includes('100gあたり 300円'),'Unit comparison only in separate summary, not repeated in purchase price rows');
+
+const inventoryTest={id:'inventory-details-test',name:'キャベツ'};
+assert.deepEqual(Array.from(ui.listPriceText(inventoryTest)),['商品未登録']);
+const itemProduct={id:'inventory-details-product',name:'キャベツ',householdItemId:inventoryTest.id,householdItemOrder:1};
+ui.catalogue().products.push(itemProduct);
+assert.deepEqual(Array.from(ui.listPriceText(inventoryTest)),['価格記録なし']);
+itemProduct.name='春キャベツ';
+assert.deepEqual(Array.from(ui.listPriceText(inventoryTest)),['春キャベツ']);
+ui.catalogue().products.pop();

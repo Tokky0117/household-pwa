@@ -168,7 +168,8 @@ const listPriceText=item=>{
  if(!first)return ['商品未登録'];
  const name=norm(first.name)===norm(itemLabel(item))?'':first.name;
  const best=chainMinima(first.id,'1y')[0];
- return [name,best?yen(best.price):'',best?chainLabel(best.chainId):''].filter(Boolean).length?[name,best?yen(best.price):'',best?chainLabel(best.chainId):''].filter(Boolean):['価格記録なし'];
+ const parts=[name,best?yen(best.price):'',best?chainLabel(best.chainId):''].filter(Boolean);
+ return parts.length?parts:['価格記録なし'];
 };
 function listPriceHtml(item){
  const parts=listPriceText(item);
