@@ -7,7 +7,7 @@ const html=readFileSync(new URL('../index.html',import.meta.url),'utf8');
 const live=readFileSync(new URL('../live-client.js',import.meta.url),'utf8');
 const gas=readFileSync(new URL('../gas/Api.gs',import.meta.url),'utf8');
 
-assert.match(app,/const APP_VERSION='0\.99\.2'/);
+assert.match(app,/const APP_VERSION='0\.99\.3'/);
 assert.match(app,/const key='household_pwa_v99_household_items'/);
 assert.match(app,/const catalogueKey='household_pwa_v99_products'/);
 assert.match(app,/householdFirstPreview\?'household_pwa_v99_preview_records'/);
@@ -54,3 +54,11 @@ vm.runInContext(app.slice(start,end),context);
 const items=[{id:'a',inStock:false},{id:'b',inStock:true},{id:'c',hidden:true},{id:'d',inStock:false}];
 const products=[{id:'p',householdItemId:'a'},{id:'q',householdItemId:'a'},{id:'r',householdItemId:'b'},{id:'s',householdItemId:'c'}];
 assert.deepEqual(Array.from(context.receiptStockCandidates(['p','q','r','s',null].map(linked_product_id=>({linked_product_id})),items,products)),['a']);
+
+assert.match(app,/function syncRenderBlocked\(/);
+assert.match(app,/function autoScrollDrag\(/);
+const ds=app.slice(app.indexOf('function dragScrollSpeed('),app.indexOf('function autoScrollDrag('));
+vm.runInContext(ds,context);
+assert.equal(context.dragScrollSpeed(300,50,600),0);
+assert.ok(context.dragScrollSpeed(55,50,600)<0);
+assert.ok(context.dragScrollSpeed(590,50,600)>0);

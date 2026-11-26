@@ -1,4 +1,4 @@
-const APP_VERSION='0.99.2';
+const APP_VERSION='0.99.3';
 const CATS=['食品・飲料','キッチン','洗面・風呂','洗濯・掃除','その他','調味料'];
 const liveMode=!!window.KurashiLive; // Data source only; original Preview v46 UI components remain.
 const SEED=[['牛乳',0,true],['麦茶',0,false],['コーヒー',0,true],['卵',0,false],['キッチンペーパー',1,false],['ラップ',1,true],['食器用洗剤',1,true],['シャンプー',2,false],['歯磨き粉',2,true],['ハンドソープ',2,false],['洗濯洗剤',3,false],['柔軟剤',3,true],['トイレットペーパー',3,false],['乾電池',4,true],['ティッシュ',4,true]];
@@ -185,6 +185,7 @@ function load(){if(liveMode)return [];
 }
 let items=load(),tab='items',page='list',selected=null,query='',onlyOut=false,menu=false,dialog=null,toast='',period='1y',priceScope='product',periodMenu=false;
 let productCreateOrigin='productPick';
+let pendingDrag=null,activeDrag=null,suppressClick=false,dragScrollFrame=null,syncRenderDeferred=false;
 const app=document.getElementById('app');
 // Native iPhone chooser: Photo Library, Take Photo, or Files. Photos stay in memory.
 let scanPhotos=[],scanIndex=0,scanBusy=false,scanDraft=null,scanStatus='',scanAiChanges=[],scanAssistMessage='',scanToken=0,scanError='',scanReadFailed=false,scanNewStoreMode=false,scanReturnScrollY=null;
@@ -402,7 +403,7 @@ function openRecordProductPicker(id,mode='select'){
 function closeRecordProductPicker(){
  app.querySelector('.record-product-overlay')?.remove();
  recordProductItemId=null;recordProductMode='select';recordProductQuery='';recordProductSaving=false;
- syncSheetScrollLock();
+ syncSheetScrollLock();flushDeferredRender();
 }
 function changeRecordProductMode(mode){
  if(!recordProductLine()||recordProductSaving)return;
@@ -1731,7 +1732,7 @@ function openMasterGroupPicker(){
 function closeMasterGroupPicker(){
  app.querySelector('.master-group-picker-overlay')?.remove();
  masterGroupPickerOpen=false;masterGroupQuery='';
- syncSheetScrollLock();
+ syncSheetScrollLock();flushDeferredRender();
 }
 function setMasterGroupField(groupId){
  const field=document.querySelector('#masterProductForm [name="group"]')?.closest('.formfield');
@@ -2051,7 +2052,8 @@ function syncSheetScrollLock(){
  }
 }
 function render(){
- if(!window.document)return; // A closed iOS page/session must not re-render.
+ if(!window.document)return;
+ syncRenderDeferred=false; // A closed iOS page/session must not re-render.
   closeScanViewer();
  const currentModal=page==='add'||page==='edit'||page==='productEdit'||page==='productPick'||page==='scanExistingProduct';
  const wasModal=previousPage==='add'||previousPage==='edit'||previousPage==='productEdit'||previousPage==='productPick'||previousPage==='recordSource'||previousPage==='scanExistingProduct';
@@ -3348,7 +3350,7 @@ render();
 if(liveMode)window.KurashiLive.subscribe((state,data)=>{
  if(!window.document)return;
  const nextItems=data?window.KurashiLive.itemsOf(data):null;
- if(!nextItems){if(tab==='settings'||page==='list'&&!items.length)render();return}
+ if(!nextItems){if(syncRenderBlocked()){syncRenderDeferred=true;return;}if(tab==='settings'||page==='list'&&!items.length)render();return}
  scanMatchCache=null;
  const structureSame=items.length===nextItems.length&&items.every((old,i)=>{
   const next=nextItems[i];
@@ -3360,8 +3362,8 @@ if(liveMode)window.KurashiLive.subscribe((state,data)=>{
  liveRecords={records:data.records||[],record_items:(data.record_items||[]).map(line=>({
   ...line,quantity:Number(line.quantity),line_total_tax_included:Number(line.line_total_tax_included)
  }))};
- if(page==='aliasManage'&&aliasPickerId)return;
- if(['add','edit','productEdit','productPick','productCreate','masterProductEdit','masterProductNew'].includes(page))return;
+ if(syncRenderBlocked()){syncRenderDeferred=true;return;}
+ syncRenderDeferred=false;
  // Preserve existing DOM buttons during writes. Recreating the entire DOM while
  // iOS completes a tap can eat the user's next click.
  if(page==='list'&&tab==='items'&&structureSame&&!query&&!onlyOut){
@@ -3423,7 +3425,8 @@ app.addEventListener('touchcancel',()=>{pullToRefresh=null},{passive:true});
 if('serviceWorker'in navigator&&location.protocol.startsWith('http'))navigator.serviceWorker.register('./sw.js').catch(()=>{});
 
 // Long-press ordering applies to item groups and registered products.
-let pendingDrag=null,activeDrag=null,suppressClick=false;
+function syncRenderBlocked(){return !!(pendingDrag||activeDrag||dialog||app.querySelector('.sheet-back')||['add','edit','productEdit','productPick','productCreate','masterProductEdit','masterProductNew','scanProduct','recordScan','recordChatGpt','scanExistingProduct'].includes(page));}
+function flushDeferredRender(){if(syncRenderDeferred&&!syncRenderBlocked())render();}
 function clearPending(){if(pendingDrag){clearTimeout(pendingDrag.timer);pendingDrag=null}}
 function startDrag(p){
  if(pendingDrag!==p||!p.row.isConnected)return;
@@ -3435,10 +3438,11 @@ function startDrag(p){
  ghost.style.width=rect.width+'px';ghost.style.left=rect.left+'px';ghost.style.top=rect.top+'px';
  ghost.style.position='fixed';
  document.body.appendChild(ghost);
- activeDrag={...p,ghost,offsetY:p.y-rect.top,offsetX:p.x-rect.left,moved:false};
+ activeDrag={...p,ghost,offsetY:p.y-rect.top,offsetX:p.x-rect.left,moved:false,clientX:p.x,clientY:p.y};
  pendingDrag=null;p.row.classList.add('drag-placeholder');
  if(p.inputType!=='touch')p.row.setPointerCapture?.(p.pointerId);
  document.body.classList.add('reordering');
+ if(window.requestAnimationFrame)dragScrollFrame=window.requestAnimationFrame(autoScrollDrag);
 }
 function startPending(row,e,inputType){
  const p={row,pointerId:e.pointerId,x:e.clientX,y:e.clientY,kind:page==='compare'||page==='products'?'product':'item',inputType};
@@ -3459,17 +3463,36 @@ function moveDrag(e){
  if(pendingDrag&&e.pointerId===pendingDrag.pointerId&&Math.hypot(e.clientX-pendingDrag.x,e.clientY-pendingDrag.y)>9)clearPending();
  const d=activeDrag;if(!d||e.pointerId!==d.pointerId)return;
  e.preventDefault();
- d.ghost.style.top=(e.clientY-d.offsetY)+'px';d.ghost.style.left=(e.clientX-d.offsetX)+'px';
+ d.clientX=e.clientX;d.clientY=e.clientY;
+ positionDraggedRow(d);
+}
+function positionDraggedRow(d){
+ d.ghost.style.top=(d.clientY-d.offsetY)+'px';d.ghost.style.left=(d.clientX-d.offsetX)+'px';
  const selector=dragRowSelector(d.kind);
- const target=document.elementFromPoint(e.clientX,e.clientY)?.closest(selector);
+ const target=document.elementFromPoint?.(d.clientX,d.clientY)?.closest(selector);
  if(!target||target===d.row||target.parentNode!==d.row.parentNode)return;
  const rect=target.getBoundingClientRect();
- target.parentNode.insertBefore(d.row,e.clientY<rect.top+rect.height/2?target:target.nextSibling);
+ target.parentNode.insertBefore(d.row,d.clientY<rect.top+rect.height/2?target:target.nextSibling);
  d.moved=true;
+}
+function dragScrollSpeed(y,top,bottom){
+ const zone=64;
+ if(y<top+zone)return -Math.min(18,18*Math.max(0,(top+zone-y)/zone));
+ if(y>bottom-zone)return Math.min(18,18*Math.max(0,(y-bottom+zone)/zone));
+ return 0;
+}
+function autoScrollDrag(){
+ dragScrollFrame=null;const d=activeDrag;if(!d)return;
+ const top=document.querySelector('.top')?.getBoundingClientRect().bottom||0;
+ const bottom=document.querySelector('.bottom')?.getBoundingClientRect().top||window.innerHeight;
+ const speed=dragScrollSpeed(d.clientY,top,bottom);
+ if(speed&&document.scrollingElement){const scroller=document.scrollingElement;const before=scroller.scrollTop;scroller.scrollTop+=speed;if(scroller.scrollTop!==before)positionDraggedRow(d);}
+ if(activeDrag&&window.requestAnimationFrame)dragScrollFrame=window.requestAnimationFrame(autoScrollDrag);
 }
 function endDrag(e,cancel=false){
  if(pendingDrag&&e.pointerId===pendingDrag.pointerId)clearPending();
- const d=activeDrag;if(!d||e.pointerId!==d.pointerId)return;
+ const d=activeDrag;if(!d||e.pointerId!==d.pointerId){if(!activeDrag&&!pendingDrag)flushDeferredRender();return;}
+ if(dragScrollFrame!==null)window.cancelAnimationFrame?.(dragScrollFrame);dragScrollFrame=null;
  activeDrag=null;d.ghost.remove();d.row.classList.remove('drag-placeholder');
  document.body.classList.remove('reordering');
  suppressClick=true;setTimeout(()=>{suppressClick=false},200);
@@ -3478,9 +3501,7 @@ function endDrag(e,cancel=false){
  if(liveMode){
   if(d.kind==='item'){
    const ids=orderedItemIds();
-   window.KurashiLive.reorderItems(-1,ids).catch(err=>
-    inlineActionNotice(document.querySelector('.household-list'),
-     err.message||'並び順を保存できませんでした'));
+   window.KurashiLive.reorderItems(-1,ids).then(()=>{flushDeferredRender()}).catch(err=>{render();inlineActionNotice(document.querySelector('.household-list'),err.message||'並び順を保存できませんでした')});
    return;
   }
   const ids=[...document.querySelectorAll(
@@ -3504,10 +3525,10 @@ function endDrag(e,cancel=false){
  }
  render();
 }
-app.addEventListener('pointermove',moveDrag);
-app.addEventListener('pointerup',e=>endDrag(e));
-app.addEventListener('pointercancel',e=>endDrag(e,true));
-app.addEventListener('contextmenu',e=>{if(activeDrag||pendingDrag&&e.target.closest('[data-item-id],[data-product-id]'))e.preventDefault()});
+app.addEventListener('pointermove',e=>{if(e.pointerType!=='touch')moveDrag(e)});
+app.addEventListener('pointerup',e=>{if(e.pointerType!=='touch')endDrag(e)});
+app.addEventListener('pointercancel',e=>{if(e.pointerType!=='touch')endDrag(e,true)});
+app.addEventListener('contextmenu',e=>{if(activeDrag||pendingDrag||e.target.closest('[data-list-top],.comparison-product-header'))e.preventDefault()});
 app.addEventListener('touchstart',e=>{
  if(e.touches.length!==1||dialog||!['list','products','compare'].includes(page)||page==='list'&&(query||onlyOut))return;
  if(e.target.closest('input,textarea,select,[data-stock],[data-list-edit],[data-list-hide],[data-premove],[data-product-menu],[data-pedit]'))return;
