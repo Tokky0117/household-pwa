@@ -1740,6 +1740,7 @@ function kurashiUpsertStoreAlias_(user,payload,id){
   }finally{lock.releaseLock()}
 }
 
+// Rename a store without changing its ID; preserve previous receipt names as aliases.
 function kurashiRenameStore_(user,payload,id){
   if(Object.keys(payload).sort().join(',')!=='chain_id,name,previous_name')
     kurashiFail_('BAD_REQUEST','店舗名変更の形式が不正です');

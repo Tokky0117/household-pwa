@@ -1642,6 +1642,10 @@
       });
       error=message;notify();return;
      }
+     if(e.code==='VERSION_CONFLICT'&&op.kind==='store-rename'){
+      const message='店舗名が別の端末で変更されています。自動上書きを避けるため未反映の操作を保留しました。';
+      await modify(ws=>{if(ws.queue[0]?.id===op.id)ws.blocked={id:op.id,message};return ws});error=message;notify();return;
+     }
      if(e.code==='VERSION_CONFLICT'&&!op.migrated){
       try{await rebaseRejected(op);continue}
       catch(rebaseError){e=rebaseError}

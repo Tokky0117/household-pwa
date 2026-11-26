@@ -2052,7 +2052,7 @@ function mainTabView(){
   default: return listView();
  }
 }
-let storeMasterQuery='',storeMasterId=null;
+let storeMasterQuery='',storeMasterId=null,storeMasterOriginalName='';
 function storeMasterRows(){
  const q=norm(storeMasterQuery);
  return catalogue.chains.filter(c=>!q||[c.name,...(c.aliases||[])].some(n=>norm(n).includes(q))).sort((a,b)=>a.name.localeCompare(b.name,'ja')).map(c=>
@@ -2064,7 +2064,7 @@ function storeMastersView(){
 function storeMasterEditorView(){
  const c=catalogue.chains.find(x=>x.id===storeMasterId);
  if(!c)return storeMastersView();
- return head('店舗名を編集','店舗マスタ',true)+'<main class="manage-main"><form id="storeMasterForm">'+UI.formField({id:'store-master-name',name:'name',label:'登録店舗名',value:c.name,required:true,maxlength:80})+
+ return head('店舗名を編集','店舗マスタ',true)+'<main class="manage-main"><form id="storeMasterForm">'+UI.formField({id:'store-master-name',name:'name',label:'登録店舗名',value:storeMasterOriginalName||c.name,required:true,maxlength:80})+
   '<p class="hint">変更前の店舗名は読み取り時の照合に引き続き使用されます。</p><div class="formactions">'+UI.button({label:'変更を保存',variant:'primary',type:'submit'})+'</div></form></main>';
 }
 function pageView(){
@@ -2275,7 +2275,7 @@ function fieldNotice(form,message,fieldId){
 }
 app.addEventListener('input',e=>{const field=e.target.closest?.('.formfield');field?.querySelector('.ui-field-notice')?.remove();field?.classList.remove('ui-field-error')});
 function hasUnsavedFormChanges(){
-  if(page==='storeMasterEdit'){const c=catalogue.chains.find(x=>x.id===storeMasterId),form=document.getElementById('storeMasterForm');return !!(c&&form&&String(new FormData(form).get('name')||'').trim()!==c.name);}
+  if(page==='storeMasterEdit'){const c=catalogue.chains.find(x=>x.id===storeMasterId),form=document.getElementById('storeMasterForm');return !!(c&&form&&String(new FormData(form).get('name')||'').trim()!==storeMasterOriginalName);}
 
   const master=document.getElementById('masterProductForm');
   if(master){
@@ -2786,7 +2786,7 @@ if(form.id==='storeMasterForm'){
  const chain=catalogue.chains.find(x=>x.id===storeMasterId),name=String(d.get('name')||'').trim();
  if(!chain||!name){fieldNotice(form,'店舗名を確認してください','store-master-name');return;}
  const button=form.querySelector('[type="submit"]');if(button?.disabled)return;if(button)button.disabled=true;
- window.KurashiLive.save('store.rename',{chain_id:chain.id,name,previous_name:chain.name}).then(()=>{page='storeMasters';storeMasterId=null;render()}).catch(err=>{if(button)button.disabled=false;fieldNotice(form,err.message||'店舗名を保存できませんでした','store-master-name')});return;
+ window.KurashiLive.save('store.rename',{chain_id:chain.id,name,previous_name:storeMasterOriginalName}).then(()=>{page='storeMasters';storeMasterId=null;render()}).catch(err=>{if(button)button.disabled=false;fieldNotice(form,err.message||'店舗名を保存できませんでした','store-master-name')});return;
 }
 if(form.id==='productCreateForm'){
  const name=String(d.get('name')||'').trim(),parsed=productPackageValues(d);
@@ -3319,7 +3319,7 @@ if(action==='scanExistingToNew'){
 }
 if(action==='aliasManage'){aliasQuery='';aliasVisibleLimit=100;aliasPickerId=null;tab='settings';page='aliasManage';render();return;}
 if(action==='storeMasters'){storeMasterQuery='';storeMasterId=null;tab='settings';page='storeMasters';render();return;}
-if(action==='storeMasterEdit'){storeMasterId=el.dataset.chainId;page='storeMasterEdit';render();return;}
+if(action==='storeMasterEdit'){storeMasterId=el.dataset.chainId;storeMasterOriginalName=catalogue.chains.find(c=>c.id===storeMasterId)?.name||'';page='storeMasterEdit';render();return;}
 if(action==='masterProducts'){masterQuery='';masterProductId=null;tab='settings';page='masterProducts';render();return;}
 if(action==='masterProductNew'){masterProductId=null;page='masterProductNew';render();return;}
 if(action==='masterProductEdit'){

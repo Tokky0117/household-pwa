@@ -413,8 +413,9 @@ assert.ok(c.window.document.body.textContent.includes('試作 v'+appVersion),
  'Settings shows the current app version without hard-coding an old release');
 const liveSettings=c.window.document.querySelector('.settings-overview');
 assert.ok(liveSettings,'Live settings uses the new section-based overview');
-assert.equal(liveSettings.querySelectorAll('.settings-overview-section').length,3,
- 'Sync, product master, and OCR alias management are distinct settings sections');
+assert.equal(liveSettings.querySelectorAll('.settings-overview-section').length,4,
+ 'Sync, product master, store master, and OCR alias management are distinct settings sections');
+assert.ok(liveSettings.querySelector('[data-act="storeMasters"]'));
 assert.equal(liveSettings.querySelectorAll('.panel').length,0,
  'Settings content is not wrapped in decorative cards');
 assert.equal(liveSettings.querySelector('#settings-sync-status')?.textContent,'未反映の操作なし',
