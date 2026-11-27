@@ -14,7 +14,7 @@ const html=readFileSync(new URL('../index.html',import.meta.url),'utf8');
 const css=readFileSync(new URL('../styles.css',import.meta.url),'utf8');
 // This must parse as a real stylesheet. Plain string matching missed a malformed
 // CSS // comment that swallowed the entire position:fixed rule on iPhone.
-const floatingCssDom=new JSDOM('<!doctype html><style>'+css+'</style><div class="ui-floating-action"><button class="secondary ui-floating-action-button">写真を確認</button></div>');
+const floatingCssDom=new JSDOM('<!doctype html><style>'+css+'</style><div class="ui-floating-action"><button class="tertiary ui-floating-action-button">写真を確認</button></div>');
 const actualFloating=floatingCssDom.window.document.querySelector('.ui-floating-action');
 const actualFloatingStyle=floatingCssDom.window.getComputedStyle(actualFloating);
 assert.equal(actualFloatingStyle.position,'fixed','browser stylesheet parser retains fixed photo button');
@@ -770,7 +770,7 @@ productUI.window.document.querySelector('[data-open="'+id+'"]').click();
 assert.ok(productUI.window.document.querySelector('[data-act="productPick"]'),
  'existing v46 price comparison exposes product registration');
 productUI.window.document.querySelector('[data-act="productPick"]').click();
-assert.ok(productUI.window.document.querySelector('.unified-registration-sheet #productCreateForm'),
+assert.ok(productUI.window.document.querySelector('.editor-sheet #productCreateForm'),
  'unified product registration is directly available');
 let productForm=productUI.window.document.getElementById('productCreateForm');
 assert.ok(productForm,'original new product form is reachable');
@@ -1122,7 +1122,7 @@ let recordStoreSheet=recordUI.window.document.querySelector('.store-picker-overl
 assert.ok(recordStoreSheet,'manual receipt opens a single shared store selection sheet');
 assert.equal(recordUI.window.document.body.style.position,'fixed',
  'Store picker locks a full-page editor while it is open');
-assert.ok(recordStoreSheet.querySelector('.store-picker-create>.secondary>span'),
+assert.ok(recordStoreSheet.querySelector('.store-picker-create>.tertiary>span'),
  'new store uses the common secondary action');
 recordStoreSheet.querySelector('[data-act="storePickerShowNew"]').click();
 recordStoreSheet.querySelector('#store-picker-new-name').value='アプリ実機試験用チェーン';
@@ -2390,7 +2390,7 @@ const masterAdd=masterUI.window.document.querySelector('[data-act="masterProduct
 const masterResults=masterUI.window.document.querySelector('#master-product-results');
 assert.ok(masterSearch?.closest('.ui-search')&&masterClear,
  'Master search is the common searchable field with clear control');
-assert.ok(masterAdd?.classList.contains('secondary'),
+assert.ok(masterAdd?.classList.contains('tertiary'),
  'Master add action is the existing shared secondary button');
 assert.ok(masterSearch.compareDocumentPosition(masterAdd)&
  masterUI.window.Node.DOCUMENT_POSITION_FOLLOWING,
@@ -3660,3 +3660,9 @@ const renamed=renameFixture.call('store.rename',renamePayload,'op-rename-store-s
 assert.equal(renamed.ok,true);assert.equal(renamed.data.entity.chain_id,renameStore.chain_id);
 assert.equal(renamed.data.entity.canonical_name,'コストコ');assert.ok(JSON.parse(renamed.data.entity.aliases).includes('COSTCO WHOLESALE'));
 assert.equal(renameFixture.call('store.rename',renamePayload,'op-rename-store-save-abcdef').data.entity.version,renamed.data.entity.version);
+
+const deletePayload={chain_id:renameStore.chain_id};
+const deletedStore=renameFixture.call('store.delete',deletePayload,'op-delete-store-save-abcdef');
+assert.equal(deletedStore.ok,true);assert.ok(deletedStore.data.entity.deleted_at);assert.equal(deletedStore.data.entity.chain_id,renameStore.chain_id);
+assert.equal(renameFixture.call('store.delete',deletePayload,'op-delete-store-save-abcdef').data.entity.version,deletedStore.data.entity.version);
+assert.ok(renameFixture.call('bootstrap').data.retail_chains.find(c=>c.chain_id===renameStore.chain_id).deleted_at);

@@ -40,6 +40,8 @@ function doPost(e) {
       return kurashiReply_({ok:true,data:kurashiSaveProduct_(user,action,payload,input.operation_id)});
     if (action === 'product.reorder')
       return kurashiReply_({ok:true,data:kurashiReorderProducts_(user,payload,input.operation_id)});
+    if (action === 'store.delete')
+      return kurashiReply_({ok:true,data:kurashiDeleteStore_(user,payload,input.operation_id)});
     if (action === 'store.rename')
       return kurashiReply_({ok:true,data:kurashiRenameStore_(user,payload,input.operation_id)});
     if (action === 'store.create')
@@ -421,6 +423,7 @@ function kurashiSheet_(name,book) {
     const extension=headers.length-first;
     const allowed=name==='household_items'?extension===1:
       name==='receipt_name_mappings'?extension===1:
+      name==='retail_chains'?first===7&&extension===1:
       false;
     if(first<0||!allowed||actual.slice(first).some(value=>value!==''))
       kurashiFail_('SCHEMA_ERROR','保存先の列構成が不正です');
@@ -1253,12 +1256,12 @@ function kurashiCreateStore_(user,payload,id){
       const name=kurashiName_(payload.name);
       const normalized=kurashiNormalize_(name);
       if(kurashiRows_('retail_chains',book).some(x=>String(x.value.household_id)===hid&&
-        kurashiNormalize_(x.value.canonical_name)===normalized))
+        !x.value.deleted_at&&(kurashiNormalize_(x.value.canonical_name)===normalized||kurashiStoreAliasList_(x.value.aliases).some(a=>kurashiNormalize_(a)===normalized))))
         kurashiFail_('DUPLICATE','同じチェーンが登録されています。選択して使用してください');
       const now=new Date().toISOString();
       plan={status:'prepared',action,
         entity:{chain_id:'chain-'+Utilities.getUuid(),household_id:hid,
-          canonical_name:name,normalized_name:normalized,aliases:'',version:1,updated_at:now},
+          canonical_name:name,normalized_name:normalized,aliases:'',version:1,updated_at:now,deleted_at:''},
         sequence_no:kurashiSequence_(hid,book)+1,updated_at:now};
       kurashiPrepareOperation_(book,hid,id,check.hash,plan);
     }
@@ -1357,7 +1360,7 @@ function kurashiCreateRecord_(user,payload,id){
         kurashiFail_('BAD_REQUEST','記録の種類を確認してください');
       const chain=kurashiRows_('retail_chains',book).filter(x=>
         String(x.value.chain_id)===payload.chain_id&&
-        String(x.value.household_id)===hid);
+        String(x.value.household_id)===hid&&!x.value.deleted_at);
       if(chain.length!==1)kurashiFail_('NOT_FOUND','チェーンが見つかりません');
       const date=kurashiRecordDate_(payload.record_date);
       if(!Array.isArray(payload.items)||!payload.items.length||payload.items.length>100)
@@ -1457,7 +1460,7 @@ function kurashiMutateRecord_(user,action,payload,id){
    }else{
     const chain=kurashiRows_('retail_chains',book).filter(x=>
      String(x.value.chain_id)===payload.chain_id&&
-     String(x.value.household_id)===hid);
+     String(x.value.household_id)===hid&&(!x.value.deleted_at||String(original.chain_id)===String(payload.chain_id)));
     if(chain.length!==1)kurashiFail_('NOT_FOUND','チェーンがありません');
     const date=kurashiRecordDate_(payload.record_date);
     if(!Array.isArray(payload.items)||!payload.items.length||payload.items.length>100)
@@ -1707,10 +1710,10 @@ function kurashiUpsertStoreAlias_(user,payload,id){
       const alias=kurashiName_(payload.raw_alias),normalized=kurashiNormalize_(alias);
       const chainRows=kurashiRows_('retail_chains',book).filter(x=>
         String(x.value.household_id)===hid);
-      const chosen=chainRows.filter(x=>String(x.value.chain_id)===chainId);
+      const chosen=chainRows.filter(x=>String(x.value.chain_id)===chainId&&!x.value.deleted_at);
       if(chosen.length!==1)
         kurashiFail_('NOT_FOUND','チェーンが見つかりません');
-      if(chainRows.some(row=>String(row.value.chain_id)!==chainId&&(
+      if(chainRows.some(row=>String(row.value.chain_id)!==chainId&&!row.value.deleted_at&&(
         kurashiNormalize_(row.value.canonical_name)===normalized||
         kurashiStoreAliasList_(row.value.aliases).some(x=>kurashiNormalize_(x)===normalized))))
         kurashiFail_('DUPLICATE','この店舗表記は別チェーンに登録されています');
@@ -1755,10 +1758,10 @@ function kurashiRenameStore_(user,payload,id){
       const name=kurashiName_(payload.name),normalized=kurashiNormalize_(name);
       const chainRows=kurashiRows_('retail_chains',book).filter(x=>
         String(x.value.household_id)===hid);
-      const chosen=chainRows.filter(x=>String(x.value.chain_id)===chainId);
+      const chosen=chainRows.filter(x=>String(x.value.chain_id)===chainId&&!x.value.deleted_at);
       if(chosen.length!==1)
         kurashiFail_('NOT_FOUND','チェーンが見つかりません');
-      if(chainRows.some(row=>String(row.value.chain_id)!==chainId&&(
+      if(chainRows.some(row=>String(row.value.chain_id)!==chainId&&!row.value.deleted_at&&(
         kurashiNormalize_(row.value.canonical_name)===normalized||
         kurashiStoreAliasList_(row.value.aliases).some(x=>kurashiNormalize_(x)===normalized))))
         kurashiFail_('DUPLICATE','この店舗表記は別チェーンに登録されています');
@@ -1787,6 +1790,31 @@ function kurashiRenameStore_(user,payload,id){
       sequence_no:plan.sequence_no
     },'retail_chains',plan.entity.chain_id);
   }finally{lock.releaseLock()}
+}
+
+// Logical deletion keeps all receipt references valid.
+function kurashiDeleteStore_(user,payload,id){
+ if(Object.keys(payload).sort().join(',')!=='chain_id')kurashiFail_('BAD_REQUEST','店舗削除の形式が不正です');
+ const hid=user.householdId,action='store.delete',lock=LockService.getScriptLock();
+ if(!lock.tryLock(20000))kurashiFail_('BUSY','保存が混み合っています');
+ try{
+  const book=kurashiBook_(),check=kurashiCheckOperation_(book,hid,id,action,payload);
+  let plan=check.found;
+  if(plan?.status==='completed')return kurashiPublic_(plan);
+  if(!plan){
+   const rows=kurashiRows_('retail_chains',book).filter(x=>String(x.value.household_id)===hid&&String(x.value.chain_id)===String(payload.chain_id));
+   if(rows.length!==1)kurashiFail_('NOT_FOUND','店舗が見つかりません');
+   const before=kurashiPublic_(rows[0].value);
+   if(before.deleted_at)return {status:'completed',action,entity:before,sequence_no:kurashiSequence_(hid,book)};
+   const now=new Date().toISOString(),next={...before,deleted_at:now,updated_at:now,version:Number(before.version)+1};
+   plan={status:'prepared',action,before,entity:next,sequence_no:kurashiSequence_(hid,book)+1,updated_at:now};
+   kurashiPrepareOperation_(book,hid,id,check.hash,plan);
+  }
+  if(!plan.before||!plan.entity||String(plan.entity.household_id)!==hid||String(plan.entity.chain_id)!==String(payload.chain_id))
+   kurashiFail_('RECOVERY_CONFLICT','店舗削除履歴が不正です');
+  kurashiRecordTransition_('retail_chains','chain_id',plan.before,plan.entity,book);
+  return kurashiCompleteOperation_(book,hid,id,check.hash,plan,{status:'completed',action,entity:plan.entity,sequence_no:plan.sequence_no},'retail_chains',plan.entity.chain_id);
+ }finally{lock.releaseLock()}
 }
 
 /** Owner-run trial cutover. Refuses any workbook not explicitly marked v98 trial.

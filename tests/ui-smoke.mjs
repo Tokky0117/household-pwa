@@ -221,9 +221,9 @@ assert.ok(masterListing.includes('class="ui-search"')&&
  masterListing.includes('data-search-clear="master-product-query"')&&
  masterListing.includes('aria-label="商品名・日用品名で検索"'),
  'Master search reuses the shared searchable input with accessible label and clear');
-assert.ok(masterListing.includes('class="secondary master-product-add-action"')&&
+assert.ok(masterListing.includes('class="tertiary master-product-add-action"')&&
  masterListing.includes('data-act="masterProductNew"'),
- 'Master add action uses common secondary button and retains its event');
+ 'Master add action uses common tertiary button and retains its event');
 assert.ok(masterListing.indexOf('id="master-product-query"')<
  masterListing.indexOf('data-act="masterProductNew"')&&
  masterListing.indexOf('data-act="masterProductNew"')<
@@ -369,8 +369,8 @@ assert.ok(css.includes('.settings-overview-section{')&&
  'Settings uses sections and shared field/action tokens instead of one-off colored cards');
 
 assert.ok(ui.pickerView().includes('id="new-product-name"')&&ui.pickerView().includes('id="productCreateForm"'),'Product registration uses a single name field');
-assert.ok(source.includes("variant:'item-editor-sheet'"),'Item add/edit uses shared sheet height variant');
-assert.ok(css.includes('.half-sheet.item-editor-sheet{')&&css.includes('height:min(540px'),'Item edit sheet accommodates five choices');
+assert.ok(source.includes("UI.editorSheet({title,formId:'itemForm'"),'Item add/edit uses shared editor');
+assert.ok(css.includes('.half-sheet.editor-sheet{')&&source.includes('syncEditorViewport'),'Shared viewport-aware editor geometry');
 assert.ok(css.includes('.formfield .ui-search input')&&css.includes('background:transparent'),'Form search has shared internal styling');
 assert.ok(!css.includes('.searchbar'),'Obsolete list-specific search style removed');
 
@@ -492,7 +492,7 @@ assert.ok(view.includes('298円'),'Original purchase price remains visible for i
 ui.setUnit('mL');view=ui.priceCompareView();
 assert.ok(css.includes('.shop-compare-dock{')&&css.includes('position:fixed'),'Dock remains fixed');
 const picker=ui.pickerView();
-assert.ok(picker.includes('class="half-sheet product-picker-modal unified-registration-sheet"')&&picker.includes('id="new-product-name"'));
+assert.ok(picker.includes('class="half-sheet editor-sheet"')&&picker.includes('id="new-product-name"'));
 assert.ok(picker.includes('id="productCreateForm"')&&!picker.includes('data-act="productCreate"'),'No secondary creation step');
 assert.ok(ui.registrationCandidates('牛乳').some(p=>p.name==='おいしい牛乳'));
 assert.ok(ui.registrationCandidates('ｵｲｼｲｷﾞｭｳﾆｭｳ').some(p=>p.name==='おいしい牛乳'));
@@ -612,9 +612,7 @@ assert.ok(unnamedReceiptDetail.includes('明細名なし')&&
  unnamedReceiptDetail.includes('数量 2'),
  'Unnamed and unmatched saved receipt line remains accessible');
 
-assert.ok(css.includes('background: #eceef0;')&&
- ruleBody('.secondary').some(x=>x.includes('font-weight: 600;')),
- 'Secondary retains the shared gray fill and uses medium-weight action text');
+assert.ok(!css.includes('.secondary {')&&!source.includes("variant:'secondary'"),'Secondary variant retired');
 assert.ok(css.includes('.tertiary{\n background:transparent;'),'Tertiary is transparent');
 assert.ok(!source.includes('secondary confirm-caution')&&!source.includes('class="secondary danger"'),'Shared dialog no longer uses per-danger colors');
 assert.ok(source.includes('class="dialog-action" data-dialog='),'Dialog choices share the same flat interaction surface');
@@ -625,7 +623,7 @@ assert.ok(css.includes('.ui-text-action{')&&
  'Text actions share the 14px/600 action type token');
 
 assert.ok(source.includes('function getRecordSummary(')&&source.includes('UI.recordRow(getRecordSummary(r))'),'History summary and shared row renderer');
-assert.ok(css.includes('.record-entry-actions{display:grid;grid-template-columns:repeat(3'),'Receipt registration has three equal columns');
+assert.ok(css.includes('.record-entry-actions{display:grid;grid-template-columns:repeat(2'),'Record registration has two equal columns');
 assert.ok(!ui.detailHomeView().includes('家計簿'),'retired budget tab stays absent');
 const cls=(id)=>{const c=new Set();return {dataset:{productId:id},classList:{toggle(k,b){b?c.add(k):c.delete(k)}},querySelectorAll(){return [{tabIndex:-1}]},state:c}};
 const a=cls('p-milk-1'),b=cls('p-milk-2');mockSwipeRows=[a,b];
@@ -647,8 +645,7 @@ assert.ok(source.includes('guardSwipeReleaseClick();')&&
  source.includes("app.addEventListener('pointerdown',()=>{swipeClickGuard=null;},{capture:true})")&&
  source.includes("app.addEventListener('touchstart',()=>{swipeClickGuard=null;},{capture:true,passive:true})"),
  'Swipe guards synthesized click without blocking the next physical tap');
-assert.ok(css.includes('.secondary {')&&css.includes('background: #eceef0;'),
- 'Shared secondary buttons use the softened grey');
+assert.ok(source.includes('UI.recordEntryButton(x)'),'Record entry buttons have dedicated common component');
 assert.ok(css.includes('.swipe-item[data-item-id].swipe-open .swipe-front::after')&&
  css.includes('background:var(--line);opacity:.40;pointer-events:none')&&
  css.includes('.swipe-item[data-item-id].swipe-open .swipe-front > *{pointer-events:none}'),
@@ -952,7 +949,7 @@ assert.ok(source.includes("function formSaveFeedback(")&&
 assert.equal((photoReview.match(/data-act="scanOpenCurrentPhoto"/g)||[]).length,1,
  'One fixed photo action on the review screen');
 assert.ok(photoReview.includes('class="ui-floating-action" data-ui-floating-action')&&
- photoReview.includes('class="secondary ui-floating-action-button"')&&
+ photoReview.includes('class="tertiary ui-floating-action-button"')&&
  photoReview.includes('data-ui-floating-avoid="#scanConfirmForm button[type=&quot;submit&quot;]"'),
  'Floating photo trigger reuses the shared secondary button');
 assert.ok(!photoReview.includes('選択した写真')&&
@@ -970,7 +967,7 @@ ui.setScanDraft(null);
 const beforeScan=ui.receiptScanView();
 assert.ok(beforeScan.includes('>選択した写真</h2>')&&
  beforeScan.includes('data-act="scanRemovePhoto"')&&
- beforeScan.includes('class="secondary scan-photo-add"')&&
+ beforeScan.includes('class="tertiary scan-photo-add"')&&
  beforeScan.includes('data-act="scanStart"')&&
  beforeScan.includes('写真を読み取る')&&
  !beforeScan.includes('scanTogglePhotos')&&
@@ -1165,7 +1162,7 @@ assert.ok(source.includes("function syncSheetScrollLock()")&&
 const newStoreSheet=source.slice(source.indexOf("function storePickerBody()"),source.indexOf("function storePickerView()"));
 assert.ok(newStoreSheet.includes("UI.formField({id:'store-picker-new-name'")&&
  newStoreSheet.includes("UI.button({label:'この店舗名で決定'")&&
- newStoreSheet.includes("label:'新しい店舗を追加',variant:'secondary'")&&
+ newStoreSheet.includes("label:'新しい店舗を追加',variant:'tertiary'")&&
  css.includes('#storePickerNewForm>.formfield>input{width:100%;min-width:0;max-width:100%}')&&
  !css.includes('.store-picker-results>.ui-menu{'),
  'new-store input is full-width; actions and selectable rows use common UI rather than menu overrides');

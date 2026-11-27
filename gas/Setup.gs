@@ -9,7 +9,7 @@ const KURASHI_NEW_SCHEMA = {
   households: ['household_id', 'display_name', 'version', 'updated_at'],
   users: ['user_id', 'household_id', 'display_name', 'auth_subject'],
   categories: ['category_id', 'name', 'fixed_order'],
-  retail_chains: ['chain_id', 'household_id', 'canonical_name', 'normalized_name', 'aliases', 'version', 'updated_at'],
+  retail_chains: ['chain_id', 'household_id', 'canonical_name', 'normalized_name', 'aliases', 'version', 'updated_at', 'deleted_at'],
   household_items: ['household_item_id', 'household_id', 'category_id', 'name', 'normalized_name', 'in_stock', 'sort_order', 'is_hidden', 'version', 'created_at', 'updated_at', 'deleted_at', 'sub_name'],
   products: ['product_id', 'household_id', 'household_item_id', 'name', 'normalized_name', 'package_quantity', 'package_unit', 'household_item_order', 'version', 'created_at', 'updated_at', 'deleted_at'],
   receipt_name_mappings: ['receipt_name_id', 'auto_match_product_id', 'chain_id', 'normalized_receipt_name', 'version', 'updated_at', 'ocr_name'],
@@ -71,7 +71,8 @@ function setupNewWorkbook() {
         const extension=headers.length-first;
         const additive=first>=0&&
           (name==='household_items'&&extension===1||
-           name==='receipt_name_mappings'&&extension===1)&&
+           name==='receipt_name_mappings'&&extension===1||
+           name==='retail_chains'&&first===7&&extension===1)&&
           existing.slice(first).every(value=>value==='');
         if(!additive)throw new Error(name+': シート列が規定と一致しません。');
         for(let i=first;i<headers.length;i++)
