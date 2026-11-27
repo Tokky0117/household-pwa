@@ -1792,7 +1792,7 @@ function kurashiRenameStore_(user,payload,id){
   }finally{lock.releaseLock()}
 }
 
-// Logical deletion keeps all receipt references valid.
+// Logical deletion keeps all receipt references valid, including historical edits.
 function kurashiDeleteStore_(user,payload,id){
  if(Object.keys(payload).sort().join(',')!=='chain_id')kurashiFail_('BAD_REQUEST','店舗削除の形式が不正です');
  const hid=user.householdId,action='store.delete',lock=LockService.getScriptLock();

@@ -732,7 +732,7 @@
    makeProductOperation(action,payload,doc):makeOperation(action,payload,doc));
  }
  // A new chain and its record share one atomic IndexedDB transaction.
- function makeRecordDraft(input,doc,chainId){
+ function makeRecordDraft(input,doc,chainId,retainedChainId=null){
   const snap=project(doc),kind=input.record_type,date=input.record_date;
   if(!['receipt','price_tag'].includes(kind)||
      typeof date!=='string'||!/^\d{4}-\d{2}-\d{2}$/.test(date))
@@ -742,7 +742,7 @@
   if(yy<2000||yy>2100||dt.getUTCFullYear()!==yy||
      dt.getUTCMonth()+1!==mm||dt.getUTCDate()!==dd)
    throw Error('日付を確認してください');
-  if(!snap.retail_chains.some(x=>x.chain_id===chainId))
+  if(!snap.retail_chains.some(x=>x.chain_id===chainId&&(!x.deleted_at||chainId===retainedChainId)))
    throw Error('チェーンを確認してください');
   const raw=input.items;
   if(!Array.isArray(raw)||!raw.length||raw.length>100)
@@ -786,6 +786,7 @@
   await modify(doc=>{
    const snap=project(doc),store=snap?.retail_chains.find(x=>x.chain_id===chainId);
    if(!store)throw Error('登録先のチェーンが見つかりません');
+   if(store.deleted_at)return doc;
    if(normalize(store.canonical_name)===normalize(alias))return doc;
    const getAliases=value=>{
     try{const rows=JSON.parse(value||'[]');if(Array.isArray(rows))return rows}
@@ -794,7 +795,7 @@
    };
    const current=getAliases(store.aliases);
    if(current.some(x=>normalize(x)===normalize(alias)))return doc;
-   if(snap.retail_chains.some(x=>x.chain_id!==chainId&&(
+   if(snap.retail_chains.some(x=>!x.deleted_at&&x.chain_id!==chainId&&(
       normalize(x.canonical_name)===normalize(alias)||
       getAliases(x.aliases).some(v=>normalize(v)===normalize(alias)))))
     throw Error('別のチェーンが同じ店舗名を使っています');
@@ -870,7 +871,7 @@
     throw Error('同期中の記録はまだ編集できません');
    if(input.chain_id==='__new__')
     throw Error('編集時は既存チェーンを選択してください');
-   const create=makeRecordDraft({...input,record_type:record.record_type},doc,input.chain_id);
+   const create=makeRecordDraft({...input,record_type:record.record_type},doc,input.chain_id,record.chain_id);
    return {...create,kind:'record-update',targetId:record.record_id};
   });
  }

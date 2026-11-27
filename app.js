@@ -1051,6 +1051,7 @@ function scanFormView(){
   </div>
   ${UI.formField({id:'scan-date',name:'date',label:isShelf?'値札確認日':'購入日',control:'date',
    value:scanDraft.date,required:true,hint:true,fieldClass:'scan-date-field'})}
+  ${scanDraft.dateFallback?'<p class="hint">購入日を読み取れなかったため、読み取り日を入力しています。</p>':''}
   </section>
   ${UI.sectionHeading({title:isShelf?'価格情報':'購入明細',subtitle:remainingCount+'件'+(unmatchedCount?'・未照合'+unmatchedCount+'件':'')})}
   ${scanDraft.items.map((item,i)=>`<div class="panel scan-review-item${item.pendingDeletion?' is-pending-delete':''}">
@@ -1316,12 +1317,12 @@ async function runReceiptScan(){
   if(!allItems.length)throw Error('商品明細を抽出できませんでした。別の写真で読み取りを試してください。');
   const raw=observations.join('\n');
   if(new Set(receiptTotals).size>1){total=null;scanWarnings.add('conflicting_receipt_totals');}
-  const date=scanDate(raw)||daysFromDate(new Date());
+  const printedDate=scanDate(raw),date=printedDate||daysFromDate(new Date());
   const storeMatch=scanStoreHeaderMatch(raw.slice(0,800));
   const chain=storeMatch.chain;
   reviewEvidence.storeHeader={status:storeMatch.status,
    headerLatinCandidates:storeMatch.headerLatinCandidates};
-  scanDraft={items:allItems,total,printedCount,date,source:'ocr',recordType:'receipt',
+  scanDraft={items:allItems,total,printedCount,date,dateFallback:!printedDate,source:'ocr',recordType:'receipt',
    taxBasis:taxModes.every(t=>t==='excluded')?'excluded':taxModes.every(t=>t==='included')?'included':'unknown',
    taxAllocationStatus:allocationModes.every(t=>t==='allocated')?'allocated':'unresolved',
    taxDerivedFromTotals:taxInferredModes.some(Boolean),

@@ -1123,7 +1123,7 @@ assert.ok(recordStoreSheet,'manual receipt opens a single shared store selection
 assert.equal(recordUI.window.document.body.style.position,'fixed',
  'Store picker locks a full-page editor while it is open');
 assert.ok(recordStoreSheet.querySelector('.store-picker-create>.tertiary>span'),
- 'new store uses the common secondary action');
+ 'new store uses the common tertiary action');
 recordStoreSheet.querySelector('[data-act="storePickerShowNew"]').click();
 recordStoreSheet.querySelector('#store-picker-new-name').value='アプリ実機試験用チェーン';
 recordStoreSheet.querySelector('#storePickerNewForm').dispatchEvent(
@@ -2391,7 +2391,7 @@ const masterResults=masterUI.window.document.querySelector('#master-product-resu
 assert.ok(masterSearch?.closest('.ui-search')&&masterClear,
  'Master search is the common searchable field with clear control');
 assert.ok(masterAdd?.classList.contains('tertiary'),
- 'Master add action is the existing shared secondary button');
+ 'Master add action uses the shared tertiary button');
 assert.ok(masterSearch.compareDocumentPosition(masterAdd)&
  masterUI.window.Node.DOCUMENT_POSITION_FOLLOWING,
  'Master add action remains above the scrollable product list');
@@ -3666,3 +3666,5 @@ const deletedStore=renameFixture.call('store.delete',deletePayload,'op-delete-st
 assert.equal(deletedStore.ok,true);assert.ok(deletedStore.data.entity.deleted_at);assert.equal(deletedStore.data.entity.chain_id,renameStore.chain_id);
 assert.equal(renameFixture.call('store.delete',deletePayload,'op-delete-store-save-abcdef').data.entity.version,deletedStore.data.entity.version);
 assert.ok(renameFixture.call('bootstrap').data.retail_chains.find(c=>c.chain_id===renameStore.chain_id).deleted_at);
+
+assert.equal(renameFixture.call('record.create',{record_type:'receipt',chain_id:renameStore.chain_id,record_date:'2026-11-27',items:[{raw_name:'テスト',quantity:1,line_total_tax_included:100}]},'op-deleted-store-record-abcdef').ok,false,'Deleted store cannot be used in a new receipt');

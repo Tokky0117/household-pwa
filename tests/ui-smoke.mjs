@@ -206,7 +206,7 @@ ui.setItems(preservedItems);
 assert.ok(ui.listView().includes('class="ui-search"')&&ui.listView().includes('id="search"'),'Daily list uses shared search component');
 assert.ok(source.includes('iconButton({label,action,iconHtml,title=')&&
  source.includes("const add=UI.iconButton(")&&
- source.includes("registration.map(x=>UI.button("),
+ source.includes("registration.map(x=>UI.recordEntryButton("),
  'Daily add action and receipt entry actions use shared builders');
 assert.ok(!ui.listView().includes('data-act="copyList"')&&
  ui.listView().includes('data-act="add" aria-label="日用品を追加"')&&
@@ -951,7 +951,7 @@ assert.equal((photoReview.match(/data-act="scanOpenCurrentPhoto"/g)||[]).length,
 assert.ok(photoReview.includes('class="ui-floating-action" data-ui-floating-action')&&
  photoReview.includes('class="tertiary ui-floating-action-button"')&&
  photoReview.includes('data-ui-floating-avoid="#scanConfirmForm button[type=&quot;submit&quot;]"'),
- 'Floating photo trigger reuses the shared secondary button');
+ 'Floating photo trigger retains its dedicated surface on a tertiary action');
 assert.ok(!photoReview.includes('選択した写真')&&
  !photoReview.includes('class="scan-photo-section"')&&
  !photoReview.includes('data-act="scanOpenPhoto"'),
@@ -2184,3 +2184,5 @@ assert.deepEqual(Array.from(ui.listPriceText(inventoryTest)),['価格記録な�
 itemProduct.name='春キャベツ';
 assert.deepEqual(Array.from(ui.listPriceText(inventoryTest)),['春キャベツ']);
 ui.catalogue().products.pop();
+
+assert.ok(ui.detailHomeView().includes('値札読取')&&ui.detailHomeView().includes('準備中'),'Price tag reader is explicitly disabled');
