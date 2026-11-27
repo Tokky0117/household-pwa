@@ -27,6 +27,7 @@ function fixture({hasBranchData=false,prepared=false,corrupt=false,mixed=false,e
   db.set(legacy,table);
  }
  if(sampleData){
+  db.get('stores').push(['chain-1','home','店舗A','店舗a','[]',1,'date']);
   db.get('products').push(['product-1','home','item-1','商品A','商品a',120,'g',1,2,'date','date','']);
   db.get('product_aliases').push(['alias-1','product-1','chain-1','foo',1,'date','OCR品名']);
   db.get('record_items').push(['line-1','receipt-1',1,'product-1',2,300,'now','now',1,'','alias-1','','商品A','existing']);
@@ -76,6 +77,7 @@ function fixture({hasBranchData=false,prepared=false,corrupt=false,mixed=false,e
   stats:()=>({writes,renames,deletions}),sheetDeletions:()=>sheetDeletions};
 }
 const clean=fixture({sampleData:true});
+const originalStore=clean.db.get('stores')[1].slice();
 const originalProduct=clean.db.get('products')[1].slice();
 const originalAlias=clean.db.get('product_aliases')[1].slice();
 const originalLine=clean.db.get('record_items')[1].slice();
@@ -93,14 +95,16 @@ assert.ok(api.includes('function kurashiApplyTrialNamingCutoverForCi(approval)')
  'CI cutover needs explicit approval, verified workbook properties and backup');
 assert.equal(run(clean.book),true);
 assert.equal(clean.db.size,11);
+assert.deepEqual(clean.db.get('retail_chains')[1],originalStore,'existing store ID and values remain intact');
+assert.equal(clean.db.get('retail_chains')[0].at(-1),'deleted_at','logical deletion column added');
 assert.deepEqual(clean.db.get('products')[1],originalProduct,'product values remain unchanged');
 assert.deepEqual(clean.db.get('receipt_name_mappings')[1],originalAlias,'OCR dictionary values remain unchanged');
 assert.deepEqual(clean.db.get('record_items')[1],originalLine,'receipt values remain unchanged');
 for(const [name,headers] of Object.entries(current))
  assert.deepEqual(clean.db.get(name)?.[0],headers,name);
-assert.deepEqual(clean.stats(),{writes:5,renames:3,deletions:1});
+assert.deepEqual(clean.stats(),{writes:6,renames:3,deletions:1});
 assert.equal(run(clean.book),false,'repeat migration is idempotent');
-assert.deepEqual(clean.stats(),{writes:5,renames:3,deletions:1});
+assert.deepEqual(clean.stats(),{writes:6,renames:3,deletions:1});
 const mixed=fixture({mixed:true});
 assert.equal(run(mixed.book),true,'partially renamed naming can resume safely');
 for(const [name,headers] of Object.entries(current))

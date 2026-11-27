@@ -10,8 +10,14 @@ const oldSpec=vm.runInContext('KURASHI_PROD_V94_OLD',ctx);
 const targetSpec=vm.runInContext('KURASHI_PROD_V94_NEW',ctx);
 // No write API names in the converter. This is a pure, non-deployable artifact.
 assert.doesNotMatch(converter,/SpreadsheetApp|DriveApp|PropertiesService|LockService|\.setValues\s*\(|\.deleteSheet\s*\(/);
-assert.equal(JSON.stringify(newSpec),JSON.stringify(targetSpec),
-  'Converter must match the final v94 GAS Setup schema exactly');
+// v94 converter remains frozen to the original production schema. v99 adds
+// a trailing store deletion field only in the trial schema; do not change
+// the historical converter or production cutover artifacts.
+const trialExtension=Array.from(newSpec.retail_chains).pop();
+assert.equal(trialExtension,'deleted_at');
+const historicalSpec={...newSpec,retail_chains:Array.from(newSpec.retail_chains).slice(0,-1)};
+assert.equal(JSON.stringify(historicalSpec),JSON.stringify(targetSpec),
+  'Historical v94 converter matches the schema before the trial-only store deletion field');
 const arr=x=>Array.from(x);
 function row(table,data){return oldSpec[table].map(key=>data[key]??'');}
 function scenario(){
