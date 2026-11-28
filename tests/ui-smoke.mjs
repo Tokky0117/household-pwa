@@ -816,7 +816,7 @@ assert.ok(source.includes('item.canonicalName||item.productSuggestion?.newName||
  'canonical candidate only initializes editable master registration field');
 assert.equal(parsed.items[0].taxIncludedAmount,2638);
 assert.match(imports.makeChatGptReceiptPrompt('{"row":1,"name":"リンド一ル"}'),
- /参考OCR結果/,'prompt includes structured OCR reference');
+ /参考読み取り結果/,'prompt includes structured OCR reference');
 assert.match(imports.makeChatGptReceiptPrompt(),/itemsは必ず/);
 assert.throws(()=>imports.parseChatGptReceiptJson('{"items":"impossible"}'),
  /ITEMS_ARRAY_REQUIRED/,'unsafe repairs fail explicitly');
@@ -862,12 +862,12 @@ assert.equal(merged.items[1].amount,2380);
 assert.equal(merged.items[1].quantity,1);
 assert.throws(()=>ui.applyChatGptOcrAssistance(rowOcr,{
  items:[{...suggested.items[0],ocrName:'別のOCR名'},suggested.items[1]]
-}),/OCR行IDまたは原表記/,'refuse an altered OCR spelling');
+}),/読み取り行IDまたは原表記/,'refuse an altered OCR spelling');
 assert.throws(()=>imports.parseChatGptOcrAssistJson(JSON.stringify({
  version:'kurashi-receipt-assist-1',
  items:[{rowId:'row-1',ocrName:'TORRIDEN SERUM',nameCandidate:'テスト',quantity:4}]
 })),/INVALID_OCR_ASSIST_ITEM/,'assistant cannot change quantity');
-assert.match(imports.makeChatGptOcrAssistPrompt(ocrRef),/参考OCR結果/,
+assert.match(imports.makeChatGptOcrAssistPrompt(ocrRef),/参考読み取り結果/,
  'OCR-bound prompt includes current OCR rows');
 // Clothing barcodes are valid OCR names, not automatically private financial data.
 const apparel={version:'kurashi-receipt-assist-1',items:[
@@ -891,8 +891,10 @@ assert.throws(()=>imports.parseChatGptOcrAssistJson(JSON.stringify({
  {rowId:'row-1',ocrName:'2000211787545',nameCandidate:'会員番号を商品名として保存'}
  ]})),/NAME_OR_STORE_UNSAFE/,'sensitive personal patterns remain prohibited in candidate names');
 const newPrompt=imports.makeChatGptOcrAssistPrompt(ocrRef);
+assert.doesNotMatch(newPrompt,/OCR/,'generated user-facing prompt does not use OCR terminology');
+assert.match(newPrompt,/以下をコピーしてアプリに貼り付けてください。/);
 assert.match(newPrompt,/独立した検算/);
-assert.match(newPrompt,/JSONを停止し/);
+assert.match(newPrompt,/定型文の出力を停止し/);
 assert.match(newPrompt,/何番目の商品/);
 assert.match(newPrompt,/ユーザー確認後/);
 assert.match(newPrompt,/商品別税込額が印字されない/);
@@ -1107,14 +1109,14 @@ assert.ok(source.includes("function scanAssistView()")&&
  source.includes("UI.statusMessage({text:scanAssistMessage,kind:'success'})"),
  'ChatGPT analysis status remains next to the receipt reading action');
 const existingHtml=ui.scanExistingProductView();
-assert.ok(existingHtml.includes('scan-existing-search')&&
- !existingHtml.includes('scan-existing-group')&&
- existingHtml.includes('日用品：牛乳'),
- 'existing-product picker searches products and shows linked household item');
-assert.ok(existingHtml.includes('class="ui-search"')&&
- existingHtml.includes('data-search-clear="scan-existing-search"')&&
- !existingHtml.includes('登録先の日用品を変更（任意）'),
- 'Receipt product selection searches products without an unrelated item reassignment');
+assert.ok(existingHtml.includes('id="scan-product-name"')&&
+ existingHtml.includes('id="scan-existing-results"')&&existingHtml.includes('日用品：牛乳'),
+ 'shared full-page product editor shows matching existing products and assigned household');
+assert.ok(existingHtml.includes('product-registration-page')&&
+ existingHtml.includes('id="scanProductForm"')&&
+ existingHtml.indexOf('id="scan-product-name"')<existingHtml.indexOf('id="scan-existing-results"')&&
+ existingHtml.indexOf('id="scan-existing-results"')<existingHtml.indexOf('id="scan-product-quantity"'),
+ 'candidate rows appear directly below the name and before capacity in the unified editor');
 assert.ok(!newProductHtml.includes('scan-product-group-results')&&
  source.includes("control==='date'")&&source.includes("control==='search'"),
  'Receipt product registration defers item linking and uses the common form');
@@ -1398,14 +1400,16 @@ ui.setScanDraft({source:'ocr',chainId:'c-a',total:116,
  items:[{name:doubleOcrError,ocrRawName:doubleOcrError,
   quantity:1,amount:116,productId:'',issues:[]}]});
 ui.setScanProductRow(0);
+ui.setScanExistingQuery(doubleOcrError);
 const ocrCandidatePicker=ui.scanExistingProductView();
-assert.ok(ocrCandidatePicker.includes('表記が近い登録商品（確認して選択）'),
+assert.ok(ocrCandidatePicker.includes('登録済みの商品候補'),
  'OCR typo candidates are offered in the existing product picker');
 assert.ok(ocrCandidatePicker.includes('data-product-id="ocr-candidate-real"'),
  'confirmed selection is available without modifying the OCR printed name');
 assert.equal(ui.getScanDraft().items[0].ocrRawName,doubleOcrError);
 assert.equal(ui.getScanDraft().items[0].productId,'',
  'showing candidates cannot choose one before the user taps it');
+ui.setScanExistingQuery('');
 ui.catalogue().products=beforeOcrCandidates;
 ui.setScanDraft(null);
 
@@ -1799,7 +1803,7 @@ assert.equal((photoRebuildReview.match(/name="name-\d+"/g)||[]).length,5,
  'all five image-derived line names are editable');
 assert.equal(imports.parseChatGptOcrResponse(suggestionJson).version,'kurashi-receipt-assist-1',
  'old OCR name-only corrections remain compatible');
-assert.match(imports.makeChatGptOcrAssistPrompt(ocrRef),/2種類のJSON/);
+assert.match(imports.makeChatGptOcrAssistPrompt(ocrRef),/2種類の解析形式/);
 assert.match(imports.makeChatGptOcrAssistPrompt(ocrRef),/別レシートの混入/);
 assert.throws(()=>imports.parseChatGptOcrResponse(JSON.stringify({
  ...photoRebuild,items:[{name:'2000211787545',quantity:1,amount:2990}]
@@ -1990,7 +1994,7 @@ assert.equal(review.buildReviewModel(p4Assist).validation.checks.total,'mismatch
 assert.equal(review.buildReviewModel(p4Assist).unresolvedRows.length,1);
 assert.throws(()=>review.applyAssistance(p4Draft,{
  items:[{rowId:'ocr-p4',ocrName:'改変したOCR原文',nameCandidate:'候補'}]},{
- findProduct:()=>'',isUnconfirmedBarcodeLine:()=>false}),/OCR行IDまたは原表記/);
+ findProduct:()=>'',isUnconfirmedBarcodeLine:()=>false}),/読み取り行IDまたは原表記/);
 const retrySource=review.fromOcrItem({
  name:'I',grossAmount:148,netAmount:133,taxIncludedAmount:144,
  quantity:1,quantitySource:'default',issues:[],ocrRetryName:'Iリキ'
@@ -2044,17 +2048,14 @@ ui.setScanProductRow(0);
 const unifiedPicker=ui.scanExistingProductView();
 assert.ok(unifiedPicker.includes('data-act="scanUnlinkProduct"'),
  'a wrongly matched registered product can be returned to an unlinked receipt line');
-assert.ok(unifiedPicker.indexOf('data-act="scanExistingToNew"')<
- unifiedPicker.indexOf('id="scan-existing-results"'),
- 'new product creation is reachable above the potentially long existing-products list');
-assert.ok(unifiedPicker.includes('登録商品を検索')&&
- !unifiedPicker.includes('登録商品・日用品名で探す')&&
- unifiedPicker.includes('data-act="scanExistingToNew"')&&
- unifiedPicker.includes('class="ui-text-action"')&&
- !unifiedPicker.includes('class="secondary" type="button" data-act="scanExistingToNew"'),
- 'product search is named correctly and nonprimary navigation uses a shared text action');
-assert.ok(!unifiedPicker.includes('登録先の日用品を変更（任意）'),
- 'existing product selection no longer includes changing product-item ownership');
+assert.ok(unifiedPicker.includes('id="scanProductForm"')&&
+ unifiedPicker.includes('id="scan-product-name"')&&
+ unifiedPicker.includes('新規登録する')&&
+ !unifiedPicker.includes('data-act="scanExistingToNew"'),
+ 'one product editor supports both choosing an existing product and creating a new one');
+assert.ok(unifiedPicker.includes('日用品に設定（任意）')&&
+ unifiedPicker.indexOf('id="scan-product-name"')<unifiedPicker.indexOf('id="scan-existing-results"'),
+ 'household setup and candidate results are in the same product editor');
 const originalCatalogue=ui.catalogue().products.slice();
 ui.catalogue().products.push({id:'receipt-search-test',name:'専用実験商品',
  packageQuantity:null,packageUnit:null,householdItemId:'demo-1',householdItemOrder:9,aliases:[]});

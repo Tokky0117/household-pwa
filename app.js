@@ -1496,7 +1496,8 @@ function promptStockIds(ids){
  if(targets.length)dialog={title:'在庫を更新しますか？',message:'以下の日用品を在庫ありにします。\n'+targets.map(id=>itemLabel(items.find(i=>i.id===id))).join('\n'),buttons:[{id:'declineReceiptStock',label:'いいえ'},{id:'confirmReceiptStock',label:'はい',primary:true}],pending:{stockItemIds:targets}};
 }
 function promptStockForSavedLine(line,groupId){
- if(groupId&&allPreviewRecords().some(r=>r.record_id===line.record_id&&r.record_type==='receipt'&&!r.deleted_at))promptStockIds([groupId]);
+ const recordId=window.KurashiLive.resolveRecordId(line.record_id);
+ if(groupId&&allPreviewRecords().some(r=>window.KurashiLive.resolveRecordId(r.record_id)===recordId&&r.record_type==='receipt'&&!r.deleted_at))promptStockIds([groupId]);
 }
 // Search tolerates kana/width/punctuation variants and small errors, without changing automatic receipt matching.
 function nameSearchRank(raw,queryValue){
@@ -1703,7 +1704,8 @@ function productRegistrationFields({name='',nameId,quantityId,unitId,product=nul
 }
 function candidateRows(raw,action,{all=false,exclude=null,choice=false}={}){
  const pool=norm(raw)?registrationCandidates(raw):all?catalogue.products.slice().sort((a,b)=>a.name.localeCompare(b.name,'ja')):[];
- return pool.filter(p=>p.id!==exclude).map(p=>UI.choiceRow({title:productTitle(p),subtitle:productHouseholdStatus(p),action,productId:p.id,className:choice?'scan-existing-option':''})).join('');
+ const rows=pool.filter(p=>p.id!==exclude).map(p=>UI.choiceRow({title:productTitle(p),subtitle:productHouseholdStatus(p),action,productId:p.id,className:choice?'scan-existing-option':''})).join('');
+ return rows?'<h3 class="registration-candidate-heading">登録済みの商品候補</h3>'+rows:'';
 }
 function candidateSection(id,rows){
  return '<div id="'+esc(id)+'" class="registration-candidates">'+rows+'</div>';
@@ -1800,7 +1802,7 @@ function chooseMasterGroup(groupId){
  if(!product)return;
  const next=groupId?masterGroupLabel(groupId):'設定しない';
  dialog={title:groupId?'日用品への設定を変更しますか？':'日用品への設定を解除しますか？',
-  message:'「'+product.name+'」の紐付けを「'+next+'」に変更します。価格情報の表示先も変わります。商品マスタと過去の購入明細は残ります。',
+  message:'「'+product.name+'」の設定先を「'+next+'」に変更します。価格情報の表示先も変わります。商品マスタと過去の購入明細は残ります。',
   buttons:[{id:'cancel',label:'キャンセル'},
    {id:'confirmMasterGroupChange',label:groupId?'変更する':'解除する',primary:true}],
   pending:{productId:product.id,groupId,receiptContext:!!context.productId}};

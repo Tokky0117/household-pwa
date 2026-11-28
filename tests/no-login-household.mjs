@@ -1698,13 +1698,17 @@ await waitFor(()=>bulkUI.window.KurashiLive.state().queued===0&&
  'product creation and saved item link reach Sheets using a durable queue');
 const individualProduct=temp.call('bootstrap').data.products.find(p=>p.name==='レシート個別登録テスト固有');
 assert.equal(individualProduct.household_item_id,linkedHousehold.household_item_id,'receipt registration saves optional household linkage');
+const stockPrompt=bulkUI.window.document.querySelector('[data-dialog="declineReceiptStock"]');
+if(stockPrompt)stockPrompt.click();
+assert.equal(bulkUI.window.document.querySelector('[data-act="receiptHouseholdLink"]'),null,'household setup is no longer a separate button on a receipt line');
+bulkUI.window.document.querySelector('[data-act="recordProductOpen"]').click();
 const receiptLinkButton=bulkUI.window.document.querySelector('[data-act="receiptHouseholdLink"][data-product-id="'+individualProduct.product_id+'"]');
 assert.ok(receiptLinkButton);
 receiptLinkButton.click();
 bulkUI.window.document.querySelector('.master-group-picker-overlay [data-ui-choice=""]').click();
 bulkUI.window.document.querySelector('[data-dialog="confirmMasterGroupChange"]').click();
 await waitFor(()=>bulkUI.window.KurashiLive.state().queued===0&&temp.call('bootstrap').data.products.find(x=>x.product_id===individualProduct.product_id).household_item_id==='', 'saved receipt can unlink household without changing stock');
-bulkUI.window.document.querySelector('[data-act="recordProductOpen"]').click();
+assert.ok(bulkUI.window.document.querySelector('#recordProductCreateForm'),'household setting returns to the product editor');
 bulkUI.window.document.querySelector('[data-act="recordProductUnlink"]').click();
 await waitFor(()=>bulkUI.window.KurashiLive.state().queued===0&&
  temp.call('bootstrap').data.record_items.some(x=>aliasText(temp,x)==='レシート個別登録テスト固有'&&!x.linked_product_id),
@@ -2278,6 +2282,7 @@ await waitFor(()=>!!historySession.window.document.querySelector('[data-act="rec
 assert.match(historySession.window.document.body.textContent,/商品未設定/,
  'near-name candidates are not automatically confirmed');
 historySession.window.document.querySelector('[data-act="recordProductOpen"]').click();
+{const x=historySession.window.document.getElementById('record-product-name');x.value='';x.dispatchEvent(new historySession.window.Event('input',{bubbles:true}));}
 const historyOption=historySession.window.document.querySelector(
  '[data-act="recordProductChoose"][data-product-id="'+historyId+'"]');
 assert.ok(historyOption,'manual selection can resolve a near-name spelling');
@@ -2354,6 +2359,7 @@ await waitFor(()=>!!conflictSession.window.document.querySelector('[data-act="re
  'unknown retailer receipt can be saved without assigning an ambiguous product');
 assert.match(conflictSession.window.document.body.textContent,/商品未設定/);
 conflictSession.window.document.querySelector('[data-act="recordProductOpen"]').click();
+{const x=conflictSession.window.document.getElementById('record-product-name');x.value='';x.dispatchEvent(new conflictSession.window.Event('input',{bubbles:true}));}
 assert.ok(conflictSession.window.document.querySelectorAll(
  '[data-act="recordProductChoose"]').length>=2,
  'ambiguous OCR spellings allow explicit product selection');
@@ -3428,7 +3434,7 @@ await waitFor(()=>!!heldPurgePhone.window.KurashiLive.blockedProductChange()&&
  'duplicate new product rejects and holds all dependent changes');
 const heldPurgeReview=heldPurgePhone.window.KurashiLive.beginPendingOperationReview();
 assert.equal(heldPurgeReview.count,3);
-assert.match(heldPurgeReview.text,/破棄対象のOCR名/);
+assert.match(heldPurgeReview.text,/破棄対象の読み取り名/);
 assert.match(heldPurgeReview.warning,/Google Sheets/);
 await heldPurgePhone.window.KurashiLive.discardPendingOperations(heldPurgeReview.signature);
 assert.equal(heldPurgePhone.window.KurashiLive.state().queued,0);
