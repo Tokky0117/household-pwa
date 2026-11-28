@@ -93,18 +93,18 @@ function fromOcrItem(item,{rowId,taxBasis}={}){
   };
  }
  function applyAssistance(draft,result,{findProduct,findChain,isUnconfirmedBarcodeLine}={}){
-  if(!draft||draft.source!=='ocr')throw Error('先に写真をOCRで読み取ってください');
+  if(!draft||draft.source!=='ocr')throw Error('先に写真を読み取ってください');
   const rows=ocrRows(draft);
-  if(!rows.length)throw Error('対応するOCR明細がありません');
+  if(!rows.length)throw Error('対応する読み取り明細がありません');
   const known=new Map(rows.map(({item,i})=>[item.ocrRowId||'row-'+(i+1),item]));
   if(known.size!==rows.length||result.items.length!==rows.length)
-   throw Error('OCR明細の行数またはIDが一致しません');
+   throw Error('読み取り明細の行数またはIDが一致しません');
   const proposed=new Map();
   for(const entry of result.items){
    const original=known.get(entry.rowId);
    if(!original||proposed.has(entry.rowId)||
     String(original.ocrRawName||'')!==entry.ocrName)
-    throw Error('OCR行IDまたは原表記が一致しません');
+    throw Error('読み取り行IDまたは原表記が一致しません');
    proposed.set(entry.rowId,entry);
   }
   const next={...draft,items:draft.items.map(x=>({...x})),
@@ -113,7 +113,7 @@ function fromOcrItem(item,{rowId,taxBasis}={}){
   // never from AI's interpretation of a photographic retailer logo.
   for(const {i} of rows){
    const item=next.items[i],rowId=item.ocrRowId||'row-'+(i+1);
-   if(!proposed.has(rowId))throw Error('OCR行IDが不足しています');
+   if(!proposed.has(rowId))throw Error('読み取り行IDが不足しています');
    if(isUnconfirmedBarcodeLine(item)){
     item.productId='';item.autoLinked=false;item.nameCandidate='';
     next.unmatchedCount++;continue;
@@ -153,7 +153,7 @@ function fromOcrItem(item,{rowId,taxBasis}={}){
      result?.version!=='kurashi-receipt-rebuild-1'||
      !Array.isArray(result.items)||!result.items.length)
    throw Error('写真からの明細再解析データを確認してください');
-  return {source:'chatgpt-rebuild',date:result.receiptDate||'',
+  return {source:'chatgpt-rebuild',date:result.receiptDate||previous.date||'',
    chainId:previous.chainId||null,chainName:previous.chainName||'',
    total:result.receiptTotal??null,
    printedCount:result.printedCount??null,ocrReplacedCount:previous.items.length,

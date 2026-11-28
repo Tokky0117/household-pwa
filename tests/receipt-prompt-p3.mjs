@@ -152,3 +152,7 @@ assert.equal(altered6.items[0].amountOrigin,'chatgpt-photo-candidate',
 assert.equal(review.buildReviewModel(altered6).validation.checks.total,'mismatch');
 console.log('R04/R06 anonymized ChatGPT assist import and allocated provenance OK');
 
+
+const readableText='解析形式：写真から再解析\n店舗：コノミヤ\n購入日：2026-11-28\n合計金額：298\n購入点数：1\n明細1\n商品名：わかめ\n数量：1\n税込金額：298\n既存商品候補：なし\n新規商品候補：わかめ\n内容量：120g\n取込終了';
+assert.equal(imports.parseChatGptOcrResponse(readableText).items[0].productSuggestion.packageQuantity,120);
+assert.throws(()=>imports.parseChatGptOcrResponse(readableText.replace('取込終了','')));

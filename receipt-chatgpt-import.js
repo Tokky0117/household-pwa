@@ -206,15 +206,15 @@ function draftQuality(receipt){
 function makeChatGptReceiptPrompt(ocrReference=''){
  return [
   '添付レシート画像を最優先に、印字された購入明細だけを読み取ってください。',
-  '下に「参考OCR結果」がある場合は位置・文字の手掛かりとして利用してください。ただしOCRが誤っている可能性があるため、画像と矛盾すれば画像を優先してください。',
-  'OCRに記載のない商品を推測で作ったり、対応が不明なOCR行を勝手に他商品へ統合しないでください。',
+  '下に「参考読み取り結果」がある場合は位置・文字の手掛かりとして利用してください。ただし読み取り結果が誤っている可能性があるため、画像と矛盾すれば画像を優先してください。',
+  '読み取り結果に記載のない商品を推測で作ったり、対応が不明な読み取り行を勝手に他商品へ統合しないでください。',
   '出力は標準JSONオブジェクトのみ。キー・文字列は半角ダブルクォーテーション(")で囲み、説明文やMarkdownのコードフェンスは付けないでください。',
   'itemsは必ず[ と ]で囲んだ配列にし、各商品を{ と }で囲んでカンマで区切ってください。',
   '会員・決済・取引・カード・電話番号などの個人情報を出力しないでください。',
   '画像から確認できない商品名・数量・税率・商品コード・値引きやメーカーを推測で補わず、nullにしてください。',
   'nameはレシートの読み取り表記をそのまま記載し、誤字に見えても勝手に正式商品名へ置き換えないでください。nameCandidateは参考用の自然な商品名候補で、確信がなければnullとします。商品名中の「20個入」は購入数量ではありません。quantityは購入数量です。',
   'grossAmountは値引前の明細合計、discountは値引額の正の整数、netAmountは値引後の明細合計です。',
-  '明確に値引きがないと読み取れる場合だけdiscountを0にし、不明ならnullにします。',
+  '明確に値引きがないと読み取れる場合だけdiscountを0にし、不明なら不明にします。',
   '金額と数量は円・個の整数で、¥や桁区切り記号を含めません。数字が読み取れない場合はnull。',
   '税が合計の外に加算される場合taxBasisはexcluded、既に含まれる場合included、不明ならunknown。unknownならtaxTotalはnull。',
   'レシート全体の値引きを根拠なく個々の商品に配分しないでください。',
@@ -226,7 +226,7 @@ function makeChatGptReceiptPrompt(ocrReference=''){
     grossAmount:null,discount:null,netAmount:null
    }]
   },null,2)
- ].concat(ocrReference?['','参考OCR結果（原本より優先しない）:',String(ocrReference).slice(0,18000)]:[]).join('\n');
+ ].concat(ocrReference?['','参考読み取り結果（原本より優先しない）:',String(ocrReference).slice(0,18000)]:[]).join('\n');
 }
 
 
@@ -303,8 +303,42 @@ function parseChatGptOcrResponse(source){
 // Receipt assistant v2: candidate names only, bound to existing PWA OCR IDs.
 const ASSIST_VERSION='kurashi-receipt-assist-1';
 // Parse only the first structured JSON; explanatory OCR diagnosis stays outside.
+function parseReadableReceipt(source){
+ let t=String(source).trim().replace(/^以下をコピーしてアプリに貼り付けてください。\s*/u,'');
+ const fence=/^\x60\x60\x60(?:text)?[ \t]*\r?\n([\s\S]*?)\r?\n\x60\x60\x60(?=\s|$)/u.exec(t);
+ if(fence)t=fence[1];
+ const lines=t.split(/\r?\n/).map(x=>x.trim()).filter(Boolean);
+ const header=Object.create(null),rows=[];let row=null,ended=false;
+ for(const line of lines){
+  if(line==='取込終了'){ended=true;break;}
+  const start=/^明細(\d+)$/u.exec(line);
+  if(start){if(Number(start[1])!==rows.length+1)throw Error('INVALID_READABLE_RECEIPT');row=Object.create(null);rows.push(row);continue;}
+  const field=/^([^：:]+)[：:]\s*(.*)$/u.exec(line);
+  if(!field)throw Error('INVALID_READABLE_RECEIPT');
+  const key=field[1],value=field[2],dest=row||header;
+  if(Object.prototype.hasOwnProperty.call(dest,key))throw Error('INVALID_READABLE_RECEIPT');
+  dest[key]=value;
+ }
+ if(!ended||!rows.length||rows.length>100)throw Error('INVALID_READABLE_RECEIPT');
+ const rebuild=header['解析形式']==='写真から再解析';
+ if(!rebuild&&header['解析形式']!=='読み取り結果の修正')throw Error('INVALID_READABLE_RECEIPT');
+ const text=x=>x===undefined||x==='不明'||x==='なし'?null:x;
+ const number=x=>{if(x==='不明')return null;if(!/^\d+$/u.test(x||''))throw Error('INVALID_READABLE_RECEIPT');return Number(x);};
+ const exact=(obj,keys)=>{if(Object.keys(obj).sort().join('|')!==keys.slice().sort().join('|'))throw Error('INVALID_READABLE_RECEIPT');};
+ exact(header,rebuild?['解析形式','店舗','購入日','合計金額','購入点数']:['解析形式']);
+ const items=rows.map(x=>{
+  exact(x,[...(rebuild?['商品名']:['行ID','読み取り名']), '数量','税込金額','既存商品候補','新規商品候補','内容量']);
+  let qty=null,unit=null;
+  if(x['内容量']!=='不明'){const m=/^(\d+(?:\.\d+)?)\s*(個|本|枚|g|kg|mL|L)$/u.exec(x['内容量']);if(!m)throw Error('INVALID_READABLE_RECEIPT');qty=Number(m[1]);unit=m[2];}
+  const productSuggestion={existingName:text(x['既存商品候補']),newName:text(x['新規商品候補']),packageQuantity:qty,packageUnit:unit};
+  const fields={quantity:number(x['数量']),amount:number(x['税込金額']),productSuggestion};
+  return rebuild?{name:text(x['商品名']),...fields}:{rowId:x['行ID'],ocrName:x['読み取り名'],...fields};
+ });
+ return rebuild?{version:REBUILD_VERSION,receiptDate:text(header['購入日'])?.replaceAll('/','-')??null,storeName:text(header['店舗']),receiptTotal:number(header['合計金額']),printedCount:number(header['購入点数']),items}:{version:ASSIST_VERSION,items};
+}
 function extractOcrAssistJson(source){
  const trimmed=source.trim();
+ if(/^(?:以下をコピーしてアプリに貼り付けてください。\s*)?(?:\x60\x60\x60(?:text)?\s*)?解析形式[：:]/u.test(trimmed))return parseReadableReceipt(trimmed);
  if(trimmed.startsWith('```')){
   const fence=/^```(?:json)?[ \t]*\r?\n([\s\S]*?)\r?\n```(?=\s|$)/i.exec(trimmed);
   if(!fence)throw Error('ASSIST_JSON_BLOCK_REQUIRED');
@@ -388,14 +422,14 @@ function makeChatGptOcrAssistPrompt(ocrReference,registeredNames=[]){
   throw Error('PRODUCT_NAMES_INVALID');
  const show=x=>x===null||x===undefined||x===''?'不明':String(x);
  const moneyOrigin={allocated:'税額配賦による計算値',
-  'ocr-parsed':'OCR明細額','chatgpt-photo-candidate':'写真解析候補',unknown:'不明'};
+  'ocr-parsed':'読み取り明細額','chatgpt-photo-candidate':'写真解析候補',unknown:'不明'};
  const lines=r.items.map((x,i)=>{
-  const qty=show(x.quantity)+(x.quantityUncertain?'（仮値・要確認）':'（OCR候補）');
+  const qty=show(x.quantity)+(x.quantityUncertain?'（仮値・要確認）':'（読み取り候補）');
   const amount='税込='+show(x.taxIncludedAmount)+'円（'+
    (moneyOrigin[x.amountOrigin]||show(x.amountOrigin))+'）'+
    (x.taxExcludedAmount!=null?'、税抜='+x.taxExcludedAmount+'円':'')+
    (x.allocatedTax!=null?'、配賦税='+x.allocatedTax+'円':'');
-  return (i+1)+'. 行ID='+x.rowId+' / OCR名='+JSON.stringify(x.ocrName)+
+  return (i+1)+'. 行ID='+x.rowId+' / 読み取り名='+JSON.stringify(x.ocrName)+
    ' / 数量='+qty+' / '+amount;
  });
  const quantityCandidates=r.items.every(x=>Number.isSafeInteger(x.quantity)&&x.quantity>0)?
@@ -404,12 +438,12 @@ function makeChatGptOcrAssistPrompt(ocrReference,registeredNames=[]){
   r.printedCount!==quantityCandidates;
  const storeStatus={matched:'登録店舗1件と一致',ambiguous:'複数の登録店舗と一致（自動選択せず）',
   'no-registered-match':'登録済み店舗名・別名と一致せず',
-  'no-header':'OCR上部に店舗名を特定できる根拠なし'};
+  'no-header':'読み取り上部に店舗名を特定できる根拠なし'};
  const diagnostics=(r.nameLinkDiagnostics||[]).map(x=>x.rowId+'：'+
   show(x.status)+'（近傍文字行'+show(x.nearbyTextRows)+
   '、名前候補'+show(x.eligibleNameRows)+'）');
- const assist={version:ASSIST_VERSION,items:[{rowId:'OCR行IDをそのまま',
-  ocrName:'OCR名をそのまま',quantity:null,amount:null,
+ const assist={version:ASSIST_VERSION,items:[{rowId:'読み取り行IDをそのまま',
+  ocrName:'読み取り名をそのまま',quantity:null,amount:null,
   productSuggestion:{existingName:null,newName:null,packageQuantity:null,packageUnit:null}}]};
  const rebuild={version:REBUILD_VERSION,receiptDate:null,
   receiptTotal:null,printedCount:null,items:[{name:'写真に印字された商品名',quantity:null,amount:null,
@@ -418,48 +452,49 @@ function makeChatGptOcrAssistPrompt(ocrReference,registeredNames=[]){
   'くらしストック｜レシート写真の確認',
   '',
   '【写真を最優先】',
-  '画像がない／開けない場合は「レシート写真を添付してください。」のみ返し、JSONは作成しない。OCRだけで商品を補完しない。',
-  '写真そのものを目視で読み、対象レシートを背景・別レシートから分離する。商品行、商品名・コード、数量、値引き、税額、購入日、店舗、印字合計を独立して照合し、参考OCRは後で比較する。',
+  '画像がない／開けない場合は「レシート写真を添付してください。」のみ返し、取込用の定型文は作成しない。読み取り結果だけで商品を補完しない。',
+  '写真そのものを目視で読み、対象レシートを背景・別レシートから分離する。商品行、商品名・コード、数量、値引き、税額、購入日、店舗、印字合計を独立して照合し、参考読み取りは後で比較する。',
   '',
   '【独立した検算】',
   '購入商品と商品コード行、値引きやクーポン、税額、ポイント、決済情報、小計・合計を区別する。同じ商品が別行なら統合せず、商品名中の内容量を購入数量と誤認しない。',
   '値引き後の明細金額、数量合計と印字点数、税率別の課税対象額・税額・印字合計を照合する。数量1が仮値の場合は写真の数量・単価行を調べ、数量差だけで商品や個数を推測しない。税や値引きを二重計上せず、ポイント支払は商品値引きにしない。',
   '商品別税込額が印字されない外税レシートで、値引き後税抜明細額と税率別印字税額が確定していれば、税率ごとに税抜金額比で配賦し、端数は最大剰余法（同点は印字順）で割り当てる。全額を検算した商品別税込額は計算値として使用可。印字額と偽らず、根拠が不足する額はnull。',
   '',
-  '【2種類のJSONのどちらか1つだけを選ぶ】',
-  'A：写真とOCRの商品行が1対1対応 → kurashi-receipt-assist-1。rowId・ocrName・行順・行数を変えない。店舗名は推定・出力しない。商品名の自然な補正・登録候補はproductSuggestionだけに記す。quantityは購入数量、amountは値引き後の税込明細合計（行の全購入数量分）。不明ならnull。数量だけの誤読は行を再構築せず、この形式で補正する。',
-  'B：別レシートの混入・商品行の欠落や余分・行の分割や結合・コードだけの商品名・金額対応の破綻 → kurashi-receipt-rebuild-1。写真で確認した購入商品だけを印字順に記載し、元OCR行IDを使わない。クルーネックとVネック等の異なる形状や、同じ商品の別印字行を統合しない。分からないname・quantity・amount・日付・店舗・合計・点数はnull。',
-  '不明な文字や税込明細合計はnullで表し、アプリ確認画面に残す。対象レシートが確定できない、または重大な矛盾が未解決のときだけJSONを停止し、何番目の商品のどの値を確認する必要があるか質問する。ユーザー確認後は確定内容を維持して再検算。',
+  '【2種類の解析形式のどちらか1つだけを選ぶ】',
+  'A：写真と読み取り結果の商品行が1対1対応 → kurashi-receipt-assist-1。rowId・ocrName・行順・行数を変えない。店舗名は推定・出力しない。商品名の自然な補正・登録候補はproductSuggestionだけに記す。quantityは購入数量、amountは値引き後の税込明細合計（行の全購入数量分）。不明なら不明。数量だけの誤読は行を再構築せず、この形式で補正する。',
+  'B：別レシートの混入・商品行の欠落や余分・行の分割や結合・コードだけの商品名・金額対応の破綻 → kurashi-receipt-rebuild-1。写真で確認した購入商品だけを印字順に記載し、元読み取り行IDを使わない。クルーネックとVネック等の異なる形状や、同じ商品の別印字行を統合しない。分からないname・quantity・amount・日付・店舗・合計・点数は不明。',
+  '不明な文字や税込明細合計は不明と記し、アプリ確認画面に残す。対象レシートが確定できない、または重大な矛盾が未解決のときだけ取込用の定型文の出力を停止し、何番目の商品のどの値を確認する必要があるか質問する。ユーザー確認後は確定内容を維持して再検算。',
   '',
   '【登録商品との照合（レシート写真と数量・金額の解析後に実施）】',
   '以下の登録商品名一覧はアプリが作成した商品マスタの名前だけであり、商品ID・容量・日用品等は含まない。既に登録されている商品と同一と判断できる場合だけ、productSuggestion.existingNameに一覧中の名称を文字どおり正確に記す。曖昧な場合はnull。',
   '既存の商品名に該当しない場合のみ、productSuggestion.newNameに適切な新規登録候補名を推測する。可能ならウェブ検索を利用して商品名を確認する。検索できない場合やメーカー・規格を確定できない場合は捏造せず、商品種別までの自然な名称かnullにする。検索した根拠がないのに実在商品を特定できたと主張しない。existingNameとnewNameを同時に指定しない。',
-  '商品名候補はproductSuggestionの1種類だけにし、推定名を別項目で出力しない。店舗名は生成AIでは判定しない。既存商品名に確信がなければexistingNameはnull。OCR原文・行ID・数量を商品候補のために書き換えない。候補は未確認で、登録と紐付けはアプリ上で利用者が選ぶ。',
+  '商品名候補はproductSuggestionの1種類だけにし、推定名を別項目で出力しない。店舗名は生成AIでは判定しない。既存商品名に確信がなければexistingNameはnull。読み取り原文・行ID・数量を商品候補のために書き換えない。候補は未確認で、登録と紐付けはアプリ上で利用者が選ぶ。',
   '商品名候補の内容量はproductSuggestion.packageQuantity（数値）とpackageUnit（個・本・枚・g・kg・mL・L）に記す。包装全体の内容量を示し、80g×3袋なら240g。購入数量quantityとは区別する。写真や印字から根拠がない場合は両方null。複数容量で合計の意味が曖昧なら推測せずnull。商品名・内容量とも候補であり登録時に利用者が確認する。',
   '登録商品名一覧（各要素は登録商品名のみ。空配列なら照合候補なし）：'+JSON.stringify(registeredNames),
   '',
   '【出力】',
-  '最初のjsonコードブロックに1つだけJSON。その後に短い「OCR診断」（商品行数・誤読・構造問題・未確定事項・写真から確認できた店舗名）を書く。両形式同時出力、余分なキー、カード・決済・会員番号・電話番号・住所の出力は禁止。',
-  '形式Aの形（雛形。itemsは実際のOCR全行分。productSuggestionは商品名候補）：'+JSON.stringify(assist),
-  '形式Bの形（雛形。写真の全購入行分。productSuggestionは新追加の任意項目）：'+JSON.stringify(rebuild),
+  '回答の最初に「以下をコピーしてアプリに貼り付けてください。」と書き、次にtextコードブロック1つで次の定型文を出力。その後に短い「読み取り結果の説明」を書く。項目名・明細番号を維持し、金額は円記号やカンマなしの整数、不明値は不明、商品候補なしはなし。内容量は120gのように数値と単位を記す。最後に取込終了と記す。カード・決済・会員番号・電話番号・住所は禁止。',
+  '形式A：\n解析形式：読み取り結果の修正\n明細1\n行ID：元の行ID\n読み取り名：元の読み取り名\n数量：1\n税込金額：298\n既存商品候補：なし\n新規商品候補：なし\n内容量：不明\n取込終了',
+  '形式B：\n解析形式：写真から再解析\n店舗：不明\n購入日：2026-11-28\n合計金額：298\n購入点数：1\n明細1\n商品名：商品名\n数量：1\n税込金額：298\n既存商品候補：なし\n新規商品候補：なし\n内容量：不明\n取込終了',
+  '上記の明細ブロックを全商品分繰り返し、取込終了は最後に1回だけ記載。内部項目のrowIdは行ID、ocrNameは読み取り名、quantityは数量、amountは税込金額、existingNameは既存商品候補、newNameは新規商品候補、packageQuantity/packageUnitは内容量に対応する。JSONは出力しない。',
   '',
-  '【参考OCR結果（写真より優先しない候補）】',
+  '【参考読み取り結果（写真より優先しない候補）】',
   '購入日候補：'+show(r.receiptDate)+' / 店舗候補：'+show(r.store),
   '印字合計候補：'+show(r.receiptTotal)+'円 / 印字購入点数候補：'+show(r.printedCount)+'点',
-  'OCR数量候補合計：'+show(quantityCandidates)+'点'+
+  '読み取り数量候補合計：'+show(quantityCandidates)+'点'+
    (r.items.some(x=>x.quantityUncertain)?'（仮値を含む）':''),
-  ...(countMismatch?['数量不一致：印字点数とOCR数量候補が異なる。写真の数量・単価行を確認し、差の分だけ推測で変更しない。']:[]),
-  ...(r.quantitySignals?['OCR数量行診断：数量行分類='+show(r.quantitySignals.recognizedRows)+
+  ...(countMismatch?['数量不一致：印字点数と読み取り数量候補が異なる。写真の数量・単価行を確認し、差の分だけ推測で変更しない。']:[]),
+  ...(r.quantitySignals?['読み取り数量行診断：数量行分類='+show(r.quantitySignals.recognizedRows)+
    '行 / 明細への対応='+show(r.quantitySignals.linkedRows)+
    '行 / 未対応='+show(r.quantitySignals.unresolvedRows)+
    '行 / 数量×単価の文字候補='+show(r.quantitySignals.fragmentRows)+
-   '行（いずれもOCR候補で、写真の確認ではない）',
+   '行（いずれも読み取り候補で、写真の確認ではない）',
    ...(Array.isArray(r.quantitySignals.linkedItemNumbers)?
-    ['数量行を結合したOCR明細番号：'+
+    ['数量行を結合した読み取り明細番号：'+
      (r.quantitySignals.linkedItemNumbers.length?
       r.quantitySignals.linkedItemNumbers.join('、'):'なし')+
-     '（番号は上記OCR明細の順番。数量が正しいことを意味しない）']:[])]:[]),
-  ...(r.storeMatchDiagnostics?['OCR店舗照合診断：'+
+     '（番号は上記読み取り明細の順番。数量が正しいことを意味しない）']:[])]:[]),
+  ...(r.storeMatchDiagnostics?['読み取り店舗照合診断：'+
    (storeStatus[r.storeMatchDiagnostics.status]||'状態不明')+
    ' / 上部の英字候補='+show(r.storeMatchDiagnostics.headerLatinCandidates)+
    '行（店舗名とは限らない）']:[]),
@@ -469,7 +504,7 @@ function makeChatGptOcrAssistPrompt(ocrReference,registeredNames=[]){
    show(r.taxDiagnostics?.netSum)+'円 / 印字小計：'+
    show(r.taxDiagnostics?.subtotal)+'円 / 税額：'+show(r.taxDiagnostics?.taxTotal)+'円',
   '',
-  'OCR明細（行ID・OCR名はJSON出力にも完全一致させる）：',
+  '読み取り明細（行ID・読み取り名は取込用の定型文にも完全一致させる）：',
   ...lines,
   ...(diagnostics.length?['','商品コードの行対応診断：',...diagnostics]:[])
  ].join('\n');

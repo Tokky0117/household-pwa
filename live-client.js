@@ -414,12 +414,12 @@
     resolve(saved?.household_id===workspace.base?.household_id&&
       Array.isArray(saved.rows)?saved.rows:[]);
    };
-   r.onerror=()=>reject(r.error||Error('OCR補正候補を読み込めません'));
+   r.onerror=()=>reject(r.error||Error('読み取り補正候補を読み込めません'));
   });
  }
  async function saveOcrCorrections(corrections){
   await boot();if(!workspace.base)await load();
-  if(!workspace.base)throw Error('OCR補正の保存には同期が必要です');
+  if(!workspace.base)throw Error('読み取り補正の保存には同期が必要です');
   const household=workspace.base.household_id;
   const norm=v=>String(v||'').normalize('NFKC').trim().replace(/\s+/g,' ').toLocaleLowerCase('ja');
   const clean=[];
@@ -454,8 +454,8 @@
     st.put({household_id:household,rows:rows.slice(-400)},OCR_CORRECTIONS_KEY);
    };
    tx.oncomplete=()=>resolve(true);
-   tx.onerror=()=>reject(tx.error||Error('OCR補正候補を保存できません'));
-   tx.onabort=()=>reject(tx.error||Error('OCR補正候補を保存できません'));
+   tx.onerror=()=>reject(tx.error||Error('読み取り補正候補を保存できません'));
+   tx.onabort=()=>reject(tx.error||Error('読み取り補正候補を保存できません'));
   });
  }
  // One atomic IndexedDB transaction per change. No UI update before disk commit.
@@ -757,7 +757,7 @@
       /[\x00-\x1f\x7f<>]/.test(suggested)||
       (suggested&&!['','existing','new'].includes(suggestionKind))||
       (!suggested&&suggestionKind))throw Error('商品名候補を確認してください');
-   if(line.non_ocr_name!==undefined&&(!confirmed||rawName))throw Error('写真確認名とOCR名を同時に保存できません');
+   if(line.non_ocr_name!==undefined&&(!confirmed||rawName))throw Error('写真確認名と読み取り名を同時に保存できません');
    if(confirmed.length>120||/^[=+@\-]/.test(confirmed)||/[\x00-\x1f\x7f<>]/.test(confirmed))throw Error('写真で確認した明細名を確認してください');
    if(rawName.length>120||/^[=+@\-]/.test(rawName)||
       /[\x00-\x1f\x7f<>]/.test(rawName))
@@ -846,12 +846,12 @@
   let changed=false;
   await modify(doc=>{
    const snap=project(doc),alias=snap?.receipt_name_mappings.find(x=>x.receipt_name_id===receiptNameId);
-   if(!alias)throw Error('OCR名が見つかりません');
+   if(!alias)throw Error('読み取り名が見つかりません');
    productId=confirmedProductId(productId);
    if(productId&&!snap.products.some(x=>x.product_id===productId))
     throw Error('登録商品が見つかりません');
    if(String(alias.auto_match_product_id||'')===String(productId||''))return doc;
-   if(String(receiptNameId).startsWith('local-'))throw Error('OCR名の同期後に変更してください');
+   if(String(receiptNameId).startsWith('local-'))throw Error('読み取り名の同期後に変更してください');
    doc.queue.push({id:operationId(),kind:'alias-link',receiptNameId,
      productId:productId||null,version:Number(alias.version),retries:0});
    changed=true;
@@ -1177,13 +1177,13 @@
    if(!base?.retail_chains.some(x=>x.chain_id===op.chainId)||
       (op.productId&&!base?.products.some(x=>
         x.product_id===op.productId&&!x.deleted_at)))
-    throw Error('OCR名のチェーンまたは商品がありません');
+    throw Error('読み取り名のチェーンまたは商品がありません');
    return {operationId:op.id,action:'alias.upsert',payload:{
     chain_id:op.chainId,auto_match_product_id:op.productId||null,raw_alias:op.alias}};
   }
   if(op.kind==='alias-link'){
    const alias=base?.receipt_name_mappings.find(x=>x.receipt_name_id===op.receiptNameId);
-   if(!alias)throw Error('OCR名がありません');
+   if(!alias)throw Error('読み取り名がありません');
    if(op.productId&&!base?.products.some(x=>
      x.product_id===op.productId&&!x.deleted_at))
     throw Error('商品が見つかりません');

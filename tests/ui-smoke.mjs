@@ -901,7 +901,7 @@ assert.match(newPrompt,/数量だけの誤読は/);
 
 assert.match(newPrompt,/画像がない／開けない場合/,'no photo means no JSON');
 assert.match(newPrompt,/写真そのものを目視/,'visual reading must precede OCR comparison');
-assert.match(newPrompt,/OCR診断/,'correction reasoning must be separate from JSON');
+assert.match(newPrompt,/読み取り結果の説明/,'correction reasoning must be separate from JSON');
 assert.match(newPrompt,/商品行が1対1対応/,'OCR splitting mismatches are inspected');
 ui.setScanDraft({...rowOcr,items:[{...rowOcr.items[0],quantityUncertain:true}]});
 const uncertainHtml=ui.receiptScanView();
