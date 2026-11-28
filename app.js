@@ -1546,7 +1546,7 @@ function nameSearchRank(raw,queryValue){
  if(key===needle||key.includes(needle))return 2;
  if(key.length>=3&&needle.includes(key))return 4;
  const stem=key.replace(/\d+$/u,''),queryStem=needle.replace(/\d+$/u,'');
- if(stem.length>=3&&queryStem.length>=3&&(queryStem.startsWith(stem)||stem.startsWith(queryStem)))return 5;
+ if(stem.length>=3&&queryStem.length>=3&&stem!==queryStem&&(queryStem.startsWith(stem)||stem.startsWith(queryStem)))return 5;
  if(needle.length>=3&&scanNumericTokens(key)===scanNumericTokens(needle)){
   const k=scanVoicingKey(name),n=scanVoicingKey(q);
   if(k.includes(n)||scanOcrCandidateKey(name).includes(scanOcrCandidateKey(q)))return 3;

@@ -98,3 +98,5 @@ assert.ok(Number.isFinite(rankContext.nameSearchRank('トイレ2','トイレク�
 assert.equal(rankContext.nameSearchRank('キッチン2','トイレクイックル詰替用 20'),Infinity);
 assert.match(app,/function registrationCandidates\(raw,limit=Infinity\)/);
 assert.match(app,/setTimeout\(dismissHouseholdOffer,10000\)/);
+
+assert.equal(rankContext.nameSearchRank('テスト印字名119','テスト印字名120'),Infinity);
