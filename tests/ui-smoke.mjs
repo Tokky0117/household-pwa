@@ -241,21 +241,13 @@ assert.ok(css.includes('.master-product-add-action{')&&
 
 ui.setMasterProductId(null);ui.setPage('masterProductNew');
 const masterNewEditor=ui.masterProductEditorView();
-assert.ok(masterNewEditor.includes('id="master-product-group"')&&
- masterNewEditor.includes('name="group"')&&
- masterNewEditor.includes('data-act="masterGroupPickerOpen"')&&
- masterNewEditor.includes('日用品に設定（任意）')&&
- masterNewEditor.includes('設定しない'),
- 'New master uses a shared picker with optional default, not a long dropdown');
+assert.ok(masterNewEditor.includes('product-registration-sheet')&&!masterNewEditor.includes('name="group"'),'Optional household setup is separate');
 assert.ok(!masterNewEditor.includes('class="ui-select"')&&
  !masterNewEditor.includes('data-act="masterProductUnlink"'),
  'Master editor never creates a separate unlink button or long dropdown');
 ui.setMasterProductId('p-milk-1');ui.setPage('masterProductEdit');
 const masterEditPage=ui.masterProductEditorView();
-assert.ok(masterEditPage.includes('おいしい牛乳')&&
- masterEditPage.includes('data-act="masterGroupPickerOpen"')&&
- masterEditPage.includes('value="demo-1"'),
- 'Existing master retains its linked item as picker value');
+assert.ok(masterEditPage.includes('おいしい牛乳')&&!masterEditPage.includes('name="group"')&&ui.masterProductRows().includes('data-act="receiptHouseholdLink"'),'Household setup is accessible from master list');
 const masterSheet=ui.masterGroupPickerView();
 assert.ok(masterSheet.includes('class="sheet-back master-group-picker-overlay"')&&
  masterSheet.includes('class="half-sheet master-group-picker-modal"')&&
@@ -492,7 +484,7 @@ assert.ok(view.includes('298円'),'Original purchase price remains visible for i
 ui.setUnit('mL');view=ui.priceCompareView();
 assert.ok(css.includes('.shop-compare-dock{')&&css.includes('position:fixed'),'Dock remains fixed');
 const picker=ui.pickerView();
-assert.ok(picker.includes('product-registration-page')&&picker.includes('id="new-product-name"'));
+assert.ok(picker.includes('product-registration-sheet')&&picker.includes('id="new-product-name"'));
 assert.ok(picker.includes('id="productCreateForm"')&&!picker.includes('data-act="productCreate"'),'No secondary creation step');
 assert.ok(ui.registrationCandidates('牛乳').some(p=>p.name==='おいしい牛乳'));
 assert.ok(ui.registrationCandidates('ｵｲｼｲｷﾞｭｳﾆｭｳ').some(p=>p.name==='おいしい牛乳'));
@@ -759,7 +751,7 @@ assert.ok(source.includes("scanPhotos.push(...files)"),
 assert.ok(!source.includes('getUserMedia(')&&!source.includes('scanFromCamera'),
  'Custom camera and custom two-choice UI are gone');
 assert.ok(source.includes("mode:'gray',crop:null"),'Best OCR preprocessing is fixed internally');
-assert.ok(ui.receiptChatGptView().includes('chatgpt-input'),
+assert.ok(ui.receiptChatGptView().includes('chatgpt-input')&&/data-act="chatGptImport"[^>]*disabled/.test(ui.receiptChatGptView()),
  'ChatGPT JSON import has a normal UI');
 assert.ok(source.includes('updateRecord(')&&source.includes('deleteRecord('),
  'Edit/delete connect to durable queue, not a local-only fake');
@@ -997,8 +989,8 @@ assert.ok(failedScanScreen.includes('もう一度読み取る')&&
  failedScanScreen.includes('明細を読み取れませんでした。')&&
  failedScanScreen.includes('scan-photo-grid'),
  'Reading errors keep selected images and a clear retry action');
-ui.setScanState({error:'写真は最大6枚まで選択できます。'});
-assert.ok(ui.receiptScanView().includes('写真は最大6枚まで選択できます。')&&
+ui.setScanState({error:'写真は最大3枚まで選択できます。'});
+assert.ok(ui.receiptScanView().includes('写真は最大3枚まで選択できます。')&&
  ui.receiptScanView().includes('写真を読み取る'),
  'Selection limit warns without treating the existing photos as a failed read');
 ui.setScanState({});
@@ -1111,7 +1103,7 @@ assert.ok(source.includes("function scanAssistView()")&&
 const existingHtml=ui.scanExistingProductView();
 assert.ok(existingHtml.includes('id="scan-product-name"')&&
  existingHtml.includes('id="scan-existing-results"')&&existingHtml.includes('日用品：牛乳'),
- 'shared full-page product editor shows matching existing products and assigned household');
+ 'shared product sheet shows matching existing products and assigned household');
 assert.ok(existingHtml.includes('product-registration-page')&&
  existingHtml.includes('id="scanProductForm"')&&
  existingHtml.indexOf('id="scan-product-name"')<existingHtml.indexOf('id="scan-existing-results"')&&
@@ -2053,9 +2045,7 @@ assert.ok(unifiedPicker.includes('id="scanProductForm"')&&
  unifiedPicker.includes('新規登録する')&&
  !unifiedPicker.includes('data-act="scanExistingToNew"'),
  'one product editor supports both choosing an existing product and creating a new one');
-assert.ok(unifiedPicker.includes('日用品に設定（任意）')&&
- unifiedPicker.indexOf('id="scan-product-name"')<unifiedPicker.indexOf('id="scan-existing-results"'),
- 'household setup and candidate results are in the same product editor');
+assert.ok(!unifiedPicker.includes('name="group"')&&unifiedPicker.includes('product-registration-sheet')&&unifiedPicker.indexOf('id="scan-product-name"')<unifiedPicker.indexOf('id="scan-existing-results"'),'Household setup is separate from candidates');
 const originalCatalogue=ui.catalogue().products.slice();
 ui.catalogue().products.push({id:'receipt-search-test',name:'専用実験商品',
  packageQuantity:null,packageUnit:null,householdItemId:'demo-1',householdItemOrder:9,aliases:[]});

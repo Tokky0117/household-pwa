@@ -2857,3 +2857,24 @@ html,body{touch-action:pan-x pan-y}
 .product-registration-page .registration-candidates .ui-choice-row{width:100%}
 .current-product-setting{margin-top:18px;border-top:1px solid var(--line);padding-top:12px}
 .half-sheet.master-group-picker-modal{height:min(540px,88svh)}
+
+/* v99.9 shared product registration sheet and 3.5-row candidate viewport. */
+.product-registration-page{padding-bottom:12px}
+.product-registration-page .registration-candidates{max-height:249px;overflow-y:auto;overscroll-behavior:contain;gap:6px}
+.product-registration-page .registration-candidate-heading{flex:none;height:20px;line-height:20px;margin:0}
+.product-registration-page .registration-candidates :is(.ui-choice-row,.catalogue-candidate){flex:0 0 60px;height:60px;min-height:60px;box-sizing:border-box;margin:0;padding:7px 11px;overflow:hidden}
+.product-registration-page .registration-candidates :is(.ui-choice-copy,.catalogue-row-body)>strong{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%}
+.product-registration-sheet .product-editor-context{margin:0 0 8px}
+.master-product-entry{border:1px solid var(--line);border-radius:var(--ui-radius-card);margin-bottom:8px;background:var(--card)}
+.master-product-entry .catalogue-candidate{border:0;margin:0}
+.master-product-entry>[data-act="receiptHouseholdLink"]{margin:0 8px 6px;min-height:44px}
+.household-setup-offer{position:fixed;z-index:85;bottom:calc(84px + env(safe-area-inset-bottom));left:50%;transform:translateX(-50%);width:min(calc(100% - 24px),420px);box-sizing:border-box;padding:12px 14px;border:1px solid var(--line);border-radius:var(--ui-radius-card);background:var(--card);color:var(--ink);box-shadow:0 4px 16px #0002}
+.household-setup-offer>div{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.household-setup-offer p{font-size:14px;line-height:1.5;margin:6px 0}
+.household-setup-offer>button{width:100%;min-height:44px}
+.ai-transfer-trial{margin:6px 0 18px;padding:8px 0;border-top:1px solid var(--line);border-bottom:1px solid var(--line)}
+.ai-transfer-trial button{width:100%;min-height:44px}
+.receipt-chatgpt-page .ai-copy-action{border:1px solid var(--line);border-radius:var(--ui-radius-control)}
+.receipt-chatgpt-page [data-act="chatGptImport"]:disabled{background:var(--line);color:var(--muted);opacity:.7;cursor:default;box-shadow:none}
+.scan-match-summary{display:flex;align-items:baseline;gap:7px;color:var(--muted);font-size:13px;line-height:1.4;margin:4px 0 8px;overflow-wrap:anywhere}
+.scan-match-summary>span:first-child{color:var(--accent);flex:none;font-weight:700}

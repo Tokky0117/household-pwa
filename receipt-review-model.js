@@ -153,7 +153,7 @@ function fromOcrItem(item,{rowId,taxBasis}={}){
      result?.version!=='kurashi-receipt-rebuild-1'||
      !Array.isArray(result.items)||!result.items.length)
    throw Error('写真からの明細再解析データを確認してください');
-  return {source:'chatgpt-rebuild',date:result.receiptDate||previous.date||'',
+  return {source:'chatgpt-rebuild',date:result.receiptDate||previous.date||'',dateFallback:!result.receiptDate&&!!previous.dateFallback,
    chainId:previous.chainId||null,chainName:previous.chainName||'',
    total:result.receiptTotal??null,
    printedCount:result.printedCount??null,ocrReplacedCount:previous.items.length,
