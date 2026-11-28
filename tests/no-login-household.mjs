@@ -3434,7 +3434,7 @@ await waitFor(()=>!!heldPurgePhone.window.KurashiLive.blockedProductChange()&&
  'duplicate new product rejects and holds all dependent changes');
 const heldPurgeReview=heldPurgePhone.window.KurashiLive.beginPendingOperationReview();
 assert.equal(heldPurgeReview.count,3);
-assert.match(heldPurgeReview.text,/破棄対象の読み取り名/);
+assert.match(heldPurgeReview.text,/読み取り名の追加：破棄対象のOCR名/,'display label changes but the original saved name remains intact');
 assert.match(heldPurgeReview.warning,/Google Sheets/);
 await heldPurgePhone.window.KurashiLive.discardPendingOperations(heldPurgeReview.signature);
 assert.equal(heldPurgePhone.window.KurashiLive.state().queued,0);
