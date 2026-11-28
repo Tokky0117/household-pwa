@@ -1,4 +1,4 @@
-const APP_VERSION='0.99.12';
+const APP_VERSION='0.99.13';
 const CATS=['食品・飲料','キッチン','洗面・風呂','洗濯・掃除','その他','調味料'];
 const liveMode=!!window.KurashiLive; // Data source only; original Preview v46 UI components remain.
 const SEED=[['牛乳',0,true],['麦茶',0,false],['コーヒー',0,true],['卵',0,false],['キッチンペーパー',1,false],['ラップ',1,true],['食器用洗剤',1,true],['シャンプー',2,false],['歯磨き粉',2,true],['ハンドソープ',2,false],['洗濯洗剤',3,false],['柔軟剤',3,true],['トイレットペーパー',3,false],['乾電池',4,true],['ティッシュ',4,true]];
@@ -2223,7 +2223,9 @@ function syncEditorViewport(){
  const tall=sheet.classList.contains('product-registration-sheet')||sheet.classList.contains('master-group-picker-modal');
  if(!editorSheetGeometry||editorSheetGeometry.sheet!==sheet){
   const header=app.querySelector('.shell>.top');
-  const peek=Math.max(56,Math.min(100,Math.round(header?.getBoundingClientRect().height||72)));
+  const headerHeight=Math.max(56,Math.min(100,Math.round(header?.getBoundingClientRect().height||72)));
+  // Tall pickers leave only a partial view of the originating header.
+  const peek=Math.max(20,headerHeight-36);
   const height=tall?Math.max(260,layout-peek):Math.min(540,Math.round(layout*.76));
   editorSheetGeometry={sheet,layout,height,top:layout-height};
  }

@@ -7,7 +7,7 @@ const html=readFileSync(new URL('../index.html',import.meta.url),'utf8');
 const live=readFileSync(new URL('../live-client.js',import.meta.url),'utf8');
 const gas=readFileSync(new URL('../gas/Api.gs',import.meta.url),'utf8');
 
-assert.match(app,/const APP_VERSION='0\.99\.12'/);
+assert.match(app,/const APP_VERSION='0\.99\.13'/);
 assert.match(app,/const key='household_pwa_v99_household_items'/);
 assert.match(app,/const catalogueKey='household_pwa_v99_products'/);
 assert.match(app,/householdFirstPreview\?'household_pwa_v99_preview_records'/);
@@ -102,3 +102,23 @@ assert.match(app,/setTimeout\(\(\)=>dismissActionSnackbar\(\),10000\)/);
 assert.match(app,/const stableTop=tall\?top:/);
 
 assert.equal(rankContext.nameSearchRank('テスト印字名119','テスト印字名120'),Infinity);
+
+// Both tall editors start 36 CSS pixels higher and keep the same top on keyboard resize.
+for(const variant of ['product-registration-sheet','master-group-picker-modal','item-editor-sheet']){
+ const tall=variant!=='item-editor-sheet',style=new Map();
+ const sheet={classList:{contains:n=>n===variant,toggle:()=>{}},style:{setProperty:(k,v)=>style.set(k,v)}};
+ const vv={height:800,offsetTop:0};
+ const ctx={editorSheetGeometry:null,window:{innerHeight:800,visualViewport:vv},app:{querySelectorAll:()=>[sheet],querySelector:()=>({getBoundingClientRect:()=>({height:74})})}};
+ vm.createContext(ctx);
+ vm.runInContext(app.slice(app.indexOf('function syncEditorViewport(){'),app.indexOf("window.visualViewport?.addEventListener('resize',syncEditorViewport)")),ctx);
+ ctx.syncEditorViewport();
+ const top=tall?38:260;
+ assert.equal(style.get('--editor-sheet-top'),top+'px');
+ assert.equal(style.get('--editor-sheet-height'),800-top+'px');
+ vv.height=400;ctx.syncEditorViewport();
+ if(tall){assert.equal(style.get('--editor-sheet-top'),top+'px');assert.equal(style.get('--editor-sheet-height'),400-top+'px');}
+ vv.height=800;ctx.syncEditorViewport();
+ assert.equal(style.get('--editor-sheet-top'),top+'px');
+ assert.equal(style.get('--editor-sheet-height'),800-top+'px');
+}
+console.log('v99.13 shared tall editor top and keyboard height: OK');
