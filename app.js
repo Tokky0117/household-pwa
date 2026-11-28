@@ -1,4 +1,4 @@
-const APP_VERSION='0.99.9';
+const APP_VERSION='0.99.10';
 const CATS=['食品・飲料','キッチン','洗面・風呂','洗濯・掃除','その他','調味料'];
 const liveMode=!!window.KurashiLive; // Data source only; original Preview v46 UI components remain.
 const SEED=[['牛乳',0,true],['麦茶',0,false],['コーヒー',0,true],['卵',0,false],['キッチンペーパー',1,false],['ラップ',1,true],['食器用洗剤',1,true],['シャンプー',2,false],['歯磨き粉',2,true],['ハンドソープ',2,false],['洗濯洗剤',3,false],['柔軟剤',3,true],['トイレットペーパー',3,false],['乾電池',4,true],['ティッシュ',4,true]];
@@ -444,13 +444,13 @@ function recordDetailView(){
    ${!isShelf&&detail.some(line=>!line.linked_product_id)?'<p class="record-detail-benefit">商品を紐付けると、購入履歴を価格比較に活用できます。</p>':''}
    ${detail.map(line=>`<div class="panel detail-record-line">
     <div class="detail-record-line-main">
-     <strong class="detail-record-line-name">${esc(isShelf?detailLineName(line):aliasNameFor(line)||"明細名なし")}</strong>
+     <strong class="detail-record-line-name">${esc(detailLineName(line))}</strong>
      <strong class="detail-record-line-amount">${yen(Number(line.line_total_tax_included||0))}</strong>
     </div>
-    ${!isShelf&&line.non_ocr_name&&rawReceiptName(line)&&rawReceiptName(line)!==line.non_ocr_name?`<div class="detail-record-line-meta"><span>読み取り名：${esc(rawReceiptName(line))}</span></div>`:''}
+    ${!isShelf&&(rawReceiptName(line)||aliasNameFor(line))&&(rawReceiptName(line)||aliasNameFor(line))!==detailLineName(line)?`<div class="detail-record-line-meta"><span>読み取り名：${esc(rawReceiptName(line)||aliasNameFor(line))}</span></div>`:''}
     <div class="detail-record-product-row">
      <div class="detail-record-line-meta"><span>${isShelf?'販売個数':'数量'} ${esc(line.quantity)}</span>
-      ${line.linked_product_id?`<span>登録商品：${esc(catalogue.products.find(p=>p.id===line.linked_product_id)?.name||'商品を確認')}</span><span>${esc(productHouseholdStatus(catalogue.products.find(p=>p.id===line.linked_product_id)))}</span>`:
+      ${line.linked_product_id?`<span>${esc(productHouseholdStatus(catalogue.products.find(p=>p.id===line.linked_product_id)))}</span>`:
        '<span>商品未設定</span>'}</div>
      ${liveMode?UI.button({label:line.linked_product_id?'変更':'商品を設定',
        variant:'tertiary',action:'recordProductOpen',recordItemId:line.record_item_id,
@@ -479,11 +479,10 @@ if(typeof document.addEventListener==='function'){
 }
 
 function scanProductGroupChoices(){
- const queryText=norm(scanGroupQuery);
- const available=items.filter(i=>!i.hidden).filter(i=>!queryText||
-  norm(itemLabel(i)).includes(queryText));
+ const queryText=norm(scanGroupQuery),hits=new Set(registrationCandidates(queryText).map(p=>p.householdItemId));
+ const available=items.filter(i=>!i.hidden&&householdMatches(i,queryText,hits));
  const noLink=UI.choiceRow({title:'設定しない',choice:'',selected:scanProductGroupId==='',className:'scan-group-choice'});
- return noLink+available.slice(0,50).map(i=>UI.choiceRow({
+ return noLink+available.map(i=>UI.choiceRow({
   title:itemLabel(i),subtitle:'',
   choice:i.id,selected:scanProductGroupId===i.id,className:'scan-group-choice'
  })).join('')||'<p class="hint">該当する日用品はありません</p>';
@@ -625,6 +624,14 @@ function transferReceiptPhotos(mode){
   const payload=[new ClipboardItem({'text/plain':new Blob([text],{type:'text/plain'})}),...files.map(file=>new ClipboardItem({'image/png':receiptPhotoPng(file)}))];
   navigator.clipboard.write(payload).then(()=>say('コピーしました。貼り付け先で文章と写真を確認してください。')).catch(()=>say('一括コピーできませんでした。指示文のコピーまたは共有をお試しください。'));
  }catch(err){say(err.message||'写真を受け渡せませんでした');}
+}
+let aiImportBusy=false;
+function setAiImportLocked(locked){
+ const shell=app.querySelector('.shell');
+ if(!shell||page!=='recordChatGpt')return;
+ shell.toggleAttribute('inert',locked);
+ shell.setAttribute('aria-busy',String(locked));
+ shell.querySelectorAll('button,textarea').forEach(el=>{el.disabled=locked||(el.dataset.act==='chatGptImport'&&!document.getElementById('chatgpt-input')?.value.trim());});
 }
 function receiptChatGptView(){
  return head('生成AIによる確認','',true)+
@@ -1050,6 +1057,7 @@ function scanFormView(){
        className:'scan-item-tool',data:{'data-scan-row':i}})}
     </div></div>
     ${isUnconfirmedBarcodeLine(item)?'<p class="scan-name-warning">商品コードだけの明細を確認</p>':''}
+    ${scanResolvedProductId(item)&&catalogue.products.some(p=>p.id===scanResolvedProductId(item))?`<div class="scan-matched-product scan-match-summary" aria-label="登録商品と一致"><span aria-hidden="true">✓</span><span>${esc(scanSelectedProductLabel(item))}</span></div>`:''}
     ${item.inputOrigin==='manual'?'':item.inputOrigin==='photo'||item.ocrRawName===undefined?
      UI.formField({id:'scan-name-'+i,name:'name-'+i,label:'読み取り名',
       value:item.name,maxlength:120,required:true,hint:true,
@@ -1057,8 +1065,7 @@ function scanFormView(){
      UI.formField({id:'scan-ocr-name-'+i,control:'static',label:'読み取り名',
        value:reviewModel.items[i].originalOcrName||'読み取り不可',valueVariant:'supporting',
        valueClass:'scan-ocr-name',extra:'data-ocr-row="'+i+'"',fieldClass:'scan-read-name'})}
-    ${scanResolvedProductId(item)&&catalogue.products.some(p=>p.id===scanResolvedProductId(item))?
-       `<div class="scan-matched-product scan-match-summary" aria-label="登録商品と一致"><span aria-hidden="true">✓</span><span>${esc(scanSelectedProductLabel(item))}</span></div>`:
+    ${scanResolvedProductId(item)&&catalogue.products.some(p=>p.id===scanResolvedProductId(item))?'':
        (item.productSuggestion?.existingName||item.productSuggestion?.newName||
         reviewModel.items[i].proposedName)?
        UI.formField({id:'scan-proposed-'+i,control:'static',label:'商品名候補',
@@ -1537,6 +1544,9 @@ function nameSearchRank(raw,queryValue){
  const key=scanVariantKey(name),needle=scanVariantKey(q);
  if(!key||!needle)return Infinity;
  if(key===needle||key.includes(needle))return 2;
+ if(key.length>=3&&needle.includes(key))return 4;
+ const stem=key.replace(/\d+$/u,''),queryStem=needle.replace(/\d+$/u,'');
+ if(stem.length>=3&&queryStem.length>=3&&(queryStem.startsWith(stem)||stem.startsWith(queryStem)))return 5;
  if(needle.length>=3&&scanNumericTokens(key)===scanNumericTokens(needle)){
   const k=scanVoicingKey(name),n=scanVoicingKey(q);
   if(k.includes(n)||scanOcrCandidateKey(name).includes(scanOcrCandidateKey(q)))return 3;
@@ -1545,10 +1555,10 @@ function nameSearchRank(raw,queryValue){
  return Infinity;
 }
 function searchName(name,q){return !norm(q)||Number.isFinite(nameSearchRank(name??'',q));}
-function householdMatches(item,q){return searchName(itemLabel(item),q)||registeredProducts(item.id).some(p=>productMatches(p,q));}
+function householdMatches(item,q,productHits=null){return searchName(itemLabel(item),q)||(productHits||new Set(registrationCandidates(q).map(p=>p.householdItemId))).has(item.id);}
 function listResults(){
  const q=norm(query),productHits=new Set(q?registrationCandidates(q,Infinity).map(p=>p.householdItemId):[]);
- const matches=i=>(!q||Number.isFinite(nameSearchRank(itemLabel(i),q))||productHits.has(i.id))&&(!onlyOut||!i.inStock);
+ const matches=i=>householdMatches(i,q,productHits)&&(!onlyOut||!i.inStock);
  const all=visible().filter(matches).sort((a,b)=>a.order-b.order||String(a.id).localeCompare(String(b.id)));
  return all.length?`<section class="household-list">${all.map(itemCardHtml).join('')}</section>`:'<div class="empty">一致する日用品はありません</div>';
 }
@@ -1701,17 +1711,16 @@ function productsView(){
 }
 
 
-function registrationCandidates(raw,limit=12){
+function registrationCandidates(raw,limit=Infinity){
  const q=norm(raw);
  if(!q)return [];
  const scores=new Map(),put=(id,rank)=>{if(!scores.has(id)||rank<scores.get(id))scores.set(id,rank);};
  const evidence=scanNameEvidence();
  for(const [name,entries] of evidence.exact){
   const rank=nameSearchRank(name,q);
-  if(Number.isFinite(rank)||q.includes(name)&&name.length>=3)
-   for(const e of entries)put(e.productId,Number.isFinite(rank)?rank:2);
+  if(Number.isFinite(rank))for(const e of entries)put(e.productId,rank);
  }
- for(const p of catalogue.products)if(productMatches(p,q))put(p.id,1);
+ for(const p of catalogue.products){const rank=Math.min(...[p.name,p.packageQuantity?p.packageQuantity+p.packageUnit:'',...(p.aliases||[])].map(n=>nameSearchRank(n,q)));if(Number.isFinite(rank))put(p.id,rank);}
  for(const p of scanSimilarProducts(raw))put(p.id,4);
  return catalogue.products.filter(p=>scores.has(p.id)).sort((a,b)=>scores.get(a.id)-scores.get(b.id)||
   Number(!!a.householdItemId)-Number(!!b.householdItemId)||a.name.localeCompare(b.name,'ja')).slice(0,limit);
@@ -1755,8 +1764,8 @@ function productCreateView(registering=false){
 let masterQuery='',masterProductId=null,masterGroupPickerOpen=false,masterGroupQuery='',masterGroupChanging=false,householdPickerContext=null;
 function masterProductRows(){
  const q=norm(masterQuery);
- const found=catalogue.products.filter(p=>!q||productMatches(p,q)||
-  searchName(linkedItemName(p),q)).sort((a,b)=>a.name.localeCompare(b.name,'ja'));
+ const hits=new Set(registrationCandidates(q).map(p=>p.id));
+ const found=catalogue.products.filter(p=>!q||hits.has(p.id)||searchName(linkedItemName(p),q)).sort((a,b)=>a.name.localeCompare(b.name,'ja'));
  return found.map(p=>'<div class="master-product-entry">'+UI.catalogueRow({title:productTitle(p),lines:[productHouseholdStatus(p)],action:'masterProductEdit',data:{'data-product-id':p.id},className:'panel'})+UI.button({label:p.householdItemId?'日用品を変更':'日用品に設定',variant:'tertiary',action:'receiptHouseholdLink',data:{'data-product-id':p.id}})+'</div>').join('')||'<div class="panel empty">該当する商品はありません</div>';
 }
 function masterGroupLabel(groupId){
@@ -1765,26 +1774,28 @@ function masterGroupLabel(groupId){
 }
 function productHouseholdStatus(p){return p&&linkedItemLabel(p)?'日用品：'+linkedItemLabel(p):'日用品未設定';}
 const householdPromptSeen=new Set();
-let householdOffer=null;
+let householdOffer=null,householdOfferTimer=null;
 function currentHouseholdProductId(id){
  const confirmed=window.KurashiLive?.confirmedProductId?.(id)||id;
  return catalogue.products.some(p=>p.id===confirmed)?confirmed:id;
 }
-function dismissHouseholdOffer(){householdOffer=null;app.querySelector('.household-setup-offer')?.remove();}
+function dismissHouseholdOffer(){householdOffer=null;if(householdOfferTimer!==null){clearTimeout(householdOfferTimer);householdOfferTimer=null;}app.querySelector('.household-setup-offer')?.remove();}
 function renderHouseholdOffer(){
  if(!householdOffer)return;
  const productId=currentHouseholdProductId(householdOffer.productId);
+ if(Date.now()>=householdOffer.expiresAt){dismissHouseholdOffer();return;}
  if(householdOffer.page!==page||catalogue.products.find(p=>p.id===productId)?.householdItemId||dialog){dismissHouseholdOffer();return;}
  try{localStorage.setItem('kurashi-v99-household-offer:'+productId,'1');}catch(_){}
  app.querySelector('.household-setup-offer')?.remove();
- app.insertAdjacentHTML('beforeend','<aside class="household-setup-offer" role="status"><div><strong>商品を設定しました</strong>'+UI.button({label:'閉じる',variant:'tertiary',action:'dismissHouseholdOffer'})+'</div><p>日用品に設定すると、在庫管理や価格比較に活用できます。</p>'+UI.button({label:'日用品に設定',variant:'tertiary',action:'receiptHouseholdLink',data:{'data-product-id':productId}})+'</aside>');
+ app.insertAdjacentHTML('beforeend','<aside class="household-setup-offer" role="status"><div><strong>商品を設定しました</strong>'+'</div><p>日用品に設定すると、在庫管理や価格比較に活用できます。</p>'+UI.button({label:'日用品に設定',variant:'tertiary',action:'receiptHouseholdLink',data:{'data-product-id':productId}})+'</aside>');
 }
 function offerHouseholdSetup(productId){
  productId=currentHouseholdProductId(productId);
  if(!productId||catalogue.products.find(p=>p.id===productId)?.householdItemId||householdPromptSeen.has(productId)||dialog)return;
  try{if(localStorage.getItem('kurashi-v99-household-offer:'+productId))return;}catch(_){}
  householdPromptSeen.add(productId);
- householdOffer={productId,page};
+ dismissHouseholdOffer();householdOffer={productId,page,expiresAt:Date.now()+10000};
+ householdOfferTimer=setTimeout(dismissHouseholdOffer,10000);
  renderHouseholdOffer();
 }
 function householdLinkField(id,value=''){
@@ -1794,8 +1805,8 @@ function householdPickerForm(){return document.getElementById(householdPickerCon
 function masterGroupPickerRows(){
  const selected=String(householdPickerContext?.productId?catalogue.products.find(p=>p.id===currentHouseholdProductId(householdPickerContext.productId))?.householdItemId||'':householdPickerForm()?.elements.namedItem('group')?.value||'');
  const q=norm(masterGroupQuery);
- const choices=items.filter(item=>!item.hidden&&(!q||
-  householdMatches(item,q)));
+ const hits=new Set(registrationCandidates(q).map(p=>p.householdItemId));
+ const choices=items.filter(item=>!item.hidden&&householdMatches(item,q,hits));
  const noLink=!q||norm('設定しない').includes(q)?
   UI.choiceRow({title:'設定しない',choice:'',selected:selected===''}):'';
  return noLink+choices.map(item=>UI.choiceRow({
@@ -1804,7 +1815,7 @@ function masterGroupPickerRows(){
  })).join('')||'<p class="hint">該当する日用品はありません</p>';
 }
 function masterGroupPickerView(){
- return UI.sheet({title:'日用品に設定',variant:'master-group-picker-modal',
+ return UI.sheet({title:'日用品に設定',variant:'editor-sheet master-group-picker-modal',
   backdropClass:'master-group-picker-overlay',
   body:'<div class="master-group-picker-content"><div class="master-group-picker-search">'+
    UI.searchField({id:'master-group-search',label:'日用品を検索',
@@ -1821,12 +1832,12 @@ function openMasterGroupPicker(productId=null){
  householdPickerContext={formId,productId};
  masterGroupQuery='';masterGroupPickerOpen=true;
  app.insertAdjacentHTML('beforeend',masterGroupPickerView());
- syncSheetScrollLock();
+ syncSheetScrollLock();syncEditorViewport();
 }
 function closeMasterGroupPicker(){
  app.querySelector('.master-group-picker-overlay')?.remove();
  masterGroupPickerOpen=false;masterGroupQuery='';householdPickerContext=null;
- syncSheetScrollLock();flushDeferredRender();
+ syncSheetScrollLock();syncEditorViewport();flushDeferredRender();
 }
 function setMasterGroupField(groupId,formId='masterProductForm'){
  const field=document.getElementById(formId)?.querySelector('[name="group"]')?.closest('.formfield');
@@ -1898,8 +1909,8 @@ function aliasProductPickerRows(){
  const q=norm(aliasPickerQuery),current=a.productId||'';
  const noLink=!q||norm('商品未設定').includes(q)?
   UI.choiceRow({title:'商品未設定',choice:'',selected:!current}):'';
- const choices=catalogue.products.filter(p=>!q||productMatches(p,q)||
-  searchName(productTitle(p),q)||searchName(linkedItemName(p),q))
+ const hits=new Set(registrationCandidates(q).map(p=>p.id));
+ const choices=catalogue.products.filter(p=>!q||hits.has(p.id)||searchName(productTitle(p),q)||searchName(linkedItemName(p),q))
   .sort((a,b)=>a.name.localeCompare(b.name,'ja'));
  return noLink+choices.map(p=>UI.choiceRow({
   title:productTitle(p),subtitle:productHouseholdStatus(p),
@@ -2140,17 +2151,23 @@ function syncEditorViewport(){
  if(!sheet){editorSheetGeometry=null;return;}
  const vv=window.visualViewport;
  const layout=window.innerHeight||vv?.height||720;
- if(!editorSheetGeometry){const height=Math.min(540,Math.round(layout*.76));editorSheetGeometry={height,top:layout-height};}
- const productSheet=sheet.classList.contains('product-registration-sheet');
- const height=productSheet?Math.max(260,layout-96):editorSheetGeometry.height;
- const top=productSheet?layout-height:editorSheetGeometry.top;
- const offset=vv?.offsetTop||0,bottom=offset+(vv?.height||layout);
- const stableTop=Math.max(offset,Math.min(top,bottom-220));
+ const tall=sheet.classList.contains('product-registration-sheet')||sheet.classList.contains('master-group-picker-modal');
+ if(!editorSheetGeometry||editorSheetGeometry.sheet!==sheet){
+  const height=tall?Math.max(260,layout-56):Math.min(540,Math.round(layout*.76));
+  editorSheetGeometry={sheet,layout,height,top:layout-height};
+ }
+ const {height,top}=editorSheetGeometry;
+ const visibleHeight=vv?.height||layout;
+ const keyboard=editorSheetGeometry.layout-visibleHeight>120;
+ const offset=keyboard?(vv?.offsetTop||0):0;
+ const stableTop=keyboard?offset+Math.min(24,Math.max(0,visibleHeight-240)):top;
+ const available=keyboard?Math.max(0,visibleHeight-(stableTop-offset)):height;
  sheet.style.setProperty('--editor-sheet-top',stableTop+'px');
- sheet.style.setProperty('--editor-sheet-height',Math.max(0,Math.min(height,bottom-stableTop))+'px');
+ sheet.style.setProperty('--editor-sheet-height',available+'px');
+ sheet.classList.toggle('editor-keyboard-open',keyboard);
 }
 window.visualViewport?.addEventListener('resize',syncEditorViewport);
-window.visualViewport?.addEventListener('scroll',syncEditorViewport);
+// Selection can scroll visualViewport without resizing: keep sheet geometry stable.
 function syncSheetScrollLock(){
  const active=!!app.querySelector('.sheet-back');
  if(active&&sheetScrollLock===null){
@@ -2387,6 +2404,7 @@ function goBack(){
   render();
 }
 function back(){
+ if(page==='recordChatGpt'&&(aiImportBusy||dialog))return;
   if(aliasPickerId){closeAliasProductPicker();return;}
   if(masterGroupPickerOpen){closeMasterGroupPicker();return;}
   if(page==='aliasManage'){page='list';tab='settings';render();return;}
@@ -2417,6 +2435,7 @@ function back(){
 }
 function renderDialogOnly(){
   document.querySelector('.dialog-back')?.remove();
+  if(page==='recordChatGpt')setAiImportLocked(!!dialog);
   if(dialog)app.insertAdjacentHTML('beforeend',dialogView());
   floatingActionUpdate?.();
   if(!dialog)flushDeferredRender();
@@ -3212,7 +3231,7 @@ if(action==='restoreItem'||action==='showExistingItem'){
  }item.hidden=false;item.version=(item.version||0)+1}
  revealItem(item);return;
 }
-if(action==='back'){if(masterGroupPickerOpen){closeMasterGroupPicker();return}if(recordProductItemId){closeRecordProductPicker();return}if(aliasPickerId){closeAliasProductPicker();return}if(masterGroupPickerOpen){closeMasterGroupPicker();return}if(storePickerTarget){closeStorePicker();return}back();return}
+if(action==='back'){if(page==='recordChatGpt'&&(aiImportBusy||dialog))return;if(masterGroupPickerOpen){closeMasterGroupPicker();return}if(recordProductItemId){closeRecordProductPicker();return}if(aliasPickerId){closeAliasProductPicker();return}if(masterGroupPickerOpen){closeMasterGroupPicker();return}if(storePickerTarget){closeStorePicker();return}back();return}
 if(action==='aliasMore'){aliasVisibleLimit+=100;const rows=document.getElementById('alias-results');if(rows)rows.innerHTML=aliasManageRows();return}
 if(action==='aliasPickerOpen'){openAliasProductPicker(el.dataset.aliasId);return}
 if(action==='createHouseholdFromPicker'){
@@ -3258,7 +3277,8 @@ if(action==='chatGptCopyPrompt'){
  return;
 }
 if(action==='chatGptImport'){
- if(!document.getElementById('chatgpt-input')?.value.trim())return;
+ if(aiImportBusy||dialog||!document.getElementById('chatgpt-input')?.value.trim())return;
+ aiImportBusy=true;setAiImportLocked(true);
  const parser=window.KurashiReceiptImport;
  try{
   if(!scanDraft||scanDraft.source!=='ocr')throw Error('先に写真を読み取ってください');
@@ -3300,7 +3320,7 @@ if(action==='chatGptImport'){
    reason;
   chatGptError='解析結果を取り込めません：'+readable;
   const el=document.getElementById('chatgpt-error');if(el)el.textContent=chatGptError;
- }
+ }finally{aiImportBusy=false;if(page==='recordChatGpt')setAiImportLocked(!!dialog);}
  return;
 }
 if(action==='detailAll'){page='detailAll';tab='receipt';render();return;}

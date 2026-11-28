@@ -27,6 +27,30 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Diagnose trial GAS transport (read-only, metadata only)
+        if: github.ref_name == 'preview-v99-household-first'
+        continue-on-error: true
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import json, re, urllib.request, urllib.error
+          endpoint=re.search(r"const ENDPOINT='([^']+)'",open('live-client.js').read()).group(1)
+          req=urllib.request.Request(endpoint,data=b'{"action":"bootstrap","payload":{},"id_token":""}',headers={'Content-Type':'text/plain;charset=utf-8','Origin':'https://tokky0117.github.io'})
+          try:
+              with urllib.request.urlopen(req,timeout=25) as response:
+                  print('HTTP',response.status,'CORS',response.headers.get('Access-Control-Allow-Origin','missing'))
+                  try:
+                      doc=json.load(response)
+                      print('JSON envelope:',isinstance(doc,dict) and isinstance(doc.get('ok'),bool),'success:',isinstance(doc,dict) and doc.get('ok') is True)
+                      print('Flat schema ready:',isinstance(doc,dict) and isinstance(doc.get('data'),dict) and doc['data'].get('household_flat_ready') is True)
+                  except (ValueError,TypeError):
+                      print('Response is not JSON')
+          except urllib.error.HTTPError as e:
+              print('HTTP',e.code)
+          except Exception as e:
+              print('Transport failure:',type(e).__name__)
+          PY
+
       - name: Install browser and IndexedDB regression-test dependencies
         run: npm install --no-save --no-package-lock --ignore-scripts fake-indexeddb@6.2.4 jsdom@26.1.0
 

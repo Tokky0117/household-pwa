@@ -7,7 +7,7 @@ const html=readFileSync(new URL('../index.html',import.meta.url),'utf8');
 const live=readFileSync(new URL('../live-client.js',import.meta.url),'utf8');
 const gas=readFileSync(new URL('../gas/Api.gs',import.meta.url),'utf8');
 
-assert.match(app,/const APP_VERSION='0\.99\.9'/);
+assert.match(app,/const APP_VERSION='0\.99\.10'/);
 assert.match(app,/const key='household_pwa_v99_household_items'/);
 assert.match(app,/const catalogueKey='household_pwa_v99_products'/);
 assert.match(app,/householdFirstPreview\?'household_pwa_v99_preview_records'/);
@@ -88,3 +88,13 @@ transferContext.navigator.canShare=()=>false;
 vm.runInContext("transferReceiptPhotos('share')",transferContext);
 assert.match(notice,/一括共有を利用できません/);
 console.log('v99.9 photo transfer payload checks: OK');
+
+// Candidate-only ranking includes numbered household alternatives.
+const rankContext={norm:v=>String(v||'').normalize('NFKC').toLowerCase().trim(),scanVariantKey:v=>String(v||'').normalize('NFKC').replace(/[\s\p{P}\p{S}]/gu,''),scanVoicingKey:v=>String(v||''),scanOcrCandidateKey:v=>String(v||''),scanNumericTokens:v=>(v.match(/\d+/g)||[]).join('|'),scanNearVariant:()=>false};
+vm.createContext(rankContext);
+vm.runInContext(app.slice(app.indexOf('function nameSearchRank('),app.indexOf('function searchName(')),rankContext);
+assert.ok(Number.isFinite(rankContext.nameSearchRank('トイレ','トイレクイックル詰替用 20')));
+assert.ok(Number.isFinite(rankContext.nameSearchRank('トイレ2','トイレクイックル詰替用 20')));
+assert.equal(rankContext.nameSearchRank('キッチン2','トイレクイックル詰替用 20'),Infinity);
+assert.match(app,/function registrationCandidates\(raw,limit=Infinity\)/);
+assert.match(app,/setTimeout\(dismissHouseholdOffer,10000\)/);
