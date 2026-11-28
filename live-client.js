@@ -959,13 +959,13 @@
    const mappedId=doc.recordItemIdMap?.[recordItemId]||recordItemId;
    const line=snap?.record_items.find(x=>x.record_item_id===mappedId&&!x.deleted_at);
    if(!line||!snap.records.some(r=>r.record_id===line.record_id&&
-      r.record_type==='receipt'&&!r.deleted_at))
-    throw Error('保存済みレシートの明細が見つかりません');
+      !r.deleted_at))
+    throw Error('保存済みの明細が見つかりません');
    if(!validReceiptProductName(name))throw Error('商品名を確認してください');
    const key=receiptProductKey(name);
    const existing=snap.products.filter(p=>!p.deleted_at);
-   if(existing.some(p=>receiptProductKey(p.name)===key||
-      receiptLooseKey(p.name)===receiptLooseKey(name)))
+   if(existing.some(p=>(receiptProductKey(p.name)===key||
+      receiptLooseKey(p.name)===receiptLooseKey(name))&&String(p.package_quantity||'')===String(packageValue?.quantity||'')&&String(p.package_unit||'')===String(packageValue?.unit||'')))
     throw Error('同じ名前または類似した商品があります。登録済みの商品から選択してください');
    const amount=packageValue?.quantity??null,unit=packageValue?.unit??null;
    const create=makeProductOperation('product.create',{

@@ -7,7 +7,7 @@ const html=readFileSync(new URL('../index.html',import.meta.url),'utf8');
 const live=readFileSync(new URL('../live-client.js',import.meta.url),'utf8');
 const gas=readFileSync(new URL('../gas/Api.gs',import.meta.url),'utf8');
 
-assert.match(app,/const APP_VERSION='0\.99\.7'/);
+assert.match(app,/const APP_VERSION='0\.99\.8'/);
 assert.match(app,/const key='household_pwa_v99_household_items'/);
 assert.match(app,/const catalogueKey='household_pwa_v99_products'/);
 assert.match(app,/householdFirstPreview\?'household_pwa_v99_preview_records'/);

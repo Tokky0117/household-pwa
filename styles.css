@@ -2849,3 +2849,11 @@ html,body{touch-action:pan-x pan-y}
 .record-entry-button small{font-size:11px;font-weight:400;color:var(--muted)}
 .half-sheet.editor-sheet{position:absolute;top:var(--editor-sheet-top,24svh);height:var(--editor-sheet-height,min(540px,76svh));max-height:none;min-height:0;box-sizing:border-box;overflow:hidden}
 .half-sheet.editor-sheet>.sheet-body{display:block;overflow-y:auto;min-height:0;overscroll-behavior:contain}
+
+/* Full page product registration: suggestions directly below the name. */
+.product-registration-page{padding-bottom:calc(24px + env(safe-area-inset-bottom));}
+.product-registration-page .registration-candidates{margin:4px 0 12px;max-height:240px;overflow:auto;overscroll-behavior:contain;}
+.product-registration-page .registration-candidates:empty{display:none}
+.product-registration-page .registration-candidates .ui-choice-row{width:100%}
+.current-product-setting{margin-top:18px;border-top:1px solid var(--line);padding-top:12px}
+.half-sheet.master-group-picker-modal{height:min(540px,88svh)}

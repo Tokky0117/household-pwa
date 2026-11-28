@@ -244,8 +244,8 @@ const masterNewEditor=ui.masterProductEditorView();
 assert.ok(masterNewEditor.includes('id="master-product-group"')&&
  masterNewEditor.includes('name="group"')&&
  masterNewEditor.includes('data-act="masterGroupPickerOpen"')&&
- masterNewEditor.includes('日用品との紐付け（任意）')&&
- masterNewEditor.includes('紐付けしない'),
+ masterNewEditor.includes('日用品に設定（任意）')&&
+ masterNewEditor.includes('設定しない'),
  'New master uses a shared picker with optional default, not a long dropdown');
 assert.ok(!masterNewEditor.includes('class="ui-select"')&&
  !masterNewEditor.includes('data-act="masterProductUnlink"'),
@@ -296,7 +296,7 @@ assert.ok(aliasList.includes('さらに表示（残り22件）')&&
  aliasList.includes('data-act="aliasMore"'),
  'More action shows remaining rows instead of silently hiding aliases');
 assert.ok(aliasList.includes('店舗：スーパー青空')&&
- aliasList.includes('商品未紐付け'),
+ aliasList.includes('商品未設定'),
  'Alias row shows original OCR name, store and linked product without form controls');
 ui.setAliasVisibleLimit(200);
 const allAliasMarkup=ui.aliasManageRows();
@@ -492,7 +492,7 @@ assert.ok(view.includes('298円'),'Original purchase price remains visible for i
 ui.setUnit('mL');view=ui.priceCompareView();
 assert.ok(css.includes('.shop-compare-dock{')&&css.includes('position:fixed'),'Dock remains fixed');
 const picker=ui.pickerView();
-assert.ok(picker.includes('class="half-sheet editor-sheet"')&&picker.includes('id="new-product-name"'));
+assert.ok(picker.includes('product-registration-page')&&picker.includes('id="new-product-name"'));
 assert.ok(picker.includes('id="productCreateForm"')&&!picker.includes('data-act="productCreate"'),'No secondary creation step');
 assert.ok(ui.registrationCandidates('牛乳').some(p=>p.name==='おいしい牛乳'));
 assert.ok(ui.registrationCandidates('ｵｲｼｲｷﾞｭｳﾆｭｳ').some(p=>p.name==='おいしい牛乳'));
@@ -608,7 +608,7 @@ assert.ok(savedShelfDetail.includes('>値札確認日</span>')&&
 ui.setRecordDetailId(ui.allPreviewRecords().at(-1).record_id);
 const unnamedReceiptDetail=ui.recordDetailView();
 assert.ok(unnamedReceiptDetail.includes('明細名なし')&&
- unnamedReceiptDetail.includes('商品未紐付け')&&
+ unnamedReceiptDetail.includes('商品未設定')&&
  unnamedReceiptDetail.includes('数量 2'),
  'Unnamed and unmatched saved receipt line remains accessible');
 
@@ -1199,7 +1199,7 @@ assert.ok(sheetFocusSpace.length===1&&sheetFocusSpace[0].includes('padding-inlin
 assert.ok(css.includes('.formfield.ui-field-error')&&css.includes('.formfield.ui-field-warning'),
  'red and yellow validation state borders remain separate from blue focus');
 
-assert.ok(!listingHtml.includes('日用品未紐付け')||listingHtml.includes('登録商品と一致'),
+assert.ok(!listingHtml.includes('日用品未設定')||listingHtml.includes('登録商品と一致'),
  'household status is shown only for matched receipt products');
 assert.ok(css.includes('.formfield input,.formfield select,.formfield textarea,')&&
  css.includes('.formfield.ui-field-error')&&css.includes('.formfield.ui-field-warning')&&
