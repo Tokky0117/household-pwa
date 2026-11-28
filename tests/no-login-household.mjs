@@ -1689,7 +1689,7 @@ assert.ok(individualForm.querySelector('[name="quantity"]'),
  'receipt product registration offers optional package capacity');
 assert.equal(individualForm.querySelector('[name="quantity"]').value,'',
  'unrecognized product name leaves capacity unset');
-const linkedHousehold=temp.call('bootstrap').data.household_items.find(x=>!x.is_hidden&&!x.deleted_at);
+const linkedHousehold=temp.call('bootstrap').data.household_items.find(x=>!x.is_hidden&&!x.deleted_at&&!x.in_stock);
 assert.ok(linkedHousehold);
 individualForm.dispatchEvent(new bulkUI.window.Event('submit',{bubbles:true,cancelable:true}));
 await waitFor(()=>bulkUI.window.KurashiLive.state().queued===0&&
@@ -1706,9 +1706,12 @@ assert.ok(receiptGroupPicker);
 receiptGroupPicker.querySelector('[data-ui-choice="'+linkedHousehold.household_item_id+'"]').click();
 bulkUI.window.document.querySelector('[data-dialog="confirmMasterGroupChange"]').click();
 await waitFor(()=>bulkUI.window.KurashiLive.state().queued===0&&temp.call('bootstrap').data.products.find(x=>x.product_id===individualProduct.product_id).household_item_id===linkedHousehold.household_item_id,'Optional household setup persists after receipt product save');
-const stockPrompt=bulkUI.window.document.querySelector('[data-dialog="declineReceiptStock"]');
-if(stockPrompt)stockPrompt.click();
-assert.equal(bulkUI.window.document.querySelector('.household-setup-offer'),null,'Offer is dismissed after setting');
+await waitFor(()=>!!bulkUI.window.document.querySelector('.receipt-stock-offer:not(.is-leaving) [data-act="confirmReceiptStock"]'),'Stock confirmation appears in the shared snackbar');
+assert.equal(bulkUI.window.document.querySelector('[data-dialog="confirmReceiptStock"]'),null,'Stock update is not a modal dialog');
+assert.equal(temp.call('bootstrap').data.household_items.find(x=>x.household_item_id===linkedHousehold.household_item_id).in_stock,false,'Stock is unchanged before explicit confirmation');
+bulkUI.window.document.querySelector('.receipt-stock-offer:not(.is-leaving) [data-act="confirmReceiptStock"]').click();
+await waitFor(()=>bulkUI.window.KurashiLive.state().queued===0&&temp.call('bootstrap').data.household_items.find(x=>x.household_item_id===linkedHousehold.household_item_id).in_stock===true,'Snackbar confirms the stock change');
+assert.equal(bulkUI.window.document.querySelector('.household-setup-offer:not(.is-leaving)'),null,'Offer is dismissed after setting');
 bulkUI.window.document.querySelector('[data-act="recordProductOpen"]').click();
 bulkUI.window.document.querySelector('[data-act="recordProductUnlink"]').click();
 await waitFor(()=>bulkUI.window.KurashiLive.state().queued===0&&
@@ -2140,7 +2143,7 @@ const standaloneProduct=temp.call('bootstrap').data.products.find(x=>x.name===st
 assert.ok(standaloneProduct);
 await waitFor(()=>!!standaloneSession.window.document.querySelector('.household-setup-offer'),'Optional prompt is visible');
 standaloneSession.window.document.querySelector('.head-title').click();
-assert.equal(standaloneSession.window.document.querySelector('.household-setup-offer'),null,'Tapping elsewhere dismisses the prompt without setting a household');
+assert.equal(standaloneSession.window.document.querySelector('.household-setup-offer:not(.is-leaving)'),null,'Tapping elsewhere dismisses the prompt without setting a household');
 assert.ok(!temp.call('bootstrap').data.products.find(p=>p.product_id===standaloneProduct.product_id).household_item_id);
 await waitFor(()=>temp.call('bootstrap').data.receipt_name_mappings.some(x=>
  x.chain_id===standaloneChainId&&x.auto_match_product_id===standaloneProduct.product_id&&

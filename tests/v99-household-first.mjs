@@ -7,7 +7,7 @@ const html=readFileSync(new URL('../index.html',import.meta.url),'utf8');
 const live=readFileSync(new URL('../live-client.js',import.meta.url),'utf8');
 const gas=readFileSync(new URL('../gas/Api.gs',import.meta.url),'utf8');
 
-assert.match(app,/const APP_VERSION='0\.99\.10'/);
+assert.match(app,/const APP_VERSION='0\.99\.11'/);
 assert.match(app,/const key='household_pwa_v99_household_items'/);
 assert.match(app,/const catalogueKey='household_pwa_v99_products'/);
 assert.match(app,/householdFirstPreview\?'household_pwa_v99_preview_records'/);
@@ -43,7 +43,8 @@ console.log('v99 household-first flow, old linkage model and guarded trial backe
 assert.match(app,/function receiptStockCandidates/);
 assert.doesNotMatch(app,/expandedItemGroups|groupKeyOfItem|data-group-toggle|item-group-child-row/);
 assert.match(app,/price.innerHTML=listPriceHtml\(next\)/);
-assert.match(app,/dialog.pending\?\.stockItemIds\?' dialog-receipt-bulk'/);
+assert.match(app,/enqueueActionSnackbar\(\{kind:'stock',ids:targets\}\)/);
+assert.doesNotMatch(app,/stockItemIds/);
 assert.match(app,/confirmReceiptStock/);
 assert.match(live,/function setItemsInStock/);
 assert.match(live,/household_flat_ready/);
@@ -97,6 +98,7 @@ assert.ok(Number.isFinite(rankContext.nameSearchRank('トイレ','トイレク�
 assert.ok(Number.isFinite(rankContext.nameSearchRank('トイレ2','トイレクイックル詰替用 20')));
 assert.equal(rankContext.nameSearchRank('キッチン2','トイレクイックル詰替用 20'),Infinity);
 assert.match(app,/function registrationCandidates\(raw,limit=Infinity\)/);
-assert.match(app,/setTimeout\(dismissHouseholdOffer,10000\)/);
+assert.match(app,/setTimeout\(\(\)=>dismissActionSnackbar\(\),10000\)/);
+assert.match(app,/const stableTop=tall\?top:/);
 
 assert.equal(rankContext.nameSearchRank('テスト印字名119','テスト印字名120'),Infinity);
