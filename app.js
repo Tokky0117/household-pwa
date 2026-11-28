@@ -2153,7 +2153,9 @@ function syncEditorViewport(){
  const layout=window.innerHeight||vv?.height||720;
  const tall=sheet.classList.contains('product-registration-sheet')||sheet.classList.contains('master-group-picker-modal');
  if(!editorSheetGeometry||editorSheetGeometry.sheet!==sheet){
-  const height=tall?Math.max(260,layout-56):Math.min(540,Math.round(layout*.76));
+  const header=app.querySelector('.shell>.top');
+  const peek=Math.max(56,Math.min(100,Math.round(header?.getBoundingClientRect().height||72)));
+  const height=tall?Math.max(260,layout-peek):Math.min(540,Math.round(layout*.76));
   editorSheetGeometry={sheet,layout,height,top:layout-height};
  }
  const {height,top}=editorSheetGeometry;
@@ -2990,7 +2992,7 @@ if(el.dataset.pick){
 }
 if(el.dataset.dialog){if(el.dataset.dialog==='cancel'&&dialog?.pending?.pendingOpsSignature){
   window.KurashiLive.endPendingOperationReview();dialog=null;renderDialogOnly();return;
- }if(el.dataset.dialog==='cancel'&&(dialog?.title==='店舗を削除'||dialog?.title==='商品の登録先変更'||dialog?.title==='変更を破棄しますか？'||dialog?.title==='比較単位について'||dialog?.title==='日用品への設定を変更しますか？'||dialog?.title==='日用品への設定を解除しますか？'||dialog?.title==='読み取り名の紐付けを変更しますか？'||dialog?.title==='読み取り名の紐付けを解除しますか？'||dialog?.title==='下書きに保存しますか？'||dialog?.title==='下書きがあります'||dialog?.title==='読み取り途中の内容を破棄しますか？'||dialog?.title==='この商品を新規登録しますか？'||dialog?.title==='読み取り結果を写真解析の結果に置き換えますか？')){dialog=null;document.querySelector('.dialog-back')?.remove();return}const action=el.dataset.dialog,p=dialog?.pending;dialog=null;
+ }if(el.dataset.dialog==='cancel'&&(dialog?.title==='店舗を削除'||dialog?.title==='商品の登録先変更'||dialog?.title==='変更を破棄しますか？'||dialog?.title==='比較単位について'||dialog?.title==='日用品への設定を変更しますか？'||dialog?.title==='日用品への設定を解除しますか？'||dialog?.title==='読み取り名の紐付けを変更しますか？'||dialog?.title==='読み取り名の紐付けを解除しますか？'||dialog?.title==='下書きに保存しますか？'||dialog?.title==='下書きがあります'||dialog?.title==='読み取り途中の内容を破棄しますか？'||dialog?.title==='この商品を新規登録しますか？'||dialog?.title==='読み取り結果を写真解析の結果に置き換えますか？')){dialog=null;renderDialogOnly();return}const action=el.dataset.dialog,p=dialog?.pending;dialog=null;
 
 
 if(action==='confirmStoreDelete'&&p?.chainId){renderDialogOnly();window.KurashiLive.save('store.delete',{chain_id:p.chainId}).then(()=>{page='storeMasters';storeMasterId=null;render()}).catch(err=>inlineActionNotice(document.getElementById('storeMasterForm'),err.message||'店舗を削除できませんでした'));return;}
@@ -3101,7 +3103,7 @@ if(action==='confirmChatGptRebuild'&&p?.rebuild){
   scanAssistMessage=scanDraft.items.length+'件の明細に置き換えました。';
   scanStatus='';
   page='recordScan';render();
- }catch(err){say(err.message||'再解析結果を適用できませんでした');}
+ }catch(err){renderDialogOnly();say(err.message||'再解析結果を適用できませんでした');}
  return;
 }
 if(action==='confirmBlockedProductResolve'&&liveMode&&p&&

@@ -250,7 +250,7 @@ const masterEditPage=ui.masterProductEditorView();
 assert.ok(masterEditPage.includes('おいしい牛乳')&&!masterEditPage.includes('name="group"')&&ui.masterProductRows().includes('data-act="receiptHouseholdLink"'),'Household setup is accessible from master list');
 const masterSheet=ui.masterGroupPickerView();
 assert.ok(masterSheet.includes('class="sheet-back master-group-picker-overlay"')&&
- masterSheet.includes('class="half-sheet master-group-picker-modal"')&&
+ masterSheet.includes('class="half-sheet editor-sheet master-group-picker-modal"')&&
  masterSheet.includes('id="master-group-search"')&&
  masterSheet.includes('data-search-clear="master-group-search"')&&
  masterSheet.includes('data-ui-choice=""')&&masterSheet.includes('data-ui-choice="demo-1"'),
