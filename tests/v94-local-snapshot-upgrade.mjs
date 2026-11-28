@@ -136,9 +136,9 @@ const index=readFileSync(new URL('../index.html',import.meta.url),'utf8');
 const app=readFileSync(new URL('../app.js',import.meta.url),'utf8');
 // Keep the v94 release assertions intact; v99 is an isolated household-first
 // preview which intentionally never loads the production GAS client.
-if(app.startsWith("const APP_VERSION='0.99.11';")){
- assert.match(index,/live-client\.js\?v=99\.11-flat/);
- assert.match(index,/app\.js\?v=99\.11-flat/);
+if(app.startsWith("const APP_VERSION='0.99.12';")){
+ assert.match(index,/live-client\.js\?v=99\.12-flat/);
+ assert.match(index,/app\.js\?v=99\.12-flat/);
  assert.match(index,/product-package\.js\?v=99-household-first/);
 }else{
  assert.match(app,/^const APP_VERSION='0\.94\.5';/);

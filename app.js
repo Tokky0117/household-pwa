@@ -1,4 +1,4 @@
-const APP_VERSION='0.99.11';
+const APP_VERSION='0.99.12';
 const CATS=['食品・飲料','キッチン','洗面・風呂','洗濯・掃除','その他','調味料'];
 const liveMode=!!window.KurashiLive; // Data source only; original Preview v46 UI components remain.
 const SEED=[['牛乳',0,true],['麦茶',0,false],['コーヒー',0,true],['卵',0,false],['キッチンペーパー',1,false],['ラップ',1,true],['食器用洗剤',1,true],['シャンプー',2,false],['歯磨き粉',2,true],['ハンドソープ',2,false],['洗濯洗剤',3,false],['柔軟剤',3,true],['トイレットペーパー',3,false],['乾電池',4,true],['ティッシュ',4,true]];
@@ -497,13 +497,12 @@ function scanProductView(){
  const item=scanDraft?.items[scanProductRow];
  if(!item)return `${head('新しい商品を登録','レシートの明細',true)}<main class="manage-main scan-product-page"><p>対象の明細が見つかりません。</p></main>`;
  const fields=[
-  '<p class="scan-setting-source"><span>読み取り名</span><strong>'+esc(item.inputOrigin==='photo'?item.name:item.ocrRawName||item.name||'読み取り不可')+'</strong></p>',
-  UI.formField({id:'scan-product-name',name:'name',label:'登録商品名',value:item.canonicalName||item.productSuggestion?.newName||item.inferredName||item.nameCandidate||item.name,maxlength:80,required:true}),
+  UI.formField({id:'scan-product-name',name:'name',label:'登録商品名',value:item.canonicalName||item.productSuggestion?.newName||item.inferredName||item.nameCandidate||item.name,maxlength:80,required:true,placeholder:'商品名を入力',fieldClass:'product-name-field'}),
   productPackageFields({name:item.canonicalName||item.productSuggestion?.newName||item.inferredName||item.nameCandidate||item.name,
    quantityId:'scan-product-quantity',unitId:'scan-product-unit',
    suggestion:item.productSuggestion})
  ].join('');
- return productFullEditor({title:'新しい商品を登録',subtitle:'レシートの明細',formId:'scanProductForm',fields:scanModalPhotoLinks()+fields,submitLabel:'商品を登録'});
+ return productFullEditor({title:'新しい商品を登録',subtitle:item.inputOrigin==='photo'?item.name:item.ocrRawName||item.name||'読み取り不可',formId:'scanProductForm',fields:fields+scanModalPhotoLinks(),submitLabel:'商品を登録'});
 }
 function scanExistingProductResults(){return candidateRows(scanExistingQuery,'scanChooseExisting',{all:true,choice:true});}
 function scanExistingProductView(){
@@ -1439,7 +1438,7 @@ const UI={
   editorSheet({title,formId,fields,submitLabel,before='',after=''}){
    return UI.sheet({title,variant:'editor-sheet',body:before+'<form id="'+esc(formId)+'">'+fields+'<div class="formactions">'+UI.button({label:submitLabel,variant:'primary',type:'submit'})+'</div></form>'+after});
   },
-  sheet({title,body,variant='',backdropClass=''}){return `<div class="sheet-back ${esc(backdropClass)}" data-sheet-backdrop="true"><section class="half-sheet ${esc(variant)}" role="dialog" aria-modal="true" aria-label="${esc(title)}"><div class="sheet-grip"></div><header class="sheet-head"><h2>${esc(title)}</h2><button class="sheet-close" type="button" data-act="back" aria-label="閉じる">${miniIcon('close')}</button></header><div class="sheet-body">${body}</div></section></div>`},
+  sheet({title,subtitle='',body,variant='',backdropClass=''}){return `<div class="sheet-back ${esc(backdropClass)}" data-sheet-backdrop="true"><section class="half-sheet ${esc(variant)}" role="dialog" aria-modal="true" aria-label="${esc(title)}"><div class="sheet-grip"></div><header class="sheet-head${subtitle?' has-subtitle':''}"><h2>${esc(title)}${subtitle?`<span class="sheet-subtitle" title="${esc(subtitle)}">${esc(subtitle)}</span>`:''}</h2><button class="sheet-close" type="button" data-act="back" aria-label="閉じる">${miniIcon('close')}</button></header><div class="sheet-body">${body}</div></section></div>`},
   inlineNotice({message,action,label}){return `<div class="ui-inline-notice" role="status"><p>${esc(message)}</p><button type="button" class="tertiary" data-act="${esc(action)}">${esc(label)}</button></div>`},
   actions({items,label,compact=false,hidden=false}){return commonMenu(items,{label,compact,hidden})}
 
@@ -1741,7 +1740,7 @@ function pickerResults(){
  }).join('');
 }
 function productRegistrationFields({name='',nameId,quantityId,unitId,product=null,candidates='',groupField='',suggestion=null}){
- return UI.formField({id:nameId,name:'name',label:'商品名',value:name,required:true,maxlength:80,placeholder:'商品名を入力',hint:true})+
+ return UI.formField({id:nameId,name:'name',label:'商品名',value:name,required:true,maxlength:80,placeholder:'商品名を入力',hint:true,fieldClass:'product-name-field'})+
  candidates+productPackageFields({name,quantityId,unitId,quantity:product?.packageQuantity??null,unit:product?.packageUnit||null,editing:!!product,suggestion})+groupField;
 }
 function candidateRows(raw,action,{all=false,exclude=null,choice=false}={}){
@@ -1753,7 +1752,7 @@ function candidateSection(id,rows){
  return '<div id="'+esc(id)+'" class="registration-candidates">'+rows+'</div>';
 }
 function productFullEditor({title,subtitle='',formId,fields,submitLabel='登録する',extra='',disabled=false}){
- return UI.sheet({title,variant:'editor-sheet product-registration-sheet',backdropClass:'product-registration-overlay',body:'<div class="product-registration-page">'+(subtitle?'<p class="product-editor-context hint">'+esc(subtitle)+'</p>':'')+'<form id="'+esc(formId)+'">'+fields+'<div class="formactions">'+UI.button({label:submitLabel,variant:'primary',type:'submit',disabled})+'</div></form>'+extra+'</div>'});
+ return UI.sheet({title,subtitle,variant:'editor-sheet product-registration-sheet',backdropClass:'product-registration-overlay',body:'<div class="product-registration-page"><form id="'+esc(formId)+'">'+fields+'<div class="formactions">'+UI.button({label:submitLabel,variant:'primary',type:'submit',disabled})+'</div></form>'+extra+'</div>'});
 }
 function pickerView(){return productCreateView(true);}
 function productCreateView(registering=false){

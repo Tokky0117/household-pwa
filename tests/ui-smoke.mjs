@@ -485,6 +485,8 @@ ui.setUnit('mL');view=ui.priceCompareView();
 assert.ok(css.includes('.shop-compare-dock{')&&css.includes('position:fixed'),'Dock remains fixed');
 const picker=ui.pickerView();
 assert.ok(picker.includes('product-registration-sheet')&&picker.includes('id="new-product-name"'));
+assert.ok(picker.includes('sheet-subtitle')&&!picker.includes('product-editor-context'),'Context is grouped in the sheet heading');
+assert.match(picker,/<form id="productCreateForm"><div class="formfield product-name-field">/,'The product name is the first form field');
 assert.ok(picker.includes('id="productCreateForm"')&&!picker.includes('data-act="productCreate"'),'No secondary creation step');
 assert.ok(ui.registrationCandidates('牛乳').some(p=>p.name==='おいしい牛乳'));
 assert.ok(ui.registrationCandidates('ｵｲｼｲｷﾞｭｳﾆｭｳ').some(p=>p.name==='おいしい牛乳'));
@@ -1066,6 +1068,9 @@ assert.ok(newProductHtml.includes('scan-product-name')&&
  'manual receipt product registration retains the captured name');
 assert.ok(!newProductHtml.includes('id="scan-group-search"')&&!newProductHtml.includes('name="group"')&&!newProductHtml.includes('name="package_quantity"')&&!newProductHtml.includes('name="package_unit"'),'Household setup follows product registration');
 assert.ok(newProductHtml.includes('product-registration-sheet'),'Manual fallback uses the common product sheet');
+assert.match(newProductHtml,/<form id="scanProductForm"><div class="formfield product-name-field">/,'Manual registration also starts with the name field');
+assert.ok(css.includes('.product-name-field>label')&&css.includes('clip-path:inset(50%)'),'Accessible label remains while redundant visual label is compacted');
+assert.ok(!css.includes('max-height:132px;flex:0 0 auto'),'Keyboard candidate height is no longer fixed');
 
 // Receipt entry now records the purchase first. Product selection and
 // ChatGPT-assisted registration happen on the saved detail screen.

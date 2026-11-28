@@ -2862,7 +2862,7 @@ html,body{touch-action:pan-x pan-y}
 .product-registration-page .registration-candidate-heading{flex:none;height:20px;line-height:20px;margin:0}
 .product-registration-page .registration-candidates :is(.ui-choice-row,.catalogue-candidate){flex:0 0 60px;height:60px;min-height:60px;box-sizing:border-box;margin:0;padding:7px 11px;overflow:hidden}
 .product-registration-page .registration-candidates :is(.ui-choice-copy,.catalogue-row-body)>strong{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%}
-.product-registration-sheet .product-editor-context{margin:0 0 8px}
+
 .master-product-entry{border:1px solid var(--line);border-radius:var(--ui-radius-card);margin-bottom:8px;background:var(--card)}
 .master-product-entry .catalogue-candidate{border:0;margin:0}
 .master-product-entry>[data-act="receiptHouseholdLink"]{margin:0 8px 6px;min-height:44px}
@@ -2886,7 +2886,7 @@ html,body{touch-action:pan-x pan-y}
 .product-registration-sheet .product-package-details>summary{padding:6px 4px;min-height:36px;}
 .product-registration-sheet .current-product-setting{margin-top:6px;padding-top:6px;}
 .editor-keyboard-open.product-registration-sheet .sheet-body{overflow-y:auto;}
-.editor-keyboard-open.product-registration-sheet .registration-candidates{max-height:132px;flex:0 0 auto;}
+
 .editor-keyboard-open.product-registration-sheet .product-package-hint{display:none;}
 .master-group-picker-content{gap:8px;}
 .master-group-picker-results{min-height:0;flex:1 1 auto;}
@@ -2908,3 +2908,20 @@ html,body{touch-action:pan-x pan-y}
 @keyframes action-snack-enter{from{opacity:0;transform:translate(-50%,16px)}to{opacity:1;transform:translate(-50%,0)}}
 @keyframes action-snack-exit{from{opacity:1;transform:translate(-50%,0)}to{opacity:0;transform:translate(-50%,12px)}}
 @media(prefers-reduced-motion:reduce){.action-snackbar.is-entering,.action-snackbar.is-leaving{animation:none}.action-snackbar.is-leaving{visibility:hidden}}
+
+/* v99.12: compact search-first layout, shared by both tall editor sheets. */
+.half-sheet:is(.product-registration-sheet,.master-group-picker-modal)>.sheet-grip{margin-bottom:2px;}
+.half-sheet:is(.product-registration-sheet,.master-group-picker-modal)>.sheet-head{margin-bottom:4px;min-height:44px;}
+.half-sheet:is(.product-registration-sheet,.master-group-picker-modal)>.sheet-head h2{min-width:0;line-height:1.2;}
+.sheet-head .sheet-subtitle{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--muted);font-size:11px;font-weight:400;line-height:1.2;margin-top:2px;}
+.product-registration-sheet .product-name-field{position:relative;margin:0 0 4px;}
+.product-registration-sheet .product-name-field>label{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap;}
+.product-registration-sheet .product-name-field>input{margin-top:0;min-height:44px;font-size:16px;}
+.product-registration-sheet .product-registration-page>form{flex:1 1 auto;min-height:0;}
+.product-registration-sheet .registration-candidates{flex:0 1 auto;min-height:0;overflow-y:auto;overscroll-behavior:contain;}
+.master-group-picker-content{gap:4px;}
+.master-group-picker-search{margin:0;}
+.master-group-picker-search .ui-search{margin:0;}
+.editor-keyboard-open.product-registration-sheet .registration-candidates{max-height:254px;flex:1 1 auto;min-height:0;}
+.editor-keyboard-open.product-registration-sheet .product-package-details{margin:0;}
+.editor-keyboard-open.product-registration-sheet .formactions{margin-top:4px;margin-bottom:2px;}
