@@ -2860,7 +2860,7 @@ html,body{touch-action:pan-x pan-y}
 
 /* v99.9 shared product registration sheet and 3.5-row candidate viewport. */
 .product-registration-page{padding-bottom:12px}
-.product-registration-page .registration-candidates{max-height:249px;overflow-y:auto;overscroll-behavior:contain;gap:6px}
+.product-registration-page .registration-candidates{max-height:254px;overflow-y:auto;overscroll-behavior:contain;gap:6px}
 .product-registration-page .registration-candidate-heading{flex:none;height:20px;line-height:20px;margin:0}
 .product-registration-page .registration-candidates :is(.ui-choice-row,.catalogue-candidate){flex:0 0 60px;height:60px;min-height:60px;box-sizing:border-box;margin:0;padding:7px 11px;overflow:hidden}
 .product-registration-page .registration-candidates :is(.ui-choice-copy,.catalogue-row-body)>strong{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%}

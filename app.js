@@ -1765,20 +1765,34 @@ function masterGroupLabel(groupId){
 }
 function productHouseholdStatus(p){return p&&linkedItemLabel(p)?'日用品：'+linkedItemLabel(p):'日用品未設定';}
 const householdPromptSeen=new Set();
-function dismissHouseholdOffer(){app.querySelector('.household-setup-offer')?.remove();}
-function offerHouseholdSetup(productId){
- if(!productId||catalogue.products.find(p=>p.id===productId)?.householdItemId||householdPromptSeen.has(productId)||dialog)return;
- const key='kurashi-v99-household-offer:'+productId;
- try{if(localStorage.getItem(key))return;localStorage.setItem(key,'1');}catch(_){}
- householdPromptSeen.add(productId);dismissHouseholdOffer();
+let householdOffer=null;
+function currentHouseholdProductId(id){
+ const confirmed=window.KurashiLive?.confirmedProductId?.(id)||id;
+ return catalogue.products.some(p=>p.id===confirmed)?confirmed:id;
+}
+function dismissHouseholdOffer(){householdOffer=null;app.querySelector('.household-setup-offer')?.remove();}
+function renderHouseholdOffer(){
+ if(!householdOffer)return;
+ const productId=currentHouseholdProductId(householdOffer.productId);
+ if(householdOffer.page!==page||catalogue.products.find(p=>p.id===productId)?.householdItemId||dialog){dismissHouseholdOffer();return;}
+ try{localStorage.setItem('kurashi-v99-household-offer:'+productId,'1');}catch(_){}
+ app.querySelector('.household-setup-offer')?.remove();
  app.insertAdjacentHTML('beforeend','<aside class="household-setup-offer" role="status"><div><strong>商品を設定しました</strong>'+UI.button({label:'閉じる',variant:'tertiary',action:'dismissHouseholdOffer'})+'</div><p>日用品に設定すると、在庫管理や価格比較に活用できます。</p>'+UI.button({label:'日用品に設定',variant:'tertiary',action:'receiptHouseholdLink',data:{'data-product-id':productId}})+'</aside>');
+}
+function offerHouseholdSetup(productId){
+ productId=currentHouseholdProductId(productId);
+ if(!productId||catalogue.products.find(p=>p.id===productId)?.householdItemId||householdPromptSeen.has(productId)||dialog)return;
+ try{if(localStorage.getItem('kurashi-v99-household-offer:'+productId))return;}catch(_){}
+ householdPromptSeen.add(productId);
+ householdOffer={productId,page};
+ renderHouseholdOffer();
 }
 function householdLinkField(id,value=''){
  return UI.formField({id,name:'group',label:'日用品に設定（任意）',control:'picker',pickerLayout:'inline',value,display:masterGroupLabel(value),action:'masterGroupPickerOpen',actionLabel:'変更'});
 }
 function householdPickerForm(){return document.getElementById(householdPickerContext?.formId||'masterProductForm');}
 function masterGroupPickerRows(){
- const selected=String(householdPickerContext?.productId?catalogue.products.find(p=>p.id===householdPickerContext.productId)?.householdItemId||'':householdPickerForm()?.elements.namedItem('group')?.value||'');
+ const selected=String(householdPickerContext?.productId?catalogue.products.find(p=>p.id===currentHouseholdProductId(householdPickerContext.productId))?.householdItemId||'':householdPickerForm()?.elements.namedItem('group')?.value||'');
  const q=norm(masterGroupQuery);
  const choices=items.filter(item=>!item.hidden&&(!q||
   householdMatches(item,q)));
@@ -1799,6 +1813,7 @@ function masterGroupPickerView(){
    masterGroupPickerRows()+'</div>'+UI.button({label:'新しい日用品を登録',variant:'primary',action:'createHouseholdFromPicker'})+'</div>'});
 }
 function openMasterGroupPicker(productId=null){
+ if(productId)productId=currentHouseholdProductId(productId);
  if(masterGroupPickerOpen||masterGroupChanging)return;
  const formId=page==='masterProductEdit'||page==='masterProductNew'?'masterProductForm':['scanProduct','scanExistingProduct'].includes(page)?'scanProductForm':recordProductItemId&&recordProductMode==='new'?'recordProductCreateForm':null;
  if(productId&&!catalogue.products.some(p=>p.id===productId))return;
@@ -1828,7 +1843,7 @@ function chooseMasterGroup(groupId){
  const form=householdPickerForm(),input=form?.elements.namedItem('group');
  if(!input&&!context.productId)return;
  if(groupId&&!items.some(item=>item.id===groupId&&!item.hidden))return;
- const productId=context.productId||(page==='masterProductEdit'?masterProductId:null);
+ const productId=context.productId?currentHouseholdProductId(context.productId):(page==='masterProductEdit'?masterProductId:null);
  const product=productId?catalogue.products.find(p=>p.id===productId):null;
  const previous=String(product?.householdItemId||input?.value||'');
  closeMasterGroupPicker();
@@ -2209,6 +2224,7 @@ function render(){
    window.requestAnimationFrame?.(()=>{if(page==='recordScan')window.scrollTo(0,position)});
   }
  }
+ renderHouseholdOffer();
  setupFloatingAction();
  if(liveMode&&tab==='settings')window.KurashiLive.renderLogin(document.getElementById('google-login-button'));
 }
@@ -3001,7 +3017,7 @@ if(action==='confirmRecordBulk'&&p?.bulkReceiptId&&Array.isArray(p.itemIds)){
  return;
 }
 if(action==='confirmMasterGroupChange'&&p&&Object.prototype.hasOwnProperty.call(p,'groupId')){
- const product=catalogue.products.find(x=>x.id===p.productId);
+ const product=catalogue.products.find(x=>x.id===currentHouseholdProductId(p.productId));
  if(!product||(!p.receiptContext&&(page!=='masterProductEdit'||masterProductId!==p.productId))||(p.receiptContext&&!['recordDetail','recordProduct','recordScan','masterProducts'].includes(page)))return;
  renderDialogOnly(); // Dismiss confirmation, keeping the edited form DOM unchanged.
  if(masterGroupChanging)return;

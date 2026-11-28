@@ -258,8 +258,14 @@ async function completeOcrImport(session){
  const assistant={version:'kurashi-receipt-assist-1',
   items:items.map((x,i)=>({rowId:x.ocrRowId,ocrName:x.ocrRawName,
    nameCandidate:receipt.items[i].nameCandidate??null}))};
- session.window.document.getElementById('chatgpt-input').value=JSON.stringify(assistant);
- session.window.document.querySelector('[data-act="chatGptImport"]').click();
+ const input=session.window.document.getElementById('chatgpt-input');
+ const importButton=session.window.document.querySelector('[data-act="chatGptImport"]');
+ assert.equal(importButton.disabled,true,'Empty response cannot be imported');
+ input.value='  ';input.dispatchEvent(new session.window.Event('input',{bubbles:true}));
+ assert.equal(importButton.disabled,true,'Whitespace cannot be imported');
+ input.value=JSON.stringify(assistant);input.dispatchEvent(new session.window.Event('input',{bubbles:true}));
+ assert.equal(importButton.disabled,false,'Pasted response enables import');
+ importButton.click();
  if(!session.window.document.getElementById('scanConfirmForm'))
   throw Error('OCR-bound import did not return: '+(session.window.document.getElementById('chatgpt-error')?.textContent||'no error message'))
 }
@@ -1678,18 +1684,13 @@ assert.match(bulkUI.window.document.body.textContent,/商品未設定/);
 bulkUI.window.document.querySelector('[data-act="recordProductOpen"]').click();
 const individualForm=bulkUI.window.document.getElementById('recordProductCreateForm');
 assert.ok(individualForm,'product editor uses one shared half sheet');
-assert.ok(individualForm.querySelector('[name="group"]'),'receipt product registration offers optional household link');
+assert.equal(individualForm.querySelector('[name="group"]'),null,'Household setup is separate from receipt product registration');
 assert.ok(individualForm.querySelector('[name="quantity"]'),
  'receipt product registration offers optional package capacity');
 assert.equal(individualForm.querySelector('[name="quantity"]').value,'',
  'unrecognized product name leaves capacity unset');
 const linkedHousehold=temp.call('bootstrap').data.household_items.find(x=>!x.is_hidden&&!x.deleted_at);
 assert.ok(linkedHousehold);
-individualForm.querySelector('[data-act="masterGroupPickerOpen"]').click();
-const receiptGroupPicker=bulkUI.window.document.querySelector('.master-group-picker-overlay');
-assert.ok(receiptGroupPicker);
-receiptGroupPicker.querySelector('[data-ui-choice="'+linkedHousehold.household_item_id+'"]').click();
-assert.equal(individualForm.querySelector('[name="group"]').value,linkedHousehold.household_item_id);
 individualForm.dispatchEvent(new bulkUI.window.Event('submit',{bubbles:true,cancelable:true}));
 await waitFor(()=>bulkUI.window.KurashiLive.state().queued===0&&
  temp.call('bootstrap').data.products.some(p=>p.name==='レシート個別登録テスト固有')&&
@@ -1697,18 +1698,18 @@ await waitFor(()=>bulkUI.window.KurashiLive.state().queued===0&&
   aliasText(temp,x)==='レシート個別登録テスト固有'&&x.linked_product_id),
  'product creation and saved item link reach Sheets using a durable queue');
 const individualProduct=temp.call('bootstrap').data.products.find(p=>p.name==='レシート個別登録テスト固有');
-assert.equal(individualProduct.household_item_id,linkedHousehold.household_item_id,'receipt registration saves optional household linkage');
+assert.ok(!individualProduct.household_item_id,'Product is saved before optional household setup');
+await waitFor(()=>!!bulkUI.window.document.querySelector('.household-setup-offer [data-act="receiptHouseholdLink"]'),'Post-registration offer is visible');
+bulkUI.window.document.querySelector('.household-setup-offer [data-act="receiptHouseholdLink"]').click();
+const receiptGroupPicker=bulkUI.window.document.querySelector('.master-group-picker-overlay');
+assert.ok(receiptGroupPicker);
+receiptGroupPicker.querySelector('[data-ui-choice="'+linkedHousehold.household_item_id+'"]').click();
+bulkUI.window.document.querySelector('[data-dialog="confirmMasterGroupChange"]').click();
+await waitFor(()=>bulkUI.window.KurashiLive.state().queued===0&&temp.call('bootstrap').data.products.find(x=>x.product_id===individualProduct.product_id).household_item_id===linkedHousehold.household_item_id,'Optional household setup persists after receipt product save');
 const stockPrompt=bulkUI.window.document.querySelector('[data-dialog="declineReceiptStock"]');
 if(stockPrompt)stockPrompt.click();
-assert.equal(bulkUI.window.document.querySelector('[data-act="receiptHouseholdLink"]'),null,'household setup is no longer a separate button on a receipt line');
+assert.equal(bulkUI.window.document.querySelector('.household-setup-offer'),null,'Offer is dismissed after setting');
 bulkUI.window.document.querySelector('[data-act="recordProductOpen"]').click();
-const receiptLinkButton=bulkUI.window.document.querySelector('[data-act="receiptHouseholdLink"][data-product-id="'+individualProduct.product_id+'"]');
-assert.ok(receiptLinkButton);
-receiptLinkButton.click();
-bulkUI.window.document.querySelector('.master-group-picker-overlay [data-ui-choice=""]').click();
-bulkUI.window.document.querySelector('[data-dialog="confirmMasterGroupChange"]').click();
-await waitFor(()=>bulkUI.window.KurashiLive.state().queued===0&&temp.call('bootstrap').data.products.find(x=>x.product_id===individualProduct.product_id).household_item_id==='', 'saved receipt can unlink household without changing stock');
-assert.ok(bulkUI.window.document.querySelector('#recordProductCreateForm'),'household setting returns to the product editor');
 bulkUI.window.document.querySelector('[data-act="recordProductUnlink"]').click();
 await waitFor(()=>bulkUI.window.KurashiLive.state().queued===0&&
  temp.call('bootstrap').data.record_items.some(x=>aliasText(temp,x)==='レシート個別登録テスト固有'&&!x.linked_product_id),
@@ -1837,7 +1838,7 @@ kitSession.window.document.querySelector('[data-act="recordProductOpen"]').click
 const kitForm=kitSession.window.document.getElementById('recordProductCreateForm');
 assert.ok(kitForm&&kitSession.window.document.querySelector('.product-registration-page'),
  'new product editor is one shared half sheet');
-assert.ok(kitForm.querySelector('[name="group"]'));
+assert.equal(kitForm.querySelector('[name="group"]'),null);
 assert.ok(kitForm.querySelector('[name="quantity"]'),
  'KitKat saved-receipt registration supports optional package capacity');
 assert.equal(kitForm.querySelector('[name="name"]').value,kitRaw,
@@ -1911,7 +1912,7 @@ assert.equal(duplicateKitReview.querySelector('[name="product-0"]'),null,
  'second iPhone also defers product linking until after receipt save');
 assert.equal(duplicateKitReview.querySelector('.scan-ocr-name').textContent,kitRaw,
  'reimport does not replace original printed name');
-assert.match(duplicateKitReview.textContent,/登録商品と一致/,
+assert.ok(duplicateKitReview.querySelector('[aria-label="登録商品と一致"]'),
  'second device displays its confirmed OCR-alias product before saving');
 assert.equal(duplicateKitReview.querySelector('#scan-duplicate-warning'),null,
  'An identical receipt does not display unnecessary duplicate confirmation');
@@ -2423,8 +2424,7 @@ assert.equal(masterResults.querySelectorAll('[data-act="masterProductEdit"]').le
 masterUI.window.document.querySelector('[data-act="masterProductNew"]').click();
 const masterForm=masterUI.window.document.querySelector('#masterProductForm');
 assert.ok(masterForm,'independent new product form');
-assert.equal(masterForm.querySelector('[name="group"]').value,'',
- 'group link is optional when a product is created');
+assert.equal(masterForm.querySelector('[name="group"]'),null,'New product form does not contain household candidates');
 masterForm.querySelector('[name="name"]').value='マスタ単独登録テストC';
 masterForm.dispatchEvent(new masterUI.window.Event('submit',{bubbles:true,cancelable:true}));
 await waitFor(()=>temp.call('bootstrap').data.products.some(p=>
@@ -2446,112 +2446,60 @@ await waitFor(()=>temp.call('bootstrap').data.products.some(p=>
  'product master edit reaches Sheets');
 await waitFor(()=>masterUI.window.KurashiLive.state().queued===0,
  'previous product edit completed');
-// The master link editor must keep its unsaved name/size while a common sheet opens.
+// Household assignment is a separate action; product edits and history are unaffected.
 const historyBeforeMasterLink=temp.call('bootstrap').data.record_items.map(x=>x.linked_product_id).join('|');
-masterUI.window.document.querySelector(
- '[data-act="masterProductEdit"][data-product-id="'+createdMaster.product_id+'"]'
-).click();
-const masterEditForm=masterUI.window.document.getElementById('masterProductForm');
-const masterNameDraft=masterEditForm.querySelector('[name="name"]');
-masterNameDraft.value='まだ保存していない名前';
-assert.equal(masterEditForm.querySelector('[name="group"]').value,'',
- 'Standalone master initially has no item group');
-masterEditForm.querySelector('[data-act="masterGroupPickerOpen"]').click();
+const masterHouseholdButton=()=>masterUI.window.document.querySelector('.master-product-entry [data-act="receiptHouseholdLink"][data-product-id="'+createdMaster.product_id+'"]');
+await waitFor(()=>!!masterHouseholdButton(),'Separate household action is available');
+masterHouseholdButton().click();
 let groupSheet=masterUI.window.document.querySelector('.master-group-picker-overlay');
-assert.ok(groupSheet&&groupSheet.querySelector('#master-group-search'),
- 'Master link editor opens the shared searchable half-sheet');
-assert.equal(masterUI.window.document.body.style.position,'fixed',
- 'Picker locks background scrolling on iPhone');
-assert.ok(groupSheet.querySelector('[data-ui-choice=""]'),
- 'Unlinked is represented in the same picker');
-assert.ok(groupSheet.querySelector('[data-ui-choice="'+chocId+'"]'),
- 'Existing item is a selectable choice');
+assert.ok(groupSheet&&groupSheet.querySelector('#master-group-search'),'Common searchable household sheet');
+assert.equal(masterUI.window.document.body.style.position,'fixed');
+assert.ok(groupSheet.querySelector('[data-ui-choice=""]'));
+assert.ok(groupSheet.querySelector('[data-ui-choice="'+chocId+'"]'));
 const groupSearch=groupSheet.querySelector('#master-group-search');
 const groupResults=groupSheet.querySelector('#master-group-results');
 const groupCount=groupResults.querySelectorAll('.ui-choice-row').length;
 groupSearch.dispatchEvent(new masterUI.window.Event('compositionstart',{bubbles:true}));
 groupSearch.value='候補なしQQQ999';
 groupSearch.dispatchEvent(new masterUI.window.Event('input',{bubbles:true}));
-assert.equal(groupResults.querySelectorAll('.ui-choice-row').length,groupCount,
- 'Group search preserves candidates during Japanese IME composition');
+assert.equal(groupResults.querySelectorAll('.ui-choice-row').length,groupCount);
 groupSearch.dispatchEvent(new masterUI.window.Event('compositionend',{bubbles:true}));
-assert.equal(groupResults.querySelectorAll('.ui-choice-row').length,0,
- 'Group candidates filter only when composition is confirmed');
+assert.equal(groupResults.querySelectorAll('.ui-choice-row').length,0);
 groupSheet.querySelector('[data-search-clear="master-group-search"]').click();
-assert.ok(groupResults.querySelector('[data-ui-choice="'+chocId+'"]'),
- 'Common clear reretail_chains all choices');
+assert.ok(groupResults.querySelector('[data-ui-choice="'+chocId+'"]'));
 groupSheet.querySelector('.sheet-close').click();
-assert.equal(masterUI.window.document.querySelector('.master-group-picker-overlay'),null,
- 'Close sheet without editing product');
-assert.equal(masterUI.window.document.body.style.position,'',
- 'Background scroll lock is released when picker closes');
-assert.equal(masterNameDraft.value,'まだ保存していない名前',
- 'Closing sheet does not discard unsaved product name');
-masterEditForm.querySelector('[data-act="masterGroupPickerOpen"]').click();
-groupSheet=masterUI.window.document.querySelector('.master-group-picker-overlay');
-groupSheet.querySelector('[data-ui-choice="'+chocId+'"]').click();
-assert.ok(masterUI.window.document.querySelector('[data-dialog="confirmMasterGroupChange"]'),
- 'Changing item-group link requires explicit impact confirmation');
+assert.equal(masterUI.window.document.querySelector('.master-group-picker-overlay'),null);
+assert.equal(masterUI.window.document.body.style.position,'');
+masterHouseholdButton().click();
+masterUI.window.document.querySelector('.master-group-picker-overlay [data-ui-choice="'+chocId+'"]').click();
+assert.ok(masterUI.window.document.querySelector('[data-dialog="confirmMasterGroupChange"]'));
 masterUI.window.document.querySelector('[data-dialog="cancel"]').click();
-assert.equal(masterNameDraft.value,'まだ保存していない名前',
- 'Canceling link confirmation preserves unsaved product input');
-assert.equal(masterEditForm.querySelector('[name="group"]').value,'',
- 'Canceling link confirmation does not change the current group');
-masterEditForm.querySelector('[data-act="masterGroupPickerOpen"]').click();
-groupSheet=masterUI.window.document.querySelector('.master-group-picker-overlay');
-groupSheet.querySelector('[data-ui-choice="'+chocId+'"]').click();
+assert.ok(!temp.call('bootstrap').data.products.find(p=>p.product_id===createdMaster.product_id).household_item_id,'Cancel does not change the group');
+masterHouseholdButton().click();
+masterUI.window.document.querySelector('.master-group-picker-overlay [data-ui-choice="'+chocId+'"]').click();
 masterUI.window.document.querySelector('[data-dialog="confirmMasterGroupChange"]').click();
-await waitFor(()=>masterEditForm.querySelector('[name="group"]').value===chocId,
- 'Confirmed link saved to the queue and displayed without recreating form');
-assert.equal(masterNameDraft.value,'まだ保存していない名前',
- 'Confirmed link keeps unsaved name in the existing DOM node');
-await waitFor(()=>masterUI.window.KurashiLive.state().queued===0&&
- temp.call('bootstrap').data.products.some(p=>
-  p.product_id===createdMaster.product_id&&p.household_item_id===chocId),
- 'Linked product is reflected on Sheets with the same master ID');
-masterNameDraft.value='マスタ紐付け後に編集C';
+await waitFor(()=>masterUI.window.KurashiLive.state().queued===0&&temp.call('bootstrap').data.products.some(p=>p.product_id===createdMaster.product_id&&p.household_item_id===chocId),'Household link persists');
+masterUI.window.document.querySelector('[data-act="masterProductEdit"][data-product-id="'+createdMaster.product_id+'"]').click();
+const masterEditForm=masterUI.window.document.getElementById('masterProductForm');
+assert.equal(masterEditForm.querySelector('[name="group"]'),null);
+masterEditForm.querySelector('[name="name"]').value='マスタ紐付け後に編集C';
 masterEditForm.dispatchEvent(new masterUI.window.Event('submit',{bubbles:true,cancelable:true}));
-await waitFor(()=>masterUI.window.KurashiLive.state().queued===0&&
- temp.call('bootstrap').data.products.some(p=>p.product_id===createdMaster.product_id&&
-  p.name==='マスタ紐付け後に編集C'),
- 'Editing product information after changing its link still saves independently');
-const newLinkRow=masterUI.window.document.querySelector(
- '[data-act="masterProductEdit"][data-product-id="'+createdMaster.product_id+'"]');
-assert.ok(newLinkRow,'Edited master returns to the same entry in the catalogue');
-newLinkRow.click();
-const unlinkForm=masterUI.window.document.getElementById('masterProductForm');
-assert.equal(unlinkForm.querySelector('[name="group"]').value,chocId);
-unlinkForm.querySelector('[data-act="masterGroupPickerOpen"]').click();
-groupSheet=masterUI.window.document.querySelector('.master-group-picker-overlay');
-groupSheet.querySelector('[data-ui-choice=""]').click();
-assert.ok(masterUI.window.document.querySelector('[data-dialog="confirmMasterGroupChange"]'),
- 'Unlink also uses the shared confirmation flow');
+await waitFor(()=>masterUI.window.KurashiLive.state().queued===0&&temp.call('bootstrap').data.products.some(p=>p.product_id===createdMaster.product_id&&p.name==='マスタ紐付け後に編集C'&&p.household_item_id===chocId),'Product edit leaves household association unchanged');
+masterHouseholdButton().click();
+masterUI.window.document.querySelector('.master-group-picker-overlay [data-ui-choice=""]').click();
 masterUI.window.document.querySelector('[data-dialog="confirmMasterGroupChange"]').click();
-await waitFor(()=>masterUI.window.KurashiLive.state().queued===0&&
- temp.call('bootstrap').data.products.some(p=>
-  p.product_id===createdMaster.product_id&&!p.household_item_id),
- 'Unlink keeps master row and ID in Sheets');
-assert.equal(unlinkForm.querySelector('[name="group"]').value,'',
- 'Unlink is reflected in the still-open editor');
-assert.equal(temp.call('bootstrap').data.record_items.map(x=>x.linked_product_id).join('|'),
- historyBeforeMasterLink,'Relinking does not rewrite historical receipt product IDs');
-assert.equal(masterUI.window.document.querySelector('[data-act="masterProductUnlink"]'),null,
- 'Standalone unlink action has been removed');
-masterUI.window.document.querySelector('[data-act="back"]').click();
+await waitFor(()=>masterUI.window.KurashiLive.state().queued===0&&temp.call('bootstrap').data.products.some(p=>p.product_id===createdMaster.product_id&&!p.household_item_id),'Unlink preserves master ID');
+assert.equal(temp.call('bootstrap').data.record_items.map(x=>x.linked_product_id).join('|'),historyBeforeMasterLink,'Relinking does not rewrite history');
 masterUI.window.document.querySelector('[data-act="masterProductNew"]').click();
 const linkedNewForm=masterUI.window.document.getElementById('masterProductForm');
-linkedNewForm.querySelector('[data-act="masterGroupPickerOpen"]').click();
-groupSheet=masterUI.window.document.querySelector('.master-group-picker-overlay');
-groupSheet.querySelector('[data-ui-choice="'+chocId+'"]').click();
-assert.equal(masterUI.window.document.querySelector('.dialog-back'),null,
- 'New master item link is only a form selection; no premature save');
-assert.equal(linkedNewForm.querySelector('[name="group"]').value,chocId);
 linkedNewForm.querySelector('[name="name"]').value='紐付け新規作成テストC';
 linkedNewForm.dispatchEvent(new masterUI.window.Event('submit',{bubbles:true,cancelable:true}));
-await waitFor(()=>masterUI.window.KurashiLive.state().queued===0&&
- temp.call('bootstrap').data.products.some(p=>
-  p.name==='紐付け新規作成テストC'&&p.household_item_id===chocId),
- 'New product persists optional item group in the same product.create operation');
+await waitFor(()=>masterUI.window.KurashiLive.state().queued===0&&temp.call('bootstrap').data.products.some(p=>p.name==='紐付け新規作成テストC'&&!p.household_item_id),'New master saves before optional setup');
+await waitFor(()=>!!masterUI.window.document.querySelector('.household-setup-offer [data-act="receiptHouseholdLink"]'),'New master offer visible');
+masterUI.window.document.querySelector('.household-setup-offer [data-act="receiptHouseholdLink"]').click();
+masterUI.window.document.querySelector('.master-group-picker-overlay [data-ui-choice="'+chocId+'"]').click();
+masterUI.window.document.querySelector('[data-dialog="confirmMasterGroupChange"]').click();
+await waitFor(()=>masterUI.window.KurashiLive.state().queued===0&&temp.call('bootstrap').data.products.some(p=>p.name==='紐付け新規作成テストC'&&p.household_item_id===chocId),'New master optional setup succeeds separately');
 assert.ok(!app.includes('product.delete'),'No product-delete action is introduced');
 masterUI.window.close();
 console.log('v86: master create/edit, searchable item links, confirmations, unlink and history preservation OK');

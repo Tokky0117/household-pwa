@@ -1064,14 +1064,8 @@ const newProductHtml=ui.scanProductView();
 assert.ok(newProductHtml.includes('scan-product-name')&&
  newProductHtml.includes('キットカットコイマッチャ10フクロ'),
  'manual receipt product registration retains the captured name');
-assert.ok(!newProductHtml.includes('id="scan-group-search"')&&
- newProductHtml.includes('name="group"')&&
- !newProductHtml.includes('name="package_quantity"')&&
- !newProductHtml.includes('name="package_unit"'),
- 'receipt product registration offers optional household linking');
-assert.ok(newProductHtml.includes('class="manage-main scan-product-page"')&&
- !newProductHtml.includes('receipt-product-modal'),
- 'legacy manual fallback remains available without nested sheets');
+assert.ok(!newProductHtml.includes('id="scan-group-search"')&&!newProductHtml.includes('name="group"')&&!newProductHtml.includes('name="package_quantity"')&&!newProductHtml.includes('name="package_unit"'),'Household setup follows product registration');
+assert.ok(newProductHtml.includes('product-registration-sheet'),'Manual fallback uses the common product sheet');
 
 // Receipt entry now records the purchase first. Product selection and
 // ChatGPT-assisted registration happen on the saved detail screen.
