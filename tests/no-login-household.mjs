@@ -2128,7 +2128,7 @@ try{
 }
 standaloneSession.window.document.querySelector('[data-act="recordProductOpen"]').click();
 const standaloneProductForm=standaloneSession.window.document.getElementById('recordProductCreateForm');
-assert.ok(standaloneProductForm&&standaloneProductForm.querySelector('[name="group"]').value==='',
+assert.ok(standaloneProductForm&&!standaloneProductForm.querySelector('[name="group"]'),
  'new product in shared half sheet allows leaving household link unset');
 standaloneProductForm.querySelector('[name="name"]').value=standaloneName;
 standaloneProductForm.dispatchEvent(new standaloneSession.window.Event(
@@ -2138,6 +2138,10 @@ await waitFor(()=>standaloneSession.window.KurashiLive.state().queued===0&&
  'product.create with null household group syncs from saved receipt');
 const standaloneProduct=temp.call('bootstrap').data.products.find(x=>x.name===standaloneName);
 assert.ok(standaloneProduct);
+await waitFor(()=>!!standaloneSession.window.document.querySelector('.household-setup-offer'),'Optional prompt is visible');
+standaloneSession.window.document.querySelector('.head-title').click();
+assert.equal(standaloneSession.window.document.querySelector('.household-setup-offer'),null,'Tapping elsewhere dismisses the prompt without setting a household');
+assert.ok(!temp.call('bootstrap').data.products.find(p=>p.product_id===standaloneProduct.product_id).household_item_id);
 await waitFor(()=>temp.call('bootstrap').data.receipt_name_mappings.some(x=>
  x.chain_id===standaloneChainId&&x.auto_match_product_id===standaloneProduct.product_id&&
  x.normalized_receipt_name===standaloneRaw.toLocaleLowerCase('ja')),

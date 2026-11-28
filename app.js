@@ -622,7 +622,7 @@ function transferReceiptPhotos(mode){
   }
   if(!navigator.clipboard?.write||typeof ClipboardItem==='undefined')throw Error('この端末では写真のコピーを利用できません');
   // Invoke write during the tap; PNG conversion can complete asynchronously.
-  const payload=files.map((file,i)=>new ClipboardItem({...(!i?{'text/plain':new Blob([text],{type:'text/plain'})}:{}),'image/png':receiptPhotoPng(file)}));
+  const payload=[new ClipboardItem({'text/plain':new Blob([text],{type:'text/plain'})}),...files.map(file=>new ClipboardItem({'image/png':receiptPhotoPng(file)}))];
   navigator.clipboard.write(payload).then(()=>say('コピーしました。貼り付け先で文章と写真を確認してください。')).catch(()=>say('一括コピーできませんでした。指示文のコピーまたは共有をお試しください。'));
  }catch(err){say(err.message||'写真を受け渡せませんでした');}
 }
@@ -3029,7 +3029,7 @@ if(action==='confirmMasterGroupChange'&&p&&Object.prototype.hasOwnProperty.call(
  window.KurashiLive.save('product.update',{
   product_id:product.id,version:product.version,household_item_id:p.groupId||null
  }).then(()=>{
-  if(p.receiptContext&&['recordDetail','recordProduct'].includes(page)){const line=recordProductLine()||allPreviewItems().find(x=>x.record_id===recordDetailId&&x.linked_product_id===product.id&&!x.deleted_at);if(line&&p.groupId&&originalGroup!==p.groupId)promptStockForSavedLine(line,p.groupId);render();}
+  if(p.receiptContext&&['recordDetail','recordProduct'].includes(page)){const line=recordProductLine()||allPreviewItems().find(x=>x.record_id===recordDetailId&&currentHouseholdProductId(x.linked_product_id)===currentHouseholdProductId(product.id)&&!x.deleted_at);if(line&&p.groupId&&originalGroup!==p.groupId)promptStockForSavedLine(line,p.groupId);render();}
   else if(p.receiptContext&&['recordScan','masterProducts'].includes(page))render();
  else if(page==='masterProductEdit'&&masterProductId===p.productId)setMasterGroupField(p.groupId);
  }).catch(err=>{

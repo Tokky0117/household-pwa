@@ -62,3 +62,29 @@ vm.runInContext(ds,context);
 assert.equal(context.dragScrollSpeed(300,50,600),0);
 assert.ok(context.dragScrollSpeed(55,50,600)<0);
 assert.ok(context.dragScrollSpeed(590,50,600)>0);
+
+// Validate transfer payloads independently of the phone-specific paste destination.
+const transferCode=app.slice(app.indexOf('function receiptAiPrompt(){'),app.indexOf('function receiptChatGptView(){'));
+const photos=[1,2,3].map(i=>new Blob([String(i)],{type:'image/png'}));
+let copied=null,shared=null,notice='';
+const transferContext={Blob,scanPhotos:photos,scanDraft:{source:'ocr'},catalogue:{products:[]},
+ receiptOcrReference:()=>'',window:{KurashiReceiptImport:{makeChatGptOcrAssistPrompt:()=> 'prompt'}},
+ ClipboardItem:class {constructor(data){this.data=data;}},
+ navigator:{clipboard:{write:items=>{copied=items;return Promise.resolve()}},canShare:()=>true,share:data=>{shared=data;return Promise.resolve()}},
+ say:text=>{notice=text}};
+vm.createContext(transferContext);
+vm.runInContext(transferCode,transferContext);
+for(const count of [1,3]){
+ transferContext.scanPhotos=photos.slice(0,count);
+ vm.runInContext("transferReceiptPhotos('copy')",transferContext);
+ assert.equal(copied.length,count+1,'Prompt is a separate item from each receipt photo');
+ assert.equal(await copied[0].data['text/plain'].text(),'prompt');
+ for(let i=0;i<count;i++)assert.equal(await copied[i+1].data['image/png'],photos[i]);
+}
+vm.runInContext("transferReceiptPhotos('share')",transferContext);
+assert.equal(shared.text,'prompt');
+assert.equal(shared.files.length,3);
+transferContext.navigator.canShare=()=>false;
+vm.runInContext("transferReceiptPhotos('share')",transferContext);
+assert.match(notice,/一括共有を利用できません/);
+console.log('v99.9 photo transfer payload checks: OK');
